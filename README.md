@@ -1,0 +1,35 @@
+# ITTR ShopFlow v20.1 — Server Launch Fix
+
+## IMPORTANT
+Do NOT open `public/index.html` directly.
+
+That creates a `file:///...` address and AI/API functions cannot reach the backend server.
+
+### Windows startup
+1. Extract the entire ZIP to a normal folder.
+2. Double-click `START_ITTR_WINDOWS.bat`.
+3. On the first run, it installs Node packages.
+4. The platform opens at:
+   http://localhost:3000
+5. Keep the server command window open while using ITTR.
+
+### AI setup
+The core shop system can start without an AI key.
+
+For AI translation, voice transcription, professional mechanic-note cleanup,
+diagnostic assistance, part assistance, and VIN assistance:
+- Open `.env`
+- Set `OPENAI_API_KEY=...`
+- Restart the ITTR server
+
+## v20.1 fixes
+- Fixes generic "Failed to fetch" when public/index.html is opened directly.
+- Adds a Windows launcher.
+- Server now starts even when AI is not configured.
+- AI endpoints return a clear setup message if no API key is configured.
+- Adds dotenv so the `.env` file is actually loaded.
+- Fixes the Express 5 SPA fallback route.
+- Frontend detects `file://` mode and tells the user how to launch correctly.
+- Bumps service-worker cache.
+
+Existing v20 functionality is retained.

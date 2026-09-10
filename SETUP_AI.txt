@@ -1,0 +1,33 @@
+ITTR AI SETUP
+
+Your ITTR server can run without AI, but the AI tools need a real OpenAI API key.
+
+1. In the main ITTR folder, find the file named:
+   .env
+
+2. Open it in Notepad.
+
+3. Find:
+   OPENAI_API_KEY=your_server_side_key
+
+4. Replace ONLY the text after the equals sign with your real OpenAI API key.
+
+5. Save .env.
+
+6. CLOSE the black ITTR server window completely.
+
+7. Run START_ITTR_WINDOWS.bat again.
+
+8. Open:
+   http://localhost:3000
+
+9. Go to:
+   Operations Center -> AI Tools -> Check Connection
+
+The page should say:
+   Connected — AI is configured and ready.
+
+IMPORTANT:
+- Do not put the API key into public/index.html.
+- Do not send or screenshot your API key.
+- A ChatGPT Plus subscription is separate from OpenAI API billing.

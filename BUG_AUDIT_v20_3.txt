@@ -1,0 +1,17 @@
+ITTR v20.3 BUG AUDIT
+
+Fixed:
+- ReferenceError: setView is not defined.
+- Added backwards-compatible setView() alias to showView().
+
+Automated checks:
+- Frontend JavaScript syntax: PASS
+- Backend JavaScript syntax: PASS
+- Missing inline handler functions: None
+- Missing literal DOM IDs referenced by getElementById: None
+- Duplicate static DOM IDs: None
+- Remaining setView calls are protected by the compatibility alias.
+
+Notes:
+- Dynamic findings note IDs are produced by alternative render templates and are not simultaneous static duplicate DOM nodes.
+- AI functions still require the server and a valid OPENAI_API_KEY.
