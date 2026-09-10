@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v2</title>
+<title>ITTR ShopFlow v22.1</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -466,7 +466,7 @@ body{-webkit-text-size-adjust:100%}
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v21 ONLINE BETA · Shared Cloud Database</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v22.1 ONLINE · DATA SAFE · Pause/Resume · Finding Decision Sync</div>
 <div id="appErrorBanner" style="display:none;position:fixed;left:8px;right:8px;top:66px;z-index:1000;background:#fef3f2;color:#b42318;border:1px solid #fecdca;border-radius:10px;padding:10px;font-size:13px"><b>App error:</b> <span id="appErrorText"></span> <button type="button" onclick="this.parentElement.style.display='none'" style="float:right;min-height:28px;padding:2px 8px">×</button></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1002,12 +1002,41 @@ body{-webkit-text-size-adjust:100%}
 </form>
 </div>
 </div>
+
+<div class="modal" id="taskPauseModal">
+<div class="modalbox" style="max-width:560px">
+<div class="modalhead">
+<h2 id="taskPauseTitle">Pause Job</h2>
+<button class="x" onclick="closeModal('taskPauseModal')" type="button">×</button>
+</div>
+<form id="taskPauseForm">
+<input name="workOrderId" type="hidden"/>
+<input name="taskIndex" type="hidden"/>
+<div class="field">
+<label>Why are you pausing this job?</label>
+<select name="reason" required>
+<option value="">Choose reason</option>
+<option value="Waiting for Parts">Waiting for Parts</option>
+<option value="End of Day">End of Day</option>
+<option value="Waiting for Customer Approval">Waiting for Customer Approval</option>
+<option value="Waiting for Information">Waiting for Information</option>
+<option value="Other">Other</option>
+</select>
+</div>
+<div class="field full">
+<label>Pause note (optional)</label>
+<textarea name="note" placeholder="Example: part ordered, expected tomorrow morning"></textarea>
+</div>
+<button type="submit">Pause Job</button>
+</form>
+</div>
+</div>
 <script>
 
 const DEFAULT_USERS={};
 let USERS=JSON.parse(localStorage.getItem("ittr_users_v1")||"null")||DEFAULT_USERS;
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
-let cloudReady=false,cloudSaving={};
+let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
 async function apiJSON(url,options={}){
  const opts={...options,headers:authHeaders({"Content-Type":"application/json",...(options.headers||{})})};
@@ -1018,7 +1047,32 @@ async function apiJSON(url,options={}){
 function queueCloudState(key,payload){
  if(!cloudReady||!cloudToken)return;
  clearTimeout(cloudSaving[key]);
- cloudSaving[key]=setTimeout(()=>apiJSON(`/api/state/${key}`,{method:"PUT",body:JSON.stringify({payload})}).catch(e=>showSyncError(e.message)),180);
+ cloudPending.add(key);
+ cloudSaving[key]=setTimeout(async()=>{
+   try{
+     const d=await apiJSON(`/api/state/${key}`,{method:"PUT",body:JSON.stringify({payload,expectedVersion:Number(cloudVersions[key]||0)})});
+     if(d?.version!=null)cloudVersions[key]=Number(d.version);
+   }catch(e){showSyncError(e.message)}
+   finally{cloudPending.delete(key);cloudSaving[key]=null;}
+ },180);
+}
+async function refreshCloudStateSilently(){
+ if(!cloudReady||!cloudToken||cloudRefreshBusy)return;
+ cloudRefreshBusy=true;
+ try{
+   const d=await apiJSON("/api/state");
+   let changed=false;
+   const apply=(key,fn)=>{
+     const remote=d[key]; if(!remote||cloudPending.has(key))return;
+     const rv=Number(remote.version||0),lv=Number(cloudVersions[key]||0);
+     if(rv>lv){fn(remote.payload);cloudVersions[key]=rv;changed=true;}
+   };
+   apply("users",payload=>{USERS=payload||{};localStorage.setItem("ittr_users_v1",JSON.stringify(USERS));});
+   apply("shopflow",payload=>{state=payload||{workorders:[],issues:[]};localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));});
+   apply("pro",payload=>{PRO=payload||{};localStorage.setItem(PRO_KEY,JSON.stringify(PRO));});
+   if(changed)render();
+ }catch(e){/* keep current screen usable during temporary network issues */}
+ finally{cloudRefreshBusy=false;}
 }
 function showSyncError(msg){const b=document.getElementById("appErrorBanner"),t=document.getElementById("appErrorText");if(b&&t){t.textContent=`Cloud sync: ${msg}`;b.style.display="block"}}
 function saveUsers(){localStorage.setItem("ittr_users_v1",JSON.stringify(USERS));queueCloudState("users",USERS)}
@@ -2632,6 +2686,7 @@ async function loadCloudStateAfterLogin(){
  USERS=fresh.users?.payload||{};
  state=fresh.shopflow?.payload||{workorders:[],issues:[]};
  PRO=fresh.pro?.payload||{};
+ cloudVersions={users:Number(fresh.users?.version||0),shopflow:Number(fresh.shopflow?.version||0),pro:Number(fresh.pro?.version||0)};
  localStorage.setItem("ittr_users_v1",JSON.stringify(USERS));
  localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));
  localStorage.setItem(PRO_KEY,JSON.stringify(PRO));
@@ -2996,7 +3051,7 @@ function findingRecordCard(i,w){
    <button class="success" onclick="setApproval(${i.id},'Proceed')">Proceed</button>
    <button class="secondary" onclick="setApproval(${i.id},'Waiting for Customer')">Waiting</button>
    <button class="danger" onclick="setApproval(${i.id},'Do Not Proceed')">Do Not Proceed</button>
-   ${(approval==="Proceed"&&!i.convertedToTask)?`<button onclick="addApprovedFindingToWorkOrder(${i.id})">Add to Work Order</button>`:""}
+   ${approval==="Proceed"?`<span class="badge b-approved">${i.convertedToTask?"Added to Work Order":"Approved"}</span>`:""}
    ${i.convertedToTask?`<span class="badge b-done">Added to Work Order</span>`:""}
   </div>
   <div class="field" style="margin-top:10px"><label>Admin / Customer note</label><textarea id="adminNote_${i.id}" placeholder="Customer decision, authorization, follow-up...">${esc(i.adminNote||"")}</textarea></div>
@@ -3048,7 +3103,7 @@ function adminIssueCard(i){
      <button class="success" onclick="setApproval(${i.id},'Proceed')">Proceed</button>
      <button class="secondary" onclick="setApproval(${i.id},'Waiting for Customer')">Waiting for Customer</button>
      <button class="danger" onclick="setApproval(${i.id},'Do Not Proceed')">Do Not Proceed</button>
-     ${(i.approval==="Proceed" && !i.convertedToTask)?`<button onclick="addApprovedFindingToWorkOrder(${i.id})">Add to Work Order</button>`:""}
+     ${i.approval==="Proceed"?`<span class="badge b-approved">${i.convertedToTask?"Added to Work Order":"Approved"}</span>`:""}
    </div>
    <div class="field" style="margin-top:10px">
      <label>Admin / Customer note</label>
@@ -3057,11 +3112,29 @@ function adminIssueCard(i){
    <button class="secondary" onclick="saveAdminNote(${i.id})">Save Note</button>
  </div>`;
 }
-function setApproval(id,value){
+async function setApproval(id,value){
  if(!requireAdmin())return;
- let i=state.issues.find(x=>x.id===id); if(!i)return;
- i.approval=value;i.decisionAt=new Date().toISOString();i.decisionBy=session.username;
- save();render();
+ const i=state.issues.find(x=>String(x.id)===String(id)); if(!i)return;
+ try{
+   const d=await apiJSON(`/api/findings/${encodeURIComponent(id)}/decision`,{
+     method:"POST",
+     body:JSON.stringify({value})
+   });
+   if(d?.shopflow){
+     state=d.shopflow;
+     localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));
+   }
+   if(d?.version!=null)cloudVersions.shopflow=Number(d.version);
+   render();
+   if(value==="Proceed"){
+     const updated=state.issues.find(x=>String(x.id)===String(id));
+     const wo=updated?state.workorders.find(w=>String(w.id)===String(updated.wo)):null;
+     const linked=wo?.tasks?.some(t=>String(t.findingId??"")===String(id));
+     if(!linked)showSyncError("Finding was approved, but its work-order task could not be verified.");
+   }
+ }catch(e){
+   alert(e.message||"Finding approval failed.");
+ }
 }
 function saveAdminNote(id){
  if(!requireAdmin())return;
@@ -3071,20 +3144,25 @@ function saveAdminNote(id){
  save();
  render();
 }
+function convertApprovedFindingToTask(i){
+ if(!i || i.approval!=="Proceed")return false;
+ let w=state.workorders.find(x=>String(x.id)===String(i.wo));
+ if(!w)return false;
+ w.tasks=Array.isArray(w.tasks)?w.tasks:[];
+ const text=(i.recommendation||"").trim() || (i.description||"").trim();
+ if(!text)return false;
+ if(!w.tasks.some(t=>t.findingId===i.id || (t.t||"").trim().toLowerCase()===text.toLowerCase())){
+   w.tasks.push({t:text,done:false,startedAt:"",stoppedAt:"",elapsedMs:0,completedAt:"",source:"inspection",findingId:i.id,taskOutcome:"",outcomeNote:"",outcomeAt:"",outcomeBy:""});
+ }
+ i.convertedToTask=true;
+ return true;
+}
 function addApprovedFindingToWorkOrder(id){
  if(!requireAdmin())return;
  let i=state.issues.find(x=>x.id===id);
  if(!i || i.approval!=="Proceed")return;
- let w=state.workorders.find(x=>x.id===i.wo);
- if(!w)return;
- const text=(i.recommendation||"").trim() || (i.description||"").trim();
- if(!text)return;
- if(!(w.tasks||[]).some(t=>(t.t||"").trim().toLowerCase()===text.toLowerCase())){
-   w.tasks.push({t:text,done:false,startedAt:"",stoppedAt:"",elapsedMs:0,completedAt:"",source:"inspection",findingId:i.id,taskOutcome:"",outcomeNote:"",outcomeAt:"",outcomeBy:""});
- }
- i.convertedToTask=true;
- save();
- render();
+ convertApprovedFindingToTask(i);
+ save();render();
 }
 
 function openWorkOrder(){if(!requireAdmin())return;refreshMechanicSelects();document.getElementById("woModal").classList.add("open")}
@@ -3290,20 +3368,28 @@ function taskTimerRow(w,t,i){
  let controls="";
 
  if(isMechanic){
-   if(running){
-     controls=`<button class="danger" onclick="stopTask(${w.id},${i})">■ Stop</button>`;
+   if(t.findingDecision==="Do Not Proceed"){
+     controls=`<span class="badge b-danger">DO NOT PROCEED</span>`;
+   }else if(t.findingDecision==="Waiting for Customer"){
+     controls=`<span class="badge b-wait">WAITING FOR CUSTOMER</span>`;
+   }else if(running){
+     controls=`<button class="secondary" onclick="openPauseTask(${w.id},${i})">Ⅱ Pause</button> <button class="success" onclick="stopTask(${w.id},${i})">✓ Complete</button>`;
    }else if(completed){
      controls=`<span class="badge b-done">✓ Completed</span>`;
    }else if(["not_completed","next_visit"].includes(outcome)){
      controls=`${taskOutcomeBadge(t,w)}`;
+   }else if(t.paused){
+     controls=`<button ${anotherRunning?'disabled style="opacity:.45;cursor:not-allowed"':''} onclick="resumeTask(${w.id},${i})">▶ Resume</button>`;
    }else{
      controls=`<button ${anotherRunning?'disabled style="opacity:.45;cursor:not-allowed"':''} onclick="startTask(${w.id},${i})">▶ Start</button>`;
    }
  }else{
-   controls=running?`<span class="badge b-progress">Running</span>`:taskOutcomeBadge(t,w);
+   if(t.findingDecision==="Do Not Proceed")controls=`<span class="badge b-danger">DO NOT PROCEED</span>`;
+   else if(t.findingDecision==="Waiting for Customer")controls=`<span class="badge b-wait">WAITING FOR CUSTOMER</span>`;
+   else controls=running?`<span class="badge b-progress">Running</span>`:taskOutcomeBadge(t,w);
  }
 
- const rowClass=completed?"outcomeCompleted":outcome==="next_visit"?"outcomeNext":outcome==="not_completed"?"outcomeNotCompleted":"";
+ const rowClass=completed?"outcomeCompleted":t.findingDecision==="Do Not Proceed"?"outcomeNotCompleted":t.findingDecision==="Waiting for Customer"||t.paused?"outcomeNext":outcome==="next_visit"?"outcomeNext":outcome==="not_completed"?"outcomeNotCompleted":"";
  return `<div class="taskrow ${running?"running":""} ${completed?"taskdone":""} ${rowClass}">
    <div class="taskhead">
      <div><b>${esc(t.t)}</b>${t.source==="inspection"?` <span class="badge b-approved">Approved Finding</span>`:""}</div>
@@ -3314,63 +3400,70 @@ function taskTimerRow(w,t,i){
      &nbsp; | &nbsp; <b>Stopped:</b> ${fmtDateTime(t.stoppedAt)}
      &nbsp; | &nbsp; <b>Labor:</b> ${fmtDuration(taskElapsed(t))}
    </div>
-   ${isMechanic && !running && !completed?`<div class="taskOutcomeActions">
+   ${t.findingDecision==="Do Not Proceed"?`<div class="outcomeNoteBox"><b>DECLINED — DO NOT PROCEED</b><div class="muted">Decision changed by Admin${t.approvalChangedAt?` · ${fmtDateTime(t.approvalChangedAt)}`:""}</div></div>`:""}
+   ${t.findingDecision==="Waiting for Customer"?`<div class="outcomeNoteBox"><b>ON HOLD — Waiting for Customer Approval</b><div class="muted">${t.approvalChangedAt?fmtDateTime(t.approvalChangedAt):""}</div></div>`:""}
+   ${t.paused && !["Waiting for Customer","Do Not Proceed"].includes(t.findingDecision||"")?`<div class="outcomeNoteBox"><b>Paused:</b> ${esc(t.pauseReason||"Paused")}${t.pauseNote?` — ${esc(t.pauseNote)}`:""}<div class="muted">${t.pausedAt?fmtDateTime(t.pausedAt):""}</div></div>`:""}
+   ${isMechanic && !running && !completed && !t.paused && !["Waiting for Customer","Do Not Proceed"].includes(t.findingDecision||"")?`<div class="taskOutcomeActions">
       <button class="secondary" onclick="openTaskOutcome(${w.id},${i})">Not Completed / Next Visit</button>
       ${["not_completed","next_visit"].includes(outcome)?`<button class="secondary" onclick="clearTaskOutcome(${w.id},${i})">Reset Decision</button>`:""}
    </div>`:""}
    ${t.outcomeNote?`<div class="outcomeNoteBox"><b>${esc(taskOutcomeLabel(t))}:</b> ${esc(t.outcomeNote)}<div class="muted">${t.outcomeBy?`By ${esc(mechanicDisplay(t.outcomeBy))}`:""}${t.outcomeAt?` · ${fmtDateTime(t.outcomeAt)}`:""}</div></div>`:""}
  </div>`;
 }
-function startTask(workOrderId,taskIndex){
- if(!requireMechanic())return;
- const w=state.workorders.find(x=>x.id===workOrderId);
- if(!w || !visibleToCurrentMechanic(w))return alert("You do not have access to this work order.");
- const task=w.tasks?.[taskIndex];
- if(!task)return alert("This job could not be found.");
- if(normalizedTaskOutcome(task)==="completed")return alert("This job is already completed.");
- const activeIdx=activeTaskIndex(w);
- if(activeIdx!==-1 && activeIdx!==taskIndex){
-   return alert("Stop the current job before starting the next one.");
+async function applyTaskServerAction(workOrderId,taskIndex,action,extra={}){
+ if(!requireMechanic())return false;
+ try{
+   const d=await apiJSON(`/api/work-orders/${encodeURIComponent(workOrderId)}/tasks/${taskIndex}/action`,{
+     method:"POST",body:JSON.stringify({action,...extra})
+   });
+   if(d?.shopflow){
+     state=d.shopflow;
+     localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));
+   }
+   if(d?.version!=null)cloudVersions.shopflow=Number(d.version);
+   render();
+   openDetail(workOrderId);
+   return true;
+ }catch(e){
+   alert(e.message||"Task update failed.");
+   return false;
  }
+}
+async function startTask(workOrderId,taskIndex){
+ const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
+ if(!w || !visibleToCurrentMechanic(w))return alert("You do not have access to this work order.");
+ const task=w.tasks?.[taskIndex]; if(!task)return alert("This job could not be found.");
+ if(task.findingDecision==="Do Not Proceed")return alert("This repair was declined. Do not perform this task.");
+ if(task.findingDecision==="Waiting for Customer")return alert("This repair is waiting for customer approval.");
  const au=USERS;
  if(au?.[session.username]?.currentActivity?.code){closeCurrentMechanicActivity(au,session.username);try{saveUsers(au)}catch(e){saveUsers()}}
- task.taskOutcome="";
- task.outcomeNote="";
- task.outcomeAt="";
- task.outcomeBy="";
- task.done=false;
- task.completedAt="";
- if(!task.startedAt || task.stoppedAt){
-   task.startedAt=new Date().toISOString();
-   task.stoppedAt="";
- }
- if(w.status==="Open")w.status="In Progress";
- save();
- render();
- openDetail(workOrderId);
+ await applyTaskServerAction(workOrderId,taskIndex,"start");
 }
-function stopTask(workOrderId,taskIndex){
+function openPauseTask(workOrderId,taskIndex){
  if(!requireMechanic())return;
- const w=state.workorders.find(x=>x.id===workOrderId);
- if(!w || !visibleToCurrentMechanic(w))return alert("You do not have access to this work order.");
- const task=w.tasks?.[taskIndex];
- if(!task)return alert("This job could not be found.");
- if(!task.startedAt || task.stoppedAt)return alert("This job is not currently running.");
- const stop=new Date();
- const start=new Date(task.startedAt);
- task.elapsedMs=Number(task.elapsedMs||0)+Math.max(0,stop.getTime()-start.getTime());
- task.stoppedAt=stop.toISOString();
- task.done=true;
- task.completedAt=task.stoppedAt;
- task.taskOutcome="completed";
- task.outcomeNote="";
- task.outcomeAt=task.stoppedAt;
- task.outcomeBy=session.username;
- save();
- render();
- openDetail(workOrderId);
+ const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
+ const t=w?.tasks?.[taskIndex];
+ if(!t)return alert("This job could not be found.");
+ if(!(t.startedAt&&!t.stoppedAt&&!t.done))return alert("This job is not currently running.");
+ const f=document.getElementById("taskPauseForm");
+ f.elements["workOrderId"].value=workOrderId;
+ f.elements["taskIndex"].value=taskIndex;
+ f.elements["reason"].value="";
+ f.elements["note"].value="";
+ document.getElementById("taskPauseTitle").textContent=`Pause Job — ${t.t}`;
+ document.getElementById("taskPauseModal").classList.add("open");
 }
-
+async function pauseTask(workOrderId,taskIndex,reason,note=""){
+ const ok=await applyTaskServerAction(workOrderId,taskIndex,"pause",{reason,note});
+ if(ok)closeModal("taskPauseModal");
+}
+async function resumeTask(workOrderId,taskIndex){
+ await applyTaskServerAction(workOrderId,taskIndex,"resume");
+}
+async function stopTask(workOrderId,taskIndex){
+ if(!confirm("Mark this job as completed?"))return;
+ await applyTaskServerAction(workOrderId,taskIndex,"complete");
+}
 
 function workOrderNotesBlock(w){
  let out="";
@@ -3472,6 +3565,13 @@ if(passwordFormEl)passwordFormEl.onsubmit=async e=>{
  try{await apiJSON(`/api/admin/users/${encodeURIComponent(username)}/password`,{method:"PATCH",body:JSON.stringify({password})});closeModal("passwordModal");alert(`Password changed for ${USERS[username]?.display||username}.`)}catch(ex){alert(ex.message)}
 };
 
+const taskPauseFormEl=document.getElementById("taskPauseForm");
+if(taskPauseFormEl)taskPauseFormEl.onsubmit=e=>{
+ e.preventDefault();
+ const f=new FormData(e.target);
+ pauseTask(Number(f.get("workOrderId")),Number(f.get("taskIndex")),String(f.get("reason")||""),String(f.get("note")||"").trim());
+};
+
 const taskOutcomeFormEl=document.getElementById("taskOutcomeForm");
 if(taskOutcomeFormEl)taskOutcomeFormEl.onsubmit=e=>{
  e.preventDefault();
@@ -3510,6 +3610,10 @@ document.addEventListener("DOMContentLoaded",async()=>{
  showLogin();
  if(session){applyRole();render();}else{applyTranslations();}
  setInterval(()=>{if(session?.role==="admin"&&currentView==="dashboard"&&!document.hidden)renderMechanicLiveStatus()},2000);
+// Pull newer cloud snapshots so admin approvals and mechanic updates appear across devices.
+setInterval(()=>{if(session&&cloudReady&&!document.hidden)refreshCloudStateSilently()},4000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&session&&cloudReady)refreshCloudStateSilently()});
+window.addEventListener("focus",()=>{if(session&&cloudReady)refreshCloudStateSilently()});
 });
 
 if("serviceWorker" in navigator){
