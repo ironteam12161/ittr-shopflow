@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v22.2</title>
+<title>ITTR ShopFlow v22.3</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -466,7 +466,7 @@ body{-webkit-text-size-adjust:100%}
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v22.2 ONLINE · DATA SAFE · Full Work Timeline</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v22.3 ONLINE · PRO AUDIT FIXED · Full Work Timeline</div>
 <div id="appErrorBanner" style="display:none;position:fixed;left:8px;right:8px;top:66px;z-index:1000;background:#fef3f2;color:#b42318;border:1px solid #fecdca;border-radius:10px;padding:10px;font-size:13px"><b>App error:</b> <span id="appErrorText"></span> <button type="button" onclick="this.parentElement.style.display='none'" style="float:right;min-height:28px;padding:2px 8px">×</button></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -3054,7 +3054,7 @@ function findingRecordCard(i,w){
    ${approval==="Proceed"?`<span class="badge b-approved">${i.convertedToTask?"Added to Work Order":"Approved"}</span>`:""}
    ${i.convertedToTask?`<span class="badge b-done">Added to Work Order</span>`:""}
   </div>
-  <div class="field" style="margin-top:10px"><label>Admin / Customer note</label><textarea id="adminNote_${i.id}" placeholder="Customer decision, authorization, follow-up...">${esc(i.adminNote||"")}</textarea></div>
+  <div class="field" style="margin-top:10px"><label>Admin / Customer note</label><textarea id="findingAdminNote_${i.id}" placeholder="Customer decision, authorization, follow-up...">${esc(i.adminNote||"")}</textarea></div>
   <button class="secondary" onclick="saveAdminNote(${i.id})">Save Note</button>
  </div>`;
 }
@@ -3107,7 +3107,7 @@ function adminIssueCard(i){
    </div>
    <div class="field" style="margin-top:10px">
      <label>Admin / Customer note</label>
-     <textarea id="adminNote_${i.id}" placeholder="Example: Customer approved by phone at 2:15 PM">${esc(i.adminNote||"")}</textarea>
+     <textarea id="legacyAdminNote_${i.id}" placeholder="Example: Customer approved by phone at 2:15 PM">${esc(i.adminNote||"")}</textarea>
    </div>
    <button class="secondary" onclick="saveAdminNote(${i.id})">Save Note</button>
  </div>`;
@@ -3139,7 +3139,7 @@ async function setApproval(id,value){
 function saveAdminNote(id){
  if(!requireAdmin())return;
  let i=state.issues.find(x=>x.id===id); if(!i)return;
- const el=document.getElementById("adminNote_"+id);
+ const el=document.getElementById("findingAdminNote_"+id)||document.getElementById("legacyAdminNote_"+id);
  i.adminNote=el?el.value:"";
  save();
  render();
@@ -3404,18 +3404,20 @@ async function loadWorkOrderTaskSessions(workOrderId){
  try{
    const d=await apiJSON(`/api/work-orders/${encodeURIComponent(workOrderId)}/task-sessions`);
    const sessions=Array.isArray(d?.sessions)?d.sessions:[];
-   const grouped={};
+   const byUid={},byIndex={};
    for(const x of sessions){
-     const key=String(x.task_index);
-     (grouped[key]||(grouped[key]=[])).push(x);
+     const idx=String(x.task_index);
+     (byIndex[idx]||(byIndex[idx]=[])).push(x);
+     if(x.task_uid){const uid=String(x.task_uid);(byUid[uid]||(byUid[uid]=[])).push(x);}
    }
    document.querySelectorAll(`[data-task-timeline-wo="${CSS.escape(String(workOrderId))}"]`).forEach(el=>{
      const idx=String(el.getAttribute("data-task-timeline-index"));
-     el.innerHTML=taskSessionTimelineHTML(grouped[idx]||[]);
+     const uid=String(el.getAttribute("data-task-timeline-uid")||"");
+     el.innerHTML=taskSessionTimelineHTML((uid&&byUid[uid])||byIndex[idx]||[]);
    });
  }catch(e){
    document.querySelectorAll(`[data-task-timeline-wo="${CSS.escape(String(workOrderId))}"]`).forEach(el=>{
-     el.innerHTML=`<div class="muted" style="margin-top:6px">Timeline unavailable: ${esc(e.message||"Unable to load")}</div>`;
+     el.innerHTML=`<div class="muted" style="margin-top:6px">Timeline unavailable: ${esc(e.message||"Unable to load")}${String(e.message||"").includes("API endpoint not found")?" — frontend/backend version mismatch. Deploy server.js from this same release.":""}</div>`;
    });
  }
 }
@@ -3462,7 +3464,7 @@ function taskTimerRow(w,t,i){
      &nbsp; | &nbsp; <b>Latest Stop:</b> ${fmtDateTime(t.stoppedAt)}
      &nbsp; | &nbsp; <b>Total Labor:</b> ${fmtDuration(taskElapsed(t))}
    </div>
-   <div data-task-timeline-wo="${esc(String(w.id))}" data-task-timeline-index="${i}">
+   <div data-task-timeline-wo="${esc(String(w.id))}" data-task-timeline-index="${i}" data-task-timeline-uid="${esc(String(t.uid||""))}">
      <div class="muted" style="margin-top:6px">Loading work timeline…</div>
    </div>
    ${t.findingDecision==="Do Not Proceed"?`<div class="outcomeNoteBox"><b>DECLINED — DO NOT PROCEED</b><div class="muted">Decision changed by Admin${t.approvalChangedAt?` · ${fmtDateTime(t.approvalChangedAt)}`:""}</div></div>`:""}
@@ -3668,7 +3670,26 @@ if(taskOutcomeFormEl)taskOutcomeFormEl.onsubmit=e=>{
  openDetail(workOrderId);
 };
 
+async function verifyReleaseCompatibility(){
+ try{
+  const r=await fetch("/api/health",{cache:"no-store"});
+  const d=await r.json();
+  const backend=String(d?.version||"unknown");
+  if(!backend.startsWith("22.3.")){
+   const b=document.getElementById("appErrorBanner");
+   if(b){b.style.display="block";b.textContent=`VERSION MISMATCH — Frontend v22.3 but backend is ${backend}. Replace/deploy server.js from the same v22.3 package. Timeline and transactional features may not work until versions match.`;}
+   return false;
+  }
+  return true;
+ }catch(e){
+  const b=document.getElementById("appErrorBanner");
+  if(b){b.style.display="block";b.textContent="BACKEND HEALTH CHECK FAILED — The browser cannot verify the deployed server version.";}
+  return false;
+ }
+}
+
 document.addEventListener("DOMContentLoaded",async()=>{
+ await verifyReleaseCompatibility();
  startAITranslationObserver();
  const aiToggle=document.getElementById("aiTranslateEnabled");if(aiToggle)aiToggle.checked=aiTranslationEnabled;
  bindNavigation();updateOnlineState();
