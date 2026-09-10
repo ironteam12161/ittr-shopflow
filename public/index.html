@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v22.1</title>
+<title>ITTR ShopFlow v22.2</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -466,7 +466,7 @@ body{-webkit-text-size-adjust:100%}
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v22.1 ONLINE · DATA SAFE · Pause/Resume · Finding Decision Sync</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v22.2 ONLINE · DATA SAFE · Full Work Timeline</div>
 <div id="appErrorBanner" style="display:none;position:fixed;left:8px;right:8px;top:66px;z-index:1000;background:#fef3f2;color:#b42318;border:1px solid #fecdca;border-radius:10px;padding:10px;font-size:13px"><b>App error:</b> <span id="appErrorText"></span> <button type="button" onclick="this.parentElement.style.display='none'" style="float:right;min-height:28px;padding:2px 8px">×</button></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -3358,6 +3358,68 @@ function clearTaskOutcome(workOrderId,taskIndex){
  openDetail(workOrderId);
 }
 
+
+function sessionDurationMs(s){
+ if(!s?.started_at)return 0;
+ const start=new Date(s.started_at).getTime();
+ const end=s.ended_at?new Date(s.ended_at).getTime():Date.now();
+ return Math.max(0,end-start);
+}
+function taskSessionTimelineHTML(sessions){
+ if(!Array.isArray(sessions)||!sessions.length){
+   return `<div class="muted" style="margin-top:6px">No recorded work sessions yet.</div>`;
+ }
+ const total=sessions.reduce((sum,x)=>sum+sessionDurationMs(x),0);
+ const rows=sessions.map((x,idx)=>{
+   const first=idx===0;
+   const startLabel=first?"Started":"Resumed";
+   let stopLabel="Working";
+   if(x.ended_at){
+     if(x.end_reason==="paused")stopLabel="Paused";
+     else if(x.end_reason==="completed")stopLabel="Finished";
+     else if(x.end_reason==="approval_hold")stopLabel="Put On Hold";
+     else if(x.end_reason==="declined")stopLabel="Stopped / Declined";
+     else stopLabel="Stopped";
+   }
+   const status=x.ended_at
+     ? (x.end_reason==="completed"?`<span class="badge b-done">Completed</span>`
+       :x.end_reason==="paused"?`<span class="badge b-wait">Paused</span>`
+       :x.end_reason==="declined"?`<span class="badge b-danger">Declined</span>`
+       :x.end_reason==="approval_hold"?`<span class="badge b-wait">Waiting</span>`:"")
+     :`<span class="badge b-progress">Running</span>`;
+   const reason=x.pause_reason?`<div class="muted" style="margin-top:2px"><b>Reason:</b> ${esc(x.pause_reason)}${x.pause_note?` — ${esc(x.pause_note)}`:""}</div>`:"";
+   return `<div style="padding:7px 0;${idx?"border-top:1px dashed #d8dee8;":""}">
+      <div><b>${startLabel}:</b> ${fmtDateTime(x.started_at)}</div>
+      <div><b>${stopLabel}:</b> ${x.ended_at?fmtDateTime(x.ended_at):"Now"} ${status}</div>
+      <div class="muted">Work time this session: ${fmtDuration(sessionDurationMs(x))}</div>
+      ${reason}
+   </div>`;
+ }).join("");
+ return `<details open style="margin-top:8px">
+   <summary style="cursor:pointer;font-weight:800">Work Timeline · ${sessions.length} session${sessions.length===1?"":"s"} · ${fmtDuration(total)} worked</summary>
+   <div style="margin-top:4px">${rows}</div>
+ </details>`;
+}
+async function loadWorkOrderTaskSessions(workOrderId){
+ try{
+   const d=await apiJSON(`/api/work-orders/${encodeURIComponent(workOrderId)}/task-sessions`);
+   const sessions=Array.isArray(d?.sessions)?d.sessions:[];
+   const grouped={};
+   for(const x of sessions){
+     const key=String(x.task_index);
+     (grouped[key]||(grouped[key]=[])).push(x);
+   }
+   document.querySelectorAll(`[data-task-timeline-wo="${CSS.escape(String(workOrderId))}"]`).forEach(el=>{
+     const idx=String(el.getAttribute("data-task-timeline-index"));
+     el.innerHTML=taskSessionTimelineHTML(grouped[idx]||[]);
+   });
+ }catch(e){
+   document.querySelectorAll(`[data-task-timeline-wo="${CSS.escape(String(workOrderId))}"]`).forEach(el=>{
+     el.innerHTML=`<div class="muted" style="margin-top:6px">Timeline unavailable: ${esc(e.message||"Unable to load")}</div>`;
+   });
+ }
+}
+
 function taskTimerRow(w,t,i){
  const isMechanic=session?.role==="mechanic" && visibleToCurrentMechanic(w) && w.status!=="Completed";
  const running=!!(t.startedAt && !t.stoppedAt && !t.done);
@@ -3396,9 +3458,12 @@ function taskTimerRow(w,t,i){
      <div class="taskcontrols">${controls}</div>
    </div>
    <div class="timerinfo">
-     <b>Started:</b> ${fmtDateTime(t.startedAt)}
-     &nbsp; | &nbsp; <b>Stopped:</b> ${fmtDateTime(t.stoppedAt)}
-     &nbsp; | &nbsp; <b>Labor:</b> ${fmtDuration(taskElapsed(t))}
+     <b>Latest Start:</b> ${fmtDateTime(t.startedAt)}
+     &nbsp; | &nbsp; <b>Latest Stop:</b> ${fmtDateTime(t.stoppedAt)}
+     &nbsp; | &nbsp; <b>Total Labor:</b> ${fmtDuration(taskElapsed(t))}
+   </div>
+   <div data-task-timeline-wo="${esc(String(w.id))}" data-task-timeline-index="${i}">
+     <div class="muted" style="margin-top:6px">Loading work timeline…</div>
    </div>
    ${t.findingDecision==="Do Not Proceed"?`<div class="outcomeNoteBox"><b>DECLINED — DO NOT PROCEED</b><div class="muted">Decision changed by Admin${t.approvalChangedAt?` · ${fmtDateTime(t.approvalChangedAt)}`:""}</div></div>`:""}
    ${t.findingDecision==="Waiting for Customer"?`<div class="outcomeNoteBox"><b>ON HOLD — Waiting for Customer Approval</b><div class="muted">${t.approvalChangedAt?fmtDateTime(t.approvalChangedAt):""}</div></div>`:""}
@@ -3531,6 +3596,7 @@ function openDetail(id){
   ${workOrderNotesBlock(w)}${adminControls}
   ${mechanicControls}`;
  document.getElementById("detailModal").classList.add("open");
+ loadWorkOrderTaskSessions(w.id);
 }
 
 function deleteWorkOrder(id){
