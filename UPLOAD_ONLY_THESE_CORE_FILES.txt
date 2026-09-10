@@ -1,0 +1,27 @@
+ITTR v22.5 CLEAN RELEASE
+
+Core files that MUST be replaced together in GitHub:
+1. /index.html
+2. /server.js
+3. /sw.js
+4. /package.json
+5. /manifest.webmanifest
+6. /public/index.html
+7. /public/sw.js
+8. /public/manifest.webmanifest
+
+Expected after deploy:
+Banner:
+ITTR v22.5 ONLINE · CLEAN RELEASE · Task Identity + Full Work Timeline
+
+Backend build endpoint:
+/api/build
+should return:
+frontendExpected: 22.5.0
+backend: 22.5.0
+build: ITTR-22.5-CLEAN-20260910
+
+IMPORTANT:
+Do not upload files with (1), (2), (3) in the name.
+Do not create a new Railway project.
+Do not create a new PostgreSQL database.
