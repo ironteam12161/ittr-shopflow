@@ -27,7 +27,18 @@ const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATAB
 app.set("trust proxy",1);
 app.use(helmet({contentSecurityPolicy:false,crossOriginEmbedderPolicy:false}));
 app.use(express.json({limit:"3mb"}));
-app.use(express.static(path.join(__dirname,"public")));
+
+// Railway/GitHub-safe static path:
+// Prefer /public when the repository preserves folders.
+// Fall back to the repository root if GitHub web upload flattened public files.
+const publicDir = path.join(__dirname,"public");
+const fs = await import("fs");
+const hasPublicIndex = fs.existsSync(path.join(publicDir,"index.html"));
+const hasRootIndex = fs.existsSync(path.join(__dirname,"index.html"));
+const webRoot = hasPublicIndex ? publicDir : (hasRootIndex ? __dirname : publicDir);
+console.log("ITTR web root:", webRoot);
+app.use(express.static(webRoot));
+
 app.use("/api/auth",rateLimit({windowMs:15*60*1000,max:100,standardHeaders:true,legacyHeaders:false}));
 
 function requireDb(){if(!pool){const e=new Error("DATABASE_URL is not configured. Add PostgreSQL to the deployment and set DATABASE_URL.");e.code="DB_NOT_CONFIGURED";throw e;}return pool;}
@@ -80,7 +91,7 @@ async function auth(req,res,next){
 function adminOnly(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Admin access required."});next()}
 async function audit(username,action,details={}){try{if(pool)await pool.query("INSERT INTO server_audit(username,action,details) VALUES($1,$2,$3::jsonb)",[username||null,action,JSON.stringify(details)])}catch(e){console.error("audit",e.message)}}
 
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"21.0.0-online-beta"})});
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"21.1.0-railway-path-fix"})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -146,6 +157,6 @@ app.post("/api/transcribe",auth,upload.single("audio"),async(req,res)=>{try{if(!
 app.get("/api/admin/server-audit",auth,adminOnly,async(req,res,next)=>{try{const q=await requireDb().query("SELECT username,action,details,created_at FROM server_audit ORDER BY id DESC LIMIT 500");res.json({rows:q.rows})}catch(e){next(e)}});
 app.use("/api",(req,res)=>res.status(404).json({error:"API endpoint not found"}));
 app.use((err,req,res,next)=>{console.error(err);if(err?.code==="DB_NOT_CONFIGURED")return res.status(503).json({error:err.message,code:err.code});res.status(500).json({error:isProd?"Server error":String(err?.message||err)})});
-app.get("*splat",(req,res)=>res.sendFile(path.join(__dirname,"public","index.html")));
+app.get("*splat",(req,res)=>res.sendFile(path.join(webRoot,"index.html")));
 
-initDb().then(()=>app.listen(port,()=>console.log(`ITTR v21 Online running on port ${port}`))).catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});
+initDb().then(()=>app.listen(port,()=>console.log(`ITTR v21.1 Online running on port ${port}`))).catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

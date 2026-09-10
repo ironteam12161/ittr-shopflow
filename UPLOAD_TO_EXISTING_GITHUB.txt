@@ -1,0 +1,20 @@
+ITTR v21.1 RAILWAY PATH FIX
+
+This release fixes the Railway 'Not Found' page caused by GitHub web uploads
+placing index.html at the repository root instead of inside /public.
+
+WHAT TO DO:
+1. Extract this ZIP.
+2. Open your EXISTING private GitHub repository.
+3. Add files -> Upload files.
+4. Drag ALL files and folders from inside this extracted folder into the repository.
+5. Allow GitHub to replace files with the same names, then commit the changes.
+6. Do NOT create another Railway project.
+7. Do NOT delete PostgreSQL.
+8. Do NOT change your 8 Railway variables.
+9. Railway should automatically redeploy from the GitHub commit.
+10. Wait for the web service to return Online, then open the same Railway URL.
+
+This server now supports BOTH layouts:
+- /public/index.html (correct repository structure)
+- /index.html at repository root (flattened GitHub upload)
