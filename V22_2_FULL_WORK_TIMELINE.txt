@@ -1,0 +1,30 @@
+ITTR v22.2 — FULL TASK WORK TIMELINE
+
+The Open Job screen now loads the mechanic's authoritative task sessions from PostgreSQL.
+
+For each assigned job it shows:
+- Latest Start
+- Latest Stop
+- Total Labor
+- Full Work Timeline
+
+Example:
+Started: 1:10 PM
+Paused: 1:45 PM
+Reason: Waiting for Parts — ordered brake chamber
+
+Resumed: 3:20 PM
+Paused: 5:00 PM
+Reason: End of Day
+
+Resumed: next day 8:05 AM
+Finished: 9:15 AM
+
+Each work session shows its own duration.
+The timeline summary shows total recorded working time.
+Paused time is not counted.
+
+IMPORTANT:
+Because v22.1 already stored Start/Pause/Resume/Complete sessions in task_time_sessions,
+v22.2 can display those existing v22.1 sessions as well. Sessions from older versions
+before server-side task_time_sessions existed cannot be reconstructed perfectly.

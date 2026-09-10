@@ -1,0 +1,15 @@
+ITTR v22.1 CORRECTED PACKAGE
+
+This package fixes the visible version banner that was accidentally left at v21.2
+inside the previous v22 package.
+
+The v22 features are preserved:
+- mechanic Pause / Resume
+- server-side task timing sessions
+- Proceed / Waiting for Customer / Do Not Proceed synchronization
+- PostgreSQL state history
+- migration tracking
+- stale-write/version conflict protection
+
+After upload, GitHub index.html should contain:
+ITTR v22.1 ONLINE · DATA SAFE · Pause/Resume · Finding Decision Sync

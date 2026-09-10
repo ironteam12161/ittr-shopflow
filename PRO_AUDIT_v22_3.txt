@@ -1,0 +1,19 @@
+ITTR v22.3 PRO AUDIT
+
+CONFIRMED BUGS / RISKS FOUND
+1. DEPLOYMENT VERSION MISMATCH: Screenshot shows Timeline unavailable: API endpoint not found. The v22.2 frontend is live but the backend server.js does not expose the matching v22.2 task-sessions endpoint. v22.3 now detects frontend/backend version mismatch visibly.
+2. TIMELINE IDENTITY RISK: Timeline UI grouped sessions only by task_index. If tasks are inserted/reordered later, old time sessions can appear under the wrong task. v22.3 prefers stable task_uid and falls back to task_index for legacy rows.
+3. DUPLICATE DOM IDS: adminNote_${id} could be emitted by two finding card renderers. v22.3 uses unique IDs and compatible lookup.
+4. MISLEADING FAILURE MESSAGE: Timeline only said API endpoint not found, without explaining deployment mismatch. v22.3 identifies the likely mismatch.
+5. PARTIAL DEPLOYMENTS WERE SILENT: Root/public frontend and server could be from different releases without warning. v22.3 checks /api/health on startup and displays a red version mismatch banner.
+6. ARCHITECTURE RISK (NOT FULLY REMOVED): users/shopflow/pro still synchronize as whole JSON snapshots. Version checks prevent silent stale overwrites, but concurrent edits can still produce a conflict that must be retried/refreshed. A future normalized per-record Work Order API is still recommended.
+7. HISTORICAL LIMIT: Sessions recorded before task_time_sessions existed cannot be reconstructed exactly. v22.3 does not invent history.
+
+STATIC VALIDATION
+- server.js syntax checked
+- root index frontend script syntax checked
+- public/index frontend script syntax checked
+- root/public index identical
+- root/public service worker identical
+- inline handler names checked
+- duplicate static/dynamic admin note IDs corrected

@@ -147,7 +147,7 @@ async function auth(req,res,next){
 function adminOnly(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Admin access required."});next()}
 async function audit(username,action,details={}){try{if(pool)await pool.query("INSERT INTO server_audit(username,action,details) VALUES($1,$2,$3::jsonb)",[username||null,action,JSON.stringify(details)])}catch(e){console.error("audit",e.message)}}
 
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"22.0.0-data-safe-pause-resume"})});
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"22.3.0-pro-audit-fixed"})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -335,6 +335,28 @@ app.post("/api/work-orders/:id/tasks/:taskIndex/action",auth,async(req,res,next)
  }finally{db.release();}
 });
 
+
+app.get("/api/work-orders/:id/task-sessions",auth,async(req,res,next)=>{try{
+  const workOrderId=String(req.params.id);
+  const stateQ=await requireDb().query("SELECT payload FROM app_state WHERE state_key='shopflow'");
+  if(!stateQ.rowCount)return res.status(404).json({error:"Shop data not found."});
+  const sf=stateQ.rows[0].payload&&typeof stateQ.rows[0].payload==="object"?stateQ.rows[0].payload:{workorders:[]};
+  const w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===workOrderId);
+  if(!w)return res.status(404).json({error:"Work order not found."});
+  if(!mechanicOwnsWorkOrder(req.user,w) && req.user?.role!=="admin")
+    return res.status(403).json({error:"You do not have access to this work order."});
+
+  const q=await requireDb().query(
+    `SELECT id,work_order_id,task_index,task_uid,mechanic_username,
+            started_at,ended_at,end_reason,pause_reason,pause_note,created_at
+     FROM task_time_sessions
+     WHERE work_order_id=$1
+     ORDER BY task_index,started_at,id`,
+    [workOrderId]
+  );
+  res.json({ok:true,workOrderId,sessions:q.rows});
+}catch(e){next(e)}});
+
 app.get("/api/admin/backup",auth,adminOnly,async(req,res,next)=>{try{
   const states=await requireDb().query("SELECT state_key,payload,version,updated_at,updated_by FROM app_state ORDER BY state_key");
   const users=await requireDb().query("SELECT username,display_name,role,language,active,created_at,updated_at FROM auth_users ORDER BY username");
@@ -342,7 +364,7 @@ app.get("/api/admin/backup",auth,adminOnly,async(req,res,next)=>{try{
   const migrations=await requireDb().query("SELECT migration_key,applied_at FROM schema_migrations ORDER BY applied_at");
   await requireDb().query("INSERT INTO data_exports(created_by,note) VALUES($1,$2)",[req.user.username,"manual JSON backup"]);
   res.setHeader("Content-Disposition",`attachment; filename="ittr-backup-${new Date().toISOString().slice(0,10)}.json"`);
-  res.json({exportedAt:new Date().toISOString(),version:"22.0.0",states:states.rows,users:users.rows,taskTimeSessions:sessions.rows,migrations:migrations.rows});
+  res.json({exportedAt:new Date().toISOString(),version:"22.3.0",states:states.rows,users:users.rows,taskTimeSessions:sessions.rows,migrations:migrations.rows});
 }catch(e){next(e)}});
 
 app.get("/api/admin/data-safety",auth,adminOnly,async(req,res,next)=>{try{
@@ -606,5 +628,5 @@ app.get("*splat",(req,res)=>res.sendFile(path.join(webRoot,"index.html")));
 
 initDb()
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(()=>app.listen(port,()=>console.log(`ITTR v22 Online running on port ${port}`)))
+  .then(()=>app.listen(port,()=>console.log(`ITTR v22.2 Online running on port ${port}`)))
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});
