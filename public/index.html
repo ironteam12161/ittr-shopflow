@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v22.3</title>
+<title>ITTR ShopFlow v22.4</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -466,7 +466,7 @@ body{-webkit-text-size-adjust:100%}
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v22.3 ONLINE · PRO AUDIT FIXED · Full Work Timeline</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v22.4 ONLINE · TASK IDENTITY FIXED · Full Work Timeline</div>
 <div id="appErrorBanner" style="display:none;position:fixed;left:8px;right:8px;top:66px;z-index:1000;background:#fef3f2;color:#b42318;border:1px solid #fecdca;border-radius:10px;padding:10px;font-size:13px"><b>App error:</b> <span id="appErrorText"></span> <button type="button" onclick="this.parentElement.style.display='none'" style="float:right;min-height:28px;padding:2px 8px">×</button></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1035,6 +1035,24 @@ body{-webkit-text-size-adjust:100%}
 
 const DEFAULT_USERS={};
 let USERS=JSON.parse(localStorage.getItem("ittr_users_v1")||"null")||DEFAULT_USERS;
+
+function makeTaskUid(prefix="task"){
+ try{
+   if(globalThis.crypto?.randomUUID)return `${prefix}-${crypto.randomUUID()}`;
+ }catch(_){}
+ return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,12)}`;
+}
+function newTaskRecord(text,extra={}){
+ return {
+   uid:makeTaskUid("task"),
+   t:String(text||"").trim(),
+   done:false,startedAt:"",stoppedAt:"",elapsedMs:0,completedAt:"",
+   taskOutcome:"",outcomeNote:"",outcomeAt:"",outcomeBy:"",
+   paused:false,pausedAt:"",pauseReason:"",pauseNote:"",
+   ...extra
+ };
+}
+
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
@@ -2196,7 +2214,7 @@ document.getElementById("reactivateForm").onsubmit=e=>{
  const added=(f.get("tasks")||"").split("\n").map(x=>x.trim()).filter(Boolean);
  if(!reason || !added.length)return;
  added.forEach(t=>{
-   w.tasks.push({t,done:false,startedAt:"",stoppedAt:"",elapsedMs:0,completedAt:"",source:"reactivation",taskOutcome:"",outcomeNote:"",outcomeAt:"",outcomeBy:""});
+   w.tasks.push(newTaskRecord(t,{source:"reactivation"}));
  });
  // Reactivation becomes a new active visit owned by the mechanic who reopened it.
  w.mechanic=session.username;
@@ -3152,7 +3170,7 @@ function convertApprovedFindingToTask(i){
  const text=(i.recommendation||"").trim() || (i.description||"").trim();
  if(!text)return false;
  if(!w.tasks.some(t=>t.findingId===i.id || (t.t||"").trim().toLowerCase()===text.toLowerCase())){
-   w.tasks.push({t:text,done:false,startedAt:"",stoppedAt:"",elapsedMs:0,completedAt:"",source:"inspection",findingId:i.id,taskOutcome:"",outcomeNote:"",outcomeAt:"",outcomeBy:""});
+   w.tasks.push(newTaskRecord(text,{source:"inspection",findingId:i.id,findingDecision:"Proceed"}));
  }
  i.convertedToTask=true;
  return true;
@@ -3194,7 +3212,7 @@ document.getElementById("woForm").onsubmit=e=>{
    mechanic:f.get("mechanic"),priority:f.get("priority"),parking:f.get("parking"),unitType,
    truckHere:f.get("truckHere")==="on",fleetAuto:unitType==="fleet" ? f.get("fleetAuto")==="on" : false,
    status:"Open",completedAt:"",
-   tasks:f.get("tasks").split("\n").filter(Boolean).map(t=>({t:t.trim(),done:false,startedAt:"",stoppedAt:"",elapsedMs:0,completedAt:"",taskOutcome:"",outcomeNote:"",outcomeAt:"",outcomeBy:""})),notes:f.get("notes")
+   tasks:f.get("tasks").split("\n").map(t=>t.trim()).filter(Boolean).map(t=>newTaskRecord(t)),notes:f.get("notes")
  });
  save();e.target.reset();document.querySelector('[name="fleetAuto"]').checked=true;closeModal("woModal");render();
 };
@@ -3226,13 +3244,15 @@ document.getElementById("editForm").onsubmit=e=>{
  e.preventDefault(); if(!requireAdmin())return;
  let f=new FormData(e.target), id=Number(f.get("id")), w=state.workorders.find(x=>x.id===id);
  if(!w)return;
- const oldDone={};
- (w.tasks||[]).forEach(t=>oldDone[t.t.trim().toLowerCase()]=!!t.done);
- const oldTaskMap={};
- (w.tasks||[]).forEach(t=>oldTaskMap[(t.t||"").trim().toLowerCase()]=t);
+ const oldBuckets={};
+ (w.tasks||[]).forEach(t=>{
+   const key=String(t.t||"").trim().toLowerCase();
+   (oldBuckets[key]||(oldBuckets[key]=[])).push(t);
+ });
  const newTasks=f.get("tasks").split("\n").map(x=>x.trim()).filter(Boolean).map(t=>{
-   const old=oldTaskMap[t.toLowerCase()];
-   return old ? {...old,t} : {t,done:false,startedAt:"",stoppedAt:"",elapsedMs:0,completedAt:"",taskOutcome:"",outcomeNote:"",outcomeAt:"",outcomeBy:""};
+   const key=t.toLowerCase();
+   const old=oldBuckets[key]?.shift();
+   return old ? {...old,uid:old.uid||makeTaskUid("task"),t} : newTaskRecord(t);
  });
  w.unit=f.get("unit");
  w.customer=f.get("customer");
@@ -3366,9 +3386,7 @@ function sessionDurationMs(s){
  return Math.max(0,end-start);
 }
 function taskSessionTimelineHTML(sessions){
- if(!Array.isArray(sessions)||!sessions.length){
-   return `<div class="muted" style="margin-top:6px">No recorded work sessions yet.</div>`;
- }
+ if(!Array.isArray(sessions)||!sessions.length)return "";
  const total=sessions.reduce((sum,x)=>sum+sessionDurationMs(x),0);
  const rows=sessions.map((x,idx)=>{
    const first=idx===0;
@@ -3404,16 +3422,16 @@ async function loadWorkOrderTaskSessions(workOrderId){
  try{
    const d=await apiJSON(`/api/work-orders/${encodeURIComponent(workOrderId)}/task-sessions`);
    const sessions=Array.isArray(d?.sessions)?d.sessions:[];
-   const byUid={},byIndex={};
+   const byUid={};
    for(const x of sessions){
-     const idx=String(x.task_index);
-     (byIndex[idx]||(byIndex[idx]=[])).push(x);
-     if(x.task_uid){const uid=String(x.task_uid);(byUid[uid]||(byUid[uid]=[])).push(x);}
+     if(!x.task_uid)continue;
+     const uid=String(x.task_uid);
+     (byUid[uid]||(byUid[uid]=[])).push(x);
    }
    document.querySelectorAll(`[data-task-timeline-wo="${CSS.escape(String(workOrderId))}"]`).forEach(el=>{
-     const idx=String(el.getAttribute("data-task-timeline-index"));
      const uid=String(el.getAttribute("data-task-timeline-uid")||"");
-     el.innerHTML=taskSessionTimelineHTML((uid&&byUid[uid])||byIndex[idx]||[]);
+     const ownSessions=uid?(byUid[uid]||[]):[];
+     el.innerHTML=ownSessions.length?taskSessionTimelineHTML(ownSessions):"";
    });
  }catch(e){
    document.querySelectorAll(`[data-task-timeline-wo="${CSS.escape(String(workOrderId))}"]`).forEach(el=>{
@@ -3464,9 +3482,7 @@ function taskTimerRow(w,t,i){
      &nbsp; | &nbsp; <b>Latest Stop:</b> ${fmtDateTime(t.stoppedAt)}
      &nbsp; | &nbsp; <b>Total Labor:</b> ${fmtDuration(taskElapsed(t))}
    </div>
-   <div data-task-timeline-wo="${esc(String(w.id))}" data-task-timeline-index="${i}" data-task-timeline-uid="${esc(String(t.uid||""))}">
-     <div class="muted" style="margin-top:6px">Loading work timeline…</div>
-   </div>
+   <div data-task-timeline-wo="${esc(String(w.id))}" data-task-timeline-index="${i}" data-task-timeline-uid="${esc(String(t.uid||""))}"></div>
    ${t.findingDecision==="Do Not Proceed"?`<div class="outcomeNoteBox"><b>DECLINED — DO NOT PROCEED</b><div class="muted">Decision changed by Admin${t.approvalChangedAt?` · ${fmtDateTime(t.approvalChangedAt)}`:""}</div></div>`:""}
    ${t.findingDecision==="Waiting for Customer"?`<div class="outcomeNoteBox"><b>ON HOLD — Waiting for Customer Approval</b><div class="muted">${t.approvalChangedAt?fmtDateTime(t.approvalChangedAt):""}</div></div>`:""}
    ${t.paused && !["Waiting for Customer","Do Not Proceed"].includes(t.findingDecision||"")?`<div class="outcomeNoteBox"><b>Paused:</b> ${esc(t.pauseReason||"Paused")}${t.pauseNote?` — ${esc(t.pauseNote)}`:""}<div class="muted">${t.pausedAt?fmtDateTime(t.pausedAt):""}</div></div>`:""}
