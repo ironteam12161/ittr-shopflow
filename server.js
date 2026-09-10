@@ -63,7 +63,63 @@ async function initDb(){
  );
  CREATE TABLE IF NOT EXISTS server_audit(
    id BIGSERIAL PRIMARY KEY, username TEXT, action TEXT NOT NULL, details JSONB, created_at TIMESTAMPTZ DEFAULT now()
+ );
+ CREATE TABLE IF NOT EXISTS schema_migrations(
+   migration_key TEXT PRIMARY KEY,
+   applied_at TIMESTAMPTZ DEFAULT now()
+ );
+ CREATE TABLE IF NOT EXISTS app_state_history(
+   id BIGSERIAL PRIMARY KEY,
+   state_key TEXT NOT NULL,
+   version BIGINT NOT NULL,
+   payload JSONB NOT NULL,
+   updated_by TEXT,
+   captured_at TIMESTAMPTZ DEFAULT now()
+ );
+ CREATE INDEX IF NOT EXISTS idx_app_state_history_key_time
+   ON app_state_history(state_key,captured_at DESC);
+ CREATE TABLE IF NOT EXISTS task_time_sessions(
+   id BIGSERIAL PRIMARY KEY,
+   work_order_id TEXT NOT NULL,
+   task_index INTEGER NOT NULL,
+   task_uid TEXT,
+   mechanic_username TEXT NOT NULL,
+   started_at TIMESTAMPTZ NOT NULL,
+   ended_at TIMESTAMPTZ,
+   end_reason TEXT,
+   pause_reason TEXT,
+   pause_note TEXT,
+   created_at TIMESTAMPTZ DEFAULT now()
+ );
+ CREATE INDEX IF NOT EXISTS idx_task_sessions_workorder
+   ON task_time_sessions(work_order_id,task_index,started_at DESC);
+ CREATE INDEX IF NOT EXISTS idx_task_sessions_mechanic
+   ON task_time_sessions(mechanic_username,started_at DESC);
+ CREATE TABLE IF NOT EXISTS data_exports(
+   id BIGSERIAL PRIMARY KEY,
+   created_by TEXT,
+   created_at TIMESTAMPTZ DEFAULT now(),
+   note TEXT
  );`);
+
+ await pool.query(`
+ CREATE OR REPLACE FUNCTION ittr_capture_state_history() RETURNS trigger AS $$
+ BEGIN
+   INSERT INTO app_state_history(state_key,version,payload,updated_by,captured_at)
+   VALUES(OLD.state_key,OLD.version,OLD.payload,OLD.updated_by,now());
+   RETURN NEW;
+ END;
+ $$ LANGUAGE plpgsql;
+ DROP TRIGGER IF EXISTS trg_ittr_app_state_history ON app_state;
+ CREATE TRIGGER trg_ittr_app_state_history
+ BEFORE UPDATE ON app_state
+ FOR EACH ROW EXECUTE FUNCTION ittr_capture_state_history();
+ `);
+ await pool.query(
+   "INSERT INTO schema_migrations(migration_key) VALUES($1) ON CONFLICT(migration_key) DO NOTHING",
+   ["022_data_safe_pause_resume_findings"]
+ );
+
  const c=await pool.query("SELECT count(*)::int c FROM auth_users WHERE role='admin' AND active=true");
  if(c.rows[0].c===0){
    const username=cleanUsername(process.env.BOOTSTRAP_ADMIN_USERNAME||"admin");
@@ -91,7 +147,7 @@ async function auth(req,res,next){
 function adminOnly(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Admin access required."});next()}
 async function audit(username,action,details={}){try{if(pool)await pool.query("INSERT INTO server_audit(username,action,details) VALUES($1,$2,$3::jsonb)",[username||null,action,JSON.stringify(details)])}catch(e){console.error("audit",e.message)}}
 
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"21.3.0-findings-server-atomic"})});
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"22.0.0-data-safe-pause-resume"})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -106,11 +162,196 @@ app.get("/api/auth/me",auth,(req,res)=>res.json({user:publicUser(req.user)}));
 
 app.get("/api/state",auth,async(req,res,next)=>{try{const q=await requireDb().query("SELECT state_key,payload,version,updated_at FROM app_state ORDER BY state_key");const d={};for(const r of q.rows)d[r.state_key]={payload:r.payload,version:Number(r.version),updatedAt:r.updated_at};res.json(d)}catch(e){next(e)}});
 app.put("/api/state/:key",auth,async(req,res,next)=>{try{
- const key=String(req.params.key);if(!["users","shopflow","pro"].includes(key))return res.status(400).json({error:"Invalid state key"});
- const payload=req.body?.payload;if(payload===undefined)return res.status(400).json({error:"payload required"});
- // Snapshot sync is serialized in PostgreSQL. v21 beta keeps the legacy UI while making data shared.
- const q=await requireDb().query("UPDATE app_state SET payload=$2::jsonb,version=version+1,updated_at=now(),updated_by=$3 WHERE state_key=$1 RETURNING version,updated_at",[key,JSON.stringify(payload),req.user.username]);
- await audit(req.user.username,"state_save",{key});res.json({ok:true,version:Number(q.rows[0].version),updatedAt:q.rows[0].updated_at});
+ const key=String(req.params.key);
+ if(!["users","shopflow","pro"].includes(key))return res.status(400).json({error:"Invalid state key"});
+ const payload=req.body?.payload;
+ if(payload===undefined)return res.status(400).json({error:"payload required"});
+ const expectedVersion=Number(req.body?.expectedVersion||0);
+ let q;
+ if(expectedVersion>0){
+   q=await requireDb().query(
+     "UPDATE app_state SET payload=$2::jsonb,version=version+1,updated_at=now(),updated_by=$3 WHERE state_key=$1 AND version=$4 RETURNING version,updated_at",
+     [key,JSON.stringify(payload),req.user.username,expectedVersion]
+   );
+   if(!q.rowCount){
+     const cur=await requireDb().query("SELECT version FROM app_state WHERE state_key=$1",[key]);
+     return res.status(409).json({
+       error:"This data changed on another device before your save. The newer server copy was protected. Refresh and try again.",
+       code:"VERSION_CONFLICT",
+       currentVersion:Number(cur.rows[0]?.version||0)
+     });
+   }
+ }else{
+   q=await requireDb().query(
+     "UPDATE app_state SET payload=$2::jsonb,version=version+1,updated_at=now(),updated_by=$3 WHERE state_key=$1 RETURNING version,updated_at",
+     [key,JSON.stringify(payload),req.user.username]
+   );
+ }
+ await audit(req.user.username,"state_save",{key,expectedVersion});
+ res.json({ok:true,version:Number(q.rows[0].version),updatedAt:q.rows[0].updated_at});
+}catch(e){next(e)}});
+
+
+function taskRunning(task){
+  return Boolean(task?.startedAt && !task?.stoppedAt && !task?.done);
+}
+function ensureTaskUid(task,workOrderId,taskIndex){
+  if(!task.uid)task.uid=`wo-${String(workOrderId)}-task-${taskIndex}-${crypto.randomBytes(4).toString("hex")}`;
+  return task.uid;
+}
+function mechanicOwnsWorkOrder(user,w){
+  if(user?.role==="admin")return true;
+  return user?.role==="mechanic" && String(w?.mechanic||"")===String(user.username||"");
+}
+async function closeOpenTaskSession(db,workOrderId,taskIndex,mechanic,endReason,pauseReason="",pauseNote=""){
+  await db.query(
+    `UPDATE task_time_sessions
+     SET ended_at=now(),end_reason=$4,pause_reason=$5,pause_note=$6
+     WHERE id=(
+       SELECT id FROM task_time_sessions
+       WHERE work_order_id=$1 AND task_index=$2 AND mechanic_username=$3 AND ended_at IS NULL
+       ORDER BY started_at DESC LIMIT 1
+     )`,
+    [String(workOrderId),Number(taskIndex),String(mechanic),endReason,pauseReason,pauseNote]
+  );
+}
+
+app.post("/api/work-orders/:id/tasks/:taskIndex/action",auth,async(req,res,next)=>{
+ const db=await requireDb().connect();
+ try{
+   const workOrderId=String(req.params.id);
+   const taskIndex=Number(req.params.taskIndex);
+   const action=String(req.body?.action||"");
+   if(!["start","pause","resume","complete"].includes(action))
+     return res.status(400).json({error:"Invalid task action."});
+
+   await db.query("BEGIN");
+   const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
+   if(!q.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Shop data not found."});}
+   const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};
+   sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
+   const w=sf.workorders.find(x=>String(x?.id)===workOrderId);
+   if(!w){await db.query("ROLLBACK");return res.status(404).json({error:"Work order not found."});}
+   if(!mechanicOwnsWorkOrder(req.user,w)){await db.query("ROLLBACK");return res.status(403).json({error:"You do not have access to this work order."});}
+   w.tasks=Array.isArray(w.tasks)?w.tasks:[];
+   const task=w.tasks[taskIndex];
+   if(!task){await db.query("ROLLBACK");return res.status(404).json({error:"Task not found."});}
+
+   if(task.findingDecision==="Do Not Proceed"){
+     await db.query("ROLLBACK");return res.status(409).json({error:"This repair was declined. Do not perform this task."});
+   }
+   if(task.findingDecision==="Waiting for Customer"){
+     await db.query("ROLLBACK");return res.status(409).json({error:"This repair is waiting for customer approval."});
+   }
+
+   const uid=ensureTaskUid(task,workOrderId,taskIndex);
+   const now=new Date();
+
+   if(action==="start" || action==="resume"){
+     if(task.done || String(task.taskOutcome||"")==="completed"){
+       await db.query("ROLLBACK");return res.status(409).json({error:"This task is already completed."});
+     }
+     const another=w.tasks.findIndex((t,i)=>i!==taskIndex && taskRunning(t));
+     if(another!==-1){
+       await db.query("ROLLBACK");return res.status(409).json({error:"Pause or complete the current task before starting another one."});
+     }
+     if(taskRunning(task)){
+       await db.query("ROLLBACK");return res.status(409).json({error:"This task is already running."});
+     }
+     task.startedAt=now.toISOString();
+     task.stoppedAt="";
+     task.paused=false;
+     task.pausedAt="";
+     task.pauseReason="";
+     task.pauseNote="";
+     task.done=false;
+     task.completedAt="";
+     task.taskOutcome="";
+     task.outcomeNote="";
+     task.outcomeAt="";
+     task.outcomeBy="";
+     if(w.status==="Open")w.status="In Progress";
+     await db.query(
+       `INSERT INTO task_time_sessions(work_order_id,task_index,task_uid,mechanic_username,started_at)
+        VALUES($1,$2,$3,$4,$5)`,
+       [workOrderId,taskIndex,uid,req.user.username,now.toISOString()]
+     );
+   }
+
+   if(action==="pause"){
+     if(!taskRunning(task)){
+       await db.query("ROLLBACK");return res.status(409).json({error:"This task is not currently running."});
+     }
+     const reason=String(req.body?.reason||"").trim();
+     const note=String(req.body?.note||"").trim().slice(0,1000);
+     if(!reason){
+       await db.query("ROLLBACK");return res.status(400).json({error:"Choose a pause reason."});
+     }
+     const started=new Date(task.startedAt);
+     task.elapsedMs=Number(task.elapsedMs||0)+Math.max(0,now.getTime()-started.getTime());
+     task.stoppedAt=now.toISOString();
+     task.paused=true;
+     task.pausedAt=now.toISOString();
+     task.pauseReason=reason;
+     task.pauseNote=note;
+     task.done=false;
+     task.completedAt="";
+     task.taskOutcome="";
+     task.outcomeAt="";
+     task.outcomeBy="";
+     await closeOpenTaskSession(db,workOrderId,taskIndex,req.user.username,"paused",reason,note);
+   }
+
+   if(action==="complete"){
+     if(!taskRunning(task)){
+       await db.query("ROLLBACK");return res.status(409).json({error:"Start or resume this task before completing it."});
+     }
+     const started=new Date(task.startedAt);
+     task.elapsedMs=Number(task.elapsedMs||0)+Math.max(0,now.getTime()-started.getTime());
+     task.stoppedAt=now.toISOString();
+     task.paused=false;
+     task.pausedAt="";
+     task.pauseReason="";
+     task.pauseNote="";
+     task.done=true;
+     task.completedAt=now.toISOString();
+     task.taskOutcome="completed";
+     task.outcomeNote="";
+     task.outcomeAt=now.toISOString();
+     task.outcomeBy=req.user.username;
+     await closeOpenTaskSession(db,workOrderId,taskIndex,req.user.username,"completed");
+   }
+
+   const u=await db.query(
+     "UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",
+     [JSON.stringify(sf),req.user.username]
+   );
+   await db.query("COMMIT");
+   await audit(req.user.username,"task_action",{workOrderId,taskIndex,taskUid:uid,action,pauseReason:req.body?.reason||""});
+   res.json({ok:true,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
+ }catch(e){
+   try{await db.query("ROLLBACK")}catch(_){}
+   next(e);
+ }finally{db.release();}
+});
+
+app.get("/api/admin/backup",auth,adminOnly,async(req,res,next)=>{try{
+  const states=await requireDb().query("SELECT state_key,payload,version,updated_at,updated_by FROM app_state ORDER BY state_key");
+  const users=await requireDb().query("SELECT username,display_name,role,language,active,created_at,updated_at FROM auth_users ORDER BY username");
+  const sessions=await requireDb().query("SELECT work_order_id,task_index,task_uid,mechanic_username,started_at,ended_at,end_reason,pause_reason,pause_note FROM task_time_sessions ORDER BY started_at");
+  const migrations=await requireDb().query("SELECT migration_key,applied_at FROM schema_migrations ORDER BY applied_at");
+  await requireDb().query("INSERT INTO data_exports(created_by,note) VALUES($1,$2)",[req.user.username,"manual JSON backup"]);
+  res.setHeader("Content-Disposition",`attachment; filename="ittr-backup-${new Date().toISOString().slice(0,10)}.json"`);
+  res.json({exportedAt:new Date().toISOString(),version:"22.0.0",states:states.rows,users:users.rows,taskTimeSessions:sessions.rows,migrations:migrations.rows});
+}catch(e){next(e)}});
+
+app.get("/api/admin/data-safety",auth,adminOnly,async(req,res,next)=>{try{
+  const [h,sess,mig]=await Promise.all([
+    requireDb().query("SELECT count(*)::int c FROM app_state_history"),
+    requireDb().query("SELECT count(*)::int c FROM task_time_sessions"),
+    requireDb().query("SELECT migration_key,applied_at FROM schema_migrations ORDER BY applied_at DESC")
+  ]);
+  res.json({historySnapshots:h.rows[0].c,taskSessions:sess.rows[0].c,migrations:mig.rows});
 }catch(e){next(e)}});
 
 
@@ -169,71 +410,153 @@ async function repairApprovedFindingsAtStartup(){
   }finally{clientDb.release();}
 }
 
-app.post("/api/findings/:id/decision",auth,adminOnly,async(req,res,next)=>{ 
-  const clientDb=await requireDb().connect();
-  try{
-    const id=String(req.params.id);
-    const value=String(req.body?.value||"");
-    const allowed=["Proceed","Waiting for Customer","Do Not Proceed"];
-    if(!allowed.includes(value))return res.status(400).json({error:"Invalid finding decision."});
+app.post("/api/findings/:id/decision",auth,adminOnly,async(req,res,next)=>{
+ const db=await requireDb().connect();
+ try{
+   const id=String(req.params.id);
+   const value=String(req.body?.value||"");
+   if(!["Proceed","Waiting for Customer","Do Not Proceed"].includes(value))
+     return res.status(400).json({error:"Invalid finding decision."});
 
-    await clientDb.query("BEGIN");
-    const q=await clientDb.query("SELECT payload,version FROM app_state WHERE state_key='shopflow' FOR UPDATE");
-    if(!q.rowCount){await clientDb.query("ROLLBACK");return res.status(404).json({error:"Shop state not found."});}
+   await db.query("BEGIN");
+   const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
+   if(!q.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Shop state not found."});}
 
-    const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};
-    sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
-    sf.issues=Array.isArray(sf.issues)?sf.issues:[];
-    const issue=sf.issues.find(i=>String(i?.id)===id);
-    if(!issue){await clientDb.query("ROLLBACK");return res.status(404).json({error:"Finding not found."});}
+   const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};
+   sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
+   sf.issues=Array.isArray(sf.issues)?sf.issues:[];
+   const issue=sf.issues.find(i=>String(i?.id)===id);
+   if(!issue){await db.query("ROLLBACK");return res.status(404).json({error:"Finding not found."});}
+   const wo=sf.workorders.find(w=>String(w?.id)===String(issue?.wo));
+   if(!wo){await db.query("ROLLBACK");return res.status(409).json({error:"This finding is not linked to an existing work order."});}
+   wo.tasks=Array.isArray(wo.tasks)?wo.tasks:[];
 
-    issue.approval=value;
-    issue.decisionAt=new Date().toISOString();
-    issue.decisionBy=req.user.username;
+   issue.approval=value;
+   issue.decisionAt=new Date().toISOString();
+   issue.decisionBy=req.user.username;
 
-    let taskAdded=false;
-    if(value==="Proceed"){
-      const wo=sf.workorders.find(w=>String(w?.id)===String(issue?.wo));
-      if(!wo){
-        await clientDb.query("ROLLBACK");
-        return res.status(409).json({error:"Approved finding is not linked to an existing work order. Open the finding and verify its unit/work-order link."});
-      }
-      wo.tasks=Array.isArray(wo.tasks)?wo.tasks:[];
-      const text=findingTaskText(issue);
-      if(!text){
-        await clientDb.query("ROLLBACK");
-        return res.status(409).json({error:"Finding has no repair description or recommendation to add as a work-order task."});
-      }
-      const exists=wo.tasks.some(t=>
-        String(t?.findingId??"")===String(issue?.id??"") ||
-        String(t?.t||"").trim().toLowerCase()===text.toLowerCase()
-      );
-      if(!exists){
-        wo.tasks.push({
-          t:text,done:false,startedAt:"",stoppedAt:"",elapsedMs:0,completedAt:"",
-          source:"inspection",findingId:issue.id,taskOutcome:"",outcomeNote:"",
-          outcomeAt:"",outcomeBy:""
-        });
-        taskAdded=true;
-      }
-      issue.convertedToTask=true;
-    }else{
-      issue.convertedToTask=false;
-    }
+   const text=findingTaskText(issue);
+   let taskIndex=wo.tasks.findIndex(t=>String(t?.findingId??"")===id);
+   if(taskIndex<0 && text){
+     taskIndex=wo.tasks.findIndex(t=>String(t?.t||"").trim().toLowerCase()===text.toLowerCase());
+   }
+   let taskAdded=false;
 
-    const u=await clientDb.query(
-      "UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",
-      [JSON.stringify(sf),req.user.username]
-    );
-    await clientDb.query("COMMIT");
-    await audit(req.user.username,"finding_decision",{findingId:id,value,taskAdded});
-    res.json({ok:true,shopflow:sf,version:Number(u.rows[0].version),taskAdded});
-  }catch(e){
-    try{await clientDb.query("ROLLBACK")}catch(_){}
-    next(e);
-  }finally{clientDb.release();}
+   if(value==="Proceed"){
+     if(!text){await db.query("ROLLBACK");return res.status(409).json({error:"Finding has no repair description or recommendation."});}
+     if(taskIndex<0){
+       wo.tasks.push({
+         t:text,done:false,startedAt:"",stoppedAt:"",elapsedMs:0,completedAt:"",
+         source:"inspection",findingId:issue.id,taskOutcome:"",outcomeNote:"",
+         outcomeAt:"",outcomeBy:"",findingDecision:"Proceed",
+         approvalChangedAt:issue.decisionAt,approvalChangedBy:req.user.username,
+         paused:false,pausedAt:"",pauseReason:"",pauseNote:"",cancelled:false
+       });
+       taskIndex=wo.tasks.length-1;
+       taskAdded=true;
+     }else{
+       const task=wo.tasks[taskIndex];
+       task.findingId=issue.id;
+       task.source="inspection";
+       task.findingDecision="Proceed";
+       task.approvalChangedAt=issue.decisionAt;
+       task.approvalChangedBy=req.user.username;
+       task.cancelled=false;
+       task.declinedAt="";
+       task.declinedBy="";
+       if(["declined","waiting_customer"].includes(String(task.taskOutcome||""))){
+         task.taskOutcome="";
+         task.outcomeNote="";
+         task.outcomeAt="";
+         task.outcomeBy="";
+         task.done=false;
+         task.completedAt="";
+       }
+       if(task.pauseReason==="Waiting for Customer Approval"){
+         task.paused=false;
+         task.pausedAt="";
+         task.pauseReason="";
+         task.pauseNote="";
+       }
+     }
+     issue.convertedToTask=true;
+   }
+
+   if(value==="Waiting for Customer" && taskIndex>=0){
+     const task=wo.tasks[taskIndex];
+     if(taskRunning(task)){
+       const now=new Date(),started=new Date(task.startedAt);
+       task.elapsedMs=Number(task.elapsedMs||0)+Math.max(0,now.getTime()-started.getTime());
+       task.stoppedAt=now.toISOString();
+       await db.query(
+         `UPDATE task_time_sessions SET ended_at=now(),end_reason='approval_hold',pause_reason='Waiting for Customer Approval'
+          WHERE id=(SELECT id FROM task_time_sessions WHERE work_order_id=$1 AND task_index=$2 AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1)`,
+         [String(wo.id),taskIndex]
+       );
+     }
+     task.findingDecision="Waiting for Customer";
+     task.approvalChangedAt=issue.decisionAt;
+     task.approvalChangedBy=req.user.username;
+     task.paused=true;
+     task.pausedAt=issue.decisionAt;
+     task.pauseReason="Waiting for Customer Approval";
+     task.pauseNote="";
+     task.taskOutcome="waiting_customer";
+     task.outcomeNote="Waiting for customer approval";
+     task.outcomeAt=issue.decisionAt;
+     task.outcomeBy=req.user.username;
+     task.done=false;
+     task.completedAt="";
+     issue.convertedToTask=true;
+   }
+
+   if(value==="Do Not Proceed" && taskIndex>=0){
+     const task=wo.tasks[taskIndex];
+     if(taskRunning(task)){
+       const now=new Date(),started=new Date(task.startedAt);
+       task.elapsedMs=Number(task.elapsedMs||0)+Math.max(0,now.getTime()-started.getTime());
+       task.stoppedAt=now.toISOString();
+       await db.query(
+         `UPDATE task_time_sessions SET ended_at=now(),end_reason='declined',pause_reason='Do Not Proceed'
+          WHERE id=(SELECT id FROM task_time_sessions WHERE work_order_id=$1 AND task_index=$2 AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1)`,
+         [String(wo.id),taskIndex]
+       );
+     }
+     task.findingDecision="Do Not Proceed";
+     task.approvalChangedAt=issue.decisionAt;
+     task.approvalChangedBy=req.user.username;
+     task.cancelled=true;
+     task.declinedAt=issue.decisionAt;
+     task.declinedBy=req.user.username;
+     task.paused=false;
+     task.pausedAt="";
+     task.pauseReason="";
+     task.pauseNote="";
+     task.done=false;
+     task.completedAt="";
+     task.taskOutcome="declined";
+     task.outcomeNote="Admin / customer changed decision to Do Not Proceed";
+     task.outcomeAt=issue.decisionAt;
+     task.outcomeBy=req.user.username;
+     issue.convertedToTask=true;
+   }
+
+   if((value==="Waiting for Customer" || value==="Do Not Proceed") && taskIndex<0){
+     issue.convertedToTask=false;
+   }
+
+   const u=await db.query(
+     "UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",
+     [JSON.stringify(sf),req.user.username]
+   );
+   await db.query("COMMIT");
+   await audit(req.user.username,"finding_decision",{findingId:id,value,workOrderId:String(wo.id),taskIndex,taskAdded});
+   res.json({ok:true,shopflow:sf,version:Number(u.rows[0].version),taskAdded,taskIndex});
+ }catch(e){
+   try{await db.query("ROLLBACK")}catch(_){}
+   next(e);
+ }finally{db.release();}
 });
-
 
 app.post("/api/state/import-local",auth,adminOnly,async(req,res,next)=>{try{
  const users=req.body?.users||{},shopflow=req.body?.shopflow||{workorders:[],issues:[]},pro=req.body?.pro||{};
@@ -283,5 +606,5 @@ app.get("*splat",(req,res)=>res.sendFile(path.join(webRoot,"index.html")));
 
 initDb()
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(()=>app.listen(port,()=>console.log(`ITTR v21.3 Online running on port ${port}`)))
+  .then(()=>app.listen(port,()=>console.log(`ITTR v22 Online running on port ${port}`)))
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

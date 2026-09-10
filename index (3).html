@@ -1002,6 +1002,35 @@ body{-webkit-text-size-adjust:100%}
 </form>
 </div>
 </div>
+
+<div class="modal" id="taskPauseModal">
+<div class="modalbox" style="max-width:560px">
+<div class="modalhead">
+<h2 id="taskPauseTitle">Pause Job</h2>
+<button class="x" onclick="closeModal('taskPauseModal')" type="button">×</button>
+</div>
+<form id="taskPauseForm">
+<input name="workOrderId" type="hidden"/>
+<input name="taskIndex" type="hidden"/>
+<div class="field">
+<label>Why are you pausing this job?</label>
+<select name="reason" required>
+<option value="">Choose reason</option>
+<option value="Waiting for Parts">Waiting for Parts</option>
+<option value="End of Day">End of Day</option>
+<option value="Waiting for Customer Approval">Waiting for Customer Approval</option>
+<option value="Waiting for Information">Waiting for Information</option>
+<option value="Other">Other</option>
+</select>
+</div>
+<div class="field full">
+<label>Pause note (optional)</label>
+<textarea name="note" placeholder="Example: part ordered, expected tomorrow morning"></textarea>
+</div>
+<button type="submit">Pause Job</button>
+</form>
+</div>
+</div>
 <script>
 
 const DEFAULT_USERS={};
@@ -1021,7 +1050,7 @@ function queueCloudState(key,payload){
  cloudPending.add(key);
  cloudSaving[key]=setTimeout(async()=>{
    try{
-     const d=await apiJSON(`/api/state/${key}`,{method:"PUT",body:JSON.stringify({payload})});
+     const d=await apiJSON(`/api/state/${key}`,{method:"PUT",body:JSON.stringify({payload,expectedVersion:Number(cloudVersions[key]||0)})});
      if(d?.version!=null)cloudVersions[key]=Number(d.version);
    }catch(e){showSyncError(e.message)}
    finally{cloudPending.delete(key);cloudSaving[key]=null;}
@@ -3083,14 +3112,29 @@ function adminIssueCard(i){
    <button class="secondary" onclick="saveAdminNote(${i.id})">Save Note</button>
  </div>`;
 }
-function setApproval(id,value){
+async function setApproval(id,value){
  if(!requireAdmin())return;
- let i=state.issues.find(x=>x.id===id); if(!i)return;
- i.approval=value;i.decisionAt=new Date().toISOString();i.decisionBy=session.username;
- // Approval now means authorization to perform the repair. Automatically add the
- // approved finding to the assigned mechanic's work order so there is no hidden second step.
- if(value==="Proceed")convertApprovedFindingToTask(i);
- save();render();
+ const i=state.issues.find(x=>String(x.id)===String(id)); if(!i)return;
+ try{
+   const d=await apiJSON(`/api/findings/${encodeURIComponent(id)}/decision`,{
+     method:"POST",
+     body:JSON.stringify({value})
+   });
+   if(d?.shopflow){
+     state=d.shopflow;
+     localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));
+   }
+   if(d?.version!=null)cloudVersions.shopflow=Number(d.version);
+   render();
+   if(value==="Proceed"){
+     const updated=state.issues.find(x=>String(x.id)===String(id));
+     const wo=updated?state.workorders.find(w=>String(w.id)===String(updated.wo)):null;
+     const linked=wo?.tasks?.some(t=>String(t.findingId??"")===String(id));
+     if(!linked)showSyncError("Finding was approved, but its work-order task could not be verified.");
+   }
+ }catch(e){
+   alert(e.message||"Finding approval failed.");
+ }
 }
 function saveAdminNote(id){
  if(!requireAdmin())return;
@@ -3102,7 +3146,7 @@ function saveAdminNote(id){
 }
 function convertApprovedFindingToTask(i){
  if(!i || i.approval!=="Proceed")return false;
- let w=state.workorders.find(x=>x.id===i.wo);
+ let w=state.workorders.find(x=>String(x.id)===String(i.wo));
  if(!w)return false;
  w.tasks=Array.isArray(w.tasks)?w.tasks:[];
  const text=(i.recommendation||"").trim() || (i.description||"").trim();
@@ -3324,20 +3368,28 @@ function taskTimerRow(w,t,i){
  let controls="";
 
  if(isMechanic){
-   if(running){
-     controls=`<button class="danger" onclick="stopTask(${w.id},${i})">■ Stop</button>`;
+   if(t.findingDecision==="Do Not Proceed"){
+     controls=`<span class="badge b-danger">DO NOT PROCEED</span>`;
+   }else if(t.findingDecision==="Waiting for Customer"){
+     controls=`<span class="badge b-wait">WAITING FOR CUSTOMER</span>`;
+   }else if(running){
+     controls=`<button class="secondary" onclick="openPauseTask(${w.id},${i})">Ⅱ Pause</button> <button class="success" onclick="stopTask(${w.id},${i})">✓ Complete</button>`;
    }else if(completed){
      controls=`<span class="badge b-done">✓ Completed</span>`;
    }else if(["not_completed","next_visit"].includes(outcome)){
      controls=`${taskOutcomeBadge(t,w)}`;
+   }else if(t.paused){
+     controls=`<button ${anotherRunning?'disabled style="opacity:.45;cursor:not-allowed"':''} onclick="resumeTask(${w.id},${i})">▶ Resume</button>`;
    }else{
      controls=`<button ${anotherRunning?'disabled style="opacity:.45;cursor:not-allowed"':''} onclick="startTask(${w.id},${i})">▶ Start</button>`;
    }
  }else{
-   controls=running?`<span class="badge b-progress">Running</span>`:taskOutcomeBadge(t,w);
+   if(t.findingDecision==="Do Not Proceed")controls=`<span class="badge b-danger">DO NOT PROCEED</span>`;
+   else if(t.findingDecision==="Waiting for Customer")controls=`<span class="badge b-wait">WAITING FOR CUSTOMER</span>`;
+   else controls=running?`<span class="badge b-progress">Running</span>`:taskOutcomeBadge(t,w);
  }
 
- const rowClass=completed?"outcomeCompleted":outcome==="next_visit"?"outcomeNext":outcome==="not_completed"?"outcomeNotCompleted":"";
+ const rowClass=completed?"outcomeCompleted":t.findingDecision==="Do Not Proceed"?"outcomeNotCompleted":t.findingDecision==="Waiting for Customer"||t.paused?"outcomeNext":outcome==="next_visit"?"outcomeNext":outcome==="not_completed"?"outcomeNotCompleted":"";
  return `<div class="taskrow ${running?"running":""} ${completed?"taskdone":""} ${rowClass}">
    <div class="taskhead">
      <div><b>${esc(t.t)}</b>${t.source==="inspection"?` <span class="badge b-approved">Approved Finding</span>`:""}</div>
@@ -3348,63 +3400,70 @@ function taskTimerRow(w,t,i){
      &nbsp; | &nbsp; <b>Stopped:</b> ${fmtDateTime(t.stoppedAt)}
      &nbsp; | &nbsp; <b>Labor:</b> ${fmtDuration(taskElapsed(t))}
    </div>
-   ${isMechanic && !running && !completed?`<div class="taskOutcomeActions">
+   ${t.findingDecision==="Do Not Proceed"?`<div class="outcomeNoteBox"><b>DECLINED — DO NOT PROCEED</b><div class="muted">Decision changed by Admin${t.approvalChangedAt?` · ${fmtDateTime(t.approvalChangedAt)}`:""}</div></div>`:""}
+   ${t.findingDecision==="Waiting for Customer"?`<div class="outcomeNoteBox"><b>ON HOLD — Waiting for Customer Approval</b><div class="muted">${t.approvalChangedAt?fmtDateTime(t.approvalChangedAt):""}</div></div>`:""}
+   ${t.paused && !["Waiting for Customer","Do Not Proceed"].includes(t.findingDecision||"")?`<div class="outcomeNoteBox"><b>Paused:</b> ${esc(t.pauseReason||"Paused")}${t.pauseNote?` — ${esc(t.pauseNote)}`:""}<div class="muted">${t.pausedAt?fmtDateTime(t.pausedAt):""}</div></div>`:""}
+   ${isMechanic && !running && !completed && !t.paused && !["Waiting for Customer","Do Not Proceed"].includes(t.findingDecision||"")?`<div class="taskOutcomeActions">
       <button class="secondary" onclick="openTaskOutcome(${w.id},${i})">Not Completed / Next Visit</button>
       ${["not_completed","next_visit"].includes(outcome)?`<button class="secondary" onclick="clearTaskOutcome(${w.id},${i})">Reset Decision</button>`:""}
    </div>`:""}
    ${t.outcomeNote?`<div class="outcomeNoteBox"><b>${esc(taskOutcomeLabel(t))}:</b> ${esc(t.outcomeNote)}<div class="muted">${t.outcomeBy?`By ${esc(mechanicDisplay(t.outcomeBy))}`:""}${t.outcomeAt?` · ${fmtDateTime(t.outcomeAt)}`:""}</div></div>`:""}
  </div>`;
 }
-function startTask(workOrderId,taskIndex){
- if(!requireMechanic())return;
- const w=state.workorders.find(x=>x.id===workOrderId);
- if(!w || !visibleToCurrentMechanic(w))return alert("You do not have access to this work order.");
- const task=w.tasks?.[taskIndex];
- if(!task)return alert("This job could not be found.");
- if(normalizedTaskOutcome(task)==="completed")return alert("This job is already completed.");
- const activeIdx=activeTaskIndex(w);
- if(activeIdx!==-1 && activeIdx!==taskIndex){
-   return alert("Stop the current job before starting the next one.");
+async function applyTaskServerAction(workOrderId,taskIndex,action,extra={}){
+ if(!requireMechanic())return false;
+ try{
+   const d=await apiJSON(`/api/work-orders/${encodeURIComponent(workOrderId)}/tasks/${taskIndex}/action`,{
+     method:"POST",body:JSON.stringify({action,...extra})
+   });
+   if(d?.shopflow){
+     state=d.shopflow;
+     localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));
+   }
+   if(d?.version!=null)cloudVersions.shopflow=Number(d.version);
+   render();
+   openDetail(workOrderId);
+   return true;
+ }catch(e){
+   alert(e.message||"Task update failed.");
+   return false;
  }
+}
+async function startTask(workOrderId,taskIndex){
+ const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
+ if(!w || !visibleToCurrentMechanic(w))return alert("You do not have access to this work order.");
+ const task=w.tasks?.[taskIndex]; if(!task)return alert("This job could not be found.");
+ if(task.findingDecision==="Do Not Proceed")return alert("This repair was declined. Do not perform this task.");
+ if(task.findingDecision==="Waiting for Customer")return alert("This repair is waiting for customer approval.");
  const au=USERS;
  if(au?.[session.username]?.currentActivity?.code){closeCurrentMechanicActivity(au,session.username);try{saveUsers(au)}catch(e){saveUsers()}}
- task.taskOutcome="";
- task.outcomeNote="";
- task.outcomeAt="";
- task.outcomeBy="";
- task.done=false;
- task.completedAt="";
- if(!task.startedAt || task.stoppedAt){
-   task.startedAt=new Date().toISOString();
-   task.stoppedAt="";
- }
- if(w.status==="Open")w.status="In Progress";
- save();
- render();
- openDetail(workOrderId);
+ await applyTaskServerAction(workOrderId,taskIndex,"start");
 }
-function stopTask(workOrderId,taskIndex){
+function openPauseTask(workOrderId,taskIndex){
  if(!requireMechanic())return;
- const w=state.workorders.find(x=>x.id===workOrderId);
- if(!w || !visibleToCurrentMechanic(w))return alert("You do not have access to this work order.");
- const task=w.tasks?.[taskIndex];
- if(!task)return alert("This job could not be found.");
- if(!task.startedAt || task.stoppedAt)return alert("This job is not currently running.");
- const stop=new Date();
- const start=new Date(task.startedAt);
- task.elapsedMs=Number(task.elapsedMs||0)+Math.max(0,stop.getTime()-start.getTime());
- task.stoppedAt=stop.toISOString();
- task.done=true;
- task.completedAt=task.stoppedAt;
- task.taskOutcome="completed";
- task.outcomeNote="";
- task.outcomeAt=task.stoppedAt;
- task.outcomeBy=session.username;
- save();
- render();
- openDetail(workOrderId);
+ const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
+ const t=w?.tasks?.[taskIndex];
+ if(!t)return alert("This job could not be found.");
+ if(!(t.startedAt&&!t.stoppedAt&&!t.done))return alert("This job is not currently running.");
+ const f=document.getElementById("taskPauseForm");
+ f.elements["workOrderId"].value=workOrderId;
+ f.elements["taskIndex"].value=taskIndex;
+ f.elements["reason"].value="";
+ f.elements["note"].value="";
+ document.getElementById("taskPauseTitle").textContent=`Pause Job — ${t.t}`;
+ document.getElementById("taskPauseModal").classList.add("open");
 }
-
+async function pauseTask(workOrderId,taskIndex,reason,note=""){
+ const ok=await applyTaskServerAction(workOrderId,taskIndex,"pause",{reason,note});
+ if(ok)closeModal("taskPauseModal");
+}
+async function resumeTask(workOrderId,taskIndex){
+ await applyTaskServerAction(workOrderId,taskIndex,"resume");
+}
+async function stopTask(workOrderId,taskIndex){
+ if(!confirm("Mark this job as completed?"))return;
+ await applyTaskServerAction(workOrderId,taskIndex,"complete");
+}
 
 function workOrderNotesBlock(w){
  let out="";
@@ -3504,6 +3563,13 @@ if(passwordFormEl)passwordFormEl.onsubmit=async e=>{
  const f=new FormData(e.target),username=String(f.get("username")||""),password=String(f.get("password")||""),confirmPassword=String(f.get("confirmPassword")||"");
  if(password.length<6)return alert("Password must be at least 6 characters.");if(password!==confirmPassword)return alert("Passwords do not match.");
  try{await apiJSON(`/api/admin/users/${encodeURIComponent(username)}/password`,{method:"PATCH",body:JSON.stringify({password})});closeModal("passwordModal");alert(`Password changed for ${USERS[username]?.display||username}.`)}catch(ex){alert(ex.message)}
+};
+
+const taskPauseFormEl=document.getElementById("taskPauseForm");
+if(taskPauseFormEl)taskPauseFormEl.onsubmit=e=>{
+ e.preventDefault();
+ const f=new FormData(e.target);
+ pauseTask(Number(f.get("workOrderId")),Number(f.get("taskIndex")),String(f.get("reason")||""),String(f.get("note")||"").trim());
 };
 
 const taskOutcomeFormEl=document.getElementById("taskOutcomeForm");
