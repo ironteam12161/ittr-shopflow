@@ -28,16 +28,22 @@ app.set("trust proxy",1);
 app.use(helmet({contentSecurityPolicy:false,crossOriginEmbedderPolicy:false}));
 app.use(express.json({limit:"3mb"}));
 
-// Railway/GitHub-safe static path:
-// Prefer /public when the repository preserves folders.
-// Fall back to the repository root if GitHub web upload flattened public files.
-const publicDir = path.join(__dirname,"public");
-const fs = await import("fs");
-const hasPublicIndex = fs.existsSync(path.join(publicDir,"index.html"));
-const hasRootIndex = fs.existsSync(path.join(__dirname,"index.html"));
-const webRoot = hasPublicIndex ? publicDir : (hasRootIndex ? __dirname : publicDir);
-console.log("ITTR web root:", webRoot);
-app.use(express.static(webRoot));
+// ITTR v22.6 authoritative frontend path:
+// Always serve the repository root index.html in production.
+// This prevents an older public/index.html from shadowing the current frontend.
+const publicDir=path.join(__dirname,"public");
+const webRoot=__dirname;
+const authoritativeIndex=path.join(__dirname,"index.html");
+console.log("ITTR authoritative web root:",webRoot);
+app.use(express.static(webRoot,{
+ setHeaders:(res,filePath)=>{
+  if(filePath.endsWith("index.html")){
+   res.setHeader("Cache-Control","no-store, no-cache, must-revalidate, proxy-revalidate");
+   res.setHeader("Pragma","no-cache");
+   res.setHeader("Expires","0");
+  }
+ }
+}));
 
 app.use("/api/auth",rateLimit({windowMs:15*60*1000,max:100,standardHeaders:true,legacyHeaders:false}));
 
@@ -147,8 +153,8 @@ async function auth(req,res,next){
 function adminOnly(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Admin access required."});next()}
 async function audit(username,action,details={}){try{if(pool)await pool.query("INSERT INTO server_audit(username,action,details) VALUES($1,$2,$3::jsonb)",[username||null,action,JSON.stringify(details)])}catch(e){console.error("audit",e.message)}}
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"22.5.0",backend:"22.5.0",build:"ITTR-22.5-CLEAN-20260910"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"22.5.0-clean-release"})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"22.6.0",backend:"22.6.0",build:"ITTR-22.6-SINGLE-SOURCE-20260910"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"22.6.0-single-source"})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -690,10 +696,15 @@ app.post("/api/transcribe",auth,upload.single("audio"),async(req,res)=>{try{if(!
 app.get("/api/admin/server-audit",auth,adminOnly,async(req,res,next)=>{try{const q=await requireDb().query("SELECT username,action,details,created_at FROM server_audit ORDER BY id DESC LIMIT 500");res.json({rows:q.rows})}catch(e){next(e)}});
 app.use("/api",(req,res)=>res.status(404).json({error:"API endpoint not found"}));
 app.use((err,req,res,next)=>{console.error(err);if(err?.code==="DB_NOT_CONFIGURED")return res.status(503).json({error:err.message,code:err.code});res.status(500).json({error:isProd?"Server error":String(err?.message||err)})});
-app.get("*splat",(req,res)=>res.sendFile(path.join(webRoot,"index.html")));
+app.get("*splat",(req,res)=>{
+ res.setHeader("Cache-Control","no-store, no-cache, must-revalidate, proxy-revalidate");
+ res.setHeader("Pragma","no-cache");
+ res.setHeader("Expires","0");
+ res.sendFile(authoritativeIndex);
+});
 
 initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(()=>app.listen(port,()=>console.log(`ITTR v22.5 Online running on port ${port}`)))
+  .then(()=>app.listen(port,()=>console.log(`ITTR v22.6 Online running on port ${port}`)))
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});
