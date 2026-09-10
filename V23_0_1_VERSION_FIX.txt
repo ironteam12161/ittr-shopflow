@@ -1,0 +1,10 @@
+ITTR v23.0.1 VERSION CONTRACT FIX
+
+Fix:
+- Backend machine version normalized to 23.0.0.
+- Frontend expected machine version normalized to 23.0.0.
+- Descriptive release labels are no longer used as the machine-version contract.
+- No database reset or destructive migration.
+
+Deploy the files from this package together, especially server.js, index.html and public/index.html.
+After Railway redeploys, open /api/build and verify frontendExpected and backend are the same core release.
