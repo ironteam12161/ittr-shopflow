@@ -1,0 +1,28 @@
+ITTR v23.0.2 — VERSION CHECK FIX
+
+ROOT CAUSE FOUND:
+The frontend still contained:
+  if(!backend.startsWith("22.3."))
+
+That guaranteed a VERSION MISMATCH warning on every v23 backend, even when deployment was correct.
+
+FIX:
+- Removed hardcoded 22.3 release gate.
+- Frontend now calls /api/build.
+- Frontend compares normalized semantic versions.
+- Frontend 23.0.2 and backend 23.0.2 now match exactly.
+- Old mismatch banner auto-clears after a successful version check.
+- Stable UID task/timeline fixes from v23 are preserved.
+
+AUDIT:
+- backend JS syntax: PASS
+- root frontend JS syntax: PASS
+- public frontend JS syntax: PASS
+- root/public index identical: PASS
+- duplicate static DOM IDs: PASS
+- inline onclick handler references: PASS
+- stale hardcoded 22.3 release gates: NONE
+- stable UID task action route: PRESENT
+- exact UID timeline filtering: PRESENT
+
+NO DATABASE RESET.

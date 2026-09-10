@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v23.0</title>
+<title>ITTR ShopFlow v23.0.2</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -470,7 +470,7 @@ body{-webkit-text-size-adjust:100%}
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v23.0 ONLINE · STABLE TASK RECORDS · Full Work Timeline</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v23.0.2 ONLINE · VERSION CHECK FIXED · Stable Task Records</div>
 <div id="appErrorBanner" style="display:none;position:fixed;left:8px;right:8px;top:66px;z-index:1000;background:#fef3f2;color:#b42318;border:1px solid #fecdca;border-radius:10px;padding:10px;font-size:13px"><b>App error:</b> <span id="appErrorText"></span> <button type="button" onclick="this.parentElement.style.display='none'" style="float:right;min-height:28px;padding:2px 8px">×</button></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1071,7 +1071,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION="23.0.0";
+const FRONTEND_VERSION="23.0.2";
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
@@ -3715,20 +3715,36 @@ if(taskOutcomeFormEl)taskOutcomeFormEl.onsubmit=e=>{
  openDetail(workOrderId);
 };
 
+function coreReleaseVersion(v){
+ const m=String(v||"").match(/\d+\.\d+\.\d+/);
+ return m?m[0]:String(v||"").trim();
+}
 async function verifyReleaseCompatibility(){
  try{
-  const r=await fetch("/api/health",{cache:"no-store"});
+  const r=await fetch("/api/build",{cache:"no-store"});
+  if(!r.ok)throw new Error(`Build check failed (${r.status})`);
   const d=await r.json();
-  const backend=String(d?.version||"unknown");
-  if(!backend.startsWith("22.3.")){
-   const b=document.getElementById("appErrorBanner");
-   if(b){b.style.display="block";b.textContent=`VERSION MISMATCH — Frontend but backend is ${backend}. Replace/deploy server.js from the same frontend/backend release. Timeline and transactional features may not work until versions match.`;}
+  const backend=coreReleaseVersion(d?.backend||"unknown");
+  const expected=coreReleaseVersion(FRONTEND_VERSION);
+  const b=document.getElementById("appErrorBanner");
+  if(backend!==expected){
+   if(b){
+    b.style.display="block";
+    b.textContent=`VERSION MISMATCH — Frontend ${expected} but backend ${backend}. Deploy index.html and server.js from the same release.`;
+   }
    return false;
+  }
+  if(b && String(b.textContent||"").startsWith("VERSION MISMATCH")){
+   b.style.display="none";
+   b.textContent="";
   }
   return true;
  }catch(e){
   const b=document.getElementById("appErrorBanner");
-  if(b){b.style.display="block";b.textContent="BACKEND HEALTH CHECK FAILED — The browser cannot verify the deployed server version.";}
+  if(b){
+   b.style.display="block";
+   b.textContent=`BACKEND BUILD CHECK FAILED — ${e.message||"Unable to verify deployed server version."}`;
+  }
   return false;
  }
 }
