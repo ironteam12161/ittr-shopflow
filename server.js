@@ -91,7 +91,7 @@ async function auth(req,res,next){
 function adminOnly(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Admin access required."});next()}
 async function audit(username,action,details={}){try{if(pool)await pool.query("INSERT INTO server_audit(username,action,details) VALUES($1,$2,$3::jsonb)",[username||null,action,JSON.stringify(details)])}catch(e){console.error("audit",e.message)}}
 
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"21.2.0-findings-live-sync"})});
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"21.3.0-findings-server-atomic"})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -112,6 +112,128 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{try{
  const q=await requireDb().query("UPDATE app_state SET payload=$2::jsonb,version=version+1,updated_at=now(),updated_by=$3 WHERE state_key=$1 RETURNING version,updated_at",[key,JSON.stringify(payload),req.user.username]);
  await audit(req.user.username,"state_save",{key});res.json({ok:true,version:Number(q.rows[0].version),updatedAt:q.rows[0].updated_at});
 }catch(e){next(e)}});
+
+
+function findingTaskText(issue){
+  return String(issue?.recommendation||"").trim() || String(issue?.description||"").trim();
+}
+function reconcileApprovedFindingsInShopflow(shopflow){
+  const sf=shopflow&&typeof shopflow==="object"?shopflow:{workorders:[],issues:[]};
+  sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
+  sf.issues=Array.isArray(sf.issues)?sf.issues:[];
+  let changed=false,added=0;
+  for(const issue of sf.issues){
+    if(String(issue?.approval||"")!=="Proceed")continue;
+    const wo=sf.workorders.find(w=>String(w?.id)===String(issue?.wo));
+    if(!wo)continue;
+    wo.tasks=Array.isArray(wo.tasks)?wo.tasks:[];
+    const text=findingTaskText(issue);
+    if(!text)continue;
+    const exists=wo.tasks.some(t=>
+      String(t?.findingId??"")===String(issue?.id??"") ||
+      String(t?.t||"").trim().toLowerCase()===text.toLowerCase()
+    );
+    if(!exists){
+      wo.tasks.push({
+        t:text,done:false,startedAt:"",stoppedAt:"",elapsedMs:0,completedAt:"",
+        source:"inspection",findingId:issue.id,taskOutcome:"",outcomeNote:"",
+        outcomeAt:"",outcomeBy:""
+      });
+      added++;changed=true;
+    }
+    if(issue.convertedToTask!==true){issue.convertedToTask=true;changed=true;}
+  }
+  return {shopflow:sf,changed,added};
+}
+
+async function repairApprovedFindingsAtStartup(){
+  if(!pool)return;
+  const clientDb=await pool.connect();
+  try{
+    await clientDb.query("BEGIN");
+    const q=await clientDb.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
+    if(q.rowCount){
+      const result=reconcileApprovedFindingsInShopflow(q.rows[0].payload);
+      if(result.changed){
+        await clientDb.query(
+          "UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by='system-reconcile' WHERE state_key='shopflow'",
+          [JSON.stringify(result.shopflow)]
+        );
+        console.log(`ITTR finding reconciliation repaired ${result.added} approved finding task(s).`);
+      }
+    }
+    await clientDb.query("COMMIT");
+  }catch(e){
+    await clientDb.query("ROLLBACK");
+    console.error("Approved finding reconciliation failed:",e);
+  }finally{clientDb.release();}
+}
+
+app.post("/api/findings/:id/decision",auth,adminOnly,async(req,res,next)=>{ 
+  const clientDb=await requireDb().connect();
+  try{
+    const id=String(req.params.id);
+    const value=String(req.body?.value||"");
+    const allowed=["Proceed","Waiting for Customer","Do Not Proceed"];
+    if(!allowed.includes(value))return res.status(400).json({error:"Invalid finding decision."});
+
+    await clientDb.query("BEGIN");
+    const q=await clientDb.query("SELECT payload,version FROM app_state WHERE state_key='shopflow' FOR UPDATE");
+    if(!q.rowCount){await clientDb.query("ROLLBACK");return res.status(404).json({error:"Shop state not found."});}
+
+    const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};
+    sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
+    sf.issues=Array.isArray(sf.issues)?sf.issues:[];
+    const issue=sf.issues.find(i=>String(i?.id)===id);
+    if(!issue){await clientDb.query("ROLLBACK");return res.status(404).json({error:"Finding not found."});}
+
+    issue.approval=value;
+    issue.decisionAt=new Date().toISOString();
+    issue.decisionBy=req.user.username;
+
+    let taskAdded=false;
+    if(value==="Proceed"){
+      const wo=sf.workorders.find(w=>String(w?.id)===String(issue?.wo));
+      if(!wo){
+        await clientDb.query("ROLLBACK");
+        return res.status(409).json({error:"Approved finding is not linked to an existing work order. Open the finding and verify its unit/work-order link."});
+      }
+      wo.tasks=Array.isArray(wo.tasks)?wo.tasks:[];
+      const text=findingTaskText(issue);
+      if(!text){
+        await clientDb.query("ROLLBACK");
+        return res.status(409).json({error:"Finding has no repair description or recommendation to add as a work-order task."});
+      }
+      const exists=wo.tasks.some(t=>
+        String(t?.findingId??"")===String(issue?.id??"") ||
+        String(t?.t||"").trim().toLowerCase()===text.toLowerCase()
+      );
+      if(!exists){
+        wo.tasks.push({
+          t:text,done:false,startedAt:"",stoppedAt:"",elapsedMs:0,completedAt:"",
+          source:"inspection",findingId:issue.id,taskOutcome:"",outcomeNote:"",
+          outcomeAt:"",outcomeBy:""
+        });
+        taskAdded=true;
+      }
+      issue.convertedToTask=true;
+    }else{
+      issue.convertedToTask=false;
+    }
+
+    const u=await clientDb.query(
+      "UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",
+      [JSON.stringify(sf),req.user.username]
+    );
+    await clientDb.query("COMMIT");
+    await audit(req.user.username,"finding_decision",{findingId:id,value,taskAdded});
+    res.json({ok:true,shopflow:sf,version:Number(u.rows[0].version),taskAdded});
+  }catch(e){
+    try{await clientDb.query("ROLLBACK")}catch(_){}
+    next(e);
+  }finally{clientDb.release();}
+});
+
 
 app.post("/api/state/import-local",auth,adminOnly,async(req,res,next)=>{try{
  const users=req.body?.users||{},shopflow=req.body?.shopflow||{workorders:[],issues:[]},pro=req.body?.pro||{};
@@ -159,4 +281,7 @@ app.use("/api",(req,res)=>res.status(404).json({error:"API endpoint not found"})
 app.use((err,req,res,next)=>{console.error(err);if(err?.code==="DB_NOT_CONFIGURED")return res.status(503).json({error:err.message,code:err.code});res.status(500).json({error:isProd?"Server error":String(err?.message||err)})});
 app.get("*splat",(req,res)=>res.sendFile(path.join(webRoot,"index.html")));
 
-initDb().then(()=>app.listen(port,()=>console.log(`ITTR v21.2 Online running on port ${port}`))).catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});
+initDb()
+  .then(()=>repairApprovedFindingsAtStartup())
+  .then(()=>app.listen(port,()=>console.log(`ITTR v21.3 Online running on port ${port}`)))
+  .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

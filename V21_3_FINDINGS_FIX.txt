@@ -1,0 +1,31 @@
+ITTR v21.3 - FINDINGS -> WORK ORDER SERVER FIX
+
+Problem fixed:
+An admin approval could sync to the mechanic's Findings screen while the repair task
+failed to appear in the mechanic's work order.
+
+Root architectural issue:
+The old build changed the finding and work order inside a browser snapshot and then
+queued that entire snapshot to the cloud. Approval could therefore be visible while
+task conversion was not reliably authoritative across devices.
+
+v21.3 changes:
+1. "Proceed" is now processed atomically by the server against PostgreSQL.
+2. The server locks the shared shopflow row, approves the finding, finds its linked
+   work order, creates the task, and saves both in ONE database transaction.
+3. Work-order/finding IDs are compared safely as strings.
+4. Duplicate tasks are prevented using findingId and normalized task text.
+5. On every server startup, v21.3 repairs existing findings that are already
+   "Proceed" but are missing their work-order task.
+6. Service-worker cache was bumped so browsers receive the new code.
+
+DEPLOY:
+Upload all v21.3 files to the SAME GitHub repository and commit.
+Do not change Railway/Postgres/variables.
+Wait for Railway web service to become Online.
+
+TEST:
+- Existing already-approved finding: after redeploy, refresh mechanic account and open
+  the linked work order. The task should be repaired automatically.
+- New finding: mechanic reports -> admin Proceed -> mechanic waits a few seconds ->
+  task appears in that work order.
