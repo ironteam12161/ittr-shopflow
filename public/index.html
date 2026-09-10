@@ -6,13 +6,13 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-22.6-SINGLE-SOURCE-20260910">
+<meta name="ittr-build" content="ITTR-23-STABLE-TASKS-20260910">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v22.6</title>
+<title>ITTR ShopFlow v23.0</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -470,7 +470,7 @@ body{-webkit-text-size-adjust:100%}
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v22.6 ONLINE · SINGLE SOURCE · Task Identity + Full Work Timeline</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v23.0 ONLINE · STABLE TASK RECORDS · Full Work Timeline</div>
 <div id="appErrorBanner" style="display:none;position:fixed;left:8px;right:8px;top:66px;z-index:1000;background:#fef3f2;color:#b42318;border:1px solid #fecdca;border-radius:10px;padding:10px;font-size:13px"><b>App error:</b> <span id="appErrorText"></span> <button type="button" onclick="this.parentElement.style.display='none'" style="float:right;min-height:28px;padding:2px 8px">×</button></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1071,7 +1071,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION="22.6.0";
+const FRONTEND_VERSION="23.0.0";
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
@@ -3497,25 +3497,26 @@ function taskTimerRow(w,t,i){
      <div class="taskcontrols">${controls}</div>
    </div>
    <div class="timerinfo">
-     <b>Latest Start:</b> ${fmtDateTime(t.startedAt)}
-     &nbsp; | &nbsp; <b>Latest Stop:</b> ${fmtDateTime(t.stoppedAt)}
+     <b>${t.startedAt?"Latest Start":"Started"}:</b> ${fmtDateTime(t.startedAt)}
+     &nbsp; | &nbsp; <b>${t.stoppedAt?"Latest Stop":"Stopped"}:</b> ${fmtDateTime(t.stoppedAt)}
      &nbsp; | &nbsp; <b>Total Labor:</b> ${fmtDuration(taskElapsed(t))}
    </div>
    <div data-task-timeline-wo="${esc(String(w.id))}" data-task-timeline-index="${i}" data-task-timeline-uid="${esc(String(t.uid||""))}"></div>
    ${t.findingDecision==="Do Not Proceed"?`<div class="outcomeNoteBox"><b>DECLINED — DO NOT PROCEED</b><div class="muted">Decision changed by Admin${t.approvalChangedAt?` · ${fmtDateTime(t.approvalChangedAt)}`:""}</div></div>`:""}
    ${t.findingDecision==="Waiting for Customer"?`<div class="outcomeNoteBox"><b>ON HOLD — Waiting for Customer Approval</b><div class="muted">${t.approvalChangedAt?fmtDateTime(t.approvalChangedAt):""}</div></div>`:""}
    ${t.paused && !["Waiting for Customer","Do Not Proceed"].includes(t.findingDecision||"")?`<div class="outcomeNoteBox"><b>Paused:</b> ${esc(t.pauseReason||"Paused")}${t.pauseNote?` — ${esc(t.pauseNote)}`:""}<div class="muted">${t.pausedAt?fmtDateTime(t.pausedAt):""}</div></div>`:""}
-   ${isMechanic && !running && !completed && !t.paused && !["Waiting for Customer","Do Not Proceed"].includes(t.findingDecision||"")?`<div class="taskOutcomeActions">
+   ${isMechanic && !running && !completed && !t.paused && Boolean(t.startedAt||t.stoppedAt||Number(t.elapsedMs||0)>0) && !["Waiting for Customer","Do Not Proceed"].includes(t.findingDecision||"")?`<div class="taskOutcomeActions">
       <button class="secondary" onclick="openTaskOutcome(${w.id},${i})">Not Completed / Next Visit</button>
       ${["not_completed","next_visit"].includes(outcome)?`<button class="secondary" onclick="clearTaskOutcome(${w.id},${i})">Reset Decision</button>`:""}
    </div>`:""}
    ${t.outcomeNote?`<div class="outcomeNoteBox"><b>${esc(taskOutcomeLabel(t))}:</b> ${esc(t.outcomeNote)}<div class="muted">${t.outcomeBy?`By ${esc(mechanicDisplay(t.outcomeBy))}`:""}${t.outcomeAt?` · ${fmtDateTime(t.outcomeAt)}`:""}</div></div>`:""}
  </div>`;
 }
-async function applyTaskServerAction(workOrderId,taskIndex,action,extra={}){
+async function applyTaskServerAction(workOrderId,taskUid,action,extra={}){
  if(!requireMechanic())return false;
+ if(!taskUid){alert("This task is missing its permanent ID. Refresh the work order and try again.");return false;}
  try{
-   const d=await apiJSON(`/api/work-orders/${encodeURIComponent(workOrderId)}/tasks/${taskIndex}/action`,{
+   const d=await apiJSON(`/api/work-orders/${encodeURIComponent(workOrderId)}/tasks/by-uid/${encodeURIComponent(taskUid)}/action`,{
      method:"POST",body:JSON.stringify({action,...extra})
    });
    if(d?.shopflow){
@@ -3539,7 +3540,7 @@ async function startTask(workOrderId,taskIndex){
  if(task.findingDecision==="Waiting for Customer")return alert("This repair is waiting for customer approval.");
  const au=USERS;
  if(au?.[session.username]?.currentActivity?.code){closeCurrentMechanicActivity(au,session.username);try{saveUsers(au)}catch(e){saveUsers()}}
- await applyTaskServerAction(workOrderId,taskIndex,"start");
+ await applyTaskServerAction(workOrderId,task.uid,"start");
 }
 function openPauseTask(workOrderId,taskIndex){
  if(!requireMechanic())return;
@@ -3556,15 +3557,24 @@ function openPauseTask(workOrderId,taskIndex){
  document.getElementById("taskPauseModal").classList.add("open");
 }
 async function pauseTask(workOrderId,taskIndex,reason,note=""){
- const ok=await applyTaskServerAction(workOrderId,taskIndex,"pause",{reason,note});
+ const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
+ const task=w?.tasks?.[taskIndex];
+ if(!task)return alert("This task no longer exists. Refresh the work order.");
+ const ok=await applyTaskServerAction(workOrderId,task.uid,"pause",{reason,note});
  if(ok)closeModal("taskPauseModal");
 }
 async function resumeTask(workOrderId,taskIndex){
- await applyTaskServerAction(workOrderId,taskIndex,"resume");
+ const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
+ const task=w?.tasks?.[taskIndex];
+ if(!task)return alert("This task no longer exists. Refresh the work order.");
+ await applyTaskServerAction(workOrderId,task.uid,"resume");
 }
 async function stopTask(workOrderId,taskIndex){
+ const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
+ const task=w?.tasks?.[taskIndex];
+ if(!task)return alert("This task no longer exists. Refresh the work order.");
  if(!confirm("Mark this job as completed?"))return;
- await applyTaskServerAction(workOrderId,taskIndex,"complete");
+ await applyTaskServerAction(workOrderId,task.uid,"complete");
 }
 
 function workOrderNotesBlock(w){
@@ -3712,7 +3722,7 @@ async function verifyReleaseCompatibility(){
   const backend=String(d?.version||"unknown");
   if(!backend.startsWith("22.3.")){
    const b=document.getElementById("appErrorBanner");
-   if(b){b.style.display="block";b.textContent=`VERSION MISMATCH — Frontend v22.5 but backend is ${backend}. Replace/deploy server.js from the same v22.5 package. Timeline and transactional features may not work until versions match.`;}
+   if(b){b.style.display="block";b.textContent=`VERSION MISMATCH — Frontend but backend is ${backend}. Replace/deploy server.js from the same frontend/backend release. Timeline and transactional features may not work until versions match.`;}
    return false;
   }
   return true;

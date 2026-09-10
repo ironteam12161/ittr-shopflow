@@ -1,4 +1,4 @@
-// ITTR v22.6 self-removing service worker
+// ITTR v23.0 self-removing service worker
 self.addEventListener("install",()=>self.skipWaiting());
 self.addEventListener("activate",event=>{
  event.waitUntil((async()=>{
