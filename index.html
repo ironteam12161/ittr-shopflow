@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v23.0.2</title>
+<title>ITTR ShopFlow v23.1</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -36,7 +36,7 @@ form .row{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.field{margi
 .checkline{display:flex;gap:8px;align-items:center;margin-top:6px}.checkline input{width:auto}
 .modal{display:none;position:fixed;inset:0;background:rgba(17,24,39,.55);z-index:30;padding:18px;overflow:auto}.modal.open{display:block}.modalbox{max-width:800px;background:#fff;margin:30px auto;border-radius:15px;padding:20px}.modalhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.x{background:#eef2f7;color:#111827}
 .jobcard{margin-bottom:12px}.jobtop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.jobs{display:grid;grid-template-columns:1fr 1fr;gap:12px}.muted{color:var(--muted);font-size:13px}.task{padding:10px;border:1px solid var(--line);border-radius:9px;margin:8px 0;display:flex;gap:9px;align-items:flex-start}.task input{margin-top:3px}.taskrow{padding:12px;border:1px solid var(--line);border-radius:10px;margin:8px 0;background:#fff}.taskhead{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}.taskcontrols{display:flex;gap:7px;flex-wrap:wrap;align-items:center}.timerinfo{font-size:12px;color:var(--muted);margin-top:7px}.running{border-color:#f79009;background:#fffcf5}.taskdone{border-color:#75e0a7;background:#f6fef9}.historyitem{padding:10px 0;border-bottom:1px solid var(--line)}.historyitem:last-child{border-bottom:0}.reactivated{background:#fff7ed;border:1px solid #fedf89;border-radius:10px;padding:10px;margin:10px 0}.futureNote{background:#f9fafb;border-left:4px solid #98a2b3;padding:10px;border-radius:8px;margin:8px 0}
-.issue{border-left:4px solid #f79009}.photo{width:100%;max-width:220px;border-radius:8px;margin-top:8px;border:1px solid var(--line)}
+.issue{border-left:4px solid #f79009}.photo{width:100%;max-width:320px;max-height:320px;object-fit:cover;border-radius:8px;margin-top:8px;border:1px solid var(--line);background:#f2f4f7}.photoLoading{min-height:90px}.photoError{font-size:12px;color:#b42318;margin-top:6px}
 .hidden{display:none!important}.empty{text-align:center;padding:30px;color:var(--muted)}
 .filterbar{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px}.filterbtn{background:#eef2f7;color:#344054}.filterbtn.active{background:#111827;color:white}
 .notice{background:#fffaeb;border:1px solid #fedf89;color:#7a2e0e;border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:12px}
@@ -470,7 +470,7 @@ body{-webkit-text-size-adjust:100%}
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v23.0.2 ONLINE · VERSION CHECK FIXED · Stable Task Records</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v23.1 ONLINE · R2 PHOTO STORAGE · Stable Task Records</div>
 <div id="appErrorBanner" style="display:none;position:fixed;left:8px;right:8px;top:66px;z-index:1000;background:#fef3f2;color:#b42318;border:1px solid #fecdca;border-radius:10px;padding:10px;font-size:13px"><b>App error:</b> <span id="appErrorText"></span> <button type="button" onclick="this.parentElement.style.display='none'" style="float:right;min-height:28px;padding:2px 8px">×</button></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -872,7 +872,7 @@ body{-webkit-text-size-adjust:100%}
       <div class="field"><label>Severity</label><select name="severity"><option>Needs Attention</option><option>High</option><option>Safety Critical</option></select></div>
       <div class="field full"><label>Problem found</label><textarea name="description" required placeholder="Example: RH steer tire has sidewall damage"></textarea></div>
       <div class="field full"><label>Recommended repair</label><textarea name="recommendation" placeholder="Replace tire before vehicle leaves shop"></textarea></div>
-      <div class="field full"><label>Photo</label><input name="photo" type="file" accept="image/*" capture="environment"><div class="muted">On a phone, this can open the camera.</div></div>
+      <div class="field full"><label>Photo</label><input id="findingPhotoInput" name="photo" type="file" accept="image/*" capture="environment"><div class="muted">Take a photo or choose one from the phone. Large phone photos are compressed automatically before upload.</div><div id="findingPhotoStatus" class="muted" style="margin-top:6px"></div></div>
     </div>
     <button type="submit">Save Finding</button>
   </form>
@@ -1071,7 +1071,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION="23.0.2";
+const FRONTEND_VERSION="23.1.0";
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
@@ -2978,6 +2978,7 @@ function render(){
 
  updateMobileBackButton();
  applyTranslations();
+ hydrateFindingPhotos();
 }
 function renderAdminTable(){
  const table=document.getElementById("workTable");
@@ -3017,6 +3018,69 @@ function mechanicUpcomingCard(w){
 
 // MECHANIC UI RULE: never display internal work-order numbers; identify work by Unit Number only.
 function mechanicCard(w){return `<div class="card jobcard"><div class="jobtop"><div><b>Unit ${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · Parking ${esc(w.parking||"—")} · ${esc(w.date)} ${esc(w.time)}</div></div>${statusBadge(w.status)}</div><div style="margin-top:10px">${w.tasks.map(t=>`<div class="muted">${t.done?"✓":(t.startedAt&&!t.stoppedAt?"▶":"○")} ${esc(t.t)}${t.done?` · ${fmtDuration(taskElapsed(t))}`:""}</div>`).join("")}</div><div style="margin-top:10px"><button onclick="openDetail(${w.id})">Open Job</button></div></div>`}
+const findingPhotoUrlCache=new Map();
+function findingPhotoMarkup(i){
+ const photoId=String(i?.photoId||"").trim();
+ if(photoId)return `<img class="photo photoLoading" data-finding-photo-id="${esc(photoId)}" alt="Finding photo" loading="lazy"><div class="photoError" data-photo-error-for="${esc(photoId)}" style="display:none"></div>`;
+ if(typeof i?.photo==="string"&&i.photo.startsWith("data:image/"))return `<img class="photo" src="${i.photo}" alt="Legacy finding photo" loading="lazy">`;
+ return "";
+}
+async function getFindingPhotoUrl(photoId){
+ const cached=findingPhotoUrlCache.get(photoId),now=Date.now();
+ if(cached&&cached.expiresAt>now)return cached.url;
+ const d=await apiJSON(`/api/photos/${encodeURIComponent(photoId)}/url`);
+ const url=String(d?.url||"");
+ if(!url)throw new Error("Photo URL was not returned by the server.");
+ findingPhotoUrlCache.set(photoId,{url,expiresAt:now+Math.max(60,Number(d.expiresIn||600)-120)*1000});
+ return url;
+}
+function hydrateFindingPhotos(){
+ document.querySelectorAll("img[data-finding-photo-id]").forEach(img=>{
+   if(img.dataset.loading==="1"||img.dataset.loaded==="1")return;
+   const photoId=img.dataset.findingPhotoId;if(!photoId)return;
+   img.dataset.loading="1";
+   getFindingPhotoUrl(photoId).then(url=>{
+     if(!img.isConnected)return;
+     img.src=url;img.dataset.loaded="1";img.dataset.loading="0";img.classList.remove("photoLoading");
+   }).catch(e=>{
+     img.dataset.loading="0";img.classList.remove("photoLoading");img.style.display="none";
+     const er=document.querySelector(`[data-photo-error-for="${CSS.escape(photoId)}"]`);if(er){er.textContent=e.message||"Photo unavailable";er.style.display="block";}
+   });
+ });
+}
+function setFindingPhotoStatus(text,isError=false){
+ const el=document.getElementById("findingPhotoStatus");if(!el)return;el.textContent=text||"";el.style.color=isError?"#b42318":"";
+}
+async function browserCompressFindingPhoto(file){
+ if(!file||!file.size)return null;
+ if(file.size>25*1024*1024)throw new Error("Photo is larger than 25 MB. Please retake it at normal camera resolution.");
+ setFindingPhotoStatus("Preparing photo…");
+ try{
+   const bitmap=await createImageBitmap(file,{imageOrientation:"from-image"});
+   const max=1920,scale=Math.min(1,max/Math.max(bitmap.width,bitmap.height)),w=Math.max(1,Math.round(bitmap.width*scale)),h=Math.max(1,Math.round(bitmap.height*scale));
+   const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;
+   const ctx=canvas.getContext("2d",{alpha:false});ctx.drawImage(bitmap,0,0,w,h);bitmap.close?.();
+   const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error("Photo compression failed.")),"image/jpeg",0.82));
+   return new File([blob],String(file.name||"finding-photo").replace(/\.[^.]+$/,"")+".jpg",{type:"image/jpeg",lastModified:Date.now()});
+ }catch(e){
+   // Some iPhone/HEIC browser versions cannot decode locally. The server has a second conversion path.
+   console.warn("Browser photo compression fallback:",e);
+   return file;
+ }
+}
+async function uploadFindingPhoto(file,workOrderId,findingId){
+ const prepared=await browserCompressFindingPhoto(file);
+ setFindingPhotoStatus(`Uploading photo${prepared?.size?` (${Math.max(1,Math.round(prepared.size/1024))} KB)`:""}…`);
+ const fd=new FormData();fd.append("photo",prepared,prepared.name||"finding-photo.jpg");fd.append("workOrderId",String(workOrderId));
+ const r=await fetch(`/api/findings/${encodeURIComponent(findingId)}/photo`,{method:"POST",headers:authHeaders(),body:fd});
+ let d={};try{d=await r.json()}catch(_){}
+ if(r.status===401){cloudToken="";sessionStorage.removeItem("ittr_cloud_token");throw new Error("Session expired. Log in again.");}
+ if(!r.ok)throw new Error(d.error||`Photo upload failed (${r.status}).`);
+ if(!d.photoId)throw new Error("Server did not return a photo ID.");
+ setFindingPhotoStatus("Photo uploaded successfully.");
+ return d.photoId;
+}
+
 function issueCard(i){
  let w=state.workorders.find(x=>x.id==i.wo);
  return `<div class="card issue">
@@ -3026,7 +3090,7 @@ function issueCard(i){
    </div>
    <p>${esc(i.description)}</p>
    ${i.recommendation?`<div class="muted"><b>Recommended:</b> ${esc(i.recommendation)}</div>`:""}
-   ${i.photo?`<img class="photo" src="${i.photo}">`:""}
+   ${findingPhotoMarkup(i)}
    <div style="margin-top:10px"><b>Customer decision:</b> ${approvalBadge(i)}</div>
    ${i.approval==="Proceed"
       ?'<div class="muted" style="margin-top:8px">Admin approved this repair. Complete it once it appears in the work-order task list.</div>'
@@ -3082,7 +3146,7 @@ function findingRecordCard(i,w){
  return `<div class="findingRecord ${resolved?"findingResolved":""}">
   <div class="findingRecordTop"><div><div class="muted">${esc(i.severity||"Needs Attention")} · ${esc(findingTimeLabel(i))}${i.mechanic?` · ${esc(mechanicDisplay(i.mechanic))}`:""}</div><div class="findingProblem">${esc(i.description||"No description")}</div></div>${approvalBadge(i)}</div>
   ${i.recommendation?`<div class="muted"><b>Recommended:</b> ${esc(i.recommendation)}</div>`:""}
-  ${i.photo?`<img class="photo" src="${i.photo}">`:""}
+  ${findingPhotoMarkup(i)}
   ${i.adminNote?`<div class="outcomeNoteBox"><b>Admin / customer note:</b> ${esc(i.adminNote)}</div>`:""}
   <div class="findingDecisionActions">
    <button class="success" onclick="setApproval(${i.id},'Proceed')">Proceed</button>
@@ -3134,7 +3198,7 @@ function adminIssueCard(i){
    </div>
    <p><b>Problem:</b> ${esc(i.description)}</p>
    ${i.recommendation?`<div class="muted"><b>Recommended repair:</b> ${esc(i.recommendation)}</div>`:""}
-   ${i.photo?`<img class="photo" src="${i.photo}">`:""}
+   ${findingPhotoMarkup(i)}
    ${i.adminNote?`<div class="card" style="background:#fafafa;margin-top:10px"><b>Admin note:</b><div>${esc(i.adminNote)}</div></div>`:""}
    <div class="decision">
      <button class="success" onclick="setApproval(${i.id},'Proceed')">Proceed</button>
@@ -3235,10 +3299,26 @@ document.getElementById("woForm").onsubmit=e=>{
  });
  save();e.target.reset();document.querySelector('[name="fleetAuto"]').checked=true;closeModal("woModal");render();
 };
-document.getElementById("issueForm").onsubmit=e=>{
- e.preventDefault(); if(!requireMechanic())return; let f=new FormData(e.target), file=f.get("photo");
- const finish=(photo)=>{const woId=Number(f.get("wo")),linked=state.workorders.find(w=>w.id===woId),now=new Date();state.issues.unshift({id:Date.now(),wo:woId,unitSnapshot:linked?.unit||"",customerSnapshot:linked?.customer||"",mechanic:session.username,severity:f.get("severity"),description:f.get("description"),recommendation:f.get("recommendation"),photo,status:"Reported",approval:"Waiting for Customer",adminNote:"",convertedToTask:false,created:now.toLocaleString(),createdAt:now.toISOString(),decisionAt:"",decisionBy:""});save();e.target.reset();closeModal("issueModal");render();}
- if(file&&file.size){let r=new FileReader();r.onload=()=>finish(r.result);r.readAsDataURL(file)}else finish("");
+document.getElementById("issueForm").onsubmit=async e=>{
+ e.preventDefault(); if(!requireMechanic())return;
+ const form=e.target,button=form.querySelector('button[type="submit"]');
+ if(button?.disabled)return;
+ const f=new FormData(form),file=f.get("photo"),woId=Number(f.get("wo")),linked=state.workorders.find(w=>w.id===woId);
+ if(!linked)return alert("This work order is no longer available. Refresh and try again.");
+ const findingId=Date.now();
+ let photoId="";
+ try{
+   if(button){button.disabled=true;button.dataset.oldText=button.textContent;button.textContent="Saving…";}
+   setFindingPhotoStatus("");
+   if(file&&file.size)photoId=await uploadFindingPhoto(file,woId,findingId);
+   const now=new Date();
+   state.issues.unshift({id:findingId,wo:woId,unitSnapshot:linked?.unit||"",customerSnapshot:linked?.customer||"",mechanic:session.username,severity:f.get("severity"),description:f.get("description"),recommendation:f.get("recommendation"),photoId,photo:"",status:"Reported",approval:"Waiting for Customer",adminNote:"",convertedToTask:false,created:now.toLocaleString(),createdAt:now.toISOString(),decisionAt:"",decisionBy:""});
+   save();form.reset();setFindingPhotoStatus("");closeModal("issueModal");render();
+ }catch(err){
+   console.error("Finding save/photo upload failed:",err);setFindingPhotoStatus(err.message||"Photo upload failed.",true);alert(err.message||"Finding could not be saved.");
+ }finally{
+   if(button){button.disabled=false;button.textContent=button.dataset.oldText||"Save Finding";delete button.dataset.oldText;}
+ }
 };
 
 function openEdit(id){if(!requireAdmin())return;

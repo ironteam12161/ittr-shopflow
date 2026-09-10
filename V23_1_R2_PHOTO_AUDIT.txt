@@ -1,0 +1,20 @@
+ITTR v23.1 R2 PHOTO UPLOAD — PROGRAMMER AUDIT
+
+ROOT CAUSE IN OLD APP: finding photos were converted with FileReader.readAsDataURL and stored inside the whole shopflow JSON snapshot. express.json was limited to 3 MB. Base64 also increases payload size, so normal phone photos could break cloud saves.
+
+NEW PHOTO ARCHITECTURE: phone -> browser resize/compress -> authenticated multipart upload -> Railway backend validation -> server image normalization -> private Cloudflare R2 -> PostgreSQL finding_photos metadata -> finding stores only photoId -> authenticated short-lived signed viewing URL.
+
+CHECKS/FIXES:
+- No new finding photo is stored as base64 in shopflow.
+- Original upload max 25 MB; browser compresses to max 1920px JPEG quality 82 when supported.
+- Server independently rotates, resizes and converts to JPEG max 1920px using sharp.
+- Private R2 bucket; no public bucket requirement.
+- Access check: admin or mechanic assigned to the work order.
+- Photo metadata stored in PostgreSQL, object bytes stored in R2.
+- Signed image URLs expire after 10 minutes and are cached in browser briefly.
+- Upload status and useful errors shown on mechanic phone.
+- Multer size/type errors return 413/415 instead of generic 500.
+- Legacy base64 finding photos migrate to R2 at startup one-by-one; original is cleared only after successful R2+DB save.
+- Existing v23 stable task UID/timeline logic preserved.
+- Root index.html and public/index.html kept byte-identical.
+- No destructive database reset or DROP statements added.

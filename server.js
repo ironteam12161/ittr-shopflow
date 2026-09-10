@@ -8,12 +8,24 @@ import crypto from "crypto";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import pg from "pg";
+import sharp from "sharp";
+import {S3Client,PutObjectCommand,GetObjectCommand,DeleteObjectCommand,HeadBucketCommand} from "@aws-sdk/client-s3";
+import {getSignedUrl} from "@aws-sdk/s3-request-presigner";
 import { fileURLToPath } from "url";
 
 dotenv.config();
 const {Pool}=pg;
 const app=express();
 const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:20*1024*1024}});
+const photoUpload=multer({
+ storage:multer.memoryStorage(),
+ limits:{fileSize:25*1024*1024,files:1},
+ fileFilter:(req,file,cb)=>{
+   const type=String(file?.mimetype||"").toLowerCase();
+   if(type.startsWith("image/") || /\.(jpe?g|png|webp|heic|heif)$/i.test(String(file?.originalname||"")))return cb(null,true);
+   const e=new Error("Only image files are allowed.");e.code="PHOTO_TYPE";cb(e);
+ }
+});
 const __filename=fileURLToPath(import.meta.url);
 const __dirname=path.dirname(__filename);
 const port=Number(process.env.PORT||3000);
@@ -23,6 +35,38 @@ const configuredApiKey=String(process.env.OPENAI_API_KEY||"").trim();
 const apiKeyLooksConfigured=Boolean(configuredApiKey && configuredApiKey!=="your_server_side_key" && !configuredApiKey.toLowerCase().includes("replace") && !configuredApiKey.toLowerCase().includes("your_"));
 const client=apiKeyLooksConfigured?new OpenAI({apiKey:configuredApiKey}):null;
 const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATABASE_URL,ssl:isProd?{rejectUnauthorized:false}:undefined}):null;
+
+const r2Bucket=String(process.env.R2_BUCKET_NAME||"").trim();
+const r2Endpoint=String(process.env.R2_ENDPOINT||"").trim();
+const r2AccessKeyId=String(process.env.R2_ACCESS_KEY_ID||"").trim();
+const r2SecretAccessKey=String(process.env.R2_SECRET_ACCESS_KEY||"").trim();
+const r2Region=String(process.env.R2_REGION||"auto").trim()||"auto";
+const r2Configured=Boolean(r2Bucket&&r2Endpoint&&r2AccessKeyId&&r2SecretAccessKey);
+const r2=r2Configured?new S3Client({region:r2Region,endpoint:r2Endpoint,credentials:{accessKeyId:r2AccessKeyId,secretAccessKey:r2SecretAccessKey}}):null;
+function requireR2(){if(!r2Configured||!r2){const e=new Error("Photo storage is not configured. Check the R2 variables in Railway.");e.code="R2_NOT_CONFIGURED";throw e;}return r2;}
+function safeObjectPart(v){return String(v||"").trim().replace(/[^a-zA-Z0-9._-]/g,"_").slice(0,100)||"unknown";}
+async function normalizeFindingImage(buffer){
+ try{
+  const out=await sharp(buffer,{failOn:"none"}).rotate().resize({width:1920,height:1920,fit:"inside",withoutEnlargement:true}).jpeg({quality:82,mozjpeg:true}).toBuffer({resolveWithObject:true});
+  if(!out?.data?.length)throw new Error("Image conversion produced an empty file.");
+  if(out.data.length>10*1024*1024)throw new Error("Processed photo is still too large.");
+  return {buffer:out.data,mime:"image/jpeg",width:Number(out.info?.width||0),height:Number(out.info?.height||0),bytes:out.data.length};
+ }catch(err){
+  const e=new Error("This phone photo could not be converted. Try taking the picture again or choose JPEG/Most Compatible camera format.");
+  e.code="PHOTO_PROCESSING";e.cause=err;throw e;
+ }
+}
+async function putFindingPhoto({buffer,findingId,workOrderId,uploader,originalName="photo.jpg",db=requireDb()}){
+ const normalized=await normalizeFindingImage(buffer);
+ const photoId=crypto.randomUUID();
+ const d=new Date();
+ const key=`findings/${safeObjectPart(workOrderId)}/${d.getUTCFullYear()}/${String(d.getUTCMonth()+1).padStart(2,"0")}/${photoId}.jpg`;
+ await requireR2().send(new PutObjectCommand({Bucket:r2Bucket,Key:key,Body:normalized.buffer,ContentType:normalized.mime,CacheControl:"private, max-age=3600",Metadata:{finding_id:safeObjectPart(findingId),work_order_id:safeObjectPart(workOrderId),uploader:safeObjectPart(uploader)}}));
+ await db.query(`INSERT INTO finding_photos(id,finding_id,work_order_id,uploader_username,r2_key,content_type,size_bytes,width,height,original_name)
+   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,[photoId,String(findingId),String(workOrderId),String(uploader||""),key,normalized.mime,normalized.bytes,normalized.width,normalized.height,String(originalName||"photo.jpg").slice(0,255)]);
+ return {photoId,width:normalized.width,height:normalized.height,size:normalized.bytes};
+}
+
 
 app.set("trust proxy",1);
 app.use(helmet({contentSecurityPolicy:false,crossOriginEmbedderPolicy:false}));
@@ -107,7 +151,25 @@ async function initDb(){
    created_by TEXT,
    created_at TIMESTAMPTZ DEFAULT now(),
    note TEXT
- );`);
+ );
+ CREATE TABLE IF NOT EXISTS finding_photos(
+   id TEXT PRIMARY KEY,
+   finding_id TEXT NOT NULL,
+   work_order_id TEXT NOT NULL,
+   uploader_username TEXT NOT NULL,
+   r2_key TEXT UNIQUE NOT NULL,
+   content_type TEXT NOT NULL DEFAULT 'image/jpeg',
+   size_bytes BIGINT NOT NULL DEFAULT 0,
+   width INTEGER NOT NULL DEFAULT 0,
+   height INTEGER NOT NULL DEFAULT 0,
+   original_name TEXT,
+   created_at TIMESTAMPTZ DEFAULT now(),
+   deleted_at TIMESTAMPTZ
+ );
+ CREATE INDEX IF NOT EXISTS idx_finding_photos_finding ON finding_photos(finding_id,created_at);
+ CREATE INDEX IF NOT EXISTS idx_finding_photos_workorder ON finding_photos(work_order_id,created_at);
+ CREATE INDEX IF NOT EXISTS idx_finding_photos_uploader ON finding_photos(uploader_username,created_at);
+ `);
 
  await pool.query(`
  CREATE OR REPLACE FUNCTION ittr_capture_state_history() RETURNS trigger AS $$
@@ -160,8 +222,8 @@ async function auth(req,res,next){
 function adminOnly(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Admin access required."});next()}
 async function audit(username,action,details={}){try{if(pool)await pool.query("INSERT INTO server_audit(username,action,details) VALUES($1,$2,$3::jsonb)",[username||null,action,JSON.stringify(details)])}catch(e){console.error("audit",e.message)}}
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.0.2",backend:"23.0.2",build:"ITTR-23.0.2-VERSION-CHECK-FIXED-20260910"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"23.0.2"})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.1.0",backend:"23.1.0",build:"ITTR-23.1-R2-PHOTO-UPLOAD-20260910"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"23.1.0",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -527,6 +589,38 @@ async function repairTaskUidsAtStartup(){
   }finally{db.release();}
 }
 
+async function migrateLegacyFindingPhotosAtStartup(){
+ if(!pool||!r2Configured)return;
+ const db=await pool.connect();
+ try{
+   await db.query("BEGIN");
+   const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
+   if(!q.rowCount){await db.query("ROLLBACK");return;}
+   const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};
+   const issues=Array.isArray(sf.issues)?sf.issues:[];
+   let migrated=0;
+   for(const issue of issues){
+     if(issue?.photoId || typeof issue?.photo!=="string" || !issue.photo.startsWith("data:image/"))continue;
+     const m=issue.photo.match(/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/s);
+     if(!m)continue;
+     try{
+       const buffer=Buffer.from(m[1],"base64");
+       if(!buffer.length)continue;
+       const saved=await putFindingPhoto({buffer,findingId:issue.id,workOrderId:issue.wo,uploader:issue.mechanic||"legacy",originalName:"legacy-finding-photo",db});
+       issue.photoId=saved.photoId;
+       issue.photo="";
+       migrated++;
+     }catch(e){console.error("Legacy finding photo migration skipped:",issue?.id,e?.message);}
+   }
+   if(migrated){
+     await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by='system-photo-migration' WHERE state_key='shopflow'",[JSON.stringify(sf)]);
+     console.log(`ITTR migrated ${migrated} legacy finding photo(s) to R2.`);
+   }
+   await db.query("COMMIT");
+ }catch(e){try{await db.query("ROLLBACK")}catch(_){}console.error("Legacy photo migration failed:",e)}
+ finally{db.release()}
+}
+
 async function repairApprovedFindingsAtStartup(){
   if(!pool)return;
   const clientDb=await pool.connect();
@@ -549,6 +643,77 @@ async function repairApprovedFindingsAtStartup(){
     console.error("Approved finding reconciliation failed:",e);
   }finally{clientDb.release();}
 }
+
+async function getShopflowPayload(db=requireDb()){
+ const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");
+ return q.rows[0]?.payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};
+}
+function canAccessPhotoWorkOrder(user,w){
+ if(user?.role==="admin")return true;
+ return user?.role==="mechanic"&&String(w?.mechanic||"")===String(user?.username||"");
+}
+async function photoAccessRow(photoId,user){
+ const q=await requireDb().query("SELECT * FROM finding_photos WHERE id=$1 AND deleted_at IS NULL",[String(photoId)]);
+ if(!q.rowCount)return {status:404,error:"Photo not found."};
+ const row=q.rows[0],sf=await getShopflowPayload(),w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===String(row.work_order_id));
+ if(!w && user?.role!=="admin")return {status:403,error:"Photo access denied."};
+ if(w&&!canAccessPhotoWorkOrder(user,w))return {status:403,error:"Photo access denied."};
+ return {row,w};
+}
+
+app.get("/api/photos/status",auth,adminOnly,async(req,res)=>{
+ let storageReachable=false,error="";
+ try{
+   if(r2Configured){
+     await requireR2().send(new HeadBucketCommand({Bucket:r2Bucket}));
+     const probe=await requireDb().query("SELECT COUNT(*)::int AS count FROM finding_photos WHERE deleted_at IS NULL");
+     storageReachable=true;
+     return res.json({configured:true,storageReachable:true,bucket:r2Bucket,photoCount:Number(probe.rows[0]?.count||0)});
+   }
+ }catch(e){error=String(e?.message||e).slice(0,300)}
+ res.status(r2Configured?500:503).json({configured:r2Configured,storageReachable,error:error||"R2 is not configured."});
+});
+
+app.post("/api/findings/:findingId/photo",auth,photoUpload.single("photo"),async(req,res,next)=>{
+ try{
+   requireR2();
+   if(!req.file?.buffer?.length)return res.status(400).json({error:"Choose or take a photo first."});
+   const findingId=String(req.params.findingId||"").trim();
+   const workOrderId=String(req.body?.workOrderId||"").trim();
+   if(!findingId||!workOrderId)return res.status(400).json({error:"Finding ID and work order are required."});
+   const sf=await getShopflowPayload();
+   const w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===workOrderId);
+   if(!w)return res.status(404).json({error:"Work order not found. Refresh the app and try again."});
+   if(!canAccessPhotoWorkOrder(req.user,w))return res.status(403).json({error:"You do not have access to upload a photo to this work order."});
+   const saved=await putFindingPhoto({buffer:req.file.buffer,findingId,workOrderId,uploader:req.user.username,originalName:req.file.originalname});
+   await audit(req.user.username,"finding_photo_uploaded",{findingId,workOrderId,photoId:saved.photoId,size:saved.size,width:saved.width,height:saved.height});
+   res.json({ok:true,...saved});
+ }catch(e){next(e)}
+});
+
+app.get("/api/photos/:photoId/url",auth,async(req,res,next)=>{
+ try{
+   requireR2();
+   const access=await photoAccessRow(req.params.photoId,req.user);
+   if(access.error)return res.status(access.status).json({error:access.error});
+   const url=await getSignedUrl(requireR2(),new GetObjectCommand({Bucket:r2Bucket,Key:access.row.r2_key}),{expiresIn:600});
+   res.setHeader("Cache-Control","private, max-age=240");
+   res.json({url,expiresIn:600});
+ }catch(e){next(e)}
+});
+
+app.delete("/api/photos/:photoId",auth,async(req,res,next)=>{
+ try{
+   requireR2();
+   const access=await photoAccessRow(req.params.photoId,req.user);
+   if(access.error)return res.status(access.status).json({error:access.error});
+   if(req.user.role!=="admin"&&String(access.row.uploader_username)!==String(req.user.username))return res.status(403).json({error:"Only the uploader or an admin can remove this photo."});
+   await requireR2().send(new DeleteObjectCommand({Bucket:r2Bucket,Key:access.row.r2_key}));
+   await requireDb().query("UPDATE finding_photos SET deleted_at=now() WHERE id=$1",[String(req.params.photoId)]);
+   await audit(req.user.username,"finding_photo_deleted",{photoId:String(req.params.photoId),findingId:access.row.finding_id,workOrderId:access.row.work_order_id});
+   res.json({ok:true});
+ }catch(e){next(e)}
+});
 
 app.post("/api/findings/:id/decision",auth,adminOnly,async(req,res,next)=>{
  const db=await requireDb().connect();
@@ -734,7 +899,13 @@ app.post("/api/transcribe",auth,upload.single("audio"),async(req,res)=>{try{if(!
 
 app.get("/api/admin/server-audit",auth,adminOnly,async(req,res,next)=>{try{const q=await requireDb().query("SELECT username,action,details,created_at FROM server_audit ORDER BY id DESC LIMIT 500");res.json({rows:q.rows})}catch(e){next(e)}});
 app.use("/api",(req,res)=>res.status(404).json({error:"API endpoint not found"}));
-app.use((err,req,res,next)=>{console.error(err);if(err?.code==="DB_NOT_CONFIGURED")return res.status(503).json({error:err.message,code:err.code});res.status(500).json({error:isProd?"Server error":String(err?.message||err)})});
+app.use((err,req,res,next)=>{
+ console.error(err);
+ if(err?.code==="DB_NOT_CONFIGURED"||err?.code==="R2_NOT_CONFIGURED")return res.status(503).json({error:err.message,code:err.code});
+ if(err?.code==="LIMIT_FILE_SIZE")return res.status(413).json({error:"Photo is too large. Maximum original file size is 25 MB."});
+ if(err?.code==="PHOTO_TYPE"||err?.code==="PHOTO_PROCESSING")return res.status(415).json({error:err.message,code:err.code});
+ res.status(500).json({error:isProd?"Server error":String(err?.message||err)});
+});
 app.get("*splat",(req,res)=>{
  res.setHeader("Cache-Control","no-store, no-cache, must-revalidate, proxy-revalidate");
  res.setHeader("Pragma","no-cache");
@@ -743,7 +914,8 @@ app.get("*splat",(req,res)=>{
 });
 
 initDb()
+  .then(()=>migrateLegacyFindingPhotosAtStartup())
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(()=>app.listen(port,()=>console.log(`ITTR v23.0 Online running on port ${port}`)))
+  .then(()=>app.listen(port,()=>console.log(`ITTR v23.1 Online running on port ${port}`)))
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});
