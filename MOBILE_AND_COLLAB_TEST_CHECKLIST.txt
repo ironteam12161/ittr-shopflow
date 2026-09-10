@@ -1,0 +1,29 @@
+ITTR v23.2 MOBILE + HELPER MECHANIC TEST CHECKLIST
+
+MOBILE LAYOUT
+1. Mechanic phone: open My Work, scroll to bottom. Last Open Job button must remain above bottom nav.
+2. Open a work order. App header and bottom nav must disappear; modal Close X and all task buttons must be unobstructed.
+3. Scroll to top and bottom inside work order modal. Nothing may sit over content.
+4. Add Finding modal: camera input and Save Finding must remain reachable.
+5. Open keyboard in notes/activity fields. Bottom nav must hide while keyboard is open.
+6. Rotate portrait/landscape. App recalculates navigation spacing.
+7. iPhone/PWA safe area: top modal header and bottom content remain inside safe area.
+8. Admin phone: bottom nav can scroll horizontally instead of crushing all 7 buttons.
+
+HELPER MECHANIC
+1. Primary mechanic opens an active work order and taps Add Helper Mechanic.
+2. Select another mechanic. Helper should see same unit on their phone after cloud refresh.
+3. Primary starts Task A. Helper must see Task A as Working by Primary and cannot pause/complete it.
+4. Helper starts Task B at the same time. This must be allowed.
+5. Helper pauses Task B; only Helper can pause/complete that running session.
+6. Primary or Helper can add a Finding; R2 photo upload must still work for Helper.
+7. Resume/complete tasks with different mechanics and verify task timeline shows mechanic name on every session.
+8. Complete work order only after every task has a final outcome and no task is running.
+9. Open completed work order. Mechanic Work Summary must list each mechanic, tasks worked, and labor time.
+10. Admin can remove a helper only when that helper has no running task.
+
+REGRESSION
+- Existing permanent task UID timeline must remain attached to correct task.
+- R2 finding photos must still upload/view.
+- Findings approvals must still add/hold/decline tasks.
+- No database reset or destructive migration.

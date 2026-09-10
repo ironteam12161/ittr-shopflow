@@ -1,0 +1,30 @@
+ITTR v23.2 MOBILE + COLLABORATION
+
+MOBILE FIXES
+- Full-screen modals now sit above app chrome.
+- Header and bottom navigation are hidden while a modal is open.
+- Bottom padding is measured from the real bottom-navigation height.
+- Bottom navigation scrolls horizontally on admin phones instead of crushing 7 buttons.
+- Bottom nav hides while the phone keyboard is open.
+- Header is compact on phones and respects iPhone safe-area inset.
+- Modal header respects safe area and stays above modal content.
+- Task/action buttons use full-width mobile layout.
+
+MECHANIC COLLABORATION
+- Existing assigned mechanic remains Primary.
+- Any assigned mechanic can add another active mechanic as a Helper.
+- Helpers see the same active/upcoming work order and can add findings.
+- Helpers can work on different tasks at the same time.
+- A mechanic cannot pause/complete a task started by another mechanic.
+- Each labor session already stores mechanic_username and is now displayed in timelines.
+- Completed/detail view includes Mechanic Work Summary: person -> task -> labor time/outcome.
+- Admin can remove a helper when that helper has no currently running task.
+- Work-order history records helper added/removed events.
+- Photo access now recognizes helper mechanics too.
+
+DATA SAFETY
+- No DB reset.
+- No destructive SQL.
+- Legacy work orders get helpers=[] automatically.
+- Legacy running tasks get runningBy set to their primary mechanic.
+- Permanent task UID architecture and R2 photos preserved.

@@ -194,6 +194,10 @@ async function initDb(){
    "INSERT INTO schema_migrations(migration_key) VALUES($1) ON CONFLICT(migration_key) DO NOTHING",
    ["023_stable_task_records"]
  );
+ await pool.query(
+   "INSERT INTO schema_migrations(migration_key) VALUES($1) ON CONFLICT(migration_key) DO NOTHING",
+   ["025_mobile_collaboration"]
+ );
 
  const c=await pool.query("SELECT count(*)::int c FROM auth_users WHERE role='admin' AND active=true");
  if(c.rows[0].c===0){
@@ -222,8 +226,8 @@ async function auth(req,res,next){
 function adminOnly(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Admin access required."});next()}
 async function audit(username,action,details={}){try{if(pool)await pool.query("INSERT INTO server_audit(username,action,details) VALUES($1,$2,$3::jsonb)",[username||null,action,JSON.stringify(details)])}catch(e){console.error("audit",e.message)}}
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.1.0",backend:"23.1.0",build:"ITTR-23.1-R2-PHOTO-UPLOAD-20260910"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"23.1.0",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.2.0",backend:"23.2.0",build:"ITTR-23.2-MOBILE-COLLAB-20260910"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"23.2.0",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -275,10 +279,17 @@ function ensureTaskUid(task,workOrderId,taskIndex){
   if(!task.uid)task.uid=`wo-${String(workOrderId)}-task-${taskIndex}-${crypto.randomBytes(4).toString("hex")}`;
   return task.uid;
 }
+function assignedMechanicUsernames(w){
+  const primary=String(w?.mechanic||"").trim().toLowerCase();
+  const helpers=Array.isArray(w?.helpers)?w.helpers.map(x=>String(x||"").trim().toLowerCase()).filter(Boolean):[];
+  return [...new Set([primary,...helpers].filter(Boolean))];
+}
 function mechanicOwnsWorkOrder(user,w){
   if(user?.role==="admin")return true;
-  return user?.role==="mechanic" && String(w?.mechanic||"")===String(user.username||"");
+  return user?.role==="mechanic" && assignedMechanicUsernames(w).includes(String(user.username||"").trim().toLowerCase());
 }
+function taskRunningMechanic(task,w){return String(task?.runningBy||((task?.startedAt&&!task?.stoppedAt&&!task?.done)?w?.mechanic||"":"")).trim().toLowerCase()}
+
 async function closeOpenTaskSession(db,workOrderId,taskUid,mechanic,endReason,pauseReason="",pauseNote=""){
   await db.query(
     `UPDATE task_time_sessions
@@ -291,6 +302,53 @@ async function closeOpenTaskSession(db,workOrderId,taskUid,mechanic,endReason,pa
     [String(workOrderId),String(taskUid),String(mechanic),endReason,pauseReason,pauseNote]
   );
 }
+
+
+app.post("/api/work-orders/:id/helpers",auth,async(req,res,next)=>{
+ const db=await requireDb().connect();
+ try{
+  const workOrderId=String(req.params.id),target=cleanUsername(req.body?.username);
+  if(!target)return res.status(400).json({error:"Choose a mechanic."});
+  await db.query("BEGIN");
+  const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
+  if(!q.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Shop data not found."});}
+  const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};
+  sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
+  const w=sf.workorders.find(x=>String(x?.id)===workOrderId);
+  if(!w){await db.query("ROLLBACK");return res.status(404).json({error:"Work order not found."});}
+  if(req.user.role!=="admin"&&!mechanicOwnsWorkOrder(req.user,w)){await db.query("ROLLBACK");return res.status(403).json({error:"You must already be assigned to this work order to add a helper."});}
+  if(w.status==="Completed"){await db.query("ROLLBACK");return res.status(409).json({error:"Completed work orders cannot add helpers."});}
+  const uq=await db.query("SELECT username,display_name FROM auth_users WHERE username=$1 AND role='mechanic' AND active=true",[target]);
+  if(!uq.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Mechanic account not found."});}
+  w.helpers=Array.isArray(w.helpers)?w.helpers:[];
+  if(String(w.mechanic||"").toLowerCase()===target||w.helpers.map(x=>String(x).toLowerCase()).includes(target)){await db.query("ROLLBACK");return res.status(409).json({error:"This mechanic is already assigned to the work order."});}
+  w.helpers.push(target);
+  w.history=Array.isArray(w.history)?w.history:[];
+  w.history.push({type:"helper_added",at:new Date().toISOString(),by:req.user.username,byDisplay:req.user.display_name||req.user.username,helper:target,helperDisplay:uq.rows[0].display_name||target});
+  const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
+  await db.query("COMMIT");await audit(req.user.username,"work_order_helper_added",{workOrderId,helper:target});
+  res.json({ok:true,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
+ }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
+});
+app.delete("/api/work-orders/:id/helpers/:username",auth,async(req,res,next)=>{
+ const db=await requireDb().connect();
+ try{
+  const workOrderId=String(req.params.id),target=cleanUsername(req.params.username);
+  await db.query("BEGIN");
+  const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
+  if(!q.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Shop data not found."});}
+  const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
+  const w=sf.workorders.find(x=>String(x?.id)===workOrderId);if(!w){await db.query("ROLLBACK");return res.status(404).json({error:"Work order not found."});}
+  const primary=String(w.mechanic||"").toLowerCase();
+  if(req.user.role!=="admin"&&String(req.user.username||"").toLowerCase()!==primary){await db.query("ROLLBACK");return res.status(403).json({error:"Only the primary mechanic or admin can remove a helper."});}
+  const open=await db.query("SELECT 1 FROM task_time_sessions WHERE work_order_id=$1 AND mechanic_username=$2 AND ended_at IS NULL LIMIT 1",[workOrderId,target]);
+  if(open.rowCount){await db.query("ROLLBACK");return res.status(409).json({error:"This mechanic has a running task on the work order. Pause or complete it first."});}
+  w.helpers=(Array.isArray(w.helpers)?w.helpers:[]).filter(x=>String(x).toLowerCase()!==target);
+  w.history=Array.isArray(w.history)?w.history:[];w.history.push({type:"helper_removed",at:new Date().toISOString(),by:req.user.username,byDisplay:req.user.display_name||req.user.username,helper:target});
+  const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
+  await db.query("COMMIT");await audit(req.user.username,"work_order_helper_removed",{workOrderId,helper:target});res.json({ok:true,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
+ }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
+});
 
 app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/action",auth,async(req,res,next)=>{
  const db=await requireDb().connect();
@@ -334,9 +392,9 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/action",auth,async(req,res,
      if(task.done || String(task.taskOutcome||"")==="completed"){
        await db.query("ROLLBACK");return res.status(409).json({error:"This task is already completed."});
      }
-     const another=w.tasks.findIndex(t=>String(t?.uid||"")!==uid && taskRunning(t));
+     const another=w.tasks.findIndex(t=>String(t?.uid||"")!==uid && taskRunning(t) && taskRunningMechanic(t,w)===String(req.user.username||"").toLowerCase());
      if(another!==-1){
-       await db.query("ROLLBACK");return res.status(409).json({error:"Pause or complete the current task before starting another one."});
+       await db.query("ROLLBACK");return res.status(409).json({error:"Pause or complete your current task before starting another one."});
      }
      if(taskRunning(task)){
        await db.query("ROLLBACK");return res.status(409).json({error:"This task is already running."});
@@ -344,6 +402,7 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/action",auth,async(req,res,
 
      task.startedAt=now.toISOString();
      task.stoppedAt="";
+     task.runningBy=req.user.username;
      task.paused=false;
      task.pausedAt="";
      task.pauseReason="";
@@ -367,6 +426,7 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/action",auth,async(req,res,
      if(!taskRunning(task)){
        await db.query("ROLLBACK");return res.status(409).json({error:"This task is not currently running."});
      }
+     if(taskRunningMechanic(task,w)!==String(req.user.username||"").toLowerCase()){await db.query("ROLLBACK");return res.status(409).json({error:"Only the mechanic who started this task can pause it."});}
      const reason=String(req.body?.reason||"").trim();
      const note=String(req.body?.note||"").trim().slice(0,1000);
      if(!reason){
@@ -375,6 +435,7 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/action",auth,async(req,res,
      const started=new Date(task.startedAt);
      task.elapsedMs=Number(task.elapsedMs||0)+Math.max(0,now.getTime()-started.getTime());
      task.stoppedAt=now.toISOString();
+     task.runningBy="";
      task.paused=true;
      task.pausedAt=now.toISOString();
      task.pauseReason=reason;
@@ -391,9 +452,11 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/action",auth,async(req,res,
      if(!taskRunning(task)){
        await db.query("ROLLBACK");return res.status(409).json({error:"Start or resume this task before completing it."});
      }
+     if(taskRunningMechanic(task,w)!==String(req.user.username||"").toLowerCase()){await db.query("ROLLBACK");return res.status(409).json({error:"Only the mechanic who started this task can complete it."});}
      const started=new Date(task.startedAt);
      task.elapsedMs=Number(task.elapsedMs||0)+Math.max(0,now.getTime()-started.getTime());
      task.stoppedAt=now.toISOString();
+     task.runningBy="";
      task.paused=false;
      task.pausedAt="";
      task.pauseReason="";
@@ -621,6 +684,22 @@ async function migrateLegacyFindingPhotosAtStartup(){
  finally{db.release()}
 }
 
+async function normalizeCollaborationAtStartup(){
+ if(!pool)return;
+ const db=await pool.connect();
+ try{
+  await db.query("BEGIN");const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");if(!q.rowCount){await db.query("ROLLBACK");return;}
+  const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};let changed=false;
+  for(const w of (Array.isArray(sf.workorders)?sf.workorders:[])){
+   if(!Array.isArray(w.helpers)){w.helpers=[];changed=true}
+   const primary=String(w.mechanic||"").toLowerCase(),clean=[...new Set(w.helpers.map(x=>String(x||"").trim().toLowerCase()).filter(x=>x&&x!==primary))];if(JSON.stringify(clean)!==JSON.stringify(w.helpers)){w.helpers=clean;changed=true}
+   for(const t of (Array.isArray(w.tasks)?w.tasks:[])){if(typeof t.runningBy==="undefined"){t.runningBy=taskRunning(t)?(w.mechanic||""):"";changed=true}}
+  }
+  if(changed)await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by='system-collaboration-normalize' WHERE state_key='shopflow'",[JSON.stringify(sf)]);
+  await db.query("COMMIT");
+ }catch(e){try{await db.query("ROLLBACK")}catch(_){}console.error("Collaboration normalization failed:",e.message)}finally{db.release()}
+}
+
 async function repairApprovedFindingsAtStartup(){
   if(!pool)return;
   const clientDb=await pool.connect();
@@ -650,7 +729,7 @@ async function getShopflowPayload(db=requireDb()){
 }
 function canAccessPhotoWorkOrder(user,w){
  if(user?.role==="admin")return true;
- return user?.role==="mechanic"&&String(w?.mechanic||"")===String(user?.username||"");
+ return user?.role==="mechanic"&&assignedMechanicUsernames(w).includes(String(user?.username||"").trim().toLowerCase());
 }
 async function photoAccessRow(photoId,user){
  const q=await requireDb().query("SELECT * FROM finding_photos WHERE id=$1 AND deleted_at IS NULL",[String(photoId)]);
@@ -794,7 +873,8 @@ app.post("/api/findings/:id/decision",auth,adminOnly,async(req,res,next)=>{
        const now=new Date(),started=new Date(task.startedAt);
        task.elapsedMs=Number(task.elapsedMs||0)+Math.max(0,now.getTime()-started.getTime());
        task.stoppedAt=now.toISOString();
-       if(task.uid)await closeOpenTaskSession(db,wo.id,task.uid,wo.mechanic||req.user.username,"approval_hold","Waiting for Customer Approval","");
+       if(task.uid)await closeOpenTaskSession(db,wo.id,task.uid,taskRunningMechanic(task,wo)||wo.mechanic||req.user.username,"approval_hold","Waiting for Customer Approval","");
+       task.runningBy="";
      }
      task.findingDecision="Waiting for Customer";
      task.approvalChangedAt=issue.decisionAt;
@@ -818,7 +898,8 @@ app.post("/api/findings/:id/decision",auth,adminOnly,async(req,res,next)=>{
        const now=new Date(),started=new Date(task.startedAt);
        task.elapsedMs=Number(task.elapsedMs||0)+Math.max(0,now.getTime()-started.getTime());
        task.stoppedAt=now.toISOString();
-       if(task.uid)await closeOpenTaskSession(db,wo.id,task.uid,wo.mechanic||req.user.username,"declined","Do Not Proceed","");
+       if(task.uid)await closeOpenTaskSession(db,wo.id,task.uid,taskRunningMechanic(task,wo)||wo.mechanic||req.user.username,"declined","Do Not Proceed","");
+       task.runningBy="";
      }
      task.findingDecision="Do Not Proceed";
      task.approvalChangedAt=issue.decisionAt;
@@ -916,6 +997,7 @@ app.get("*splat",(req,res)=>{
 initDb()
   .then(()=>migrateLegacyFindingPhotosAtStartup())
   .then(()=>repairTaskUidsAtStartup())
+  .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(()=>app.listen(port,()=>console.log(`ITTR v23.1 Online running on port ${port}`)))
+  .then(()=>app.listen(port,()=>console.log(`ITTR v23.2 Online running on port ${port}`)))
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});
