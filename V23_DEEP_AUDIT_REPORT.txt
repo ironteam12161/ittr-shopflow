@@ -1,0 +1,20 @@
+ITTR v23.0 DEEP PROGRAMMER AUDIT
+
+Primary issue fixed:
+- Task Start/Pause/Resume/Complete no longer identifies repairs by array index.
+- All task actions now use permanent task UID.
+- Timeline is exact UID only.
+- Duplicate task UIDs are detected/repaired at startup.
+- Session closing uses work_order_id + task_uid + mechanic.
+- New DB sessions store task_name for diagnostics.
+- New task shows no fake timeline unless that exact UID has sessions.
+
+Additional safeguards:
+- Root/public index byte-identical.
+- Root/public SW byte-identical and self-removing.
+- Frontend/backend/package versions aligned at 23.0.0.
+- No destructive database reset.
+- Existing PostgreSQL upgraded in place with ALTER TABLE ADD COLUMN IF NOT EXISTS.
+
+Static audit result:
+- PASS: no blocking issues found

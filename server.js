@@ -89,6 +89,7 @@ async function initDb(){
    work_order_id TEXT NOT NULL,
    task_index INTEGER NOT NULL,
    task_uid TEXT,
+   task_name TEXT,
    mechanic_username TEXT NOT NULL,
    started_at TIMESTAMPTZ NOT NULL,
    ended_at TIMESTAMPTZ,
@@ -125,6 +126,12 @@ async function initDb(){
    "INSERT INTO schema_migrations(migration_key) VALUES($1) ON CONFLICT(migration_key) DO NOTHING",
    ["022_data_safe_pause_resume_findings"]
  );
+ await pool.query("ALTER TABLE task_time_sessions ADD COLUMN IF NOT EXISTS task_name TEXT");
+ await pool.query("CREATE INDEX IF NOT EXISTS idx_task_sessions_uid ON task_time_sessions(work_order_id,task_uid,started_at DESC)");
+ await pool.query(
+   "INSERT INTO schema_migrations(migration_key) VALUES($1) ON CONFLICT(migration_key) DO NOTHING",
+   ["023_stable_task_records"]
+ );
 
  const c=await pool.query("SELECT count(*)::int c FROM auth_users WHERE role='admin' AND active=true");
  if(c.rows[0].c===0){
@@ -153,8 +160,8 @@ async function auth(req,res,next){
 function adminOnly(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Admin access required."});next()}
 async function audit(username,action,details={}){try{if(pool)await pool.query("INSERT INTO server_audit(username,action,details) VALUES($1,$2,$3::jsonb)",[username||null,action,JSON.stringify(details)])}catch(e){console.error("audit",e.message)}}
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"22.6.0",backend:"22.6.0",build:"ITTR-22.6-SINGLE-SOURCE-20260910"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"22.6.0-single-source"})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.0.0",backend:"23.0.0",build:"ITTR-23-STABLE-TASKS-20260910"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"23.0.0-stable-task-records"})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -210,25 +217,26 @@ function mechanicOwnsWorkOrder(user,w){
   if(user?.role==="admin")return true;
   return user?.role==="mechanic" && String(w?.mechanic||"")===String(user.username||"");
 }
-async function closeOpenTaskSession(db,workOrderId,taskIndex,mechanic,endReason,pauseReason="",pauseNote=""){
+async function closeOpenTaskSession(db,workOrderId,taskUid,mechanic,endReason,pauseReason="",pauseNote=""){
   await db.query(
     `UPDATE task_time_sessions
      SET ended_at=now(),end_reason=$4,pause_reason=$5,pause_note=$6
      WHERE id=(
        SELECT id FROM task_time_sessions
-       WHERE work_order_id=$1 AND task_index=$2 AND mechanic_username=$3 AND ended_at IS NULL
-       ORDER BY started_at DESC LIMIT 1
+       WHERE work_order_id=$1 AND task_uid=$2 AND mechanic_username=$3 AND ended_at IS NULL
+       ORDER BY started_at DESC,id DESC LIMIT 1
      )`,
-    [String(workOrderId),Number(taskIndex),String(mechanic),endReason,pauseReason,pauseNote]
+    [String(workOrderId),String(taskUid),String(mechanic),endReason,pauseReason,pauseNote]
   );
 }
 
-app.post("/api/work-orders/:id/tasks/:taskIndex/action",auth,async(req,res,next)=>{
+app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/action",auth,async(req,res,next)=>{
  const db=await requireDb().connect();
  try{
    const workOrderId=String(req.params.id);
-   const taskIndex=Number(req.params.taskIndex);
+   const requestedUid=String(req.params.taskUid||"");
    const action=String(req.body?.action||"");
+   if(!requestedUid)return res.status(400).json({error:"Task ID is required."});
    if(!["start","pause","resume","complete"].includes(action))
      return res.status(400).json({error:"Invalid task action."});
 
@@ -241,8 +249,15 @@ app.post("/api/work-orders/:id/tasks/:taskIndex/action",auth,async(req,res,next)
    if(!w){await db.query("ROLLBACK");return res.status(404).json({error:"Work order not found."});}
    if(!mechanicOwnsWorkOrder(req.user,w)){await db.query("ROLLBACK");return res.status(403).json({error:"You do not have access to this work order."});}
    w.tasks=Array.isArray(w.tasks)?w.tasks:[];
-   const task=w.tasks[taskIndex];
-   if(!task){await db.query("ROLLBACK");return res.status(404).json({error:"Task not found."});}
+
+   const matches=w.tasks.map((t,i)=>({t,i})).filter(x=>String(x.t?.uid||"")===requestedUid);
+   if(matches.length!==1){
+     await db.query("ROLLBACK");
+     return res.status(409).json({error:matches.length===0?"Task no longer exists. Refresh the work order.":"Duplicate task identity detected. Refresh; server repair is required."});
+   }
+   const task=matches[0].t;
+   const taskIndex=matches[0].i;
+   const uid=ensureTaskUid(task,workOrderId,taskIndex);
 
    if(task.findingDecision==="Do Not Proceed"){
      await db.query("ROLLBACK");return res.status(409).json({error:"This repair was declined. Do not perform this task."});
@@ -251,20 +266,20 @@ app.post("/api/work-orders/:id/tasks/:taskIndex/action",auth,async(req,res,next)
      await db.query("ROLLBACK");return res.status(409).json({error:"This repair is waiting for customer approval."});
    }
 
-   const uid=ensureTaskUid(task,workOrderId,taskIndex);
    const now=new Date();
 
    if(action==="start" || action==="resume"){
      if(task.done || String(task.taskOutcome||"")==="completed"){
        await db.query("ROLLBACK");return res.status(409).json({error:"This task is already completed."});
      }
-     const another=w.tasks.findIndex((t,i)=>i!==taskIndex && taskRunning(t));
+     const another=w.tasks.findIndex(t=>String(t?.uid||"")!==uid && taskRunning(t));
      if(another!==-1){
        await db.query("ROLLBACK");return res.status(409).json({error:"Pause or complete the current task before starting another one."});
      }
      if(taskRunning(task)){
        await db.query("ROLLBACK");return res.status(409).json({error:"This task is already running."});
      }
+
      task.startedAt=now.toISOString();
      task.stoppedAt="";
      task.paused=false;
@@ -278,10 +293,11 @@ app.post("/api/work-orders/:id/tasks/:taskIndex/action",auth,async(req,res,next)
      task.outcomeAt="";
      task.outcomeBy="";
      if(w.status==="Open")w.status="In Progress";
+
      await db.query(
-       `INSERT INTO task_time_sessions(work_order_id,task_index,task_uid,mechanic_username,started_at)
-        VALUES($1,$2,$3,$4,$5)`,
-       [workOrderId,taskIndex,uid,req.user.username,now.toISOString()]
+       `INSERT INTO task_time_sessions(work_order_id,task_index,task_uid,task_name,mechanic_username,started_at)
+        VALUES($1,$2,$3,$4,$5,$6)`,
+       [workOrderId,taskIndex,uid,String(task.t||""),req.user.username,now.toISOString()]
      );
    }
 
@@ -306,7 +322,7 @@ app.post("/api/work-orders/:id/tasks/:taskIndex/action",auth,async(req,res,next)
      task.taskOutcome="";
      task.outcomeAt="";
      task.outcomeBy="";
-     await closeOpenTaskSession(db,workOrderId,taskIndex,req.user.username,"paused",reason,note);
+     await closeOpenTaskSession(db,workOrderId,uid,req.user.username,"paused",reason,note);
    }
 
    if(action==="complete"){
@@ -326,7 +342,7 @@ app.post("/api/work-orders/:id/tasks/:taskIndex/action",auth,async(req,res,next)
      task.outcomeNote="";
      task.outcomeAt=now.toISOString();
      task.outcomeBy=req.user.username;
-     await closeOpenTaskSession(db,workOrderId,taskIndex,req.user.username,"completed");
+     await closeOpenTaskSession(db,workOrderId,uid,req.user.username,"completed");
    }
 
    const u=await db.query(
@@ -334,14 +350,13 @@ app.post("/api/work-orders/:id/tasks/:taskIndex/action",auth,async(req,res,next)
      [JSON.stringify(sf),req.user.username]
    );
    await db.query("COMMIT");
-   await audit(req.user.username,"task_action",{workOrderId,taskIndex,taskUid:uid,action,pauseReason:req.body?.reason||""});
-   res.json({ok:true,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
+   await audit(req.user.username,"task_action",{workOrderId,taskUid:uid,taskName:String(task.t||""),action,pauseReason:req.body?.reason||""});
+   res.json({ok:true,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at,taskUid:uid});
  }catch(e){
    try{await db.query("ROLLBACK")}catch(_){}
    next(e);
  }finally{db.release();}
 });
-
 
 app.get("/api/work-orders/:id/task-sessions",auth,async(req,res,next)=>{try{
   const workOrderId=String(req.params.id);
@@ -353,15 +368,18 @@ app.get("/api/work-orders/:id/task-sessions",auth,async(req,res,next)=>{try{
   if(!mechanicOwnsWorkOrder(req.user,w) && req.user?.role!=="admin")
     return res.status(403).json({error:"You do not have access to this work order."});
 
+  const tasks=Array.isArray(w.tasks)?w.tasks:[];
+  const validUids=[...new Set(tasks.map(t=>String(t?.uid||"")).filter(Boolean))];
+  if(!validUids.length)return res.json({ok:true,workOrderId,sessions:[]});
+
   const q=await requireDb().query(
-    `SELECT id,work_order_id,task_index,task_uid,mechanic_username,
+    `SELECT id,work_order_id,task_index,task_uid,task_name,mechanic_username,
             started_at,ended_at,end_reason,pause_reason,pause_note,created_at
      FROM task_time_sessions
      WHERE work_order_id=$1
-       AND task_uid IS NOT NULL
-       AND task_uid<>''
+       AND task_uid = ANY($2::text[])
      ORDER BY started_at,id`,
-    [workOrderId]
+    [workOrderId,validUids]
   );
   res.json({ok:true,workOrderId,sessions:q.rows});
 }catch(e){next(e)}});
@@ -369,7 +387,7 @@ app.get("/api/work-orders/:id/task-sessions",auth,async(req,res,next)=>{try{
 app.get("/api/admin/backup",auth,adminOnly,async(req,res,next)=>{try{
   const states=await requireDb().query("SELECT state_key,payload,version,updated_at,updated_by FROM app_state ORDER BY state_key");
   const users=await requireDb().query("SELECT username,display_name,role,language,active,created_at,updated_at FROM auth_users ORDER BY username");
-  const sessions=await requireDb().query("SELECT work_order_id,task_index,task_uid,mechanic_username,started_at,ended_at,end_reason,pause_reason,pause_note FROM task_time_sessions ORDER BY started_at");
+  const sessions=await requireDb().query("SELECT work_order_id,task_index,task_uid,task_name,mechanic_username,started_at,ended_at,end_reason,pause_reason,pause_note FROM task_time_sessions ORDER BY started_at");
   const migrations=await requireDb().query("SELECT migration_key,applied_at FROM schema_migrations ORDER BY applied_at");
   await requireDb().query("INSERT INTO data_exports(created_by,note) VALUES($1,$2)",[req.user.username,"manual JSON backup"]);
   res.setHeader("Content-Disposition",`attachment; filename="ittr-backup-${new Date().toISOString().slice(0,10)}.json"`);
@@ -427,51 +445,80 @@ async function repairTaskUidsAtStartup(){
     await db.query("BEGIN");
     const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
     if(!q.rowCount){await db.query("COMMIT");return;}
+
     const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[]};
     sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
-    let changed=false,recovered=0,created=0;
+    let changed=false,missingCreated=0,duplicateReassigned=0,recovered=0;
 
     for(const w of sf.workorders){
       w.tasks=Array.isArray(w.tasks)?w.tasks:[];
+      const seen=new Map();
+
       for(let i=0;i<w.tasks.length;i++){
         const t=w.tasks[i];
-        if(!t || t.uid)continue;
+        if(!t)continue;
+        let uid=String(t.uid||"").trim();
 
-        // Only attempt index-based recovery for a task that clearly has prior work history.
-        const hasPriorWork=Boolean(
-          t.startedAt || t.stoppedAt || t.completedAt ||
-          Number(t.elapsedMs||0)>0 || t.done || t.taskOutcome
-        );
-
-        let recoveredUid="";
-        if(hasPriorWork){
-          const sq=await db.query(
-            `SELECT DISTINCT task_uid
-             FROM task_time_sessions
-             WHERE work_order_id=$1 AND task_index=$2 AND task_uid IS NOT NULL AND task_uid<>''
-             LIMIT 2`,
-            [String(w.id),i]
+        if(!uid){
+          const hasPriorWork=Boolean(
+            t.startedAt || t.stoppedAt || t.completedAt ||
+            Number(t.elapsedMs||0)>0 || t.done ||
+            ["completed","not_completed","next_visit"].includes(String(t.taskOutcome||""))
           );
-          if(sq.rowCount===1)recoveredUid=String(sq.rows[0].task_uid||"");
+          let recoveredUid="";
+          if(hasPriorWork){
+            const sq=await db.query(
+              `SELECT DISTINCT task_uid
+               FROM task_time_sessions
+               WHERE work_order_id=$1
+                 AND task_index=$2
+                 AND task_uid IS NOT NULL
+                 AND task_uid<>''
+               LIMIT 2`,
+              [String(w.id),i]
+            );
+            if(sq.rowCount===1)recoveredUid=String(sq.rows[0].task_uid||"");
+          }
+          uid=recoveredUid || `wo-${String(w.id)}-task-${i}-${crypto.randomBytes(12).toString("hex")}`;
+          t.uid=uid;
+          if(recoveredUid)recovered++; else missingCreated++;
+          changed=true;
         }
 
-        if(recoveredUid){
-          t.uid=recoveredUid;
-          recovered++;
+        if(seen.has(uid)){
+          const firstIndex=seen.get(uid);
+          const first=w.tasks[firstIndex];
+
+          // Preserve the old UID on the task that has stronger evidence of historical work.
+          const score=x=>
+            (Number(x?.elapsedMs||0)>0?8:0)+
+            (x?.startedAt?4:0)+(x?.stoppedAt?2:0)+(x?.completedAt?4:0)+
+            (x?.done?4:0)+(x?.findingId?1:0);
+
+          if(score(t)>score(first)){
+            const replacement=`wo-${String(w.id)}-task-${firstIndex}-${crypto.randomBytes(12).toString("hex")}`;
+            first.uid=replacement;
+            seen.set(replacement,firstIndex);
+            seen.set(uid,i);
+          }else{
+            const replacement=`wo-${String(w.id)}-task-${i}-${crypto.randomBytes(12).toString("hex")}`;
+            t.uid=replacement;
+            seen.set(replacement,i);
+          }
+          duplicateReassigned++;
+          changed=true;
         }else{
-          t.uid=`wo-${String(w.id)}-task-${i}-${crypto.randomBytes(8).toString("hex")}`;
-          created++;
+          seen.set(uid,i);
         }
-        changed=true;
       }
     }
 
     if(changed){
       await db.query(
-        "UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by='system-task-uid-repair' WHERE state_key='shopflow'",
+        "UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by='system-task-identity-repair' WHERE state_key='shopflow'",
         [JSON.stringify(sf)]
       );
-      console.log(`ITTR task identity repair: ${recovered} recovered, ${created} new stable UID(s).`);
+      console.log(`ITTR task identity repair: ${recovered} recovered, ${missingCreated} missing created, ${duplicateReassigned} duplicate reassigned.`);
     }
     await db.query("COMMIT");
   }catch(e){
@@ -582,11 +629,7 @@ app.post("/api/findings/:id/decision",auth,adminOnly,async(req,res,next)=>{
        const now=new Date(),started=new Date(task.startedAt);
        task.elapsedMs=Number(task.elapsedMs||0)+Math.max(0,now.getTime()-started.getTime());
        task.stoppedAt=now.toISOString();
-       await db.query(
-         `UPDATE task_time_sessions SET ended_at=now(),end_reason='approval_hold',pause_reason='Waiting for Customer Approval'
-          WHERE id=(SELECT id FROM task_time_sessions WHERE work_order_id=$1 AND task_index=$2 AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1)`,
-         [String(wo.id),taskIndex]
-       );
+       if(task.uid)await closeOpenTaskSession(db,wo.id,task.uid,wo.mechanic||req.user.username,"approval_hold","Waiting for Customer Approval","");
      }
      task.findingDecision="Waiting for Customer";
      task.approvalChangedAt=issue.decisionAt;
@@ -610,11 +653,7 @@ app.post("/api/findings/:id/decision",auth,adminOnly,async(req,res,next)=>{
        const now=new Date(),started=new Date(task.startedAt);
        task.elapsedMs=Number(task.elapsedMs||0)+Math.max(0,now.getTime()-started.getTime());
        task.stoppedAt=now.toISOString();
-       await db.query(
-         `UPDATE task_time_sessions SET ended_at=now(),end_reason='declined',pause_reason='Do Not Proceed'
-          WHERE id=(SELECT id FROM task_time_sessions WHERE work_order_id=$1 AND task_index=$2 AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1)`,
-         [String(wo.id),taskIndex]
-       );
+       if(task.uid)await closeOpenTaskSession(db,wo.id,task.uid,wo.mechanic||req.user.username,"declined","Do Not Proceed","");
      }
      task.findingDecision="Do Not Proceed";
      task.approvalChangedAt=issue.decisionAt;
@@ -706,5 +745,5 @@ app.get("*splat",(req,res)=>{
 initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(()=>app.listen(port,()=>console.log(`ITTR v22.6 Online running on port ${port}`)))
+  .then(()=>app.listen(port,()=>console.log(`ITTR v23.0 Online running on port ${port}`)))
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});
