@@ -1,0 +1,11 @@
+ITTR v21.2 FINDINGS + LIVE SYNC FIX
+
+FIXED
+1. Admin clicking Proceed on a finding now automatically adds the recommended repair (or finding description) to that finding's work order.
+2. The old hidden second step "Add to Work Order" is no longer required.
+3. Duplicate protection uses findingId and task text.
+4. Mechanic/admin browsers now pull newer cloud state every 4 seconds, on tab focus, and when returning to the tab.
+5. Cloud version tracking avoids applying an older snapshot while that browser has a save pending.
+
+DEPLOY
+Upload all files from this folder to the SAME GitHub repository and commit. Railway will redeploy automatically. Keep the existing Postgres service and all Railway variables.

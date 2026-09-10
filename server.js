@@ -91,7 +91,7 @@ async function auth(req,res,next){
 function adminOnly(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Admin access required."});next()}
 async function audit(username,action,details={}){try{if(pool)await pool.query("INSERT INTO server_audit(username,action,details) VALUES($1,$2,$3::jsonb)",[username||null,action,JSON.stringify(details)])}catch(e){console.error("audit",e.message)}}
 
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"21.1.0-railway-path-fix"})});
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"21.2.0-findings-live-sync"})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -159,4 +159,4 @@ app.use("/api",(req,res)=>res.status(404).json({error:"API endpoint not found"})
 app.use((err,req,res,next)=>{console.error(err);if(err?.code==="DB_NOT_CONFIGURED")return res.status(503).json({error:err.message,code:err.code});res.status(500).json({error:isProd?"Server error":String(err?.message||err)})});
 app.get("*splat",(req,res)=>res.sendFile(path.join(webRoot,"index.html")));
 
-initDb().then(()=>app.listen(port,()=>console.log(`ITTR v21.1 Online running on port ${port}`))).catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});
+initDb().then(()=>app.listen(port,()=>console.log(`ITTR v21.2 Online running on port ${port}`))).catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

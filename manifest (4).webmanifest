@@ -1,0 +1,10 @@
+{
+  "name": "ITTR ShopFlow",
+  "short_name": "ShopFlow",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f5f7fb",
+  "theme_color": "#111827",
+  "description": "Truck and trailer repair workflow for ITTR",
+  "icons": []
+}
