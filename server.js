@@ -147,7 +147,7 @@ async function auth(req,res,next){
 function adminOnly(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Admin access required."});next()}
 async function audit(username,action,details={}){try{if(pool)await pool.query("INSERT INTO server_audit(username,action,details) VALUES($1,$2,$3::jsonb)",[username||null,action,JSON.stringify(details)])}catch(e){console.error("audit",e.message)}}
 
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"22.3.0-pro-audit-fixed"})});
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"22.4.0-pro-audit-fixed"})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -351,7 +351,9 @@ app.get("/api/work-orders/:id/task-sessions",auth,async(req,res,next)=>{try{
             started_at,ended_at,end_reason,pause_reason,pause_note,created_at
      FROM task_time_sessions
      WHERE work_order_id=$1
-     ORDER BY task_index,started_at,id`,
+       AND task_uid IS NOT NULL
+       AND task_uid<>''
+     ORDER BY started_at,id`,
     [workOrderId]
   );
   res.json({ok:true,workOrderId,sessions:q.rows});
@@ -364,7 +366,7 @@ app.get("/api/admin/backup",auth,adminOnly,async(req,res,next)=>{try{
   const migrations=await requireDb().query("SELECT migration_key,applied_at FROM schema_migrations ORDER BY applied_at");
   await requireDb().query("INSERT INTO data_exports(created_by,note) VALUES($1,$2)",[req.user.username,"manual JSON backup"]);
   res.setHeader("Content-Disposition",`attachment; filename="ittr-backup-${new Date().toISOString().slice(0,10)}.json"`);
-  res.json({exportedAt:new Date().toISOString(),version:"22.3.0",states:states.rows,users:users.rows,taskTimeSessions:sessions.rows,migrations:migrations.rows});
+  res.json({exportedAt:new Date().toISOString(),version:"22.4.0",states:states.rows,users:users.rows,taskTimeSessions:sessions.rows,migrations:migrations.rows});
 }catch(e){next(e)}});
 
 app.get("/api/admin/data-safety",auth,adminOnly,async(req,res,next)=>{try{
@@ -398,6 +400,7 @@ function reconcileApprovedFindingsInShopflow(shopflow){
     );
     if(!exists){
       wo.tasks.push({
+        uid:`wo-${String(wo.id)}-finding-${String(issue.id)}-${crypto.randomBytes(4).toString("hex")}`,
         t:text,done:false,startedAt:"",stoppedAt:"",elapsedMs:0,completedAt:"",
         source:"inspection",findingId:issue.id,taskOutcome:"",outcomeNote:"",
         outcomeAt:"",outcomeBy:""
@@ -407,6 +410,67 @@ function reconcileApprovedFindingsInShopflow(shopflow){
     if(issue.convertedToTask!==true){issue.convertedToTask=true;changed=true;}
   }
   return {shopflow:sf,changed,added};
+}
+
+
+async function repairTaskUidsAtStartup(){
+  if(!pool)return;
+  const db=await pool.connect();
+  try{
+    await db.query("BEGIN");
+    const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
+    if(!q.rowCount){await db.query("COMMIT");return;}
+    const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[]};
+    sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
+    let changed=false,recovered=0,created=0;
+
+    for(const w of sf.workorders){
+      w.tasks=Array.isArray(w.tasks)?w.tasks:[];
+      for(let i=0;i<w.tasks.length;i++){
+        const t=w.tasks[i];
+        if(!t || t.uid)continue;
+
+        // Only attempt index-based recovery for a task that clearly has prior work history.
+        const hasPriorWork=Boolean(
+          t.startedAt || t.stoppedAt || t.completedAt ||
+          Number(t.elapsedMs||0)>0 || t.done || t.taskOutcome
+        );
+
+        let recoveredUid="";
+        if(hasPriorWork){
+          const sq=await db.query(
+            `SELECT DISTINCT task_uid
+             FROM task_time_sessions
+             WHERE work_order_id=$1 AND task_index=$2 AND task_uid IS NOT NULL AND task_uid<>''
+             LIMIT 2`,
+            [String(w.id),i]
+          );
+          if(sq.rowCount===1)recoveredUid=String(sq.rows[0].task_uid||"");
+        }
+
+        if(recoveredUid){
+          t.uid=recoveredUid;
+          recovered++;
+        }else{
+          t.uid=`wo-${String(w.id)}-task-${i}-${crypto.randomBytes(8).toString("hex")}`;
+          created++;
+        }
+        changed=true;
+      }
+    }
+
+    if(changed){
+      await db.query(
+        "UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by='system-task-uid-repair' WHERE state_key='shopflow'",
+        [JSON.stringify(sf)]
+      );
+      console.log(`ITTR task identity repair: ${recovered} recovered, ${created} new stable UID(s).`);
+    }
+    await db.query("COMMIT");
+  }catch(e){
+    try{await db.query("ROLLBACK")}catch(_){}
+    console.error("Task UID repair failed:",e);
+  }finally{db.release();}
 }
 
 async function repairApprovedFindingsAtStartup(){
@@ -468,6 +532,7 @@ app.post("/api/findings/:id/decision",auth,adminOnly,async(req,res,next)=>{
      if(!text){await db.query("ROLLBACK");return res.status(409).json({error:"Finding has no repair description or recommendation."});}
      if(taskIndex<0){
        wo.tasks.push({
+         uid:`wo-${String(wo.id)}-finding-${String(issue.id)}-${crypto.randomBytes(4).toString("hex")}`,
          t:text,done:false,startedAt:"",stoppedAt:"",elapsedMs:0,completedAt:"",
          source:"inspection",findingId:issue.id,taskOutcome:"",outcomeNote:"",
          outcomeAt:"",outcomeBy:"",findingDecision:"Proceed",
@@ -627,6 +692,7 @@ app.use((err,req,res,next)=>{console.error(err);if(err?.code==="DB_NOT_CONFIGURE
 app.get("*splat",(req,res)=>res.sendFile(path.join(webRoot,"index.html")));
 
 initDb()
+  .then(()=>repairTaskUidsAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
   .then(()=>app.listen(port,()=>console.log(`ITTR v22.2 Online running on port ${port}`)))
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

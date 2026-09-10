@@ -1,0 +1,48 @@
+ITTR v22.4 — TASK IDENTITY + TIMELINE PRO AUDIT
+
+CONFIRMED BUG FIXED
+A newly-added task could inherit Pause/Resume history from an older task that previously
+occupied the same array/task index. The frontend used task_index as a fallback when the
+new task did not yet have a permanent UID.
+
+FIX
+- Removed task-index fallback from timeline matching.
+- Timeline now matches ONLY the exact permanent task_uid.
+- Brand-new never-started tasks show no fake work timeline.
+- Every new task now receives a stable UID immediately.
+- Work-order edit preserves task identity by occurrence, including duplicate task names.
+- Server startup safely repairs older tasks that are missing UIDs:
+  * if a worked task has exactly one recoverable historical UID, it reuses it;
+  * otherwise it creates a new UID rather than attaching somebody else's history.
+- Finding-created and reactivated tasks receive permanent IDs.
+- Task-session API excludes null/blank task IDs.
+
+EXPECTED UI
+New task, never started:
+  Latest Start — | Latest Stop — | Total Labor 0m
+  NO Work Timeline shown.
+
+Task started and completed without pause:
+  Started ...
+  Finished ...
+  No Pause/Resume labels.
+
+Task actually paused:
+  Started ...
+  Paused ...
+  Reason ...
+  Resumed ...
+  Finished ...
+
+STATIC AUDIT PERFORMED
+- backend JavaScript syntax
+- frontend JavaScript syntax in root and public
+- root/public frontend equality
+- duplicate static DOM IDs
+- inline onclick handler references
+- frontend API paths vs backend route paths
+- service worker release cache
+- package/server/banner version consistency
+
+NO DATABASE RESET
+Use the same Railway project and PostgreSQL database.
