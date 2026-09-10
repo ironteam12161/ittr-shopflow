@@ -1,1 +1,9 @@
-const CACHE="ittr-shopflow-v22-4-task-identity";const STATIC=["./index.html","./manifest.webmanifest"];self.addEventListener("install",e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(STATIC)));self.skipWaiting()});self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==CACHE).map(x=>caches.delete(x)))));self.clients.claim()});self.addEventListener("fetch",e=>{if(e.request.method!=="GET")return;if(new URL(e.request.url).pathname.startsWith("/api/"))return;e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)))})
+// ITTR v22.6 self-removing service worker
+self.addEventListener("install",()=>self.skipWaiting());
+self.addEventListener("activate",event=>{
+ event.waitUntil((async()=>{
+  const keys=await caches.keys();
+  await Promise.all(keys.map(k=>caches.delete(k)));
+  await self.registration.unregister();
+ })());
+});
