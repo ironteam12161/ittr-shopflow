@@ -16,6 +16,9 @@ import { fileURLToPath } from "url";
 
 dotenv.config();
 const {Pool}=pg;
+const FMCSA_WEBKEY=String(process.env.FMCSA_WEBKEY||"").trim();
+const FMCSA_API_BASE="https://mobile.fmcsa.dot.gov/qc/services";
+const fmcsaCache=new Map();
 const app=express();
 const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:20*1024*1024}});
 const photoUpload=multer({
@@ -174,6 +177,15 @@ async function initDb(){
  ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS billing_state TEXT;
  ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS billing_postal_code TEXT;
  ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS ext_accounting TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS fmcsa_dba_name TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS fmcsa_mc_number TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS fmcsa_allowed_to_operate TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS fmcsa_out_of_service TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS fmcsa_power_units INTEGER;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS fmcsa_drivers INTEGER;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS fmcsa_snapshot JSONB;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS fmcsa_last_checked TIMESTAMPTZ;
+
  ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS status TEXT;
  ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS uom TEXT;
  ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS allocated NUMERIC;
@@ -450,6 +462,43 @@ async function syncCustomerUnitDirectory(force=false){
  lastCustomerUnitDirectorySync=Date.now();
  return {ok:errors.length===0,skipped:false,errors};
 }
+function cleanUsdot(value){return String(value||"").replace(/\D/g,"").slice(0,10)}
+function fmcsaCarrierFromPayload(payload){
+ const candidates=[payload?.content?.carrier,payload?.carrier,payload?.content,payload];
+ return candidates.find(x=>x&&typeof x==="object"&&!Array.isArray(x)&&(x.legalName||x.dotNumber||x.phyStreet))||null;
+}
+function nOrNull(v){const n=Number(v);return Number.isFinite(n)?n:null}
+function normalizeFmcsaCarrier(raw,dot){
+ if(!raw)return null;
+ const pick=(...keys)=>{for(const k of keys){if(raw[k]!==undefined&&raw[k]!==null&&String(raw[k]).trim()!=="")return raw[k]}return null};
+ return {
+  dotNumber:String(pick("dotNumber","usdotNumber")||dot||""),
+  legalName:String(pick("legalName")||""),dbaName:String(pick("dbaName")||""),mcNumber:String(pick("mcNumber")||""),
+  address:String(pick("phyStreet","physicalAddress")||""),city:String(pick("phyCity")||""),state:String(pick("phyState")||""),zip:String(pick("phyZip")||""),country:String(pick("phyCountry")||""),phone:String(pick("telephone")||""),
+  allowedToOperate:String(pick("allowToOperate")||""),outOfService:String(pick("outOfService")||""),outOfServiceDate:String(pick("outOfServiceDate")||""),
+  powerUnits:nOrNull(pick("totalPowerUnits","powerUnits","nbrPowerUnit")),drivers:nOrNull(pick("totalDrivers","drivers","driverTotal")),
+  entityType:String(pick("carrierOperation","entityType")||""),mcs150Date:String(pick("mcs150UpdateDate","mcs150Date")||""),raw
+ };
+}
+async function lookupFmcsaCarrier(dot){
+ const usdot=cleanUsdot(dot);if(!usdot)throw Object.assign(new Error("Enter a valid USDOT number."),{status:400});
+ if(!FMCSA_WEBKEY)throw Object.assign(new Error("FMCSA integration is not configured. Add FMCSA_WEBKEY in Railway Variables."),{status:503,code:"FMCSA_NOT_CONFIGURED"});
+ const cached=fmcsaCache.get(usdot);if(cached&&Date.now()-cached.at<15*60*1000)return cached.data;
+ const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
+ try{
+  const url=`${FMCSA_API_BASE}/carriers/${encodeURIComponent(usdot)}?webKey=${encodeURIComponent(FMCSA_WEBKEY)}`;
+  const r=await fetch(url,{headers:{Accept:"application/json","User-Agent":"ITTR-ShopFlow/23.9"},signal:ctl.signal});
+  let data=null;try{data=await r.json()}catch{}
+  if(r.status===404)throw Object.assign(new Error(`No FMCSA carrier found for USDOT ${usdot}.`),{status:404,code:"FMCSA_NOT_FOUND"});
+  if(r.status===401||r.status===403)throw Object.assign(new Error("FMCSA rejected the WebKey. Check FMCSA_WEBKEY in Railway."),{status:502,code:"FMCSA_AUTH"});
+  if(!r.ok)throw Object.assign(new Error(`FMCSA service returned ${r.status}. Try again shortly.`),{status:502,code:"FMCSA_UPSTREAM"});
+  const carrier=fmcsaCarrierFromPayload(data),normalized=normalizeFmcsaCarrier(carrier,usdot);
+  if(!normalized||(!normalized.legalName&&!normalized.dotNumber))throw Object.assign(new Error(`FMCSA returned no carrier record for USDOT ${usdot}.`),{status:404,code:"FMCSA_EMPTY"});
+  fmcsaCache.set(usdot,{at:Date.now(),data:normalized});return normalized;
+ }catch(e){if(e?.name==="AbortError")throw Object.assign(new Error("FMCSA lookup timed out. Try again."),{status:504,code:"FMCSA_TIMEOUT"});throw e}finally{clearTimeout(timer)}
+}
+app.get("/api/fmcsa/status",auth,adminOnly,(req,res)=>res.json({configured:Boolean(FMCSA_WEBKEY),provider:"FMCSA QCMobile / SAFER",official:true}));
+app.get("/api/fmcsa/carriers/:dotNumber",auth,adminOnly,async(req,res)=>{try{const item=await lookupFmcsaCarrier(req.params.dotNumber);res.json({item,source:"FMCSA QCMobile API",official:true,checkedAt:new Date().toISOString()})}catch(e){res.status(e.status||500).json({error:e.message||"FMCSA lookup failed.",code:e.code||"FMCSA_LOOKUP"})}});
 function customerPublic(row){if(!row)return null;const x={...row};delete x.raw;return x}
 app.get("/api/customers",auth,adminOnly,async(req,res)=>{
  const warnings=[];
@@ -477,11 +526,11 @@ app.get("/api/customers",auth,adminOnly,async(req,res)=>{
 });
 app.post("/api/customers",auth,adminOnly,async(req,res,next)=>{try{
  const b=req.body||{},name=String(b.customer_name||"").trim();if(!name)return res.status(400).json({error:"Customer / company name is required."});
- const key=`manual:${crypto.randomUUID()}`;const r=await requireDb().query(`INSERT INTO fullbay_import_customers(source_key,customer_name,phone,secondary_phone,email,dot_number,address,city,state,postal_code,country,contact_name,notes,active,source_file) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,true,'ITTR manual') RETURNING *`,[key,name,b.phone||null,b.secondary_phone||null,b.email||null,b.dot_number||null,b.address||null,b.city||null,b.state||null,b.postal_code||null,b.country||null,b.contact_name||null,b.notes||null]);await audit(req.user.username,"customer_created",{customerId:r.rows[0].id,name});res.json({item:customerPublic(r.rows[0])});
+ const key=`manual:${crypto.randomUUID()}`;const r=await requireDb().query(`INSERT INTO fullbay_import_customers(source_key,customer_name,phone,secondary_phone,email,dot_number,address,city,state,postal_code,country,contact_name,notes,active,source_file) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,true,'ITTR manual') RETURNING *`,[key,name,b.phone||null,b.secondary_phone||null,b.email||null,b.dot_number||null,b.address||null,b.city||null,b.state||null,b.postal_code||null,b.country||null,b.contact_name||null,b.notes||null]);if(b.fmcsa_checked_at){await requireDb().query(`UPDATE fullbay_import_customers SET fmcsa_dba_name=$2,fmcsa_mc_number=$3,fmcsa_allowed_to_operate=$4,fmcsa_out_of_service=$5,fmcsa_power_units=$6,fmcsa_drivers=$7,fmcsa_snapshot=$8::jsonb,fmcsa_last_checked=$9 WHERE id=$1`,[r.rows[0].id,b.fmcsa_dba_name||null,b.fmcsa_mc_number||null,b.fmcsa_allowed_to_operate||null,b.fmcsa_out_of_service||null,nOrNull(b.fmcsa_power_units),nOrNull(b.fmcsa_drivers),JSON.stringify(b.fmcsa_snapshot||{}),b.fmcsa_checked_at]);const rr=await requireDb().query("SELECT * FROM fullbay_import_customers WHERE id=$1",[r.rows[0].id]);r.rows[0]=rr.rows[0]}await audit(req.user.username,"customer_created",{customerId:r.rows[0].id,name});res.json({item:customerPublic(r.rows[0])});
 }catch(e){next(e)}});
 app.put("/api/customers/:id",auth,adminOnly,async(req,res,next)=>{try{
  const b=req.body||{},name=String(b.customer_name||"").trim();if(!name)return res.status(400).json({error:"Customer / company name is required."});
- const r=await requireDb().query(`UPDATE fullbay_import_customers SET customer_name=$2,contact_name=$3,phone=$4,secondary_phone=$5,email=$6,dot_number=$7,address=$8,city=$9,state=$10,postal_code=$11,country=$12,billing_contact=$13,billing_address=$14,billing_city=$15,billing_state=$16,billing_postal_code=$17,credit_terms=$18,credit_limit=$19,payment_method=$20,notes=$21,active=$22,updated_at=now() WHERE id=$1 RETURNING *`,[req.params.id,name,b.contact_name||null,b.phone||null,b.secondary_phone||null,b.email||null,b.dot_number||null,b.address||null,b.city||null,b.state||null,b.postal_code||null,b.country||null,b.billing_contact||null,b.billing_address||null,b.billing_city||null,b.billing_state||null,b.billing_postal_code||null,b.credit_terms||null,numOrNull(b.credit_limit),b.payment_method||null,b.notes||null,b.active!==false]);if(!r.rowCount)return res.status(404).json({error:"Customer not found."});try{await requireDb().query("UPDATE customer_units SET customer_name=$2,updated_at=now() WHERE customer_id::text=$1::text",[req.params.id,name])}catch(e){console.error("Customer unit-name sync warning:",e?.message)};await audit(req.user.username,"customer_updated",{customerId:req.params.id,name});res.json({item:customerPublic(r.rows[0])});
+ const r=await requireDb().query(`UPDATE fullbay_import_customers SET customer_name=$2,contact_name=$3,phone=$4,secondary_phone=$5,email=$6,dot_number=$7,address=$8,city=$9,state=$10,postal_code=$11,country=$12,billing_contact=$13,billing_address=$14,billing_city=$15,billing_state=$16,billing_postal_code=$17,credit_terms=$18,credit_limit=$19,payment_method=$20,notes=$21,active=$22,updated_at=now() WHERE id=$1 RETURNING *`,[req.params.id,name,b.contact_name||null,b.phone||null,b.secondary_phone||null,b.email||null,b.dot_number||null,b.address||null,b.city||null,b.state||null,b.postal_code||null,b.country||null,b.billing_contact||null,b.billing_address||null,b.billing_city||null,b.billing_state||null,b.billing_postal_code||null,b.credit_terms||null,numOrNull(b.credit_limit),b.payment_method||null,b.notes||null,b.active!==false]);if(!r.rowCount)return res.status(404).json({error:"Customer not found."});if(b.fmcsa_checked_at){await requireDb().query(`UPDATE fullbay_import_customers SET fmcsa_dba_name=$2,fmcsa_mc_number=$3,fmcsa_allowed_to_operate=$4,fmcsa_out_of_service=$5,fmcsa_power_units=$6,fmcsa_drivers=$7,fmcsa_snapshot=$8::jsonb,fmcsa_last_checked=$9 WHERE id=$1`,[req.params.id,b.fmcsa_dba_name||null,b.fmcsa_mc_number||null,b.fmcsa_allowed_to_operate||null,b.fmcsa_out_of_service||null,nOrNull(b.fmcsa_power_units),nOrNull(b.fmcsa_drivers),JSON.stringify(b.fmcsa_snapshot||{}),b.fmcsa_checked_at]);const rr=await requireDb().query("SELECT * FROM fullbay_import_customers WHERE id=$1",[req.params.id]);r.rows[0]=rr.rows[0]}try{await requireDb().query("UPDATE customer_units SET customer_name=$2,updated_at=now() WHERE customer_id::text=$1::text",[req.params.id,name])}catch(e){console.error("Customer unit-name sync warning:",e?.message)};await audit(req.user.username,"customer_updated",{customerId:req.params.id,name});res.json({item:customerPublic(r.rows[0])});
 }catch(e){next(e)}});
 app.get("/api/customers/:id/profile",auth,adminOnly,async(req,res)=>{
  const warnings=[];
@@ -511,7 +560,7 @@ app.get("/api/customer-units/suggest",auth,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"23.8.3",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"23.9.0",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -523,8 +572,8 @@ app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
   out.ok=true;res.json(out);
  }catch(e){out.error=String(e?.message||e).slice(0,500);console.error("Customer CRM diagnostics failed:",e);res.status(500).json(out)}
 });
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.8.3",backend:"23.8.3",build:"ITTR-23.8.3-CUSTOMER-CRM-RESILIENCE-20260911"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"23.8.3",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.9.0",backend:"23.9.0",build:"ITTR-23.9.0-FMCSA-SAFER-AUTOFILL-20260911"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"23.9.0",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -1477,5 +1526,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(()=>app.listen(port,()=>console.log(`ITTR v23.8.3 Online running on port ${port}`)))
+  .then(()=>app.listen(port,()=>console.log(`ITTR v23.9.0 Online running on port ${port}`)))
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

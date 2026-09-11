@@ -46,3 +46,7 @@ v21 keeps the existing large frontend and synchronizes its legacy state snapshot
 - Never reuse the API key that was previously exposed.
 - Use a unique strong bootstrap admin password.
 - Keep the GitHub repository private.
+
+
+## v23.9 FMCSA / SAFER
+Add `FMCSA_WEBKEY` to the existing Railway web-service Variables. Use the WebKey created at the official FMCSA Developer site. Keep it server-side only. Then redeploy.

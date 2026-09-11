@@ -1,0 +1,13 @@
+ITTR v23.9.0 — FMCSA / SAFER CUSTOMER AUTO-FILL
+
+Added official FMCSA QCMobile API integration for USDOT lookup.
+- Server-only FMCSA_WEBKEY; never exposed to browser.
+- GET /api/fmcsa/status and /api/fmcsa/carriers/:dotNumber are admin-authenticated.
+- 10-second upstream timeout and 15-minute in-memory cache.
+- Customer editor automatically looks up valid USDOT numbers after typing pauses.
+- Manual Lookup FMCSA button is also provided.
+- Available legal name, phone, physical address, city/state/ZIP/country and USDOT are filled when blank.
+- User can explicitly choose Use / Replace Fields to overwrite editable fields.
+- FMCSA verification metadata is stored separately from shop-entered customer fields.
+- Existing Fullbay inventory import fix and CRM hardening are preserved.
+- No SAFER HTML scraping is used; integration uses the official FMCSA developer API.

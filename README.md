@@ -1,3 +1,22 @@
+# ITTR ShopFlow v23.9.0 — FMCSA / SAFER Auto-Fill
+
+New in v23.9.0:
+- Official FMCSA QCMobile API USDOT lookup in Customers → Add/Edit Customer.
+- Auto lookup after a valid USDOT number is typed and typing pauses.
+- Manual **Lookup FMCSA** button.
+- Fills available legal name, phone, physical address, city, state, ZIP, country and USDOT without overwriting nonblank shop-entered fields automatically.
+- **Use / Replace Fields** lets an admin explicitly replace existing customer fields with the FMCSA record.
+- Stores FMCSA verification metadata separately: DBA, MC number, allowed-to-operate, out-of-service, power units/drivers when returned, snapshot and last checked date.
+- Server-side only `FMCSA_WEBKEY`; the key is never sent to mechanic/admin browsers.
+- Existing Fullbay inventory fix, Customer CRM resilience, R2 photos, task history and AI integrations preserved.
+
+Railway variable required for FMCSA lookup:
+`FMCSA_WEBKEY=your_fmcsa_webkey`
+
+Get the free WebKey from the official FMCSA Developer site using Login.gov. Do not paste the key into chat or commit it to GitHub.
+
+---
+
 
 ## v23.8.0 Customer CRM + Unit Directory
 
