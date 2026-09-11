@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS fullbay_import_customers(
   customer_group TEXT, secondary_phone TEXT, dot_number TEXT, external_id TEXT, country TEXT, assigned_shop TEXT, taxable BOOLEAN,
   tax_exempt_number TEXT, credit_terms TEXT, credit_limit NUMERIC, billing_contact TEXT, payment_method TEXT, default_labor_rate NUMERIC,
   price_level TEXT, access_method TEXT, billing_address TEXT, billing_city TEXT, billing_state TEXT, billing_postal_code TEXT, ext_accounting TEXT,
-  notes TEXT, contact_name TEXT
+  notes TEXT, contact_name TEXT, fmcsa_dba_name TEXT, fmcsa_mc_number TEXT, fmcsa_allowed_to_operate TEXT, fmcsa_out_of_service TEXT, fmcsa_power_units INTEGER, fmcsa_drivers INTEGER, fmcsa_snapshot JSONB, fmcsa_last_checked TIMESTAMPTZ
 );
 CREATE TABLE IF NOT EXISTS fullbay_import_parts(
   id BIGSERIAL PRIMARY KEY, source_key TEXT UNIQUE NOT NULL, fullbay_id TEXT, part_number TEXT, description TEXT, quantity NUMERIC, cost NUMERIC, price NUMERIC, location TEXT, vendor TEXT,
