@@ -1,0 +1,7 @@
+ITTR v23.10.1 Unit Directory Sync Fix
+- Vehicle Profiles now save directly to PostgreSQL customer_units immediately instead of waiting for delayed app_state reconciliation.
+- Customer Add/Edit Unit refreshes the directory only after the unit POST/PUT and profile reload complete.
+- Direct vehicle-profile sync verifies the inserted/updated customer_units row before returning success.
+- Existing exact-name customer matches are linked to the customer ID; unmatched vehicle profiles remain searchable as unlinked units.
+- CRM diagnostics version bumped and sync errors remain available for troubleshooting.
+- No destructive database reset. v23.7.1 Fullbay inventory import fix preserved.

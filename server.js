@@ -596,13 +596,23 @@ app.put("/api/customer-units/:id",auth,adminOnly,async(req,res,next)=>{try{
  const b=req.body||{},unit=String(b.unit_number||"").trim();if(!unit)return res.status(400).json({error:"Unit number is required."});const r=await requireDb().query(`UPDATE customer_units SET unit_number=$2,vin=$3,year=$4,make=$5,model=$6,plate=$7,mileage=$8,engine=$9,transmission=$10,notes=$11,source='manual',updated_at=now() WHERE id=$1 RETURNING *`,[req.params.id,unit,String(b.vin||"").trim().toUpperCase()||null,b.year||null,b.make||null,b.model||null,b.plate||null,Number.isFinite(Number(b.mileage))?Number(b.mileage):null,b.engine||null,b.transmission||null,b.notes||null]);if(!r.rowCount)return res.status(404).json({error:"Unit not found."});res.json({item:r.rows[0]});
 }catch(e){next(e)}});
 app.delete("/api/customer-units/:id",auth,adminOnly,async(req,res,next)=>{try{await requireDb().query("DELETE FROM customer_units WHERE id=$1",[req.params.id]);res.json({ok:true})}catch(e){next(e)}});
+app.post("/api/customer-units/from-vehicle-profile",auth,adminOnly,async(req,res,next)=>{try{
+ const b=req.body||{},unit=String(b.unit||b.unit_number||"").trim();if(!unit)return res.status(400).json({error:"Unit number is required."});
+ const db=requireDb();let customerId=null,customerName=String(b.customer||b.customer_name||"").trim();
+ if(customerName){const c=await db.query("SELECT id,customer_name FROM fullbay_import_customers WHERE lower(trim(customer_name))=lower(trim($1)) ORDER BY id LIMIT 1",[customerName]);if(c.rowCount){customerId=c.rows[0].id;customerName=c.rows[0].customer_name}}
+ const item=await upsertDirectoryUnit(db,{customerId,customerName,unit,vin:b.vin,year:b.year,make:b.make,model:b.model,plate:b.plate,mileage:b.mileage,engine:b.engine,transmission:b.transmission,notes:b.notes,source:"vehicle_profile"});
+ if(!item)return res.status(500).json({error:"Unit directory did not save the vehicle."});
+ const verify=await db.query("SELECT * FROM customer_units WHERE id=$1",[item.id]);if(!verify.rowCount)return res.status(500).json({error:"Unit save could not be verified."});
+ await audit(req.user.username,"vehicle_profile_unit_synced",{unit:item.unit_number,customerId:item.customer_id,customerName:item.customer_name});res.json({ok:true,item:verify.rows[0],matchedCustomer:Boolean(item.customer_id)});
+}catch(e){next(e)}});
+
 app.get("/api/customer-units/suggest",auth,async(req,res,next)=>{try{
  try{await syncCustomerUnitDirectory()}catch(e){console.error("Unit suggest sync warning:",e?.message)}const q=String(req.query.q||"").trim();if(q.length<1)return res.json({items:[]});const like=`%${q}%`,db=requireDb();
  const r=await db.query(`SELECT u.*,c.customer_name AS canonical_customer,c.phone AS customer_phone,c.email AS customer_email,c.dot_number FROM customer_units u LEFT JOIN fullbay_import_customers c ON c.id::text=u.customer_id::text WHERE u.unit_number ILIKE $1 OR coalesce(u.vin,'') ILIKE $1 OR coalesce(u.plate,'') ILIKE $1 OR coalesce(c.customer_name,u.customer_name,'') ILIKE $1 ORDER BY CASE WHEN lower(u.unit_number)=lower($2) THEN 0 WHEN lower(u.unit_number) LIKE lower($3) THEN 1 ELSE 2 END,u.unit_number LIMIT 20`,[like,q,`${q}%`]);res.json({items:r.rows.map(x=>({...x,customer_name:x.canonical_customer||x.customer_name}))});
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"23.10.0",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"23.10.1",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -614,8 +624,8 @@ app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
   out.ok=true;res.json(out);
  }catch(e){out.error=String(e?.message||e).slice(0,500);console.error("Customer CRM diagnostics failed:",e);res.status(500).json(out)}
 });
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.10.0",backend:"23.10.0",build:"ITTR-23.10.0-NHTSA-VIN-AUTOFILL-20260911"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"23.10.0",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.10.1",backend:"23.10.1",build:"ITTR-23.10.1-UNIT-DIRECTORY-SYNC-FIX-20260911"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"23.10.1",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");

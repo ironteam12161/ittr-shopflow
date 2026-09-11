@@ -1237,7 +1237,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION="23.10.0";
+const FRONTEND_VERSION="23.10.1";
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
@@ -3107,7 +3107,7 @@ async function applyCustomerUnitVinReplace(){const v=normalizedVinInput(document
 function scheduleVehicleProfileVinDecode(value){clearTimeout(vehicleProfileVinTimer);const v=normalizedVinInput(value),el=document.getElementById("vpVin");if(el&&el.value!==v)el.value=v;if(v.length!==17){vehicleProfileVinLast="";return}vehicleProfileVinTimer=setTimeout(()=>decodeVehicleVIN(false),450)}
 function openCustomerUnitEditor(customerId,unitId=null){const d=customerProfileCache;if(!d||String(d.customer?.id)!==String(customerId))return;const u=unitId?(d.units||[]).find(x=>String(x.id)===String(unitId)):{};document.getElementById("cuCustomerId").value=customerId;document.getElementById("cuUnitId").value=unitId||"";document.getElementById("customerUnitTitle").textContent=unitId?"Edit Truck / Unit":"Add Truck / Unit";const map={cuUnit:"unit_number",cuVin:"vin",cuYear:"year",cuMake:"make",cuModel:"model",cuPlate:"plate",cuMileage:"mileage",cuEngine:"engine",cuTransmission:"transmission",cuNotes:"notes"};Object.entries(map).forEach(([id,k])=>document.getElementById(id).value=u?.[k]??"");customerUnitVinLast="";const vc=document.getElementById("cuVinDecodeCard");if(vc){vc.classList.add("hidden");vc.innerHTML=""}document.getElementById("customerUnitModal").classList.add("open");updateMobileBackButton()}
 document.getElementById("customerEditForm").onsubmit=async e=>{e.preventDefault();if(!requireAdmin())return;const f=new FormData(e.target),id=f.get("id"),body=Object.fromEntries(f.entries());body.active=document.getElementById("ceActive").checked;if(fmcsaCustomerLookupCache&&String(body.dot_number||"").replace(/\D/g,"")===String(fmcsaCustomerLookupCache.dotNumber||fmcsaLookupDot||"").replace(/\D/g,"")){const x=fmcsaCustomerLookupCache;Object.assign(body,{fmcsa_checked_at:x.checkedAt||new Date().toISOString(),fmcsa_dba_name:x.dbaName||"",fmcsa_mc_number:x.mcNumber||"",fmcsa_allowed_to_operate:x.allowedToOperate||"",fmcsa_out_of_service:x.outOfService||"",fmcsa_power_units:x.powerUnits??null,fmcsa_drivers:x.drivers??null,fmcsa_snapshot:x.raw||x});}try{if(id)await apiJSON(`/api/customers/${id}`,{method:"PUT",body:JSON.stringify(body)});else await apiJSON("/api/customers",{method:"POST",body:JSON.stringify(body)});closeModal("customerEditModal");await renderCustomerDirectory();if(id&&customerProfileCache&&String(customerProfileCache.customer?.id)===String(id))await openCustomerProfile(id)}catch(err){alert(err.message||"Customer could not be saved.")}};
-document.getElementById("customerUnitForm").onsubmit=async e=>{e.preventDefault();if(!requireAdmin())return;const f=new FormData(e.target),customerId=f.get("customerId"),unitId=f.get("unitId"),body=Object.fromEntries(f.entries());try{if(unitId)await apiJSON(`/api/customer-units/${unitId}`,{method:"PUT",body:JSON.stringify(body)});else await apiJSON(`/api/customers/${customerId}/units`,{method:"POST",body:JSON.stringify(body)});closeModal("customerUnitModal");await openCustomerProfile(customerId);renderCustomerDirectory()}catch(err){alert(err.message||"Unit could not be saved.")}};
+document.getElementById("customerUnitForm").onsubmit=async e=>{e.preventDefault();if(!requireAdmin())return;const f=new FormData(e.target),customerId=f.get("customerId"),unitId=f.get("unitId"),body=Object.fromEntries(f.entries());try{if(unitId)await apiJSON(`/api/customer-units/${unitId}`,{method:"PUT",body:JSON.stringify(body)});else await apiJSON(`/api/customers/${customerId}/units`,{method:"POST",body:JSON.stringify(body)});closeModal("customerUnitModal");await openCustomerProfile(customerId);await renderCustomerDirectory()}catch(err){alert(err.message||"Unit could not be saved.")}};
 function hideUnitSuggestions(mode){const el=document.getElementById(mode==="edit"?"editUnitSuggestions":"woUnitSuggestions");if(el)el.innerHTML=""}
 function workOrderFormEl(mode,name){const form=document.getElementById(mode==="edit"?"editForm":"woForm");return form?.elements?.namedItem(name)||null}
 function renderUnitSuggestions(mode,items){const box=document.getElementById(mode==="edit"?"editUnitSuggestions":"woUnitSuggestions");if(!box)return;box.innerHTML=(items||[]).map(x=>`<button type="button" class="unitSuggestItem" onclick="applyUnitSuggestion('${mode}',${Number(x.id)})"><b>Unit ${esc(x.unit_number||"")}</b> — ${esc(x.customer_name||"No customer")}<div class="muted">${esc([x.vin,[x.year,x.make,x.model].filter(Boolean).join(" "),x.plate?`Plate ${x.plate}`:""].filter(Boolean).join(" · ")||"No vehicle details")}</div></button>`).join("")}
@@ -3201,12 +3201,15 @@ function showProPanel(name){
  if(name==="fullbay")renderFullbayImportStatus();
  if(name==="aitools")checkAIConnection();
 }
-function saveVehicleProfile(){
+async function saveVehicleProfile(){
  const unit=(document.getElementById("vpUnit")?.value||"").trim();if(!unit)return alert(tr("Unit number required."));
  const data={unit,vin:(vpVin.value||"").trim().toUpperCase(),customer:vpCustomer.value.trim(),mileage:+vpMileage.value||0,year:vpYear.value.trim(),make:vpMake.value.trim(),model:vpModel.value.trim(),plate:vpPlate.value.trim(),engine:vpEngine.value.trim(),transmission:vpTransmission.value.trim(),parking:vpParking.value.trim(),notes:vpNotes.value.trim(),updatedAt:new Date().toISOString()};
  const i=PRO.vehicles.findIndex(v=>String(v.unit).toLowerCase()===unit.toLowerCase());
  if(i>=0)PRO.vehicles[i]={...PRO.vehicles[i],...data};else PRO.vehicles.push(data);
- savePro();audit("Vehicle profile saved",`${data.year} ${data.make} ${data.model}`,unit);renderVehicleProfiles();
+ savePro();
+ try{await apiJSON("/api/customer-units/from-vehicle-profile",{method:"POST",body:JSON.stringify(data)});}catch(e){showSyncError(`Vehicle saved locally, but Customer Unit Directory sync failed: ${e.message}`);}
+ audit("Vehicle profile saved",`${data.year} ${data.make} ${data.model}`,unit);renderVehicleProfiles();
+ if(document.getElementById("viewCustomers")&&!document.getElementById("viewCustomers").classList.contains("hidden"))await renderCustomerDirectory();
 }
 function renderVehicleProfiles(){
  const box=document.getElementById("vehicleProfileResults");if(!box)return;
