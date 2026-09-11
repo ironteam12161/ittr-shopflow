@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v23.8.0</title>
+<title>ITTR ShopFlow v23.8.1</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -1237,7 +1237,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION="23.8.0";
+const FRONTEND_VERSION="23.8.1";
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
