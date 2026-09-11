@@ -35,6 +35,11 @@ const isProd=process.env.NODE_ENV==="production";
 const configuredApiKey=String(process.env.OPENAI_API_KEY||"").trim();
 const apiKeyLooksConfigured=Boolean(configuredApiKey && configuredApiKey!=="your_server_side_key" && !configuredApiKey.toLowerCase().includes("replace") && !configuredApiKey.toLowerCase().includes("your_"));
 const client=apiKeyLooksConfigured?new OpenAI({apiKey:configuredApiKey}):null;
+const configuredOpenRouterKey=String(process.env.OPENROUTER_API_KEY||"").trim();
+const openRouterKeyLooksConfigured=Boolean(configuredOpenRouterKey && !configuredOpenRouterKey.toLowerCase().includes("replace") && !configuredOpenRouterKey.toLowerCase().includes("your_"));
+const openRouterClient=openRouterKeyLooksConfigured?new OpenAI({apiKey:configuredOpenRouterKey,baseURL:"https://openrouter.ai/api/v1",defaultHeaders:{"HTTP-Referer":String(process.env.APP_PUBLIC_URL||"").trim()||"https://ittr-shopflow.invalid","X-Title":"ITTR ShopFlow"}}):null;
+const aiProvider=String(process.env.AI_PROVIDER||"auto").trim().toLowerCase();
+const openRouterModel=String(process.env.OPENROUTER_MODEL||"openrouter/free").trim()||"openrouter/free";
 const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATABASE_URL,ssl:isProd?{rejectUnauthorized:false}:undefined}):null;
 
 const r2Bucket=String(process.env.R2_BUCKET_NAME||"").trim();
@@ -227,8 +232,8 @@ async function auth(req,res,next){
 function adminOnly(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Admin access required."});next()}
 async function audit(username,action,details={}){try{if(pool)await pool.query("INSERT INTO server_audit(username,action,details) VALUES($1,$2,$3::jsonb)",[username||null,action,JSON.stringify(details)])}catch(e){console.error("audit",e.message)}}
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.4.0",backend:"23.4.0",build:"ITTR-23.4-PARTS-PRO-PDF-20260911"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"23.4.0",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.5.0",backend:"23.5.0",build:"ITTR-23.5-PRODUCTIVITY-FREE-AI-20260911"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"23.5.0",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -642,6 +647,25 @@ app.get("/api/work-orders/:id/task-sessions",auth,async(req,res,next)=>{try{
     [workOrderId,validUids]
   );
   res.json({ok:true,workOrderId,sessions:q.rows});
+}catch(e){next(e)}});
+
+app.get("/api/admin/productivity",auth,adminOnly,async(req,res,next)=>{try{
+  const start=new Date(String(req.query.start||"")),end=new Date(String(req.query.end||""));
+  if(isNaN(start)||isNaN(end)||end<=start)return res.status(400).json({error:"Valid start and end timestamps are required."});
+  if(end-start>1000*60*60*24*62)return res.status(400).json({error:"Productivity range cannot exceed 62 days."});
+  const mechanic=cleanUsername(req.query.mechanic||"");
+  const params=[start.toISOString(),end.toISOString()];
+  let mechSql="";if(mechanic){params.push(mechanic);mechSql=" AND mechanic_username=$3";}
+  const q=await requireDb().query(`SELECT id,work_order_id,task_index,task_uid,task_name,mechanic_username,started_at,ended_at,end_reason,pause_reason,pause_note
+    FROM task_time_sessions
+    WHERE started_at < $2::timestamptz
+      AND COALESCE(ended_at,now()) > $1::timestamptz${mechSql}
+    ORDER BY started_at,id`,params);
+  const stateQ=await requireDb().query("SELECT payload FROM app_state WHERE state_key='shopflow'");
+  const sf=stateQ.rows[0]?.payload&&typeof stateQ.rows[0].payload==="object"?stateQ.rows[0].payload:{workorders:[]};
+  const woMap=new Map((Array.isArray(sf.workorders)?sf.workorders:[]).map(w=>[String(w.id),w]));
+  const sessions=q.rows.map(r=>{const w=woMap.get(String(r.work_order_id))||{};return {id:r.id,workOrderId:String(r.work_order_id),taskUid:r.task_uid||"",taskName:r.task_name||"",mechanicUsername:r.mechanic_username,startedAt:r.started_at,endedAt:r.ended_at,endReason:r.end_reason||"",pauseReason:r.pause_reason||"",pauseNote:r.pause_note||"",unit:String(w.unit||""),customer:String(w.customer||"")}});
+  res.json({ok:true,start:start.toISOString(),end:end.toISOString(),mechanic:mechanic||"all",sessions});
 }catch(e){next(e)}});
 
 app.get("/api/admin/backup",auth,adminOnly,async(req,res,next)=>{try{
@@ -1101,15 +1125,43 @@ app.patch("/api/admin/users/:username/password",auth,adminOnly,async(req,res,nex
 app.delete("/api/admin/users/:username",auth,adminOnly,async(req,res,next)=>{try{const username=cleanUsername(req.params.username);const q=await pool.query("DELETE FROM auth_users WHERE username=$1 AND role='mechanic' RETURNING username",[username]);if(!q.rowCount)return res.status(404).json({error:"Mechanic account not found."});await audit(req.user.username,"mechanic_deleted",{username});res.json({ok:true})}catch(e){next(e)}});
 
 const memoryCache=new Map();
-function aiErrorResponse(res,err,fallback){console.error("AI ERROR:",err?.status,err?.code,err?.message);if(err?.code==="AI_NOT_CONFIGURED")return res.status(503).json({error:err.message,code:"AI_NOT_CONFIGURED"});if(err?.status===401||err?.code==="invalid_api_key")return res.status(401).json({error:"OpenAI rejected the API key. Check OPENAI_API_KEY in the hosting environment.",code:"INVALID_API_KEY"});if(err?.status===429)return res.status(429).json({error:"OpenAI API rate limit or billing limit reached. Check API billing/usage and try again.",code:"RATE_LIMIT"});if(err?.status===403)return res.status(403).json({error:"This OpenAI API key does not have permission for this request/model.",code:"PERMISSION"});return res.status(500).json({error:String(err?.message||fallback||"AI request failed").slice(0,500),code:err?.code||"AI_ERROR"})}
+function aiErrorResponse(res,err,fallback){
+ console.error("AI ERROR:",err?.status,err?.code,err?.message);
+ if(err?.code==="AI_NOT_CONFIGURED")return res.status(503).json({error:err.message,code:"AI_NOT_CONFIGURED"});
+ if(err?.status===401||err?.code==="invalid_api_key")return res.status(401).json({error:"AI provider rejected the API key. Check the server-side API key in Railway.",code:"INVALID_API_KEY"});
+ if(err?.status===429)return res.status(429).json({error:"AI provider rate limit reached. Free AI capacity may be temporarily busy; try again shortly.",code:"RATE_LIMIT"});
+ if(err?.status===403)return res.status(403).json({error:"The configured AI key/model does not have permission for this request.",code:"PERMISSION"});
+ return res.status(500).json({error:String(err?.message||fallback||"AI request failed").slice(0,500),code:err?.code||"AI_ERROR"});
+}
 function requireAIClient(){if(!client){const e=new Error("OpenAI API key is not configured on the server.");e.code="AI_NOT_CONFIGURED";throw e}return client}
+function requireOpenRouterClient(){if(!openRouterClient){const e=new Error("OPENROUTER_API_KEY is not configured on the server.");e.code="AI_NOT_CONFIGURED";throw e}return openRouterClient}
 function cacheKey(text,targetLanguage){return `${targetLanguage}|${text}`}
-async function textAI(system,user){const response=await requireAIClient().responses.create({model:process.env.OPENAI_TEXT_MODEL||"gpt-5.6-luna",input:[{role:"system",content:[{type:"input_text",text:system}]},{role:"user",content:[{type:"input_text",text:user}]}]});return String(response.output_text||"").trim()}
-app.get("/api/ai/status",auth,(req,res)=>res.json({server:true,aiConfigured:Boolean(client),message:client?"AI server is configured.":"OPENAI_API_KEY is not configured."}));
+async function openAITextAI(system,user){const response=await requireAIClient().responses.create({model:process.env.OPENAI_TEXT_MODEL||"gpt-5.6-luna",input:[{role:"system",content:[{type:"input_text",text:system}]},{role:"user",content:[{type:"input_text",text:user}]}]});return String(response.output_text||"").trim()}
+async function openRouterTextAI(system,user){const response=await requireOpenRouterClient().chat.completions.create({model:openRouterModel,messages:[{role:"system",content:system},{role:"user",content:user}],temperature:0.2,max_tokens:1800});return String(response.choices?.[0]?.message?.content||"").trim()}
+async function textAI(system,user){
+ if(aiProvider==="openrouter")return openRouterTextAI(system,user);
+ if(aiProvider==="openai")return openAITextAI(system,user);
+ if(openRouterClient){try{return await openRouterTextAI(system,user)}catch(e){if(!client)throw e;console.warn("OpenRouter failed; falling back to OpenAI:",e?.status,e?.message)}}
+ if(client)return openAITextAI(system,user);
+ const e=new Error("No AI provider is configured. Add OPENROUTER_API_KEY (recommended free option) or OPENAI_API_KEY in Railway.");e.code="AI_NOT_CONFIGURED";throw e;
+}
+function selectedAIProvider(){if(aiProvider==="openrouter")return openRouterClient?"openrouter":"none";if(aiProvider==="openai")return client?"openai":"none";return openRouterClient?"openrouter":client?"openai":"none"}
+app.get("/api/ai/status",auth,(req,res)=>res.json({server:true,aiConfigured:Boolean(openRouterClient||client),provider:selectedAIProvider(),openRouterConfigured:Boolean(openRouterClient),openAIConfigured:Boolean(client),model:selectedAIProvider()==="openrouter"?openRouterModel:String(process.env.OPENAI_TEXT_MODEL||"gpt-5.6-luna"),message:openRouterClient?`Free AI ready via OpenRouter (${openRouterModel}).`:client?"AI ready via OpenAI.":"No AI key is configured."}));
 app.post("/api/translate",auth,async(req,res)=>{try{const {text,sourceLanguage="English",targetLanguage="Ukrainian",domain="semi-truck and trailer repair shop software"}=req.body||{};if(typeof text!=="string"||!text.trim())return res.status(400).json({error:"text is required"});if(text.length>5000)return res.status(400).json({error:"text is too long"});const key=cacheKey(text,targetLanguage);if(memoryCache.has(key))return res.json({translation:memoryCache.get(key),cached:true});const translation=await textAI(`You are the professional translator for a US semi-truck and trailer repair shop management application. Translate ${sourceLanguage} into ${targetLanguage}. Preserve truck/unit numbers, part numbers, VINs, usernames, company names, abbreviations, measurements, timestamps, and proper nouns. Use natural terminology used by diesel mechanics. Return only the translated text.`,`Domain: ${domain}\n\nText:\n${text}`);memoryCache.set(key,translation);res.json({translation,cached:false})}catch(e){return aiErrorResponse(res,e,"translation_failed")}});
-app.post("/api/ai/note",auth,async(req,res)=>{try{const text=String(req.body?.text||"").trim();if(!text)return res.status(400).json({error:"text required"});res.json({result:await textAI("Rewrite semi-truck repair mechanic notes into concise professional service-invoice language. Preserve every technical fact. Do not invent diagnosis, parts, measurements, or work performed. Return only the polished note.",text)})}catch(e){return aiErrorResponse(res,e,"AI note failed")}});
-app.post("/api/ai/diagnostic",auth,async(req,res)=>{try{const text=String(req.body?.text||"").trim();if(!text)return res.status(400).json({error:"text required"});res.json({result:await textAI("You are a diagnostic assistant for professional heavy-duty diesel technicians. Provide a prioritized diagnostic plan, likely systems/causes, tests and measurements to verify. Clearly distinguish possibilities from confirmed facts. Do not claim a diagnosis without evidence.",text)})}catch(e){return aiErrorResponse(res,e,"AI diagnostic failed")}});
-app.post("/api/ai/part",auth,async(req,res)=>{try{const vin=String(req.body?.vin||"").trim(),query=String(req.body?.query||"").trim();if(!query)return res.status(400).json({error:"query required"});res.json({result:await textAI("You assist a heavy-duty truck parts professional. Give likely OEM/cross-reference candidates only when supported; flag everything that must be verified in an OEM/vendor catalog. Never invent fitment certainty.",`VIN: ${vin||"not supplied"}\nPart/query: ${query}`)})}catch(e){return aiErrorResponse(res,e,"AI part assistant failed")}});
+const NOTE_MODES={
+ professional:"Detect the input language automatically. Translate to professional American English and rewrite as a concise heavy-duty truck repair service note.",
+ invoice:"Detect the input language automatically. Translate to American English and produce a short invoice-ready repair description, usually 1-3 sentences.",
+ detailed:"Detect the input language automatically. Translate to American English and produce a detailed professional repair narrative in logical chronological order.",
+ customer:"Detect the input language automatically. Translate to clear American English for a truck owner or fleet manager. Explain technical language without changing facts.",
+ grammar:"Keep the original language. Correct grammar, spelling and clarity only; do not translate unless needed to make mixed-language text internally consistent.",
+ ukrainian:"Translate into natural professional Ukrainian used by truck/diesel mechanics.",
+ technical:"Detect the input language automatically. Translate to concise professional American English describing only the observed problem/finding.",
+ recommendation:"Detect the input language automatically. Translate to concise professional American English describing only the recommended repair/action."
+};
+app.post("/api/ai/note",auth,async(req,res)=>{try{const text=String(req.body?.text||"").trim(),mode=String(req.body?.mode||"professional").toLowerCase();if(!text)return res.status(400).json({error:"text required"});if(text.length>8000)return res.status(400).json({error:"text is too long"});const instruction=NOTE_MODES[mode]||NOTE_MODES.professional;res.json({result:await textAI(`You are the writing assistant for a US heavy-duty truck and trailer repair shop. ${instruction} Preserve every technical fact exactly. Preserve VINs, unit numbers, part numbers, fault codes, cylinder numbers, measurements, quantities and component names. Never invent work performed, parts replaced, measurements, causes, diagnosis, customer authorization, or test results. If the source says a cause is possible or suspected, keep that uncertainty. Return only the rewritten text.`,text)})}catch(e){return aiErrorResponse(res,e,"AI note failed")}});
+app.post("/api/ai/diagnostic",auth,async(req,res)=>{try{const text=String(req.body?.text||"").trim();if(!text)return res.status(400).json({error:"text required"});res.json({result:await textAI("You are a diagnostic assistant for professional heavy-duty diesel technicians. Provide a prioritized diagnostic plan, likely systems/causes, tests and measurements to verify. Clearly distinguish possibilities from confirmed facts. Do not claim a diagnosis without evidence. Include safety cautions when a test requires vehicle lifting, rotating components, fuel pressure, high voltage, air pressure, or hot systems.",text)})}catch(e){return aiErrorResponse(res,e,"AI diagnostic failed")}});
+app.post("/api/ai/part",auth,async(req,res)=>{try{const vin=String(req.body?.vin||"").trim(),query=String(req.body?.query||"").trim();if(!query)return res.status(400).json({error:"query required"});res.json({result:await textAI("You assist a professional heavy-duty truck parts counter. Analyze the supplied part number/description and VIN context. List likely OEM numbers, supersessions, cross-reference candidates, manufacturer/application clues, and practical verification steps. Never present an uncertain cross-reference or fitment as confirmed. Clearly label each candidate as VERIFIED FROM PROVIDED FACTS, LIKELY / NEEDS CATALOG VERIFICATION, or INSUFFICIENT INFORMATION. Do not invent a part number just to provide an answer. End with a short 'Verify before ordering' checklist.",`VIN: ${vin||"not supplied"}\nPart/query: ${query}`)})}catch(e){return aiErrorResponse(res,e,"AI part assistant failed")}});
+app.post("/api/ai/productivity-summary",auth,adminOnly,async(req,res)=>{try{const period=String(req.body?.period||"").slice(0,120),sessions=Array.isArray(req.body?.sessions)?req.body.sessions.slice(0,1000):[];res.json({result:await textAI("You are an operations analyst for a heavy-duty truck repair shop. Summarize the supplied factual mechanic task-session history for management. Focus on recorded repair labor, workload distribution, units/tasks worked, completed sessions, unusually long or fragmented jobs, and useful follow-up questions. Do not rank mechanics as good/bad and do not infer productivity percentage, attendance, idle time, or performance from missing data. Clearly state that the report is based only on recorded task sessions.",`Period: ${period}\nRecorded task sessions JSON:\n${JSON.stringify(sessions)}`)})}catch(e){return aiErrorResponse(res,e,"AI productivity summary failed")}});
 app.post("/api/vin",auth,async(req,res)=>{try{const vin=String(req.body?.vin||"").trim();if(vin.length!==17)return res.status(400).json({error:"17-character VIN required"});res.json({result:await textAI("Given a 17-character heavy-duty vehicle VIN, return ONLY a JSON object with keys year, make, model, engine, transmission. Use empty strings for anything not reliably determined. Do not guess.",vin)})}catch(e){return aiErrorResponse(res,e,"VIN decode failed")}});
 app.post("/api/transcribe",auth,upload.single("audio"),async(req,res)=>{try{if(!req.file)return res.status(400).json({error:"audio required"});const file=new File([req.file.buffer],req.file.originalname||"note.webm",{type:req.file.mimetype||"audio/webm"});const t=await requireAIClient().audio.transcriptions.create({file,model:process.env.OPENAI_TRANSCRIBE_MODEL||"gpt-4o-transcribe"});res.json({text:t.text||""})}catch(e){return aiErrorResponse(res,e,"transcription failed")}});
 
@@ -1134,5 +1186,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(()=>app.listen(port,()=>console.log(`ITTR v23.2 Online running on port ${port}`)))
+  .then(()=>app.listen(port,()=>console.log(`ITTR v23.5 Online running on port ${port}`)))
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

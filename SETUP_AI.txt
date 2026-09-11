@@ -31,3 +31,19 @@ IMPORTANT:
 - Do not put the API key into public/index.html.
 - Do not send or screenshot your API key.
 - A ChatGPT Plus subscription is separate from OpenAI API billing.
+
+
+=== v23.5 FREE AI / OPENROUTER ===
+Recommended Railway variables:
+OPENROUTER_API_KEY=<your key - keep private>
+AI_PROVIDER=openrouter
+OPENROUTER_MODEL=openrouter/free
+
+Alternative: AI_PROVIDER=auto will prefer OpenRouter and fall back to OPENAI_API_KEY when configured.
+The key is used only by server.js. Never put it in index.html or browser storage.
+Voice transcription still requires OPENAI_API_KEY because the current transcription route uses OpenAI audio transcription.
+
+AI writing behavior:
+- Detects Ukrainian/other input languages automatically.
+- Produces professional US English without inventing repairs, measurements, parts, or diagnoses.
+- Part cross-reference output is advisory and must be verified in an OEM/vendor catalog before ordering.

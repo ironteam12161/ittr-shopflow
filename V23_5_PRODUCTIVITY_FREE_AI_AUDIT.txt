@@ -1,0 +1,67 @@
+ITTR ShopFlow v23.5 — Historical Productivity + Free AI
+Build: ITTR-23.5-PRODUCTIVITY-FREE-AI-20260911
+
+NEW / CHANGED
+1. Historical Mechanic Productivity
+   - Admin Operations Center > Productivity now supports Day / Week / Month.
+   - Date navigation: Previous / Today / Next.
+   - Optional single-mechanic filter.
+   - Uses authoritative PostgreSQL task_time_sessions, not only today's work-order snapshot.
+   - Splits sessions correctly across calendar-day boundaries in the browser's local timezone.
+   - Shows recorded repair labor, unique tasks, completed time sessions, units, and other recorded mechanic activities.
+   - Every mechanic remains visible even on a day with no recorded sessions.
+   - Drill-down exposes underlying unit/task/session start-stop evidence.
+   - New admin endpoint: GET /api/admin/productivity?start=...&end=...&mechanic=...
+   - Range capped at 62 days to prevent oversized queries.
+
+2. Free AI / OpenRouter
+   - OPENROUTER_API_KEY supported server-side.
+   - AI_PROVIDER=openrouter forces OpenRouter.
+   - AI_PROVIDER=auto prefers OpenRouter and may fall back to OpenAI if configured.
+   - OPENROUTER_MODEL defaults to openrouter/free.
+   - Browser never receives AI API keys.
+   - AI status now reports active provider/model.
+
+3. Multilingual Shop Writing
+   - AI detects mechanic input language automatically.
+   - Professional English, short invoice, detailed repair, customer-friendly, grammar-only, and Ukrainian output modes.
+   - Strong prompt guardrails preserve VINs, unit numbers, part numbers, codes, measurements and uncertainty.
+   - AI is prohibited by prompt from inventing work performed, parts, measurements, diagnoses, authorization, or results.
+   - Inspection Finding fields now have AI -> Professional English buttons.
+   - Work-order Completion Notes / Future Repair Notes now have AI -> Professional English buttons.
+
+4. Parts / Cross Reference Assistant
+   - Improved instructions for OEM/cross-reference candidates.
+   - Requires uncertainty labels and verification guidance.
+   - UI explicitly warns that cross-reference/fitment must be verified before ordering/installing.
+
+5. Productivity AI Summary
+   - Admin can request an AI management summary of the selected productivity period.
+   - AI is instructed not to infer attendance, idle time, ranking, or productivity percentage from missing data.
+
+AUDIT CHECKS PASSED
+- server.js JavaScript syntax: PASS
+- extracted frontend JavaScript syntax: PASS
+- duplicate static DOM IDs: NONE
+- literal getElementById references to missing static elements: NONE
+- inline handler function references missing: NONE
+- root index.html and public/index.html: IDENTICAL
+- frontend/backend version contract: 23.5.0 / 23.5.0
+- protected direct /api fetch audit: no missing Authorization helper found
+- permanent task UID routes retained
+- finding decision routes retained
+- helper mechanic routes retained
+- R2 photo routes retained
+- task parts routes retained
+- completed work-order PDF route retained
+- no destructive database migration added
+
+DEPENDENCY NOTE
+- Top-level dependency versions are pinned exactly in package.json for this release.
+- package-lock.json could not be generated in the build sandbox because npm registry access was unavailable/timed out. Railway will still install the exact top-level versions from package.json; transitive packages remain registry-resolved.
+
+KNOWN / INTENTIONAL LIMITATIONS
+- Voice transcription still uses OpenAI audio transcription and therefore needs OPENAI_API_KEY. Text AI can run on OpenRouter without OpenAI.
+- Free OpenRouter models are capacity/rate limited and model selection may vary when using openrouter/free.
+- AI part cross-reference output is advisory; final fitment requires OEM/manufacturer/vendor catalog verification.
+- Historical 'other activity' depends on retained mechanic activityHistory records; task repair labor uses PostgreSQL task_time_sessions.

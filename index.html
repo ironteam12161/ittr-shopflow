@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v23.4</title>
+<title>ITTR ShopFlow v23.5</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -520,6 +520,8 @@ body.modalOpen{overflow:hidden}
 .partAddGrid{display:grid;grid-template-columns:minmax(100px,.8fr) minmax(160px,1.8fr) 70px auto;gap:7px;margin-top:8px}
 .partAddGrid input{min-width:0}
 @media(max-width:700px){.partRow{grid-template-columns:1fr 58px auto}.partRow .partDesc{grid-column:1/-1}.partAddGrid{grid-template-columns:1fr 70px}.partAddGrid .partDescInput{grid-column:1/-1}.partAddGrid button{grid-column:1/-1;width:100%}}
+.productivityToolbar{display:grid;grid-template-columns:180px 180px 1fr;gap:10px;align-items:end;margin-bottom:12px}.productivityQuick{display:flex;gap:7px;flex-wrap:wrap}.productivityTable{width:100%;border-collapse:collapse;font-size:13px}.productivityTable th,.productivityTable td{padding:9px 8px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}.productivityTable th{font-size:11px;text-transform:uppercase;color:#667085;background:#f9fafb}.productivityDay{margin:14px 0}.productivityDay h3{margin:0 0 8px}.productivityDetail{background:#f9fafb;border:1px solid #eaecf0;border-radius:10px;padding:9px;margin-top:7px}.productivityDetailRow{display:grid;grid-template-columns:85px 1fr 90px;gap:8px;padding:5px 0;border-bottom:1px dashed #e5e7eb}.productivityDetailRow:last-child{border-bottom:0}.aiActionGrid{display:flex;gap:7px;flex-wrap:wrap}.aiResult{white-space:pre-wrap}.aiVerify{margin-top:8px;padding:9px 10px;border:1px solid #f0b429;background:#fffaeb;border-radius:9px;font-size:12px}.miniAiButton{margin-top:6px}.productivityLoading{padding:20px;text-align:center;color:#667085}
+@media(max-width:760px){.productivityToolbar{grid-template-columns:1fr}.productivityQuick{display:grid;grid-template-columns:1fr 1fr}.productivityQuick button{width:100%}.productivityTable{display:block;overflow-x:auto;white-space:nowrap}.productivityDetailRow{grid-template-columns:1fr}.aiActionGrid{display:grid;grid-template-columns:1fr}.aiActionGrid button{width:100%}}
 
 </style>
 </head>
@@ -830,7 +832,21 @@ body.modalOpen{overflow:hidden}
     <div id="maintenanceResults"></div>
   </div>
 
-  <div id="proPanelProductivity" class="proPanel hidden"><div id="productivityResults"></div></div>
+  <div id="proPanelProductivity" class="proPanel hidden">
+    <div class="card">
+      <h2>Mechanic Productivity History</h2>
+      <div class="muted">Review actual recorded task-session labor for any day, week, or month. Click a mechanic row to audit the underlying task sessions.</div>
+      <div class="productivityToolbar">
+        <div class="field"><label>Period</label><select id="productivityPeriod" onchange="renderProductivity()"><option value="day">Day</option><option value="week">Week</option><option value="month">Month</option></select></div>
+        <div class="field"><label>Date</label><input id="productivityDate" type="date" onchange="renderProductivity()"></div>
+        <div class="productivityQuick"><button type="button" class="secondary" onclick="shiftProductivityDate(-1)">← Previous</button><button type="button" class="secondary" onclick="setProductivityToday()">Today</button><button type="button" class="secondary" onclick="shiftProductivityDate(1)">Next →</button></div>
+      </div>
+      <div class="row"><div class="field"><label>Mechanic</label><select id="productivityMechanic" onchange="renderProductivity()"><option value="all">All Mechanics</option></select></div></div>
+      <div class="actions"><button type="button" class="secondary" onclick="aiProductivitySummary()">AI Productivity Summary</button></div>
+      <div id="productivityAiSummary" class="aiResult"></div>
+    </div>
+    <div id="productivityResults"></div>
+  </div>
   <div id="proPanelNotifications" class="proPanel hidden"><div id="notificationResults"></div></div>
   <div id="proPanelDailyreport" class="proPanel hidden">
     <div class="card"><div class="row"><div class="field"><label>Report Date</label><input id="dailyReportDate" type="date" onchange="renderDailyReport()"></div></div></div>
@@ -847,13 +863,20 @@ body.modalOpen{overflow:hidden}
     </div>
 
     <div class="card">
-      <h2>AI Shop Assistant</h2>
-      <div class="field full"><label>Mechanic Note / Rough Text</label><textarea id="aiShopText" rows="5" placeholder="Type or dictate a mechanic note..."></textarea></div>
-      <div class="actions">
-        <button onclick="aiProfessionalNote()">Make Professional</button>
+      <h2>AI Shop Writing Assistant</h2>
+      <div class="muted">Write naturally in Ukrainian, English, Polish, Spanish, Russian, or mixed shop language. AI will preserve technical facts and produce professional American English.</div>
+      <div class="field full"><label>Mechanic Note / Rough Text</label><textarea id="aiShopText" rows="5" placeholder="Type or dictate a mechanic note in any language..."></textarea></div>
+      <div class="aiActionGrid">
+        <button onclick="aiProfessionalNote('professional')">Professional English</button>
+        <button class="secondary" onclick="aiProfessionalNote('invoice')">Short Invoice Description</button>
+        <button class="secondary" onclick="aiProfessionalNote('detailed')">Detailed Repair Description</button>
+        <button class="secondary" onclick="aiProfessionalNote('customer')">Customer-Friendly</button>
+        <button class="secondary" onclick="aiProfessionalNote('grammar')">Fix Grammar Only</button>
+        <button class="secondary" onclick="aiProfessionalNote('ukrainian')">Translate to Ukrainian</button>
         <button class="secondary" onclick="startVoiceNote()">🎤 Dictate Note</button>
       </div>
       <div id="aiShopResult" class="aiResult"></div>
+      <div class="actions"><button type="button" class="secondary" onclick="copyAIResult('aiShopResult')">Copy Result</button></div>
     </div>
     <div class="card">
       <h2>AI Diagnostic Assistant</h2>
@@ -865,7 +888,7 @@ body.modalOpen{overflow:hidden}
       <h2>Part Number / Cross Reference Assistant</h2>
       <div class="row"><div class="field"><label>VIN</label><input id="aiPartVin"></div><div class="field"><label>Part # / Description</label><input id="aiPartQuery"></div></div>
       <button onclick="aiPartAssistant()">Research Part</button>
-      <div id="aiPartResult" class="aiResult"></div>
+      <div id="aiPartResult" class="aiResult"></div><div class="aiVerify">AI cross-reference results are suggestions only. Verify the final part number and fitment in an OEM/manufacturer/vendor catalog before ordering or installing.</div>
     </div>
   </div>
 </section>
@@ -924,8 +947,8 @@ body.modalOpen{overflow:hidden}
     <div class="row">
       <div class="field"><label>Work Order / Unit</label><select name="wo" id="issueWO"></select></div>
       <div class="field"><label>Severity</label><select name="severity"><option>Needs Attention</option><option>High</option><option>Safety Critical</option></select></div>
-      <div class="field full"><label>Problem found</label><textarea name="description" required placeholder="Example: RH steer tire has sidewall damage"></textarea></div>
-      <div class="field full"><label>Recommended repair</label><textarea name="recommendation" placeholder="Replace tire before vehicle leaves shop"></textarea></div>
+      <div class="field full"><label>Problem found</label><textarea name="description" required placeholder="Example: RH steer tire has sidewall damage"></textarea><button type="button" class="secondary miniAiButton" onclick="professionalizeIssueField('description')">AI → Professional English</button></div>
+      <div class="field full"><label>Recommended repair</label><textarea name="recommendation" placeholder="Replace tire before vehicle leaves shop"></textarea><button type="button" class="secondary miniAiButton" onclick="professionalizeIssueField('recommendation')">AI → Professional English</button></div>
       <div class="field full"><label>Photo</label><input id="findingPhotoInput" name="photo" type="file" accept="image/*" capture="environment"><div class="muted">Take a photo or choose one from the phone. Large phone photos are compressed automatically before upload.</div><div id="findingPhotoStatus" class="muted" style="margin-top:6px"></div></div>
     </div>
     <button type="submit">Save Finding</button>
@@ -942,10 +965,10 @@ body.modalOpen{overflow:hidden}
   <form id="closeNotesForm">
     <input type="hidden" name="workOrderId" id="closeNotesWorkOrderId">
     <div class="field"><label>Mechanic completion notes</label>
-      <textarea name="completionNotes" placeholder="What was done, anything unusual, anything customer should know"></textarea>
+      <textarea name="completionNotes" placeholder="What was done, anything unusual, anything customer should know"></textarea><button type="button" class="secondary miniAiButton" onclick="professionalizeFormField('closeNotesForm','completionNotes','professional')">AI → Professional English</button>
     </div>
     <div class="field"><label>Future repair / next visit notes</label>
-      <textarea name="futureNotes" placeholder="Example: Front brakes approx. 30% remaining — recheck in 10,000 miles"></textarea>
+      <textarea name="futureNotes" placeholder="Example: Front brakes approx. 30% remaining — recheck in 10,000 miles"></textarea><button type="button" class="secondary miniAiButton" onclick="professionalizeFormField('closeNotesForm','futureNotes','recommendation')">AI → Professional English</button>
     </div>
     <div class="field"><label>Recommended revisit mileage (optional)</label>
       <input name="revisitMiles" type="number" min="0" placeholder="Example: 10000">
@@ -1137,7 +1160,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION="23.4.0";
+const FRONTEND_VERSION="23.5.0";
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
@@ -3071,17 +3094,30 @@ function startDelay(id,type,note=""){
 function stopDelay(id){
  const d=PRO.delays.find(x=>x.wo==id&&!x.endedAt);if(!d)return;d.endedAt=new Date().toISOString();savePro();audit("Delay stopped",d.type,d.unit);
 }
-function renderProductivity(){
- const box=document.getElementById("productivityResults");if(!box)return;
- const users=USERS||{},today=new Date().toISOString().slice(0,10);
- const cards=Object.entries(users).filter(([,u])=>u.role==="mechanic").map(([username,u])=>{
-  let labor=0,jobs=0,activity=0;
-  (state.workorders||[]).forEach(w=>(w.tasks||[]).forEach(t=>{if((t.outcomeBy===username||w.mechanic===username)&&String(t.completedAt||t.stoppedAt||"").slice(0,10)===today){labor+=+t.elapsedMs||0;jobs++}}));
-  (u.activityHistory||[]).filter(a=>String(a.startedAt||"").slice(0,10)===today).forEach(a=>activity+=activityHistoryDurationMs(a));
-  return `<div class="proMetric"><b>${esc(u.display||username)}</b><strong>${jobs}</strong><span class="muted">jobs/tasks today</span><div>Labor: ${activityHistoryDurationLabel(labor)}</div><div>Other activity: ${activityHistoryDurationLabel(activity)}</div></div>`;
- });
- box.innerHTML=`<h2>Mechanic Productivity — Today</h2><div class="proMetricGrid">${cards.join("")}</div>`;
+let productivityLastData=null;
+function productivityLocalDateKey(value){const d=value instanceof Date?value:new Date(value);if(isNaN(d))return "";return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`}
+function productivityDateAtMidnight(dateStr){const [y,m,d]=String(dateStr||"").split("-").map(Number);return new Date(y||new Date().getFullYear(),(m||1)-1,d||1,0,0,0,0)}
+function productivityRange(){const el=document.getElementById("productivityDate"),period=document.getElementById("productivityPeriod")?.value||"day";if(el&&!el.value)el.value=productivityLocalDateKey(new Date());let base=productivityDateAtMidnight(el?.value||productivityLocalDateKey(new Date())),start=new Date(base),end=new Date(base);if(period==="week"){const dow=(base.getDay()+6)%7;start.setDate(base.getDate()-dow);end=new Date(start);end.setDate(start.getDate()+7)}else if(period==="month"){start=new Date(base.getFullYear(),base.getMonth(),1);end=new Date(base.getFullYear(),base.getMonth()+1,1)}else end.setDate(start.getDate()+1);return {period,start,end,label:period==="day"?start.toLocaleDateString():period==="week"?`${start.toLocaleDateString()} – ${new Date(end-1).toLocaleDateString()}`:start.toLocaleDateString(undefined,{month:"long",year:"numeric"})}}
+function setProductivityToday(){const e=document.getElementById("productivityDate");if(e)e.value=productivityLocalDateKey(new Date());renderProductivity()}
+function shiftProductivityDate(direction){const e=document.getElementById("productivityDate");if(!e)return;const r=productivityRange(),d=productivityDateAtMidnight(e.value);if(r.period==="month")d.setMonth(d.getMonth()+direction);else if(r.period==="week")d.setDate(d.getDate()+7*direction);else d.setDate(d.getDate()+direction);e.value=productivityLocalDateKey(d);renderProductivity()}
+function populateProductivityMechanics(){const e=document.getElementById("productivityMechanic");if(!e)return;const cur=e.value||"all";const opts=Object.entries(USERS||{}).filter(([,u])=>u.role==="mechanic").sort((a,b)=>String(a[1].display||a[0]).localeCompare(String(b[1].display||b[0])));e.innerHTML='<option value="all">All Mechanics</option>'+opts.map(([u,v])=>`<option value="${esc(u)}">${esc(v.display||u)}</option>`).join("");e.value=opts.some(([u])=>u===cur)?cur:"all"}
+function overlapMs(start,end,rangeStart,rangeEnd){const a=Math.max(new Date(start).getTime(),rangeStart.getTime()),b=Math.min(end?new Date(end).getTime():Date.now(),rangeEnd.getTime());return Math.max(0,b-a)}
+function splitSessionByDay(session,rangeStart,rangeEnd){const out=[];let cursor=new Date(Math.max(new Date(session.startedAt).getTime(),rangeStart.getTime()));const stop=new Date(Math.min(session.endedAt?new Date(session.endedAt).getTime():Date.now(),rangeEnd.getTime()));while(cursor<stop){const next=new Date(cursor);next.setHours(24,0,0,0);const segEnd=new Date(Math.min(next.getTime(),stop.getTime()));out.push({day:productivityLocalDateKey(cursor),ms:Math.max(0,segEnd-cursor),startedAt:new Date(cursor),endedAt:segEnd});cursor=segEnd}return out}
+async function renderProductivity(){
+ const box=document.getElementById("productivityResults");if(!box)return;populateProductivityMechanics();const range=productivityRange(),mf=document.getElementById("productivityMechanic")?.value||"all";box.innerHTML='<div class="productivityLoading">Loading recorded labor sessions…</div>';
+ try{
+  const qs=new URLSearchParams({start:range.start.toISOString(),end:range.end.toISOString()});if(mf!=="all")qs.set("mechanic",mf);
+  const data=await apiJSON(`/api/admin/productivity?${qs.toString()}`);productivityLastData={...data,range,mf};
+  const byDay={};for(let d=new Date(range.start);d<range.end;d.setDate(d.getDate()+1))byDay[productivityLocalDateKey(d)]={};
+  (data.sessions||[]).forEach(sess=>splitSessionByDay(sess,range.start,range.end).forEach(seg=>{const day=byDay[seg.day]||(byDay[seg.day]={}),row=day[sess.mechanicUsername]||(day[sess.mechanicUsername]={laborMs:0,sessions:[],tasks:new Set(),units:new Set(),completed:0});row.laborMs+=seg.ms;row.sessions.push({...sess,segmentMs:seg.ms,segmentStart:seg.startedAt,segmentEnd:seg.endedAt});row.tasks.add(`${sess.workOrderId}|${sess.taskUid}`);if(sess.unit)row.units.add(sess.unit);if(String(sess.endReason||"").toLowerCase()==="completed"&&sess.endedAt&&productivityLocalDateKey(sess.endedAt)===seg.day)row.completed++}));
+  const activityByDay={};Object.entries(USERS||{}).forEach(([username,u])=>{if(u.role!=="mechanic"||(mf!=="all"&&username!==mf))return;(u.activityHistory||[]).forEach(a=>{const aStart=new Date(a.startedAt||"");if(isNaN(aStart))return;const aEnd=a.endedAt?new Date(a.endedAt):new Date();for(let d=new Date(range.start);d<range.end;d.setDate(d.getDate()+1)){const dayStart=new Date(d),dayEnd=new Date(d);dayEnd.setDate(dayEnd.getDate()+1);const ms=overlapMs(aStart,aEnd,dayStart,dayEnd);if(ms){const key=productivityLocalDateKey(dayStart);activityByDay[key]??={};activityByDay[key][username]=(activityByDay[key][username]||0)+ms}}})});
+  const mechanicNames=Object.fromEntries(Object.entries(USERS||{}).map(([u,v])=>[u,v.display||u]));let shopLabor=0,shopOther=0,shopTasks=new Set(),shopUnits=new Set();
+  const allMechanicUsernames=Object.entries(USERS||{}).filter(([,u])=>u.role==="mechanic").map(([u])=>u);const dayHtml=Object.keys(byDay).sort().reverse().map(day=>{const rows=[];const names=new Set([...Object.keys(byDay[day]||{}),...Object.keys(activityByDay[day]||{}),...(mf==="all"?allMechanicUsernames:[])]);if(mf!=="all")names.add(mf);for(const username of [...names].sort((a,b)=>String(mechanicNames[a]||a).localeCompare(String(mechanicNames[b]||b)))){const r=byDay[day]?.[username]||{laborMs:0,sessions:[],tasks:new Set(),units:new Set(),completed:0},other=activityByDay[day]?.[username]||0;shopLabor+=r.laborMs;shopOther+=other;r.tasks.forEach(x=>shopTasks.add(x));r.units.forEach(x=>shopUnits.add(x));const detail=r.sessions.length?`<details class="productivityDetail"><summary>Audit ${r.sessions.length} time session${r.sessions.length===1?"":"s"}</summary>${r.sessions.sort((a,b)=>new Date(a.segmentStart)-new Date(b.segmentStart)).map(x=>`<div class="productivityDetailRow"><div>${new Date(x.segmentStart).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})}–${new Date(x.segmentEnd).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})}</div><div><b>Unit ${esc(x.unit||"—")}</b> · ${esc(x.taskName||"Task")}<div class="muted">WO ${esc(x.workOrderId)}${x.pauseReason?` · ${esc(x.pauseReason)}`:""}${x.pauseNote?` — ${esc(x.pauseNote)}`:""}</div></div><b>${activityHistoryDurationLabel(x.segmentMs)}</b></div>`).join("")}</details>`:'<div class="muted">No recorded repair-task sessions.</div>';rows.push(`<tr><td><b>${esc(mechanicNames[username]||username)}</b><div class="muted">@${esc(username)}</div></td><td><b>${activityHistoryDurationLabel(r.laborMs)}</b></td><td>${r.tasks.size}</td><td>${r.completed}</td><td>${r.units.size}</td><td>${activityHistoryDurationLabel(other)}</td></tr><tr><td colspan="6">${detail}</td></tr>`)}return `<div class="card productivityDay"><h3>${new Date(day+"T12:00:00").toLocaleDateString(currentLanguage==="uk"?"uk-UA":"en-US",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</h3><table class="productivityTable"><thead><tr><th>Mechanic</th><th>Repair Labor</th><th>Tasks Worked</th><th>Completed Sessions</th><th>Units</th><th>Other Activity</th></tr></thead><tbody>${rows.join("")||'<tr><td colspan="6" class="muted">No recorded activity.</td></tr>'}</tbody></table></div>`}).join("");
+  box.innerHTML=`<div class="card"><h2>${esc(range.label)}</h2><div class="proMetricGrid"><div class="proMetric"><strong>${activityHistoryDurationLabel(shopLabor)}</strong><span class="muted">Recorded repair labor</span></div><div class="proMetric"><strong>${shopTasks.size}</strong><span class="muted">Unique tasks worked</span></div><div class="proMetric"><strong>${shopUnits.size}</strong><span class="muted">Units worked on</span></div><div class="proMetric"><strong>${activityHistoryDurationLabel(shopOther)}</strong><span class="muted">Other recorded activity</span></div></div></div>${dayHtml}`;
+ }catch(e){box.innerHTML=`<div class="notice">Productivity history unavailable: ${esc(e.message||"Unable to load")}</div>`}
 }
+async function aiProductivitySummary(){const out=document.getElementById("productivityAiSummary");if(!out)return;if(!productivityLastData){await renderProductivity();if(!productivityLastData)return}out.textContent="Working…";try{const d=productivityLastData,r=d.range;const payload={period:r.label,sessions:(d.sessions||[]).map(x=>({mechanic:x.mechanicUsername,unit:x.unit,task:x.taskName,startedAt:x.startedAt,endedAt:x.endedAt,endReason:x.endReason}))};const result=await proAI("/api/ai/productivity-summary",payload);out.textContent=result||""}catch(e){out.textContent=e.message||"AI summary failed."}}
+
 function buildProNotifications(){
  const pending=(state.issues||[]).filter(i=>(i.approval||"Waiting for Customer")==="Waiting for Customer");
  const overdue=PRO.maintenance.filter(m=>maintenanceState(m).status==="Overdue");
@@ -3121,8 +3157,8 @@ async function checkAIConnection(){
    const d=await r.json();
    if(el){
      el.textContent=d.aiConfigured
-       ?"Connected — AI is configured and ready."
-       :"Server connected — AI key is NOT configured. Edit the .env file and restart the server.";
+       ?`Connected — ${d.message||"AI is configured and ready."}`
+       :"Server connected — add OPENROUTER_API_KEY (recommended) or OPENAI_API_KEY in Railway.";
      el.style.fontWeight="700";
    }
  }catch(e){
@@ -3148,9 +3184,12 @@ async function proAI(endpoint,payload){
    return null;
  }
 }
-async function aiProfessionalNote(){
- const text=aiShopText.value.trim();if(!text)return;aiShopResult.textContent="Working…";const r=await proAI("/api/ai/note",{text});aiShopResult.textContent=r||"";
+async function aiProfessionalNote(mode="professional"){
+ const text=aiShopText.value.trim();if(!text)return;aiShopResult.textContent="Working…";try{const r=await proAI("/api/ai/note",{text,mode});aiShopResult.textContent=r||""}catch(e){aiShopResult.textContent=e.message||"AI request failed."}
 }
+async function professionalizeFormField(formId,fieldName,mode="professional"){const form=document.getElementById(formId),el=form?.querySelector(`[name="${fieldName}"]`);if(!el||!el.value.trim())return alert(tr("Enter text first."));const original=el.value;el.disabled=true;try{const r=await proAI("/api/ai/note",{text:original,mode});if(r)el.value=r}finally{el.disabled=false;el.focus()}}
+async function professionalizeIssueField(fieldName){return professionalizeFormField("issueForm",fieldName,fieldName==="recommendation"?"recommendation":"technical")}
+function copyAIResult(id){const text=document.getElementById(id)?.textContent||"";if(!text.trim())return;navigator.clipboard?.writeText(text).then(()=>{}).catch(()=>{})}
 async function aiDiagnosticAssistant(){
  const text=aiDiagnosticInput.value.trim();if(!text)return;aiDiagnosticResult.textContent="Working…";const r=await proAI("/api/ai/diagnostic",{text});aiDiagnosticResult.textContent=r||"";
 }
@@ -3167,7 +3206,7 @@ async function startVoiceNote(){
  }catch(e){alert(tr("Microphone permission is required."))}
 }
 function renderProCenter(){
- renderVehicleProfiles();renderMaintenance();renderProductivity();renderProNotifications();renderDailyReport();renderAuditLog();
+ renderVehicleProfiles();renderMaintenance();if(!document.getElementById("proPanelProductivity")?.classList.contains("hidden"))renderProductivity();renderProNotifications();renderDailyReport();renderAuditLog();
 }
 
 function render(){

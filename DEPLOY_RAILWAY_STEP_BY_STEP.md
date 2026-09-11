@@ -23,7 +23,10 @@
    - `BOOTSTRAP_ADMIN_USERNAME` = `admin` (or your preferred admin username)
    - `BOOTSTRAP_ADMIN_PASSWORD` = a NEW strong password, at least 10 characters
    - `SESSION_TTL_DAYS` = `7`
-   - `OPENAI_API_KEY` = your NEW private API key (optional until AI billing is ready)
+   - `OPENROUTER_API_KEY` = your private OpenRouter key (recommended free AI)
+   - `AI_PROVIDER` = `openrouter`
+   - `OPENROUTER_MODEL` = `openrouter/free`
+   - `OPENAI_API_KEY` = optional fallback and required only for the existing voice-transcription route
    - `OPENAI_TEXT_MODEL` = `gpt-5.6-luna`
    - `OPENAI_TRANSCRIBE_MODEL` = `gpt-4o-transcribe`
 6. Redeploy/restart the service after variables are saved.
@@ -39,7 +42,7 @@ v21 keeps the existing large frontend and synchronizes its legacy state snapshot
 
 ## Security rules
 - Never commit `.env` to GitHub.
-- Never put `OPENAI_API_KEY` in `public/index.html`.
+- Never put `OPENROUTER_API_KEY` or `OPENAI_API_KEY` in `index.html` / `public/index.html`.
 - Never reuse the API key that was previously exposed.
 - Use a unique strong bootstrap admin password.
 - Keep the GitHub repository private.

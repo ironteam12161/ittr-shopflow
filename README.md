@@ -1,3 +1,20 @@
+# ITTR ShopFlow v23.5
+
+## v23.5 additions
+- Historical mechanic productivity by day, week, and month using recorded PostgreSQL task time sessions.
+- Per-mechanic audit drill-down with unit/task/session details.
+- Free AI option through OpenRouter, with optional OpenAI fallback.
+- Multilingual mechanic writing assistant that converts Ukrainian/other-language notes into professional American English without inventing repair facts.
+- AI professionalization buttons in inspection findings and work-order completion notes.
+- Safer parts cross-reference assistant with explicit verification labels/instructions.
+
+### Recommended Railway AI variables
+`OPENROUTER_API_KEY` = your private OpenRouter key
+`AI_PROVIDER=openrouter`
+`OPENROUTER_MODEL=openrouter/free`
+
+Keep all AI keys server-side in Railway Variables. Never place them in `index.html`.
+
 # ITTR ShopFlow v20.1 — Server Launch Fix
 
 ## IMPORTANT
@@ -19,7 +36,8 @@ The core shop system can start without an AI key.
 For AI translation, voice transcription, professional mechanic-note cleanup,
 diagnostic assistance, part assistance, and VIN assistance:
 - Open `.env`
-- Set `OPENAI_API_KEY=...`
+- Recommended free AI: set `OPENROUTER_API_KEY=...`, `AI_PROVIDER=openrouter`, and `OPENROUTER_MODEL=openrouter/free`
+- Optional OpenAI fallback / voice transcription: set `OPENAI_API_KEY=...`
 - Restart the ITTR server
 
 ## v20.1 fixes
