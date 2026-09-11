@@ -1,0 +1,7 @@
+1. Extract this ZIP locally.
+2. In your GitHub repository, replace the root files with the files from this package.
+3. Make sure server.js, index.html, public/index.html, assets/iron-team-logo.png and public/assets/iron-team-logo.png are at the expected paths.
+4. Commit the changes and let Railway redeploy the same existing service.
+5. Do NOT reset PostgreSQL and do NOT re-import Fullbay just for this release.
+6. Hard refresh the website (Ctrl+Shift+R).
+7. Confirm green banner: ITTR v24.0.0 ONLINE · backend 24.0.0.

@@ -1,0 +1,7 @@
+ITTR v24.0.0 Smart Unified Workspace
+- Unified Customers + Vehicles hub
+- Universal smart search (Ctrl+K)
+- Removed duplicate Truck Search and Vehicle Profiles from primary navigation
+- Grouped team/admin utilities under Operations
+- Iron Team logo integrated
+- No destructive database migration

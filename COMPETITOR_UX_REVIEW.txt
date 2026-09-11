@@ -1,0 +1,10 @@
+ITTR v24.0.0 UX direction
+
+Patterns applied from modern shop-management products:
+- Unit-centric record: customer + asset + service history stay connected.
+- Universal search instead of separate duplicate lookup screens.
+- One primary repair workflow with completed history reachable contextually.
+- Real-time shop/team operations grouped together rather than scattered across top-level navigation.
+- Daily-use screens stay prominent; diagnostics/import/admin utilities are secondary.
+
+This release intentionally keeps ITTR heavy-duty specific instead of copying passenger-car workflows literally.
