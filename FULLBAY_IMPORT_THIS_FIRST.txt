@@ -1,0 +1,15 @@
+FULLBAY IMPORT — v23.7
+
+1. Deploy v23.7 to the SAME GitHub/Railway project. Do not replace PostgreSQL.
+2. Sign in as Admin.
+3. Open Professional Operations Center -> Fullbay Data.
+4. Upload Customers.csv and click Import / Update Customers.
+5. Upload Inventory.csv and click Import / Update Inventory.
+6. Expected from the files supplied during development:
+   - Customers: 22 records
+   - Inventory: 430 records
+7. Verify the customer and inventory browser immediately below the import section.
+
+Re-importing a newer Fullbay export updates matching records and preserves ITTR work orders, labor history, photos, findings, and recorded job parts.
+
+Important: the original CSV exports are not included in this deployment ZIP because they contain business/customer data.

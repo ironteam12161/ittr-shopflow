@@ -1,0 +1,31 @@
+ITTR ShopFlow v23.7 — Fullbay Exact Customer & Inventory Import
+
+Built from v23.6.
+
+What changed
+- Importer mapped specifically to the supplied Fullbay Customers.csv (77 columns) and Inventory.csv (24 columns).
+- Fullbay Excel-style exported text values such as ="Active" and ="OTRD1369" are normalized before storage/search.
+- Customer records preserve Fullbay ID and key account fields: active status, creation date, group, main/secondary phone, DOT number, external ID, physical address, assigned shop, taxable status, tax exemption number, credit terms/limit, billing contact, payment method, labor rate, price level, access method, billing address, and external-accounting state.
+- Inventory records preserve part number, description, status, UOM, in-stock, allocated, selling price, average cost, min/max, location, preferred vendor, tracking status, category, cost floor, inventory value/balance, manufacturer, and notes.
+- Full original source row is kept in PostgreSQL JSON for future mapping, except the Fullbay Portal Code is intentionally excluded as credential-like data.
+- Re-import updates matching customer/part records instead of duplicating them.
+- Fullbay Data Center now includes searchable customer and inventory browsers with pagination.
+- Customer autocomplete and task part autocomplete remain integrated with work-order workflows.
+- Search expanded to DOT/city for customers and manufacturer/category for inventory.
+- No destructive database reset or delete migration.
+
+Source export validation
+- Customers.csv: 22 data rows, 77 headers.
+- Inventory.csv: 430 data rows, 24 headers.
+- Exact export headers were inspected before building this mapping.
+
+Security
+- Fullbay Portal Code is not persisted from CSV raw data.
+- CSV files themselves are NOT bundled into this deployment ZIP.
+- No API keys or credentials are stored in frontend code.
+
+Static audit
+- node --check server.js passes.
+- extracted frontend script node --check passes.
+- root index.html and public/index.html are byte-identical.
+- frontend/backend release contract is 23.7.0.

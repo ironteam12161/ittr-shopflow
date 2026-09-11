@@ -1,0 +1,44 @@
+ITTR ShopFlow v23.6 — Fullbay Bulk Data Import
+Date: 2026-09-11
+
+Purpose
+- Import Fullbay customer and parts/inventory exports into ITTR ShopFlow without relying on undocumented Fullbay API endpoints.
+- Preserve all existing ITTR work orders, task sessions, findings, photos, vehicle profiles, users and history.
+
+New PostgreSQL tables
+- fullbay_import_customers
+- fullbay_import_parts
+- fullbay_import_log
+
+New authenticated endpoints
+- GET  /api/fullbay/import/status                admin only
+- POST /api/fullbay/import/customers             admin only, multipart CSV
+- POST /api/fullbay/import/parts                 admin only, multipart CSV
+- GET  /api/fullbay/customers?q=...              signed-in users
+- GET  /api/fullbay/parts?q=...                  signed-in users
+
+Frontend
+- Operations Center > Fullbay Data
+- Upload Customers CSV and Parts/Inventory CSV
+- Import status and recent import log
+- Test customer and parts search
+- Customer autocomplete in Create Work Order, Edit Work Order and Vehicle Profiles
+- Parts autocomplete in each mechanic task's Parts Used area
+- Selecting an exact imported part can fill both part number and description.
+
+Import behavior
+- Header names are normalized and common Fullbay/export column labels are recognized.
+- Rows are upserted using Fullbay/customer/part IDs when present, otherwise a stable fingerprint of identifying fields.
+- Re-importing updates matching records; it does not erase ITTR operational records.
+- Original imported row is retained in JSONB for future mapping/audit.
+- CSV upload maximum is 20 MB per file.
+
+Known limitation
+- Fullbay's documented API supplied by the shop does not expose bulk customers or bulk parts/inventory.
+- Therefore this release intentionally uses Fullbay exports rather than screen scraping or undocumented endpoints.
+
+Static checks performed
+- node --check server.js: PASS
+- extracted browser script node --check: PASS
+- root index.html == public/index.html: PASS
+- frontend/backend release contract: 23.6.0

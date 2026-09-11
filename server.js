@@ -134,6 +134,60 @@ async function initDb(){
  );
  CREATE INDEX IF NOT EXISTS idx_app_state_history_key_time
    ON app_state_history(state_key,captured_at DESC);
+ CREATE TABLE IF NOT EXISTS fullbay_import_customers(
+   id BIGSERIAL PRIMARY KEY,
+   source_key TEXT UNIQUE NOT NULL,
+   fullbay_id TEXT, customer_name TEXT NOT NULL, phone TEXT, email TEXT, address TEXT, city TEXT, state TEXT, postal_code TEXT,
+   raw JSONB NOT NULL DEFAULT '{}'::jsonb, source_file TEXT, imported_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
+ );
+ CREATE INDEX IF NOT EXISTS idx_fullbay_customers_name ON fullbay_import_customers(lower(customer_name));
+ CREATE TABLE IF NOT EXISTS fullbay_import_parts(
+   id BIGSERIAL PRIMARY KEY,
+   source_key TEXT UNIQUE NOT NULL,
+   fullbay_id TEXT, part_number TEXT, description TEXT, quantity NUMERIC, cost NUMERIC, price NUMERIC, location TEXT, vendor TEXT,
+   raw JSONB NOT NULL DEFAULT '{}'::jsonb, source_file TEXT, imported_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
+ );
+ CREATE INDEX IF NOT EXISTS idx_fullbay_parts_number ON fullbay_import_parts(lower(part_number));
+ CREATE INDEX IF NOT EXISTS idx_fullbay_parts_description ON fullbay_import_parts(lower(description));
+ CREATE TABLE IF NOT EXISTS fullbay_import_log(
+   id BIGSERIAL PRIMARY KEY, import_type TEXT NOT NULL, source_file TEXT, rows_received INTEGER DEFAULT 0, rows_imported INTEGER DEFAULT 0, rows_skipped INTEGER DEFAULT 0, username TEXT, created_at TIMESTAMPTZ DEFAULT now()
+ );
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS active BOOLEAN;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS created_fullbay TIMESTAMPTZ;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS customer_group TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS secondary_phone TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS dot_number TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS external_id TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS country TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS assigned_shop TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS taxable BOOLEAN;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS tax_exempt_number TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS credit_terms TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS credit_limit NUMERIC;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS billing_contact TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS payment_method TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS default_labor_rate NUMERIC;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS price_level TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS access_method TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS billing_address TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS billing_city TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS billing_state TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS billing_postal_code TEXT;
+ ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS ext_accounting TEXT;
+ ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS status TEXT;
+ ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS uom TEXT;
+ ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS allocated NUMERIC;
+ ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS min_qty NUMERIC;
+ ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS max_qty NUMERIC;
+ ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS track_quantity BOOLEAN;
+ ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS category TEXT;
+ ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS cost_floor NUMERIC;
+ ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS inventory_value NUMERIC;
+ ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS inventory_balance NUMERIC;
+ ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS manufacturer TEXT;
+ ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS notes TEXT;
+ CREATE INDEX IF NOT EXISTS idx_fullbay_customers_dot ON fullbay_import_customers(dot_number);
+ CREATE INDEX IF NOT EXISTS idx_fullbay_parts_manufacturer ON fullbay_import_parts(lower(manufacturer));
  CREATE TABLE IF NOT EXISTS task_time_sessions(
    id BIGSERIAL PRIMARY KEY,
    work_order_id TEXT NOT NULL,
@@ -232,8 +286,97 @@ async function auth(req,res,next){
 function adminOnly(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Admin access required."});next()}
 async function audit(username,action,details={}){try{if(pool)await pool.query("INSERT INTO server_audit(username,action,details) VALUES($1,$2,$3::jsonb)",[username||null,action,JSON.stringify(details)])}catch(e){console.error("audit",e.message)}}
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.5.0",backend:"23.5.0",build:"ITTR-23.5-PRODUCTIVITY-FREE-AI-20260911"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"23.5.0",photoStorageConfigured:r2Configured})});
+
+function csvRows(text){
+ const rows=[];let row=[],field="",quoted=false;
+ const src=String(text||"").replace(/^\uFEFF/,"");
+ for(let i=0;i<src.length;i++){
+  const c=src[i];
+  if(quoted){if(c==='"'){if(src[i+1]==='"'){field+='"';i++;}else quoted=false;}else field+=c;}
+  else if(c==='"')quoted=true;
+  else if(c===','){row.push(field);field="";}
+  else if(c==='\n'){row.push(field);rows.push(row);row=[];field="";}
+  else if(c==='\r'){} else field+=c;
+ }
+ if(field.length||row.length){row.push(field);rows.push(row)}
+ return rows.filter(r=>r.some(v=>String(v||"").trim()!==""));
+}
+function csvObjects(buffer){
+ const rows=csvRows(Buffer.isBuffer(buffer)?buffer.toString("utf8"):String(buffer||""));
+ if(rows.length<2)return [];
+ const headers=rows[0].map((h,i)=>String(h||`column_${i+1}`).trim()||`column_${i+1}`);
+ return rows.slice(1).map(r=>Object.fromEntries(headers.map((h,i)=>[h,String(r[i]??"").trim()])));
+}
+function normHeader(s){return String(s||"").toLowerCase().replace(/[^a-z0-9]+/g,"")}
+function cleanFullbayCell(v){
+ let s=String(v??"").trim();
+ const m=s.match(/^=\"([\s\S]*)\"$/);
+ if(m)s=m[1].replace(/\"\"/g,'"');
+ return s.trim();
+}
+function pickField(row,names){const m=new Map(Object.entries(row||{}).map(([k,v])=>[normHeader(k),cleanFullbayCell(v)]));for(const n of names){const v=m.get(normHeader(n));if(v!=null&&String(v).trim()!=="")return String(v).trim()}return ""}
+function numOrNull(v){const n=Number(cleanFullbayCell(v).replace(/[$,%\s,]/g,""));return Number.isFinite(n)?n:null}
+function boolOrNull(v){const s=cleanFullbayCell(v).toLowerCase();if(["yes","true","1","active","on"].includes(s))return true;if(["no","false","0","inactive","off"].includes(s))return false;return null}
+function dateOrNull(v){const s=cleanFullbayCell(v);if(!s)return null;const d=new Date(s.replace(" ","T"));return Number.isFinite(d.getTime())?d.toISOString():null}
+function cleanRawRow(row){const out={};for(const [k,v] of Object.entries(row||{})){if(normHeader(k)==="portalcode")continue;out[k]=cleanFullbayCell(v)}return out}
+function sourceKey(prefix,...vals){const raw=vals.map(v=>String(v||"").trim().toLowerCase()).filter(Boolean).join("|");return prefix+":"+crypto.createHash("sha256").update(raw||crypto.randomUUID()).digest("hex")}
+
+app.get("/api/fullbay/import/status",auth,adminOnly,async(req,res,next)=>{try{
+ const db=requireDb();const [c,p,l]=await Promise.all([db.query("SELECT count(*)::int n,max(updated_at) last FROM fullbay_import_customers"),db.query("SELECT count(*)::int n,max(updated_at) last FROM fullbay_import_parts"),db.query("SELECT * FROM fullbay_import_log ORDER BY created_at DESC LIMIT 10")]);
+ res.json({customers:c.rows[0],parts:p.rows[0],recent:l.rows});
+}catch(e){next(e)}});
+
+app.post("/api/fullbay/import/customers",auth,adminOnly,upload.single("file"),async(req,res,next)=>{try{
+ if(!req.file)return res.status(400).json({error:"Choose a Fullbay customer CSV file."});
+ const rows=csvObjects(req.file.buffer);if(!rows.length)return res.status(400).json({error:"No data rows found in this CSV."});
+ const db=requireDb();let imported=0,skipped=0;
+ for(const row of rows){
+  const fullbayId=pickField(row,["ID","customer id","customerid"]),name=pickField(row,["Company Name","customer","customer name","company"]);
+  if(!name){skipped++;continue}
+  const phone=pickField(row,["Customer Main Phone","phone","main phone"]),secondaryPhone=pickField(row,["Customer Secondary Phone","secondary phone"]),dot=pickField(row,["DOT #","dot","dot number"]),externalId=pickField(row,["External Id","external id"]);
+  const address=pickField(row,["Physical Address Line 1","address","address 1"]),city=pickField(row,["Physical Address City","city"]),state=pickField(row,["Physical Address State","state"]),postal=pickField(row,["Physical Address Zip/Postal Code","zip","postal code"]),country=pickField(row,["Physical Address Country","country"]);
+  const billingAddress=pickField(row,["Billing Address Line 1"]),billingCity=pickField(row,["Billing Address City"]),billingState=pickField(row,["Billing Address State"]),billingPostal=pickField(row,["Billing Address Zip/Postal Code"]);
+  const key=fullbayId?`customer:id:${String(fullbayId).toLowerCase()}`:sourceKey("customer",name,phone,dot,address);
+  await db.query(`INSERT INTO fullbay_import_customers(source_key,fullbay_id,customer_name,phone,email,address,city,state,postal_code,active,created_fullbay,customer_group,secondary_phone,dot_number,external_id,country,assigned_shop,taxable,tax_exempt_number,credit_terms,credit_limit,billing_contact,payment_method,default_labor_rate,price_level,access_method,billing_address,billing_city,billing_state,billing_postal_code,ext_accounting,raw,source_file) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32::jsonb,$33) ON CONFLICT(source_key) DO UPDATE SET fullbay_id=EXCLUDED.fullbay_id,customer_name=EXCLUDED.customer_name,phone=EXCLUDED.phone,email=EXCLUDED.email,address=EXCLUDED.address,city=EXCLUDED.city,state=EXCLUDED.state,postal_code=EXCLUDED.postal_code,active=EXCLUDED.active,created_fullbay=EXCLUDED.created_fullbay,customer_group=EXCLUDED.customer_group,secondary_phone=EXCLUDED.secondary_phone,dot_number=EXCLUDED.dot_number,external_id=EXCLUDED.external_id,country=EXCLUDED.country,assigned_shop=EXCLUDED.assigned_shop,taxable=EXCLUDED.taxable,tax_exempt_number=EXCLUDED.tax_exempt_number,credit_terms=EXCLUDED.credit_terms,credit_limit=EXCLUDED.credit_limit,billing_contact=EXCLUDED.billing_contact,payment_method=EXCLUDED.payment_method,default_labor_rate=EXCLUDED.default_labor_rate,price_level=EXCLUDED.price_level,access_method=EXCLUDED.access_method,billing_address=EXCLUDED.billing_address,billing_city=EXCLUDED.billing_city,billing_state=EXCLUDED.billing_state,billing_postal_code=EXCLUDED.billing_postal_code,ext_accounting=EXCLUDED.ext_accounting,raw=EXCLUDED.raw,source_file=EXCLUDED.source_file,updated_at=now()`,[key,fullbayId||null,name,phone||null,null,address||null,city||null,state||null,postal||null,boolOrNull(pickField(row,["Customer Active"])),dateOrNull(pickField(row,["Created"])),pickField(row,["Customer Group"])||null,secondaryPhone||null,dot||null,externalId||null,country||null,pickField(row,["Assigned Shop"])||null,boolOrNull(pickField(row,["Taxable"])),pickField(row,["Tax Exempt #"])||null,pickField(row,["Credit Terms"])||null,numOrNull(pickField(row,["Credit Limit"])),pickField(row,["Billing Contact"])||null,pickField(row,["Payment Method"])||null,numOrNull(pickField(row,["Default Labor Rate"])),pickField(row,["Price Level"])||null,pickField(row,["Access Method"])||null,billingAddress||null,billingCity||null,billingState||null,billingPostal||null,pickField(row,["Ext Accounting"])||null,JSON.stringify(cleanRawRow(row)),String(req.file.originalname||"customers.csv")]);imported++;
+ }
+ await db.query("INSERT INTO fullbay_import_log(import_type,source_file,rows_received,rows_imported,rows_skipped,username) VALUES('customers',$1,$2,$3,$4,$5)",[String(req.file.originalname||"customers.csv"),rows.length,imported,skipped,req.user.username]);
+ await audit(req.user.username,"fullbay_customers_import",{file:req.file.originalname,received:rows.length,imported,skipped});res.json({ok:true,received:rows.length,imported,skipped});
+}catch(e){next(e)}});
+
+app.post("/api/fullbay/import/parts",auth,adminOnly,upload.single("file"),async(req,res,next)=>{try{
+ if(!req.file)return res.status(400).json({error:"Choose a Fullbay parts/inventory CSV file."});
+ const rows=csvObjects(req.file.buffer);if(!rows.length)return res.status(400).json({error:"No data rows found in this CSV."});
+ const db=requireDb();let imported=0,skipped=0;
+ for(const row of rows){
+  const partNumber=pickField(row,["Part #","part number","partnumber","sku"]),description=pickField(row,["Description","part description","name"]);
+  if(!partNumber&&!description){skipped++;continue}
+  const vendor=pickField(row,["Preferred Vendor","vendor"]),manufacturer=pickField(row,["Manufacturer"]);
+  const key=partNumber?sourceKey("part",partNumber):sourceKey("part",description,vendor,manufacturer);
+  await db.query(`INSERT INTO fullbay_import_parts(source_key,fullbay_id,part_number,description,quantity,cost,price,location,vendor,status,uom,allocated,min_qty,max_qty,track_quantity,category,cost_floor,inventory_value,inventory_balance,manufacturer,notes,raw,source_file) VALUES($1,NULL,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::jsonb,$23) ON CONFLICT(source_key) DO UPDATE SET part_number=EXCLUDED.part_number,description=EXCLUDED.description,quantity=EXCLUDED.quantity,cost=EXCLUDED.cost,price=EXCLUDED.price,location=EXCLUDED.location,vendor=EXCLUDED.vendor,status=EXCLUDED.status,uom=EXCLUDED.uom,allocated=EXCLUDED.allocated,min_qty=EXCLUDED.min_qty,max_qty=EXCLUDED.max_qty,track_quantity=EXCLUDED.track_quantity,category=EXCLUDED.category,cost_floor=EXCLUDED.cost_floor,inventory_value=EXCLUDED.inventory_value,inventory_balance=EXCLUDED.inventory_balance,manufacturer=EXCLUDED.manufacturer,notes=EXCLUDED.notes,raw=EXCLUDED.raw,source_file=EXCLUDED.source_file,updated_at=now()`,[key,partNumber||null,description||null,numOrNull(pickField(row,["In Stock"])),numOrNull(pickField(row,["Average Cost"])),numOrNull(pickField(row,["Selling Price"])),pickField(row,["Default Location"])||null,vendor||null,pickField(row,["Status"])||null,pickField(row,["UOM"])||null,numOrNull(pickField(row,["Allocated"])),numOrNull(pickField(row,["Min Qty"])),numOrNull(pickField(row,["Max Qty"])),boolOrNull(pickField(row,["Track Quantity"])),pickField(row,["Category"])||null,numOrNull(pickField(row,["Cost Floor"])),numOrNull(pickField(row,["Value"])),numOrNull(pickField(row,["Current Inventory Balance"])),manufacturer||null,pickField(row,["Notes"])||null,JSON.stringify(cleanRawRow(row)),String(req.file.originalname||"inventory.csv")]);imported++;
+ }
+ await db.query("INSERT INTO fullbay_import_log(import_type,source_file,rows_received,rows_imported,rows_skipped,username) VALUES('parts',$1,$2,$3,$4,$5)",[String(req.file.originalname||"inventory.csv"),rows.length,imported,skipped,req.user.username]);
+ await audit(req.user.username,"fullbay_parts_import",{file:req.file.originalname,received:rows.length,imported,skipped});res.json({ok:true,received:rows.length,imported,skipped});
+}catch(e){next(e)}});
+
+app.get("/api/fullbay/customers",auth,async(req,res,next)=>{try{
+ const q=String(req.query.q||"").trim(),limit=Math.min(200,Math.max(1,Number(req.query.limit)||50)),offset=Math.max(0,Number(req.query.offset)||0),like=`%${q}%`;
+ const r=await requireDb().query(`SELECT id,fullbay_id,customer_name,active,created_fullbay,customer_group,phone,secondary_phone,dot_number,external_id,address,city,state,postal_code,country,assigned_shop,taxable,tax_exempt_number,credit_terms,credit_limit,billing_contact,payment_method,default_labor_rate,price_level,access_method,billing_address,billing_city,billing_state,billing_postal_code,ext_accounting,updated_at FROM fullbay_import_customers WHERE $1='' OR customer_name ILIKE $2 OR coalesce(phone,'') ILIKE $2 OR coalesce(secondary_phone,'') ILIKE $2 OR coalesce(dot_number,'') ILIKE $2 OR coalesce(city,'') ILIKE $2 ORDER BY active DESC NULLS LAST,customer_name LIMIT $3 OFFSET $4`,[q,like,limit,offset]);
+ const c=await requireDb().query(`SELECT count(*)::int n FROM fullbay_import_customers WHERE $1='' OR customer_name ILIKE $2 OR coalesce(phone,'') ILIKE $2 OR coalesce(secondary_phone,'') ILIKE $2 OR coalesce(dot_number,'') ILIKE $2 OR coalesce(city,'') ILIKE $2`,[q,like]);res.json({items:r.rows,total:c.rows[0].n,limit,offset});
+}catch(e){next(e)}});
+
+app.get("/api/fullbay/customers/:id",auth,async(req,res,next)=>{try{const r=await requireDb().query(`SELECT * FROM fullbay_import_customers WHERE id=$1`,[req.params.id]);if(!r.rowCount)return res.status(404).json({error:"Customer not found."});const item=r.rows[0];delete item.raw?.['Portal Code'];res.json({item});}catch(e){next(e)}});
+
+app.get("/api/fullbay/parts",auth,async(req,res,next)=>{try{
+ const q=String(req.query.q||"").trim(),limit=Math.min(200,Math.max(1,Number(req.query.limit)||50)),offset=Math.max(0,Number(req.query.offset)||0),like=`%${q}%`;
+ const r=await requireDb().query(`SELECT id,part_number,description,status,uom,quantity,allocated,cost,price,min_qty,max_qty,location,vendor,track_quantity,category,cost_floor,inventory_value,inventory_balance,manufacturer,notes,updated_at FROM fullbay_import_parts WHERE $1='' OR coalesce(part_number,'') ILIKE $2 OR coalesce(description,'') ILIKE $2 OR coalesce(vendor,'') ILIKE $2 OR coalesce(manufacturer,'') ILIKE $2 OR coalesce(category,'') ILIKE $2 ORDER BY CASE WHEN lower(coalesce(part_number,'')) LIKE lower($3) THEN 0 ELSE 1 END,part_number NULLS LAST,description LIMIT $4 OFFSET $5`,[q,like,`${q}%`,limit,offset]);
+ const c=await requireDb().query(`SELECT count(*)::int n FROM fullbay_import_parts WHERE $1='' OR coalesce(part_number,'') ILIKE $2 OR coalesce(description,'') ILIKE $2 OR coalesce(vendor,'') ILIKE $2 OR coalesce(manufacturer,'') ILIKE $2 OR coalesce(category,'') ILIKE $2`,[q,like]);res.json({items:r.rows,total:c.rows[0].n,limit,offset});
+}catch(e){next(e)}});
+
+app.get("/api/fullbay/parts/:id",auth,async(req,res,next)=>{try{const r=await requireDb().query(`SELECT * FROM fullbay_import_parts WHERE id=$1`,[req.params.id]);if(!r.rowCount)return res.status(404).json({error:"Part not found."});res.json({item:r.rows[0]});}catch(e){next(e)}});
+
+
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.7.0",backend:"23.7.0",build:"ITTR-23.7-FULLBAY-EXACT-IMPORT-20260911"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"23.7.0",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
