@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v23.5</title>
+<title>ITTR ShopFlow v23.7</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -523,6 +523,7 @@ body.modalOpen{overflow:hidden}
 .productivityToolbar{display:grid;grid-template-columns:180px 180px 1fr;gap:10px;align-items:end;margin-bottom:12px}.productivityQuick{display:flex;gap:7px;flex-wrap:wrap}.productivityTable{width:100%;border-collapse:collapse;font-size:13px}.productivityTable th,.productivityTable td{padding:9px 8px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}.productivityTable th{font-size:11px;text-transform:uppercase;color:#667085;background:#f9fafb}.productivityDay{margin:14px 0}.productivityDay h3{margin:0 0 8px}.productivityDetail{background:#f9fafb;border:1px solid #eaecf0;border-radius:10px;padding:9px;margin-top:7px}.productivityDetailRow{display:grid;grid-template-columns:85px 1fr 90px;gap:8px;padding:5px 0;border-bottom:1px dashed #e5e7eb}.productivityDetailRow:last-child{border-bottom:0}.aiActionGrid{display:flex;gap:7px;flex-wrap:wrap}.aiResult{white-space:pre-wrap}.aiVerify{margin-top:8px;padding:9px 10px;border:1px solid #f0b429;background:#fffaeb;border-radius:9px;font-size:12px}.miniAiButton{margin-top:6px}.productivityLoading{padding:20px;text-align:center;color:#667085}
 @media(max-width:760px){.productivityToolbar{grid-template-columns:1fr}.productivityQuick{display:grid;grid-template-columns:1fr 1fr}.productivityQuick button{width:100%}.productivityTable{display:block;overflow-x:auto;white-space:nowrap}.productivityDetailRow{grid-template-columns:1fr}.aiActionGrid{display:grid;grid-template-columns:1fr}.aiActionGrid button{width:100%}}
 
+.fullbayGrid{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:10px}.fullbayStat{background:#f9fafb;border:1px solid #eaecf0;border-radius:10px;padding:10px}.fullbayStat b{display:block;font-size:20px}.fullbayBrowser{overflow-x:auto}.fullbayBrowser table{min-width:980px}.fullbaySearchRow{display:flex;gap:8px;flex-wrap:wrap;align-items:end}.fullbaySearchRow .field{min-width:240px;flex:1}.stockLow{font-weight:700}.fullbayPager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:10px}.fullbayDetails{font-size:12px;white-space:normal;max-width:360px}@media(max-width:700px){.fullbayGrid{grid-template-columns:1fr 1fr}.fullbaySearchRow{display:block}.fullbaySearchRow .field{margin-bottom:8px}}
 </style>
 </head>
 <body>
@@ -785,6 +786,7 @@ body.modalOpen{overflow:hidden}
     <button class="secondary" onclick="showProPanel('notifications')">Notifications</button>
     <button class="secondary" onclick="showProPanel('dailyreport')">Daily Report</button>
     <button class="secondary" onclick="showProPanel('audit')">Audit Log</button>
+    <button class="secondary" onclick="showProPanel('fullbay')">Fullbay Data</button>
     <button class="secondary" onclick="showProPanel('aitools')">AI Tools</button>
   </div>
 
@@ -794,7 +796,7 @@ body.modalOpen{overflow:hidden}
       <div class="row">
         <div class="field"><label>Unit #</label><input id="vpUnit"></div>
         <div class="field"><label>VIN</label><input id="vpVin" maxlength="17"></div>
-        <div class="field"><label>Customer / Fleet</label><input id="vpCustomer"></div>
+        <div class="field"><label>Customer / Fleet</label><input id="vpCustomer" list="fullbayCustomerList" oninput="fullbayCustomerSuggest(this)"></div>
         <div class="field"><label>Mileage</label><input id="vpMileage" type="number" min="0"></div>
       </div>
       <div class="row">
@@ -854,6 +856,32 @@ body.modalOpen{overflow:hidden}
   </div>
   <div id="proPanelAudit" class="proPanel hidden"><div id="auditResults"></div></div>
 
+  <div id="proPanelFullbay" class="proPanel hidden">
+    <div class="card">
+      <h2>Fullbay Data Center</h2>
+      <div class="muted">Import your Fullbay customer and inventory exports. This release is mapped specifically to the Fullbay Customers and Inventory CSV formats you supplied. Re-importing updates matching records without deleting ITTR work orders, photos, labor history, findings, or parts already recorded on jobs.</div>
+      <div class="row" style="margin-top:12px">
+        <div class="field"><label>Customers CSV</label><input id="fullbayCustomersFile" type="file" accept=".csv,text/csv"></div>
+        <div class="field"><label>Parts / Inventory CSV</label><input id="fullbayPartsFile" type="file" accept=".csv,text/csv"></div>
+      </div>
+      <div class="actions"><button type="button" onclick="uploadFullbayCsv('customers')">Import / Update Customers</button><button type="button" onclick="uploadFullbayCsv('parts')">Import / Update Inventory</button><button type="button" class="secondary" onclick="renderFullbayImportStatus()">Refresh</button></div>
+      <div id="fullbayImportStatus" class="aiResult">Loading…</div>
+    </div>
+    <div id="fullbayStats" class="fullbayGrid"></div>
+    <div class="card">
+      <h3>Customers</h3>
+      <div class="fullbaySearchRow"><div class="field"><label>Search</label><input id="fullbayCustomerBrowserSearch" placeholder="Company, phone, DOT #, city..." oninput="debouncedFullbayBrowse('customers')"></div><button class="secondary" onclick="loadFullbayCustomers(0)">Search</button></div>
+      <div id="fullbayCustomerBrowser" class="fullbayBrowser"></div>
+      <div id="fullbayCustomerPager" class="fullbayPager"></div>
+    </div>
+    <div class="card">
+      <h3>Parts / Inventory</h3>
+      <div class="fullbaySearchRow"><div class="field"><label>Search</label><input id="fullbayPartBrowserSearch" placeholder="Part #, description, manufacturer, vendor, category..." oninput="debouncedFullbayBrowse('parts')"></div><button class="secondary" onclick="loadFullbayParts(0)">Search</button></div>
+      <div id="fullbayPartBrowser" class="fullbayBrowser"></div>
+      <div id="fullbayPartPager" class="fullbayPager"></div>
+    </div>
+  </div>
+
   <div id="proPanelAitools" class="proPanel hidden">
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
@@ -909,6 +937,9 @@ body.modalOpen{overflow:hidden}
   <div class="jobs" id="issues"></div>
 </section>
 </main>
+<datalist id="fullbayCustomerList"></datalist>
+<datalist id="fullbayPartNumberList"></datalist>
+<datalist id="fullbayPartDescriptionList"></datalist>
 
 <div id="woModal" class="modal">
 <div class="modalbox">
@@ -916,7 +947,7 @@ body.modalOpen{overflow:hidden}
   <form id="woForm">
     <div class="row">
       <div class="field"><label>Truck / Unit #</label><input name="unit" required placeholder="Unit 214"></div>
-      <div class="field"><label>Customer</label><input name="customer" placeholder="Customer / company"></div>
+      <div class="field"><label>Customer</label><input name="customer" list="fullbayCustomerList" placeholder="Customer / company" oninput="fullbayCustomerSuggest(this)"></div>
       <div class="field"><label>Scheduled date</label><input name="date" type="date" required></div>
       <div class="field"><label>Scheduled time</label><input name="time" type="time" required></div>
       <div class="field"><label>Assigned mechanic</label><select name="mechanic" id="newMechanicSelect"></select></div>
@@ -1016,7 +1047,7 @@ body.modalOpen{overflow:hidden}
     <input type="hidden" name="id" id="editId">
     <div class="row">
       <div class="field"><label>Truck / Unit #</label><input name="unit" id="editUnit" required></div>
-      <div class="field"><label>Customer</label><input name="customer" id="editCustomer"></div>
+      <div class="field"><label>Customer</label><input name="customer" id="editCustomer" list="fullbayCustomerList" oninput="fullbayCustomerSuggest(this)"></div>
       <div class="field"><label>Scheduled date</label><input name="date" id="editDate" type="date" required></div>
       <div class="field"><label>Scheduled time</label><input name="time" id="editTime" type="time" required></div>
       <div class="field"><label>Assigned mechanic</label><select name="mechanic" id="editMechanic"></select></div>
@@ -1160,7 +1191,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION="23.5.0";
+const FRONTEND_VERSION="23.7.0";
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
@@ -3023,6 +3054,38 @@ function notifyPro(type,message,unit=""){
  PRO.notifications.unshift({id:Date.now()+Math.random(),at:new Date().toISOString(),type,message,unit,read:false});
  PRO.notifications=PRO.notifications.slice(0,1000);savePro();
 }
+
+let fullbayCustomerTimer=null,fullbayPartTimer=null,fullbayPartCache=[];
+let fullbayBrowseTimer=null;
+function money(v){const n=Number(v);return Number.isFinite(n)?new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"}).format(n):"—"}
+function debouncedFullbayBrowse(type){clearTimeout(fullbayBrowseTimer);fullbayBrowseTimer=setTimeout(()=>type==="customers"?loadFullbayCustomers(0):loadFullbayParts(0),220)}
+function fullbayPager(id,type,total,offset,limit){const el=document.getElementById(id);if(!el)return;const page=Math.floor(offset/limit)+1,pages=Math.max(1,Math.ceil(total/limit));el.innerHTML=`<span class="muted">${Number(total).toLocaleString()} records · Page ${page} of ${pages}</span><button class="secondary" ${offset<=0?"disabled":""} onclick="${type==='customers'?'loadFullbayCustomers':'loadFullbayParts'}(${Math.max(0,offset-limit)})">← Previous</button><button class="secondary" ${offset+limit>=total?"disabled":""} onclick="${type==='customers'?'loadFullbayCustomers':'loadFullbayParts'}(${offset+limit})">Next →</button>`}
+async function loadFullbayCustomers(offset=0){const out=document.getElementById("fullbayCustomerBrowser");if(!out)return;const q=document.getElementById("fullbayCustomerBrowserSearch")?.value?.trim()||"";out.innerHTML='<div class="productivityLoading">Loading customers…</div>';try{const d=await apiJSON(`/api/fullbay/customers?q=${encodeURIComponent(q)}&limit=50&offset=${offset}`);const items=d.items||[];out.innerHTML=items.length?`<table><thead><tr><th>Customer</th><th>Phone / DOT</th><th>Location</th><th>Terms</th><th>Account</th></tr></thead><tbody>${items.map(x=>`<tr><td><b>${esc(x.customer_name||"")}</b><div class="muted">Fullbay ID ${esc(x.fullbay_id||"—")} · ${x.active===false?"Inactive":"Active"}</div></td><td>${esc(x.phone||"—")}<div class="muted">${x.secondary_phone?esc(x.secondary_phone)+" · ":""}DOT ${esc(x.dot_number||"—")}</div></td><td>${esc([x.city,x.state,x.postal_code].filter(Boolean).join(", ")||"—")}</td><td>${esc(x.credit_terms||"—")}<div class="muted">Credit ${money(x.credit_limit)}</div></td><td>${esc(x.payment_method||"—")}<div class="muted">${x.taxable===false?"Tax Exempt":"Taxable"}${x.price_level?" · "+esc(x.price_level):""}</div></td></tr>`).join("")}</tbody></table>`:'<div class="muted">No customers found.</div>';fullbayPager("fullbayCustomerPager","customers",Number(d.total||0),Number(d.offset||0),Number(d.limit||50));}catch(e){out.innerHTML=`<div class="error">${esc(e.message||"Unable to load customers.")}</div>`}}
+async function loadFullbayParts(offset=0){const out=document.getElementById("fullbayPartBrowser");if(!out)return;const q=document.getElementById("fullbayPartBrowserSearch")?.value?.trim()||"";out.innerHTML='<div class="productivityLoading">Loading inventory…</div>';try{const d=await apiJSON(`/api/fullbay/parts?q=${encodeURIComponent(q)}&limit=50&offset=${offset}`);const items=d.items||[];out.innerHTML=items.length?`<table><thead><tr><th>Part #</th><th>Description</th><th>Stock</th><th>Price / Cost</th><th>Location / Vendor</th><th>Manufacturer</th></tr></thead><tbody>${items.map(x=>`<tr><td><b>${esc(x.part_number||"—")}</b><div class="muted">${esc(x.status||"")}${x.category?" · "+esc(x.category):""}</div></td><td>${esc(x.description||"—")}${x.notes?`<div class="muted fullbayDetails">${esc(x.notes)}</div>`:""}</td><td class="${Number(x.quantity||0)<=Number(x.min_qty||0)&&x.min_qty!=null?'stockLow':''}">${Number(x.quantity||0).toLocaleString()} ${esc(x.uom||"")}<div class="muted">Allocated ${Number(x.allocated||0).toLocaleString()}</div></td><td>${money(x.price)}<div class="muted">Avg cost ${money(x.cost)}</div></td><td>${esc(x.location||"—")}<div class="muted">${esc(x.vendor||"—")}</div></td><td>${esc(x.manufacturer||"—")}</td></tr>`).join("")}</tbody></table>`:'<div class="muted">No inventory found.</div>';fullbayPager("fullbayPartPager","parts",Number(d.total||0),Number(d.offset||0),Number(d.limit||50));}catch(e){out.innerHTML=`<div class="error">${esc(e.message||"Unable to load inventory.")}</div>`}}
+
+async function renderFullbayImportStatus(){
+ const box=document.getElementById("fullbayImportStatus");if(!box)return;box.textContent="Loading…";
+ try{const d=await apiJSON("/api/fullbay/import/status");const c=d.customers||{},p=d.parts||{};box.innerHTML=`<b>Customers:</b> ${Number(c.n||0).toLocaleString()}${c.last?` · last updated ${esc(fmtDateTime(c.last))}`:""}<br><b>Inventory records:</b> ${Number(p.n||0).toLocaleString()}${p.last?` · last updated ${esc(fmtDateTime(p.last))}`:""}${(d.recent||[]).length?`<hr><b>Recent imports</b><br>${d.recent.slice(0,5).map(x=>`${esc(fmtDateTime(x.created_at))} — ${esc(x.import_type)} — ${Number(x.rows_imported||0).toLocaleString()} imported, ${Number(x.rows_skipped||0)} skipped`).join("<br>")}`:""}`;const stats=document.getElementById("fullbayStats");if(stats)stats.innerHTML=`<div class="fullbayStat"><span class="muted">Customers</span><b>${Number(c.n||0).toLocaleString()}</b></div><div class="fullbayStat"><span class="muted">Inventory Parts</span><b>${Number(p.n||0).toLocaleString()}</b></div><div class="fullbayStat"><span class="muted">Customer Source</span><b>Fullbay</b></div><div class="fullbayStat"><span class="muted">Inventory Source</span><b>Fullbay</b></div>`;loadFullbayCustomers(0);loadFullbayParts(0);}
+ catch(e){box.textContent=e.message||"Unable to load Fullbay import status."}
+}
+async function uploadFullbayCsv(type){
+ if(!requireAdmin())return;const input=document.getElementById(type==="customers"?"fullbayCustomersFile":"fullbayPartsFile");const file=input?.files?.[0];if(!file)return alert(`Choose the Fullbay ${type} CSV first.`);
+ const fd=new FormData();fd.append("file",file);const box=document.getElementById("fullbayImportStatus");if(box)box.textContent=`Importing ${file.name}…`;
+ try{const r=await fetch(`/api/fullbay/import/${type}`,{method:"POST",headers:{Authorization:`Bearer ${cloudToken}`},body:fd});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||`Import failed (${r.status})`);alert(`${type==="customers"?"Customers":"Parts"} imported: ${d.imported}. Skipped: ${d.skipped}.`);input.value="";renderFullbayImportStatus();}
+ catch(e){if(box)box.textContent=e.message||"Import failed.";alert(e.message||"Import failed.")}
+}
+async function fullbayTestSearch(type){
+ const input=document.getElementById(type==="customers"?"fullbayCustomerTest":"fullbayPartTest"),out=document.getElementById(type==="customers"?"fullbayCustomerTestResults":"fullbayPartTestResults");if(!input||!out)return;const q=input.value.trim();if(q.length<2){out.innerHTML="";return}
+ try{const d=await apiJSON(`/api/fullbay/${type}?q=${encodeURIComponent(q)}`);const items=d.items||[];out.innerHTML=items.length?items.slice(0,20).map(x=>type==="customers"?`<div class="partRow"><div><b>${esc(x.customer_name||"")}</b><div class="muted">${esc([x.phone,x.email,[x.city,x.state].filter(Boolean).join(", ")].filter(Boolean).join(" · "))}</div></div></div>`:`<div class="partRow"><div><b>${esc(x.part_number||"—")}</b></div><div class="partDesc">${esc(x.description||"")}<div class="muted">${esc([x.vendor,x.location,x.quantity!=null?`Qty ${x.quantity}`:""].filter(Boolean).join(" · "))}</div></div></div>`).join(""):'<div class="muted">No matches.</div>'}
+ catch(e){out.innerHTML=`<div class="muted">${esc(e.message||"Search failed")}</div>`}
+}
+function fullbayCustomerSuggest(input){
+ clearTimeout(fullbayCustomerTimer);const q=String(input?.value||"").trim();if(q.length<2)return;fullbayCustomerTimer=setTimeout(async()=>{try{const d=await apiJSON(`/api/fullbay/customers?q=${encodeURIComponent(q)}`);const list=document.getElementById("fullbayCustomerList");if(list)list.innerHTML=(d.items||[]).map(x=>`<option value="${esc(x.customer_name||"")}">${esc([x.phone,x.email].filter(Boolean).join(" · "))}</option>`).join("")}catch{}},180);
+}
+function fullbayPartSuggest(input,workOrderId,taskIndex,kind){
+ clearTimeout(fullbayPartTimer);const q=String(input?.value||"").trim();if(q.length<2)return;fullbayPartTimer=setTimeout(async()=>{try{const d=await apiJSON(`/api/fullbay/parts?q=${encodeURIComponent(q)}`);fullbayPartCache=d.items||[];const numList=document.getElementById("fullbayPartNumberList"),descList=document.getElementById("fullbayPartDescriptionList");if(numList)numList.innerHTML=fullbayPartCache.filter(x=>x.part_number).map(x=>`<option value="${esc(x.part_number)}">${esc(x.description||"")}</option>`).join("");if(descList)descList.innerHTML=fullbayPartCache.filter(x=>x.description).map(x=>`<option value="${esc(x.description)}">${esc(x.part_number||"")}</option>`).join("");const v=q.toLowerCase();const match=fullbayPartCache.find(x=>String(kind==="number"?x.part_number:x.description||"").toLowerCase()===v);if(match){const pn=document.getElementById(`partNo_${workOrderId}_${taskIndex}`),pd=document.getElementById(`partDesc_${workOrderId}_${taskIndex}`);if(pn&&!pn.value.trim()&&match.part_number)pn.value=match.part_number;if(pd&&!pd.value.trim()&&match.description)pd.value=match.description;if(kind==="number"&&pd&&match.description)pd.value=match.description;if(kind==="description"&&pn&&match.part_number)pn.value=match.part_number;}}catch{}},180);
+}
+
 function showProPanel(name){
  document.querySelectorAll(".proPanel").forEach(x=>x.classList.add("hidden"));
  document.getElementById("proPanel"+name.charAt(0).toUpperCase()+name.slice(1))?.classList.remove("hidden");
@@ -3032,6 +3095,7 @@ function showProPanel(name){
  if(name==="notifications")renderProNotifications();
  if(name==="dailyreport")renderDailyReport();
  if(name==="audit")renderAuditLog();
+ if(name==="fullbay")renderFullbayImportStatus();
  if(name==="aitools")checkAIConnection();
 }
 function saveVehicleProfile(){
@@ -3874,8 +3938,8 @@ function taskPartsHTML(w,t,i){
    ${(session?.role==="admin"||String(p.addedBy||"").toLowerCase()===String(session?.username||"").toLowerCase())&&w.status!=="Completed"?`<button type="button" class="danger" onclick="removeTaskPart(${w.id},'${esc(String(t.uid||""))}','${esc(String(p.id||""))}')">×</button>`:""}
  </div>`).join(""):`<div class="muted">No parts recorded for this job.</div>`;
  const add=(session?.role==="mechanic"&&visibleToCurrentMechanic(w)&&w.status!=="Completed")?`<div class="partAddGrid">
-   <input id="partNo_${w.id}_${i}" placeholder="Part Number">
-   <input class="partDescInput" id="partDesc_${w.id}_${i}" placeholder="Part Description">
+   <input id="partNo_${w.id}_${i}" list="fullbayPartNumberList" placeholder="Part Number" oninput="fullbayPartSuggest(this,${w.id},${i},'number')">
+   <input class="partDescInput" id="partDesc_${w.id}_${i}" list="fullbayPartDescriptionList" placeholder="Part Description" oninput="fullbayPartSuggest(this,${w.id},${i},'description')">
    <input id="partQty_${w.id}_${i}" type="number" min="0.01" step="0.01" value="1" placeholder="Qty">
    <button type="button" class="secondary" onclick="addTaskPart(${w.id},${i})">+ Add Part</button>
  </div>`:"";
