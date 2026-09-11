@@ -74,3 +74,33 @@ CREATE TABLE IF NOT EXISTS finding_photos(
 CREATE INDEX IF NOT EXISTS idx_finding_photos_finding ON finding_photos(finding_id,created_at);
 CREATE INDEX IF NOT EXISTS idx_finding_photos_workorder ON finding_photos(work_order_id,created_at);
 CREATE INDEX IF NOT EXISTS idx_finding_photos_uploader ON finding_photos(uploader_username,created_at);
+
+
+-- v23.8 Customer CRM / Fullbay data directory
+CREATE TABLE IF NOT EXISTS fullbay_import_customers(
+  id BIGSERIAL PRIMARY KEY, source_key TEXT UNIQUE NOT NULL, fullbay_id TEXT, customer_name TEXT NOT NULL,
+  phone TEXT, email TEXT, address TEXT, city TEXT, state TEXT, postal_code TEXT, raw JSONB NOT NULL DEFAULT '{}'::jsonb,
+  source_file TEXT, imported_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(), active BOOLEAN, created_fullbay TIMESTAMPTZ,
+  customer_group TEXT, secondary_phone TEXT, dot_number TEXT, external_id TEXT, country TEXT, assigned_shop TEXT, taxable BOOLEAN,
+  tax_exempt_number TEXT, credit_terms TEXT, credit_limit NUMERIC, billing_contact TEXT, payment_method TEXT, default_labor_rate NUMERIC,
+  price_level TEXT, access_method TEXT, billing_address TEXT, billing_city TEXT, billing_state TEXT, billing_postal_code TEXT, ext_accounting TEXT,
+  notes TEXT, contact_name TEXT
+);
+CREATE TABLE IF NOT EXISTS fullbay_import_parts(
+  id BIGSERIAL PRIMARY KEY, source_key TEXT UNIQUE NOT NULL, fullbay_id TEXT, part_number TEXT, description TEXT, quantity NUMERIC, cost NUMERIC, price NUMERIC, location TEXT, vendor TEXT,
+  raw JSONB NOT NULL DEFAULT '{}'::jsonb, source_file TEXT, imported_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(), status TEXT, uom TEXT, allocated NUMERIC, min_qty NUMERIC, max_qty NUMERIC,
+  track_quantity BOOLEAN, category TEXT, cost_floor NUMERIC, inventory_value NUMERIC, inventory_balance NUMERIC, manufacturer TEXT, notes TEXT
+);
+CREATE TABLE IF NOT EXISTS fullbay_import_log(
+  id BIGSERIAL PRIMARY KEY, import_type TEXT NOT NULL, source_file TEXT, rows_received INTEGER DEFAULT 0, rows_imported INTEGER DEFAULT 0, rows_skipped INTEGER DEFAULT 0, username TEXT, created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS customer_units(
+  id BIGSERIAL PRIMARY KEY, customer_id BIGINT REFERENCES fullbay_import_customers(id) ON DELETE SET NULL, customer_name TEXT, unit_number TEXT, vin TEXT, year TEXT, make TEXT, model TEXT, plate TEXT, mileage BIGINT, engine TEXT, transmission TEXT, notes TEXT, source TEXT DEFAULT 'manual', created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fullbay_customers_name ON fullbay_import_customers(lower(customer_name));
+CREATE INDEX IF NOT EXISTS idx_fullbay_customers_dot ON fullbay_import_customers(dot_number);
+CREATE INDEX IF NOT EXISTS idx_fullbay_parts_number ON fullbay_import_parts(lower(part_number));
+CREATE INDEX IF NOT EXISTS idx_fullbay_parts_description ON fullbay_import_parts(lower(description));
+CREATE INDEX IF NOT EXISTS idx_fullbay_parts_manufacturer ON fullbay_import_parts(lower(manufacturer));
+CREATE INDEX IF NOT EXISTS idx_customer_units_unit ON customer_units(lower(unit_number));
+CREATE INDEX IF NOT EXISTS idx_customer_units_customer ON customer_units(customer_id);
