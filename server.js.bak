@@ -448,10 +448,7 @@ async function findCustomerByName(name){
 async function upsertDirectoryUnit(db,{customerId=null,customerName="",unit="",vin="",year="",make="",model="",plate="",mileage=null,engine="",transmission="",notes="",source="state"}){
  unit=String(unit||"").trim();if(!unit)return null;
  let cid=(String(customerId??"").trim().match(/^\d+$/)?Number(customerId):null),cname=String(customerName||"").trim();
- // Never trust a numeric customerId from legacy WO/state as an internal CRM primary key.
- // Older records can contain Fullbay/external IDs. Validate it first so FK errors cannot block unit sync.
- if(cid){const c=await db.query("SELECT id,customer_name FROM fullbay_import_customers WHERE id=$1 LIMIT 1",[cid]);if(c.rowCount){cid=c.rows[0].id;cname=c.rows[0].customer_name||cname}else cid=null}
- if(!cid&&cname){const c=await db.query("SELECT id,customer_name FROM fullbay_import_customers WHERE lower(trim(customer_name))=lower(trim($1)) ORDER BY id LIMIT 1",[cname]);if(c.rowCount){cid=c.rows[0].id;cname=c.rows[0].customer_name}}
+ if(!cid&&cname){const c=await db.query("SELECT id,customer_name FROM fullbay_import_customers WHERE lower(customer_name)=lower($1) ORDER BY id LIMIT 1",[cname]);if(c.rowCount){cid=c.rows[0].id;cname=c.rows[0].customer_name}}
  const existing=await db.query(`SELECT * FROM customer_units WHERE lower(coalesce(unit_number,''))=lower($1) AND ((customer_id::text=$2::text) OR ($2::text IS NULL AND customer_id IS NULL AND lower(coalesce(customer_name,''))=lower($3))) ORDER BY id LIMIT 1`,[unit,cid,cname]);
  const vals=[cid,cname||null,unit,String(vin||"").trim().toUpperCase()||null,String(year||"").trim()||null,String(make||"").trim()||null,String(model||"").trim()||null,String(plate||"").trim()||null,Number.isFinite(Number(mileage))?Number(mileage):null,String(engine||"").trim()||null,String(transmission||"").trim()||null,String(notes||"").trim()||null,String(source||"state")];
  if(existing.rowCount){const old=existing.rows[0];const r=await db.query(`UPDATE customer_units SET customer_id=coalesce($1,customer_id),customer_name=coalesce(nullif($2,''),customer_name),unit_number=coalesce(nullif($3,''),unit_number),vin=coalesce(nullif($4,''),vin),year=coalesce(nullif($5,''),year),make=coalesce(nullif($6,''),make),model=coalesce(nullif($7,''),model),plate=coalesce(nullif($8,''),plate),mileage=coalesce($9,mileage),engine=coalesce(nullif($10,''),engine),transmission=coalesce(nullif($11,''),transmission),notes=CASE WHEN source='manual' THEN notes ELSE coalesce(nullif($12,''),notes) END,source=CASE WHEN source='manual' THEN source ELSE coalesce(nullif($13,''),source) END,updated_at=now() WHERE id=$14 RETURNING *`,[...vals,old.id]);return r.rows[0]}
@@ -615,23 +612,20 @@ app.get("/api/customer-units/suggest",auth,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"23.10.2",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"23.10.1",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
   const cols=await db.query("SELECT table_name,column_name,data_type FROM information_schema.columns WHERE table_schema='public' AND table_name IN ('fullbay_import_customers','customer_units') ORDER BY table_name,ordinal_position");
   out.columns=cols.rows.reduce((a,r)=>{(a[r.table_name]??=[]).push({name:r.column_name,type:r.data_type});return a},{});
-  const cc=await db.query("SELECT count(*)::int n FROM fullbay_import_customers");
+  const cc=await db.query("SELECT count(*)::int n FROM fullbay_import_customers"),uc=await db.query("SELECT count(*)::int n FROM customer_units");out.counts={customers:cc.rows[0].n,units:uc.rows[0].n};
   try{out.sync=await syncCustomerUnitDirectory(true)}catch(e){out.sync={ok:false,fatal:String(e?.message||e),code:e?.code||null}}
-  // Count AFTER reconciliation. Older diagnostics counted before sync and could falsely report Units: 0.
-  const uc=await db.query("SELECT count(*)::int n FROM customer_units");out.counts={customers:cc.rows[0].n,units:uc.rows[0].n};
-  out.unitSamples=(await db.query(`SELECT id,unit_number,customer_id::text AS customer_id,customer_name,vin,make,model,source FROM customer_units ORDER BY updated_at DESC NULLS LAST,id DESC LIMIT 10`)).rows;
   const bad=await db.query(`SELECT id,unit_number,customer_id::text AS customer_id,customer_name FROM customer_units WHERE coalesce(unit_number,'')='' OR (customer_id IS NULL AND coalesce(customer_name,'')='') LIMIT 50`).catch(()=>({rows:[]}));out.suspiciousUnits=bad.rows;
   out.ok=true;res.json(out);
  }catch(e){out.error=String(e?.message||e).slice(0,500);console.error("Customer CRM diagnostics failed:",e);res.status(500).json(out)}
 });
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.10.2",backend:"23.10.2",build:"ITTR-23.10.2-UNIT-DIRECTORY-RECONCILIATION-20260911"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"23.10.2",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.10.1",backend:"23.10.1",build:"ITTR-23.10.1-UNIT-DIRECTORY-SYNC-FIX-20260911"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"23.10.1",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");

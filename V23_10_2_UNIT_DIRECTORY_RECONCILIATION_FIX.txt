@@ -1,0 +1,15 @@
+ITTR v23.10.2 — Unit Directory Reconciliation Fix
+
+Root causes corrected:
+1. Legacy work orders may carry numeric customerId values that are external/Fullbay IDs, not CRM table primary keys. Prior sync treated any numeric ID as an internal FK and could hit customer_units FK violations.
+2. CRM diagnostics counted customer_units BEFORE running reconciliation, so it could display Units: 0 even when reconciliation inserted units afterward.
+3. Diagnostics hid the actual skipped-record error text, making warnings hard to identify.
+
+Fixes:
+- Validate customerId against fullbay_import_customers before assigning it to customer_units.
+- Fall back to exact customer-name matching when a legacy/external ID is invalid.
+- Count units after reconciliation.
+- Show first skipped-record errors and newest unit records in CRM diagnostics.
+- Refresh Customers immediately after diagnostics.
+- No destructive DB changes.
+- v23.7.1 inventory import parameter fix preserved.
