@@ -413,7 +413,7 @@ async function upsertDirectoryUnit(db,{customerId=null,customerName="",unit="",v
  if(!cid&&cname){const c=await db.query("SELECT id,customer_name FROM fullbay_import_customers WHERE lower(customer_name)=lower($1) ORDER BY id LIMIT 1",[cname]);if(c.rowCount){cid=c.rows[0].id;cname=c.rows[0].customer_name}}
  const existing=await db.query(`SELECT * FROM customer_units WHERE lower(unit_number)=lower($1) AND ((customer_id=$2) OR ($2::bigint IS NULL AND customer_id IS NULL AND lower(coalesce(customer_name,''))=lower($3))) ORDER BY id LIMIT 1`,[unit,cid,cname]);
  const vals=[cid,cname||null,unit,String(vin||"").trim().toUpperCase()||null,String(year||"").trim()||null,String(make||"").trim()||null,String(model||"").trim()||null,String(plate||"").trim()||null,Number.isFinite(Number(mileage))?Number(mileage):null,String(engine||"").trim()||null,String(transmission||"").trim()||null,String(notes||"").trim()||null,String(source||"state")];
- if(existing.rowCount){const old=existing.rows[0];const r=await db.query(`UPDATE customer_units SET customer_id=coalesce($1,customer_id),customer_name=coalesce(nullif($2,''),customer_name),vin=coalesce(nullif($4,''),vin),year=coalesce(nullif($5,''),year),make=coalesce(nullif($6,''),make),model=coalesce(nullif($7,''),model),plate=coalesce(nullif($8,''),plate),mileage=coalesce($9,mileage),engine=coalesce(nullif($10,''),engine),transmission=coalesce(nullif($11,''),transmission),notes=CASE WHEN source='manual' THEN notes ELSE coalesce(nullif($12,''),notes) END,updated_at=now() WHERE id=$14 RETURNING *`,[...vals,old.id]);return r.rows[0]}
+ if(existing.rowCount){const old=existing.rows[0];const r=await db.query(`UPDATE customer_units SET customer_id=coalesce($1,customer_id),customer_name=coalesce(nullif($2,''),customer_name),unit_number=coalesce(nullif($3,''),unit_number),vin=coalesce(nullif($4,''),vin),year=coalesce(nullif($5,''),year),make=coalesce(nullif($6,''),make),model=coalesce(nullif($7,''),model),plate=coalesce(nullif($8,''),plate),mileage=coalesce($9,mileage),engine=coalesce(nullif($10,''),engine),transmission=coalesce(nullif($11,''),transmission),notes=CASE WHEN source='manual' THEN notes ELSE coalesce(nullif($12,''),notes) END,source=CASE WHEN source='manual' THEN source ELSE coalesce(nullif($13,''),source) END,updated_at=now() WHERE id=$14 RETURNING *`,[...vals,old.id]);return r.rows[0]}
  const r=await db.query(`INSERT INTO customer_units(customer_id,customer_name,unit_number,vin,year,make,model,plate,mileage,engine,transmission,notes,source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,vals);return r.rows[0];
 }
 let lastCustomerUnitDirectorySync=0;
@@ -458,8 +458,8 @@ app.get("/api/customer-units/suggest",auth,async(req,res,next)=>{try{
  const r=await db.query(`SELECT u.*,c.customer_name AS canonical_customer,c.phone AS customer_phone,c.email AS customer_email,c.dot_number FROM customer_units u LEFT JOIN fullbay_import_customers c ON c.id=u.customer_id WHERE u.unit_number ILIKE $1 OR coalesce(u.vin,'') ILIKE $1 OR coalesce(u.plate,'') ILIKE $1 OR coalesce(c.customer_name,u.customer_name,'') ILIKE $1 ORDER BY CASE WHEN lower(u.unit_number)=lower($2) THEN 0 WHEN lower(u.unit_number) LIKE lower($3) THEN 1 ELSE 2 END,u.unit_number LIMIT 20`,[like,q,`${q}%`]);res.json({items:r.rows.map(x=>({...x,customer_name:x.canonical_customer||x.customer_name}))});
 }catch(e){next(e)}});
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.8.0",backend:"23.8.0",build:"ITTR-23.8-CUSTOMER-CRM-UNIT-DIRECTORY-20260911"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"23.8.0",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.8.1",backend:"23.8.1",build:"ITTR-23.8.1-CUSTOMER-CRM-BUGFIX-20260911"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"23.8.1",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -1412,5 +1412,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(()=>app.listen(port,()=>console.log(`ITTR v23.8.0 Online running on port ${port}`)))
+  .then(()=>app.listen(port,()=>console.log(`ITTR v23.8.1 Online running on port ${port}`)))
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});
