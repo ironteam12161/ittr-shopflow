@@ -104,3 +104,25 @@ CREATE INDEX IF NOT EXISTS idx_fullbay_parts_description ON fullbay_import_parts
 CREATE INDEX IF NOT EXISTS idx_fullbay_parts_manufacturer ON fullbay_import_parts(lower(manufacturer));
 CREATE INDEX IF NOT EXISTS idx_customer_units_unit ON customer_units(lower(unit_number));
 CREATE INDEX IF NOT EXISTS idx_customer_units_customer ON customer_units(customer_id);
+
+-- v24.1 Fullbay Details / service-history import
+ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS unit_status TEXT;
+ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS unit_type TEXT;
+ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS unit_subtype TEXT;
+CREATE TABLE IF NOT EXISTS fullbay_service_history(
+  id BIGSERIAL PRIMARY KEY,
+  source_key TEXT UNIQUE NOT NULL,
+  customer_id BIGINT REFERENCES fullbay_import_customers(id) ON DELETE SET NULL,
+  customer_name TEXT NOT NULL,
+  unit_record_id BIGINT REFERENCES customer_units(id) ON DELETE SET NULL,
+  unit_number TEXT, vin TEXT, unit_status TEXT, unit_type TEXT, unit_subtype TEXT,
+  service_order TEXT, invoice_number TEXT, po_number TEXT, action_number TEXT,
+  action_completed_at TIMESTAMPTZ, lead_tech TEXT, tech TEXT,
+  complaint TEXT, actual_correction TEXT, hours NUMERIC, labor_amount NUMERIC, part_amount NUMERIC, total_amount NUMERIC,
+  unit_miles BIGINT, component TEXT, system TEXT, raw JSONB NOT NULL DEFAULT '{}'::jsonb,
+  source_file TEXT, imported_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fullbay_service_customer ON fullbay_service_history(customer_id,action_completed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_fullbay_service_unit ON fullbay_service_history(lower(unit_number),action_completed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_fullbay_service_vin ON fullbay_service_history(lower(vin));
+CREATE INDEX IF NOT EXISTS idx_fullbay_service_so ON fullbay_service_history(service_order);
