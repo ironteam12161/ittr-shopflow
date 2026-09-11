@@ -1,0 +1,12 @@
+ITTR v23.4
+- Parts are recorded per permanent task UID.
+- Mechanic can enter Part Number and/or Description plus Qty.
+- Either Part Number or Description is sufficient.
+- Parts store who added them and timestamp.
+- Server-atomic add/remove prevents stale whole-state overwrites.
+- Completed work orders lock parts.
+- Professional form-style PDF redesigned with vehicle/customer header, repair/service table,
+  part number, quantity, recorded labor, mechanic/result, labor summary, findings, notes and next visit.
+- Vehicle VIN/year/make/model/plate/mileage are pulled from Vehicle Profiles when available.
+- No destructive database migration.
+- Frontend/backend syntax PASS; root/public identical; duplicate IDs NONE.

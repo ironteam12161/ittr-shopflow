@@ -227,8 +227,8 @@ async function auth(req,res,next){
 function adminOnly(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Admin access required."});next()}
 async function audit(username,action,details={}){try{if(pool)await pool.query("INSERT INTO server_audit(username,action,details) VALUES($1,$2,$3::jsonb)",[username||null,action,JSON.stringify(details)])}catch(e){console.error("audit",e.message)}}
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.3.1",backend:"23.3.1",build:"ITTR-23.3.1-PDF-AUTH-FIXED-20260911"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"23.3.1",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.4.0",backend:"23.4.0",build:"ITTR-23.4-PARTS-PRO-PDF-20260911"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"23.4.0",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -348,6 +348,62 @@ app.delete("/api/work-orders/:id/helpers/:username",auth,async(req,res,next)=>{
   w.history=Array.isArray(w.history)?w.history:[];w.history.push({type:"helper_removed",at:new Date().toISOString(),by:req.user.username,byDisplay:req.user.display_name||req.user.username,helper:target});
   const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
   await db.query("COMMIT");await audit(req.user.username,"work_order_helper_removed",{workOrderId,helper:target});res.json({ok:true,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
+ }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
+});
+
+
+app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/parts",auth,async(req,res,next)=>{
+ const db=await requireDb().connect();
+ try{
+  const workOrderId=String(req.params.id),uid=String(req.params.taskUid||"");
+  const partNumber=String(req.body?.partNumber||"").trim().slice(0,120);
+  const description=String(req.body?.description||"").trim().slice(0,500);
+  const qty=Math.max(.01,Math.min(99999,Number(req.body?.qty||1)));
+  if(!partNumber&&!description)return res.status(400).json({error:"Enter a part number or description."});
+  await db.query("BEGIN");
+  const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
+  if(!q.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Shop data not found."});}
+  const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};
+  sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
+  const w=sf.workorders.find(x=>String(x?.id)===workOrderId);
+  if(!w){await db.query("ROLLBACK");return res.status(404).json({error:"Work order not found."});}
+  if(!mechanicOwnsWorkOrder(req.user,w)){await db.query("ROLLBACK");return res.status(403).json({error:"You do not have access to this work order."});}
+  if(String(w.status)==="Completed"){await db.query("ROLLBACK");return res.status(409).json({error:"Completed work orders are locked."});}
+  const matches=(Array.isArray(w.tasks)?w.tasks:[]).filter(t=>String(t?.uid||"")===uid);
+  if(matches.length!==1){await db.query("ROLLBACK");return res.status(409).json({error:"Task identity could not be resolved."});}
+  const t=matches[0];t.parts=Array.isArray(t.parts)?t.parts:[];
+  const part={id:`part_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,partNumber,description,qty,addedBy:req.user.username,addedAt:new Date().toISOString()};
+  t.parts.push(part);
+  w.history=Array.isArray(w.history)?w.history:[];w.history.push({type:"part_added",at:part.addedAt,by:req.user.username,task:t.t,partNumber,description,qty});
+  const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
+  await db.query("COMMIT");await audit(req.user.username,"task_part_added",{workOrderId,taskUid:uid,partId:part.id});
+  res.json({ok:true,part,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
+ }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
+});
+app.delete("/api/work-orders/:id/tasks/by-uid/:taskUid/parts/:partId",auth,async(req,res,next)=>{
+ const db=await requireDb().connect();
+ try{
+  const workOrderId=String(req.params.id),uid=String(req.params.taskUid||""),partId=String(req.params.partId||"");
+  await db.query("BEGIN");
+  const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
+  if(!q.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Shop data not found."});}
+  const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};
+  const w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===workOrderId);
+  if(!w){await db.query("ROLLBACK");return res.status(404).json({error:"Work order not found."});}
+  if(!mechanicOwnsWorkOrder(req.user,w)){await db.query("ROLLBACK");return res.status(403).json({error:"You do not have access to this work order."});}
+  if(String(w.status)==="Completed"){await db.query("ROLLBACK");return res.status(409).json({error:"Completed work orders are locked."});}
+  const t=(Array.isArray(w.tasks)?w.tasks:[]).find(x=>String(x?.uid||"")===uid);
+  if(!t){await db.query("ROLLBACK");return res.status(404).json({error:"Task not found."});}
+  t.parts=Array.isArray(t.parts)?t.parts:[];
+  const p=t.parts.find(x=>String(x?.id||"")===partId);
+  if(!p){await db.query("ROLLBACK");return res.status(404).json({error:"Part not found."});}
+  if(req.user.role!=="admin"&&String(p.addedBy||"").toLowerCase()!==String(req.user.username||"").toLowerCase()){
+    await db.query("ROLLBACK");return res.status(403).json({error:"Only the mechanic who added this part or an admin can remove it."});
+  }
+  t.parts=t.parts.filter(x=>String(x?.id||"")!==partId);
+  const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
+  await db.query("COMMIT");await audit(req.user.username,"task_part_removed",{workOrderId,taskUid:uid,partId});
+  res.json({ok:true,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
  }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
 });
 
@@ -486,102 +542,79 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/action",auth,async(req,res,
 
 
 app.get("/api/work-orders/:id/pdf",auth,async(req,res,next)=>{try{
- const workOrderId=String(req.params.id);
- const db=requireDb();
- const stateQ=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");
- if(!stateQ.rowCount)return res.status(404).json({error:"Shop data not found."});
- const sf=stateQ.rows[0].payload&&typeof stateQ.rows[0].payload==="object"?stateQ.rows[0].payload:{workorders:[],issues:[]};
+ const workOrderId=String(req.params.id),db=requireDb();
+ const q=await db.query("SELECT state_key,payload FROM app_state WHERE state_key IN ('shopflow','pro')");
+ const states=Object.fromEntries(q.rows.map(r=>[r.state_key,r.payload]));
+ const sf=states.shopflow&&typeof states.shopflow==="object"?states.shopflow:{workorders:[],issues:[]};
+ const pro=states.pro&&typeof states.pro==="object"?states.pro:{vehicles:[]};
  const w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===workOrderId);
  if(!w)return res.status(404).json({error:"Work order not found."});
- if(req.user?.role!=="admin" && !mechanicOwnsWorkOrder(req.user,w))
-   return res.status(403).json({error:"You do not have access to this work order."});
+ if(req.user?.role!=="admin"&&!mechanicOwnsWorkOrder(req.user,w))return res.status(403).json({error:"You do not have access to this work order."});
  if(String(w.status)!=="Completed")return res.status(409).json({error:"Work order PDF is available after the work order is completed."});
-
- const sessionsQ=await db.query(
-   `SELECT task_uid,task_name,mechanic_username,started_at,ended_at,end_reason,pause_reason,pause_note
-      FROM task_time_sessions WHERE work_order_id=$1 ORDER BY started_at,id`,[workOrderId]);
- const sessions=sessionsQ.rows||[];
+ const vehicle=(Array.isArray(pro.vehicles)?pro.vehicles:[]).find(v=>String(v?.unit||"").toLowerCase()===String(w.unit||"").toLowerCase())||{};
+ const sessions=(await db.query(`SELECT task_uid,task_name,mechanic_username,started_at,ended_at,end_reason,pause_reason,pause_note FROM task_time_sessions WHERE work_order_id=$1 ORDER BY started_at,id`,[workOrderId])).rows||[];
  const findings=(Array.isArray(sf.issues)?sf.issues:[]).filter(i=>String(i?.wo)===workOrderId);
- const photoCountQ=await db.query("SELECT finding_id,count(*)::int AS c FROM finding_photos WHERE work_order_id=$1 GROUP BY finding_id",[workOrderId]);
- const photoCounts=Object.fromEntries(photoCountQ.rows.map(r=>[String(r.finding_id),Number(r.c||0)]));
- const usersQ=await db.query("SELECT username,display_name FROM auth_users");
- const names=Object.fromEntries(usersQ.rows.map(r=>[String(r.username).toLowerCase(),r.display_name||r.username]));
- const mechName=u=>names[String(u||"").toLowerCase()]||String(u||"—");
- const fmt=d=>{try{return d?new Date(d).toLocaleString("en-US",{timeZone:"America/Chicago"}):"—"}catch(_){return String(d||"—")}};
- const dur=(a,b)=>{if(!a||!b)return 0;return Math.max(0,new Date(b)-new Date(a))};
- const durText=ms=>{const mins=Math.round(ms/60000);const h=Math.floor(mins/60),m=mins%60;return h?`${h}h ${m}m`:`${m}m`};
+ const users=(await db.query("SELECT username,display_name FROM auth_users")).rows;
+ const names=Object.fromEntries(users.map(r=>[String(r.username).toLowerCase(),r.display_name||r.username]));
+ const mech=u=>names[String(u||"").toLowerCase()]||String(u||"—");
  const safe=v=>String(v??"").replace(/\r/g,"").trim();
+ const fmt=d=>{try{return d?new Date(d).toLocaleString("en-US",{timeZone:"America/Chicago"}):"—"}catch(_){return safe(d)||"—"}};
+ const ms=(a,b)=>a&&b?Math.max(0,new Date(b)-new Date(a)):0;
+ const duration=n=>{const m=Math.round(n/60000),h=Math.floor(m/60);return h?`${h}h ${m%60}m`:`${m}m`};
  const fileUnit=safe(w.unit).replace(/[^a-zA-Z0-9_-]/g,"_")||"unit";
- res.setHeader("Content-Type","application/pdf");
- res.setHeader("Content-Disposition",`attachment; filename="ITTR-WO-${workOrderId}-${fileUnit}.pdf"`);
- res.setHeader("Cache-Control","private, no-store");
-
- const doc=new PDFDocument({size:"LETTER",margin:42,bufferPages:true,info:{Title:`ITTR Work Order ${workOrderId}`}});
+ res.setHeader("Content-Type","application/pdf");res.setHeader("Content-Disposition",`attachment; filename="ITTR-WO-${workOrderId}-${fileUnit}.pdf"`);res.setHeader("Cache-Control","private, no-store");
+ const doc=new PDFDocument({size:"LETTER",margin:34,bufferPages:true,info:{Title:`ITTR Work Order ${workOrderId}`}});
  doc.pipe(res);
- const line=()=>{doc.moveDown(.35).strokeColor("#bbbbbb").moveTo(42,doc.y).lineTo(570,doc.y).stroke().moveDown(.55);};
- const h1=t=>{doc.font("Helvetica-Bold").fontSize(17).fillColor("#111111").text(t);};
- const h2=t=>{doc.moveDown(.55).font("Helvetica-Bold").fontSize(11.5).fillColor("#111111").text(t);doc.moveDown(.2);};
- const row=(label,value)=>{doc.font("Helvetica-Bold").fontSize(9).text(label,{continued:true});doc.font("Helvetica").text(` ${safe(value)||"—"}`);};
- const body=t=>doc.font("Helvetica").fontSize(9).fillColor("#222222").text(safe(t)||"—",{lineGap:2});
-
- h1("IRON TEAM TRUCK & TRAILER REPAIR");
- doc.font("Helvetica").fontSize(9).fillColor("#555555").text("COMPLETED WORK ORDER SUMMARY");
- line();
- doc.font("Helvetica-Bold").fontSize(15).fillColor("#111111").text(`Work Order #${workOrderId}  |  Unit ${safe(w.unit)}`);
- row("Customer:",w.customer); row("Scheduled:",`${safe(w.date)} ${safe(w.time)}`); row("Completed:",fmt(w.completedAt));
- row("Primary mechanic:",mechName(w.mechanic));
- if(Array.isArray(w.helpers)&&w.helpers.length)row("Helper mechanics:",w.helpers.map(mechName).join(", "));
- row("Completed by:",mechName(w.completedBy)); row("Parking:",w.parking||"—"); row("Priority:",w.priority||"—");
- line();
-
- h2("ASSIGNED WORK / RESULTS");
+ const L=34,R=578,W=544;
+ const box=(x,y,wid,hei)=>doc.rect(x,y,wid,hei).strokeColor("#444").lineWidth(.7).stroke();
+ const band=(title,y)=>{doc.rect(L,y,W,20).fill("#202833");doc.fillColor("#fff").font("Helvetica-Bold").fontSize(10).text(title,L+6,y+5,{width:W-12,align:"center"});return y+20};
+ const field=(label,value,x,y,wid,hei=28)=>{box(x,y,wid,hei);doc.fillColor("#222").font("Helvetica-Bold").fontSize(7.5).text(label,x+5,y+4);doc.font("Helvetica").fontSize(9).text(safe(value)||"—",x+5,y+14,{width:wid-10,height:hei-15,ellipsis:true});};
+ const ensure=h=>{if(doc.y+h>735){doc.addPage();doc.y=40;}};
+ doc.fillColor("#111").font("Helvetica-Bold").fontSize(20).text("IRON TEAM TRUCK & TRAILER REPAIR",L,36,{width:W,align:"center"});
+ doc.fontSize(11).text("TRUCK REPAIR WORK ORDER",L,62,{width:W,align:"center"});
+ doc.font("Helvetica").fontSize(8).fillColor("#555").text("Completed work order summary for invoice preparation",L,78,{width:W,align:"center"});
+ let y=98;
+ field("REPAIR ORDER NUMBER",`#${workOrderId}`,L,y,210);field("DATE IN",`${safe(w.date)} ${safe(w.time)}`,L+210,y,167);field("DATE OUT",fmt(w.completedAt),L+377,y,167);y+=36;
+ y=band("VEHICLE INFORMATION",y);
+ field("UNIT",w.unit,L,y,136);field("TRUCK MAKE / MODEL",[vehicle.make,vehicle.model].filter(Boolean).join(" "),L+136,y,210);field("YEAR",vehicle.year,L+346,y,80);field("LICENSE PLATE",vehicle.plate,L+426,y,118);y+=28;
+ field("VIN (VEHICLE IDENTIFICATION NUMBER)",vehicle.vin,L,y,346);field("MILEAGE",vehicle.mileage?Number(vehicle.mileage).toLocaleString()+" mi":"—",L+346,y,198);y+=36;
+ y=band("CUSTOMER / WORK ORDER INFORMATION",y);
+ field("CUSTOMER / COMPANY",w.customer||vehicle.customer,L,y,272);field("PARKING",w.parking,L+272,y,90);field("PRIORITY",w.priority,L+362,y,90);field("STATUS",w.status,L+452,y,92);y+=36;
+ y=band("REPAIR / SERVICE & PARTS",y);
+ const cols=[28,176,100,38,62,140], heads=["#","DESCRIPTION OF REPAIR / SERVICE","PART NUMBER","QTY","LABOR","MECHANIC / RESULT"];
+ let x=L;heads.forEach((h,i)=>{box(x,y,cols[i],24);doc.fillColor("#111").font("Helvetica-Bold").fontSize(7).text(h,x+3,y+7,{width:cols[i]-6,align:i===0?"center":"left"});x+=cols[i]});y+=24;
  (Array.isArray(w.tasks)?w.tasks:[]).forEach((t,i)=>{
-   const uid=String(t.uid||"");
-   const ts=sessions.filter(s=>String(s.task_uid||"")===uid);
-   const mechanics=[...new Set(ts.map(s=>mechName(s.mechanic_username)).filter(Boolean))];
-   const total=ts.reduce((sum,s)=>sum+dur(s.started_at,s.ended_at),0);
-   const outcome=String(t.taskOutcome||"").replaceAll("_"," ") || (t.done?"completed":"not recorded");
-   doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#111111").text(`${i+1}. ${safe(t.t)||"Unnamed task"}`);
-   doc.font("Helvetica").fontSize(8.5).fillColor("#333333").text(`Outcome: ${outcome}${t.outcomeNote?`  |  Note: ${safe(t.outcomeNote)}`:""}`);
-   doc.text(`Mechanic(s): ${mechanics.join(", ")||mechName(t.outcomeBy)||"—"}  |  Recorded labor: ${durText(total)}`);
-   ts.forEach(s=>doc.fontSize(7.8).fillColor("#555555").text(`   ${mechName(s.mechanic_username)}: ${fmt(s.started_at)} → ${s.ended_at?fmt(s.ended_at):"open"}${s.end_reason?` (${safe(s.end_reason)})`:""}${s.pause_reason?` — ${safe(s.pause_reason)}`:""}`));
-   doc.moveDown(.35);
+   const ts=sessions.filter(s=>String(s.task_uid||"")===String(t.uid||""));
+   const labor=ts.reduce((a,s)=>a+ms(s.started_at,s.ended_at),0);
+   const mechanics=[...new Set(ts.map(s=>mech(s.mechanic_username)))].join(", ")||mech(t.outcomeBy);
+   const result=String(t.taskOutcome||"").replaceAll("_"," ")||(t.done?"completed":"—");
+   const parts=Array.isArray(t.parts)&&t.parts.length?t.parts:[{partNumber:"",description:"",qty:""}];
+   parts.forEach((p,pi)=>{
+     ensure(42); if(doc.y!==y) y=doc.y;
+     const desc=pi===0?safe(t.t):safe(p.description);
+     const pn=safe(p.partNumber);
+     const partDesc=pi===0&&p.description?`\nPart: ${safe(p.description)}`:"";
+     const mechResult=pi===0?`${mechanics}\n${result}${t.outcomeNote?` — ${safe(t.outcomeNote)}`:""}`:"";
+     const h=Math.max(38, 14+Math.max(desc.length/28,pn.length/15,mechResult.length/24)*7);
+     x=L;
+     const vals=[pi===0?String(i+1):"",desc+partDesc,pn,p.qty?String(p.qty):"",pi===0?duration(labor):"",mechResult];
+     vals.forEach((v,ci)=>{box(x,y,cols[ci],h);doc.fillColor("#222").font(ci===1&&pi===0?"Helvetica-Bold":"Helvetica").fontSize(7.5).text(v,x+3,y+5,{width:cols[ci]-6,height:h-8,ellipsis:true});x+=cols[ci]});
+     y+=h;doc.y=y;
+   });
  });
- line();
-
- h2("MECHANIC LABOR SUMMARY");
- const byMech={};
- sessions.forEach(s=>{const u=String(s.mechanic_username||"unknown");byMech[u]=(byMech[u]||0)+dur(s.started_at,s.ended_at)});
- Object.entries(byMech).forEach(([u,ms])=>row(mechName(u)+":",durText(ms)));
- if(!Object.keys(byMech).length)body("No recorded timed labor sessions.");
- line();
-
- h2("FINDINGS / RECOMMENDATIONS");
- if(findings.length){
-  findings.forEach((f,i)=>{
-   doc.font("Helvetica-Bold").fontSize(9).text(`${i+1}. ${safe(f.description)||"Finding"}`);
-   doc.font("Helvetica").fontSize(8.5).text(`Severity: ${safe(f.severity)||"—"}  |  Decision: ${safe(f.approval)||"Waiting for Customer"}  |  Reported by: ${mechName(f.mechanic)}`);
-   if(f.recommendation)doc.text(`Recommended repair: ${safe(f.recommendation)}`);
-   const pc=photoCounts[String(f.id)]||0;if(pc)doc.text(`Photo evidence: ${pc} photo${pc===1?"":"s"} stored`);
-   doc.moveDown(.3);
-  });
- }else body("No findings recorded.");
- line();
-
- h2("INITIAL NOTES"); body(w.notes||"No notes recorded.");
- h2("COMPLETION NOTES"); body(w.completionNotes||"No completion notes recorded.");
- h2("FUTURE REPAIR / NEXT VISIT"); body(w.futureNotes||"No future repair notes recorded.");
- if(w.revisitMiles)row("Recommended recheck mileage:",w.revisitMiles);
- line();
-
- doc.font("Helvetica").fontSize(7.5).fillColor("#666666").text(
-   "This document is a completed work-order summary generated from ITTR ShopFlow for invoice preparation. Timed labor reflects recorded application sessions and should be reviewed before invoicing."
- );
- const pages=doc.bufferedPageRange();
- for(let i=0;i<pages.count;i++){
-   doc.switchToPage(i);
-   doc.font("Helvetica").fontSize(7).fillColor("#777777").text(`ITTR ShopFlow · Work Order #${workOrderId} · Page ${i+1} of ${pages.count}`,42,755,{width:528,align:"center"});
- }
+ y+=10;doc.y=y;ensure(120);y=doc.y;
+ y=band("MECHANIC LABOR SUMMARY",y);
+ const by={};sessions.forEach(s=>{const u=String(s.mechanic_username||"unknown");by[u]=(by[u]||0)+ms(s.started_at,s.ended_at)});
+ const laborText=Object.keys(by).length?Object.entries(by).map(([u,n])=>`${mech(u)} — ${duration(n)}`).join("    |    "):"No recorded timed labor.";
+ box(L,y,W,28);doc.fillColor("#222").font("Helvetica").fontSize(9).text(laborText,L+6,y+8,{width:W-12});y+=36;
+ ensure(120);y=doc.y=Math.max(doc.y,y);y=band("FINDINGS / RECOMMENDATIONS",y);
+ const findText=findings.length?findings.map((f,i)=>`${i+1}. ${safe(f.description)||"Finding"}${f.recommendation?` — ${safe(f.recommendation)}`:""} [${safe(f.approval)||"Waiting for Customer"}]`).join("\n"):"No findings recorded.";
+ const fh=Math.max(42,Math.min(130,28+findText.length/70*9));box(L,y,W,fh);doc.fillColor("#222").font("Helvetica").fontSize(8.5).text(findText,L+6,y+7,{width:W-12,height:fh-12});y+=fh+8;
+ ensure(135);y=doc.y=Math.max(doc.y,y);y=band("NOTES / NEXT VISIT",y);
+ const notes=`Initial notes: ${safe(w.notes)||"—"}\nCompletion notes: ${safe(w.completionNotes)||"—"}\nFuture repair / next visit: ${safe(w.futureNotes)||"—"}${w.revisitMiles?`\nRecommended recheck mileage: ${safe(w.revisitMiles)} miles`:""}`;
+ box(L,y,W,78);doc.fillColor("#222").font("Helvetica").fontSize(8.5).text(notes,L+6,y+7,{width:W-12,height:66});y+=88;
+ field("PRIMARY MECHANIC",mech(w.mechanic),L,y,180);field("HELPER MECHANICS",(Array.isArray(w.helpers)?w.helpers:[]).map(mech).join(", ")||"—",L+180,y,220);field("COMPLETED BY",mech(w.completedBy),L+400,y,144);doc.y=y+36;
+ const pages=doc.bufferedPageRange();for(let i=0;i<pages.count;i++){doc.switchToPage(i);doc.font("Helvetica").fontSize(6.8).fillColor("#777").text(`ITTR ShopFlow · Work Order #${workOrderId} · Page ${i+1} of ${pages.count}`,L,756,{width:W,align:"center"})}
  doc.end();
 }catch(e){next(e)}});
 
