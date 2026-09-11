@@ -9,6 +9,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import pg from "pg";
 import sharp from "sharp";
+import PDFDocument from "pdfkit";
 import {S3Client,PutObjectCommand,GetObjectCommand,DeleteObjectCommand,HeadBucketCommand} from "@aws-sdk/client-s3";
 import {getSignedUrl} from "@aws-sdk/s3-request-presigner";
 import { fileURLToPath } from "url";
@@ -226,8 +227,8 @@ async function auth(req,res,next){
 function adminOnly(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Admin access required."});next()}
 async function audit(username,action,details={}){try{if(pool)await pool.query("INSERT INTO server_audit(username,action,details) VALUES($1,$2,$3::jsonb)",[username||null,action,JSON.stringify(details)])}catch(e){console.error("audit",e.message)}}
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.2.0",backend:"23.2.0",build:"ITTR-23.2-MOBILE-COLLAB-20260910"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"23.2.0",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.3.0",backend:"23.3.0",build:"ITTR-23.2-MOBILE-COLLAB-20260910"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(client),version:"23.3.0",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -482,6 +483,107 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/action",auth,async(req,res,
    next(e);
  }finally{db.release();}
 });
+
+
+app.get("/api/work-orders/:id/pdf",auth,async(req,res,next)=>{try{
+ const workOrderId=String(req.params.id);
+ const db=requireDb();
+ const stateQ=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");
+ if(!stateQ.rowCount)return res.status(404).json({error:"Shop data not found."});
+ const sf=stateQ.rows[0].payload&&typeof stateQ.rows[0].payload==="object"?stateQ.rows[0].payload:{workorders:[],issues:[]};
+ const w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===workOrderId);
+ if(!w)return res.status(404).json({error:"Work order not found."});
+ if(req.user?.role!=="admin" && !mechanicOwnsWorkOrder(req.user,w))
+   return res.status(403).json({error:"You do not have access to this work order."});
+ if(String(w.status)!=="Completed")return res.status(409).json({error:"Work order PDF is available after the work order is completed."});
+
+ const sessionsQ=await db.query(
+   `SELECT task_uid,task_name,mechanic_username,started_at,ended_at,end_reason,pause_reason,pause_note
+      FROM task_time_sessions WHERE work_order_id=$1 ORDER BY started_at,id`,[workOrderId]);
+ const sessions=sessionsQ.rows||[];
+ const findings=(Array.isArray(sf.issues)?sf.issues:[]).filter(i=>String(i?.wo)===workOrderId);
+ const photoCountQ=await db.query("SELECT finding_id,count(*)::int AS c FROM finding_photos WHERE work_order_id=$1 GROUP BY finding_id",[workOrderId]);
+ const photoCounts=Object.fromEntries(photoCountQ.rows.map(r=>[String(r.finding_id),Number(r.c||0)]));
+ const usersQ=await db.query("SELECT username,display_name FROM auth_users");
+ const names=Object.fromEntries(usersQ.rows.map(r=>[String(r.username).toLowerCase(),r.display_name||r.username]));
+ const mechName=u=>names[String(u||"").toLowerCase()]||String(u||"—");
+ const fmt=d=>{try{return d?new Date(d).toLocaleString("en-US",{timeZone:"America/Chicago"}):"—"}catch(_){return String(d||"—")}};
+ const dur=(a,b)=>{if(!a||!b)return 0;return Math.max(0,new Date(b)-new Date(a))};
+ const durText=ms=>{const mins=Math.round(ms/60000);const h=Math.floor(mins/60),m=mins%60;return h?`${h}h ${m}m`:`${m}m`};
+ const safe=v=>String(v??"").replace(/\r/g,"").trim();
+ const fileUnit=safe(w.unit).replace(/[^a-zA-Z0-9_-]/g,"_")||"unit";
+ res.setHeader("Content-Type","application/pdf");
+ res.setHeader("Content-Disposition",`attachment; filename="ITTR-WO-${workOrderId}-${fileUnit}.pdf"`);
+ res.setHeader("Cache-Control","private, no-store");
+
+ const doc=new PDFDocument({size:"LETTER",margin:42,bufferPages:true,info:{Title:`ITTR Work Order ${workOrderId}`}});
+ doc.pipe(res);
+ const line=()=>{doc.moveDown(.35).strokeColor("#bbbbbb").moveTo(42,doc.y).lineTo(570,doc.y).stroke().moveDown(.55);};
+ const h1=t=>{doc.font("Helvetica-Bold").fontSize(17).fillColor("#111111").text(t);};
+ const h2=t=>{doc.moveDown(.55).font("Helvetica-Bold").fontSize(11.5).fillColor("#111111").text(t);doc.moveDown(.2);};
+ const row=(label,value)=>{doc.font("Helvetica-Bold").fontSize(9).text(label,{continued:true});doc.font("Helvetica").text(` ${safe(value)||"—"}`);};
+ const body=t=>doc.font("Helvetica").fontSize(9).fillColor("#222222").text(safe(t)||"—",{lineGap:2});
+
+ h1("IRON TEAM TRUCK & TRAILER REPAIR");
+ doc.font("Helvetica").fontSize(9).fillColor("#555555").text("COMPLETED WORK ORDER SUMMARY");
+ line();
+ doc.font("Helvetica-Bold").fontSize(15).fillColor("#111111").text(`Work Order #${workOrderId}  |  Unit ${safe(w.unit)}`);
+ row("Customer:",w.customer); row("Scheduled:",`${safe(w.date)} ${safe(w.time)}`); row("Completed:",fmt(w.completedAt));
+ row("Primary mechanic:",mechName(w.mechanic));
+ if(Array.isArray(w.helpers)&&w.helpers.length)row("Helper mechanics:",w.helpers.map(mechName).join(", "));
+ row("Completed by:",mechName(w.completedBy)); row("Parking:",w.parking||"—"); row("Priority:",w.priority||"—");
+ line();
+
+ h2("ASSIGNED WORK / RESULTS");
+ (Array.isArray(w.tasks)?w.tasks:[]).forEach((t,i)=>{
+   const uid=String(t.uid||"");
+   const ts=sessions.filter(s=>String(s.task_uid||"")===uid);
+   const mechanics=[...new Set(ts.map(s=>mechName(s.mechanic_username)).filter(Boolean))];
+   const total=ts.reduce((sum,s)=>sum+dur(s.started_at,s.ended_at),0);
+   const outcome=String(t.taskOutcome||"").replaceAll("_"," ") || (t.done?"completed":"not recorded");
+   doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#111111").text(`${i+1}. ${safe(t.t)||"Unnamed task"}`);
+   doc.font("Helvetica").fontSize(8.5).fillColor("#333333").text(`Outcome: ${outcome}${t.outcomeNote?`  |  Note: ${safe(t.outcomeNote)}`:""}`);
+   doc.text(`Mechanic(s): ${mechanics.join(", ")||mechName(t.outcomeBy)||"—"}  |  Recorded labor: ${durText(total)}`);
+   ts.forEach(s=>doc.fontSize(7.8).fillColor("#555555").text(`   ${mechName(s.mechanic_username)}: ${fmt(s.started_at)} → ${s.ended_at?fmt(s.ended_at):"open"}${s.end_reason?` (${safe(s.end_reason)})`:""}${s.pause_reason?` — ${safe(s.pause_reason)}`:""}`));
+   doc.moveDown(.35);
+ });
+ line();
+
+ h2("MECHANIC LABOR SUMMARY");
+ const byMech={};
+ sessions.forEach(s=>{const u=String(s.mechanic_username||"unknown");byMech[u]=(byMech[u]||0)+dur(s.started_at,s.ended_at)});
+ Object.entries(byMech).forEach(([u,ms])=>row(mechName(u)+":",durText(ms)));
+ if(!Object.keys(byMech).length)body("No recorded timed labor sessions.");
+ line();
+
+ h2("FINDINGS / RECOMMENDATIONS");
+ if(findings.length){
+  findings.forEach((f,i)=>{
+   doc.font("Helvetica-Bold").fontSize(9).text(`${i+1}. ${safe(f.description)||"Finding"}`);
+   doc.font("Helvetica").fontSize(8.5).text(`Severity: ${safe(f.severity)||"—"}  |  Decision: ${safe(f.approval)||"Waiting for Customer"}  |  Reported by: ${mechName(f.mechanic)}`);
+   if(f.recommendation)doc.text(`Recommended repair: ${safe(f.recommendation)}`);
+   const pc=photoCounts[String(f.id)]||0;if(pc)doc.text(`Photo evidence: ${pc} photo${pc===1?"":"s"} stored`);
+   doc.moveDown(.3);
+  });
+ }else body("No findings recorded.");
+ line();
+
+ h2("INITIAL NOTES"); body(w.notes||"No notes recorded.");
+ h2("COMPLETION NOTES"); body(w.completionNotes||"No completion notes recorded.");
+ h2("FUTURE REPAIR / NEXT VISIT"); body(w.futureNotes||"No future repair notes recorded.");
+ if(w.revisitMiles)row("Recommended recheck mileage:",w.revisitMiles);
+ line();
+
+ doc.font("Helvetica").fontSize(7.5).fillColor("#666666").text(
+   "This document is a completed work-order summary generated from ITTR ShopFlow for invoice preparation. Timed labor reflects recorded application sessions and should be reviewed before invoicing."
+ );
+ const pages=doc.bufferedPageRange();
+ for(let i=0;i<pages.count;i++){
+   doc.switchToPage(i);
+   doc.font("Helvetica").fontSize(7).fillColor("#777777").text(`ITTR ShopFlow · Work Order #${workOrderId} · Page ${i+1} of ${pages.count}`,42,755,{width:528,align:"center"});
+ }
+ doc.end();
+}catch(e){next(e)}});
 
 app.get("/api/work-orders/:id/task-sessions",auth,async(req,res,next)=>{try{
   const workOrderId=String(req.params.id);

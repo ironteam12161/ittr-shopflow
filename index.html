@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v23.2</title>
+<title>ITTR ShopFlow v23.3</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -1130,7 +1130,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION="23.2.0";
+const FRONTEND_VERSION="23.3.0";
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
@@ -1455,11 +1455,11 @@ async function logout(){
   document.getElementById("loginUser").value="";document.getElementById("loginPass").value="";document.getElementById("loginScreen").style.display="flex";
 }
 function requireAdmin(){
-  if(session?.role!=="admin"){alert("Admin access required.");return false}
+  if(session?.role!=="admin"){alert(tr("Admin access required."));return false}
   return true;
 }
 function requireMechanic(){
-  if(session?.role!=="mechanic"){alert("Mechanic access required.");return false}
+  if(session?.role!=="mechanic"){alert(tr("Mechanic access required."));return false}
   return true;
 }
 
@@ -1734,6 +1734,122 @@ Object.assign(UI_TRANSLATIONS,{
 });
 
 Object.assign(UI_TRANSLATIONS,{"Operations Center":"Операційний центр","Vehicle Profiles":"Профілі техніки","Maintenance":"Техобслуговування","Productivity":"Продуктивність","Notifications":"Сповіщення","Daily Report":"Щоденний звіт","Audit Log":"Журнал змін","AI Tools":"AI інструменти","Mileage Maintenance":"Обслуговування за пробігом","Make Professional":"Оформити професійно","Suggest Diagnostic Steps":"Запропонувати кроки діагностики","Decode VIN":"Розшифрувати VIN","Permanent Vehicle Notes":"Постійні примітки про техніку"});
+
+Object.assign(UI_TRANSLATIONS,{
+ "Primary":"Основний",
+ "Helper":"Помічник",
+ "Helpers":"Помічники",
+ "Primary mechanic":"Основний механік",
+ "Helper mechanics":"Механіки-помічники",
+ "+ Add Helper Mechanic":"+ Додати механіка-помічника",
+ "Add Helper Mechanic":"Додати механіка-помічника",
+ "Choose a mechanic":"Оберіть механіка",
+ "Add Helper":"Додати помічника",
+ "Remove":"Видалити",
+ "Mechanic Work Summary":"Підсумок роботи механіків",
+ "Who worked on each job and their recorded labor time.":"Хто виконував кожну роботу та зафіксований робочий час.",
+ "Loading mechanic labor…":"Завантаження робочого часу механіків…",
+ "No recorded mechanic labor sessions yet.":"Зафіксованих сесій роботи механіків ще немає.",
+ "Total recorded labor":"Загальний зафіксований робочий час",
+ "Sessions":"Сесії",
+ "Paused":"Призупинено",
+ "Resumed":"Продовжено",
+ "Finished":"Завершено",
+ "Pause":"Призупинити",
+ "Resume":"Продовжити",
+ "Complete":"Завершити",
+ "Pause Job":"Призупинити роботу",
+ "Pause reason":"Причина призупинення",
+ "End of day":"Кінець робочого дня",
+ "Waiting for parts":"Очікування запчастин",
+ "Waiting for approval":"Очікування погодження",
+ "Need another mechanic":"Потрібен інший механік",
+ "Other reason":"Інша причина",
+ "Pause note":"Примітка до призупинення",
+ "Resume Job":"Продовжити роботу",
+ "Work Timeline":"Хронологія роботи",
+ "No work timeline for this job yet.":"Для цієї роботи ще немає хронології.",
+ "Not Completed / Next Visit":"Не виконано / Наступний візит",
+ "This unit is assigned to you but is still marked as on the way.":"Цей юніт призначено вам, але він ще позначений як такий, що в дорозі.",
+ "You participated in this work order. Only the primary/completing mechanic can reactivate it.":"Ви брали участь у цьому наряді. Відновити його може лише основний механік або механік, який його завершив.",
+ "This work order is not assigned/released to your mechanic account.":"Цей наряд не призначено або не відкрито для вашого акаунта механіка.",
+ "Fleet unit auto-release:":"Автоматичний доступ для автопарку:",
+ "ON":"УВІМК.",
+ "OFF":"ВИМК.",
+ "Mark Truck Is Here":"Позначити: трак прибув",
+ "Open Unit":"Відкрити юніт",
+ "Open Job":"Відкрити роботу",
+ "Open Work Order":"Відкрити наряд",
+ "View Assignment":"Переглянути завдання",
+ "Photo uploaded successfully.":"Фото успішно завантажено.",
+ "Preparing photo…":"Підготовка фото…",
+ "Uploading photo…":"Завантаження фото…",
+ "Upload failed":"Помилка завантаження",
+ "Take Photo / Choose Photo":"Зробити / вибрати фото",
+ "Choose Photo":"Вибрати фото",
+ "Photo evidence":"Фотопідтвердження",
+ "No photo":"Немає фото",
+ "Date Unknown":"Дата невідома",
+ "Admin approved this repair. Complete it once it appears in the work-order task list.":"Адміністратор погодив цей ремонт. Виконайте його після появи в списку робіт наряду.",
+ "Do not perform this additional repair.":"Не виконуйте цей додатковий ремонт.",
+ "Waiting for admin/customer decision.":"Очікуємо рішення адміністратора / клієнта.",
+ "Customer Decision":"Рішення клієнта",
+ "Proceed with Repair":"Виконувати ремонт",
+ "Wait for Customer":"Очікувати клієнта",
+ "Decline Repair":"Не виконувати ремонт",
+ "My Work":"Моя робота",
+ "History":"Історія",
+ "Finding":"Зауваження",
+ "Back":"Назад",
+ "Menu":"Меню",
+ "Ready":"Готово",
+ "Scheduled":"Заплановано",
+ "Truck On The Way":"Трак у дорозі",
+ "Truck Arrived":"Трак прибув",
+ "Waiting for Diagnosis":"Очікує діагностики",
+ "Diagnosis In Progress":"Діагностика виконується",
+ "Waiting for Parts":"Очікує запчастин",
+ "Parts Arrived":"Запчастини прибули",
+ "Ready for Mechanic":"Готовий для механіка",
+ "QC Inspection":"Контроль якості",
+ "Ready for Pickup":"Готовий до видачі",
+ "Invoiced":"Рахунок виставлено",
+ "Paid":"Оплачено",
+ "Vehicle Profile":"Профіль техніки",
+ "Year":"Рік",
+ "Make":"Марка",
+ "Model":"Модель",
+ "Plate":"Номерний знак",
+ "Engine":"Двигун",
+ "Transmission":"Трансмісія",
+ "Mileage":"Пробіг",
+ "VIN":"VIN",
+ "Service":"Обслуговування",
+ "Interval":"Інтервал",
+ "Last Service Mileage":"Пробіг останнього ТО",
+ "Due Soon":"Скоро потрібно",
+ "Overdue":"Прострочено",
+ "OK":"OK",
+ "Daily Shop Report":"Щоденний звіт майстерні",
+ "Active Work Orders":"Активні наряди",
+ "Completed Today":"Завершено сьогодні",
+ "Mechanics Working":"Механіків працює",
+ "Download Work Order PDF":"Завантажити PDF наряду",
+ "Work Order PDF":"PDF наряду",
+ "Completed By":"Завершив",
+ "Completed At":"Завершено",
+ "Initial Notes":"Початкові примітки",
+ "Future Repair / Next Visit":"Майбутній ремонт / Наступний візит",
+ "Recheck Mileage":"Пробіг для повторної перевірки",
+ "Findings / Recommendations":"Зауваження / Рекомендації",
+ "Task":"Робота",
+ "Outcome":"Результат",
+ "Mechanics":"Механіки",
+ "Recorded Labor":"Зафіксований робочий час",
+ "No findings recorded.":"Зауважень не зафіксовано.",
+ "No notes recorded.":"Приміток не зафіксовано."
+});
+
 const UI_PLACEHOLDER_TRANSLATIONS={
  "Type your activity...":"Введіть свою діяльність...",
  "Example: cleaning bay 2, checking trailers in yard...":"Наприклад: прибираю пост 2, перевіряю причепи у дворі...",
@@ -1756,6 +1872,8 @@ const UI_PLACEHOLDER_TRANSLATIONS={
 let currentLanguage=localStorage.getItem("ittr_language")||"en";
 const untranslatedUIPhrases=new Set();
 
+function tr(text){return currentLanguage==="uk"?(UI_TRANSLATIONS[text]||text):text;}
+
 function translateExact(text){
  if(currentLanguage!=="uk")return text;
  return UI_TRANSLATIONS[text]||text;
@@ -1773,6 +1891,11 @@ function translateDynamicText(text){
  if((m=text.match(/^(\d+) upcoming assigned truck(s?)$/))) return `Очікуваних призначених траків: ${m[1]}`;
  if((m=text.match(/^Unit (.+)$/))) return `Юніт ${m[1]}`;
  if((m=text.match(/^Work Order #(.+)$/))) return `Наряд #${m[1]}`;
+ if((m=text.match(/^Parking (.+)$/))) return `Паркування ${m[1]}`;
+ if((m=text.match(/^Remove (.+)$/))) return `Видалити ${m[1]}`;
+ if((m=text.match(/^(\d+) helpers?$/))) return `Помічників: ${m[1]}`;
+ if((m=text.match(/^(\d+) sessions?$/))) return `Сесій: ${m[1]}`;
+
  return text;
 }
 
@@ -2166,11 +2289,11 @@ function refreshMechanicSelects(selectedEdit=""){
 
 function openAddHelper(workOrderId){
  const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
- if(!w)return alert("Work order not found.");
- if(session?.role!=="admin" && !mechanicAssignedToWorkOrder(w,session?.username))return alert("You are not assigned to this work order.");
+ if(!w)return alert(tr("Work order not found."));
+ if(session?.role!=="admin" && !mechanicAssignedToWorkOrder(w,session?.username))return alert(tr("You are not assigned to this work order."));
  const assigned=new Set(assignedMechanicUsernames(w));
  const available=mechanicAccounts().filter(m=>!assigned.has(String(m.username||"").toLowerCase()));
- if(!available.length)return alert("Every mechanic is already assigned to this work order.");
+ if(!available.length)return alert(tr("Every mechanic is already assigned to this work order."));
  const sel=document.getElementById("helperMechanicSelect");
  sel.innerHTML=available.map(m=>`<option value="${esc(m.username)}">${esc(m.display)} (${esc(m.username)})</option>`).join("");
  document.getElementById("helperWorkOrderId").value=workOrderId;
@@ -2207,14 +2330,14 @@ document.getElementById("mechanicAccountForm").onsubmit=async e=>{
 };
 async function deleteMechanicAccount(username){
  if(!requireAdmin())return;
- const assigned=(state.workorders||[]).some(w=>w.status!=="Completed"&&mechanicAssignedToWorkOrder(w,username));if(assigned)return alert("This mechanic still has active assigned work orders. Reassign or remove them first.");
+ const assigned=(state.workorders||[]).some(w=>w.status!=="Completed"&&mechanicAssignedToWorkOrder(w,username));if(assigned)return alert(tr("This mechanic still has active assigned work orders. Reassign or remove them first."));
  if(confirm(`Delete mechanic account ${username}?`))try{await apiJSON(`/api/admin/users/${encodeURIComponent(username)}`,{method:"DELETE"});delete USERS[username];saveUsers();render()}catch(ex){alert(ex.message)}
 }
 
 function openChangeMechanicPassword(username){
  if(!requireAdmin())return;
  const user=USERS[username];
- if(!user || user.role!=="mechanic")return alert("Mechanic account not found.");
+ if(!user || user.role!=="mechanic")return alert(tr("Mechanic account not found."));
  const form=document.getElementById("passwordForm");
  form.elements["username"].value=username;
  form.elements["password"].value="";
@@ -2326,7 +2449,7 @@ function openReactivate(id){
  if(!requireMechanic())return;
  const w=state.workorders.find(x=>x.id===id);
  if(!w || w.status!=="Completed")return;
- if(!(w.completedBy===session.username || w.mechanic===session.username))return alert("You can only reactivate your own completed work.");
+ if(!(w.completedBy===session.username || w.mechanic===session.username))return alert(tr("You can only reactivate your own completed work."));
  document.getElementById("reactivateWorkOrderId").value=id;
  document.getElementById("reactivateForm").reset();
  document.getElementById("reactivateWorkOrderId").value=id;
@@ -2339,7 +2462,7 @@ document.getElementById("reactivateForm").onsubmit=e=>{
  const id=Number(f.get("workOrderId"));
  const w=state.workorders.find(x=>x.id===id);
  if(!w || w.status!=="Completed")return;
- if(!(w.completedBy===session.username || w.mechanic===session.username))return alert("You can only reactivate your own completed work.");
+ if(!(w.completedBy===session.username || w.mechanic===session.username))return alert(tr("You can only reactivate your own completed work."));
  const reason=(f.get("reason")||"").trim();
  const added=(f.get("tasks")||"").split("\n").map(x=>x.trim()).filter(Boolean);
  if(!reason || !added.length)return;
@@ -2381,8 +2504,8 @@ function canCurrentMechanicComplete(w){
 function openCompleteWithNotes(id){
  if(!requireMechanic())return;
  const w=state.workorders.find(x=>x.id===id);
- if(!w)return alert("Work order could not be found.");
- if(!canCurrentMechanicComplete(w))return alert("This work order is not active for your mechanic account.");
+ if(!w)return alert(tr("Work order could not be found."));
+ if(!canCurrentMechanicComplete(w))return alert(tr("This work order is not active for your mechanic account."));
  const activeIdx=activeTaskIndex(w);
  if(activeIdx!==-1){
    const activeName=w.tasks?.[activeIdx]?.t||"current job";
@@ -2394,7 +2517,7 @@ function openCompleteWithNotes(id){
    return alert(`Every assigned job needs a mechanic decision before completing the work order.\nStill needs decision: ${names}${undecided.length>5?"...":""}`);
  }
  const form=document.getElementById("closeNotesForm");
- if(!form)return alert("Completion form is unavailable. Please reopen the work order.");
+ if(!form)return alert(tr("Completion form is unavailable. Please reopen the work order."));
  document.getElementById("closeNotesWorkOrderId").value=id;
  form.elements["completionNotes"].value=w.completionNotes||"";
  form.elements["futureNotes"].value=w.futureNotes||"";
@@ -2409,11 +2532,11 @@ document.getElementById("closeNotesForm").onsubmit=e=>{
  const f=new FormData(e.target);
  const id=Number(f.get("workOrderId"));
  const w=state.workorders.find(x=>x.id===id);
- if(!w)return alert("Work order could not be found.");
- if(!canCurrentMechanicComplete(w))return alert("This work order is no longer active for your account.");
- if(activeTaskIndex(w)!==-1)return alert("A job is still running. Stop it before completing the work order.");
+ if(!w)return alert(tr("Work order could not be found."));
+ if(!canCurrentMechanicComplete(w))return alert(tr("This work order is no longer active for your account."));
+ if(activeTaskIndex(w)!==-1)return alert(tr("A job is still running. Stop it before completing the work order."));
  const undecided=(w.tasks||[]).filter(t=>!taskHasFinalDecision(t));
- if(undecided.length)return alert("Every assigned job must be marked Completed, Not Completed, or Next Visit before the work order can be closed.");
+ if(undecided.length)return alert(tr("Every assigned job must be marked Completed, Not Completed, or Next Visit before the work order can be closed."));
 
  const completionNotes=(f.get("completionNotes")||"").trim();
  const futureNotes=(f.get("futureNotes")||"").trim();
@@ -2869,7 +2992,7 @@ function showProPanel(name){
  if(name==="aitools")checkAIConnection();
 }
 function saveVehicleProfile(){
- const unit=(document.getElementById("vpUnit")?.value||"").trim();if(!unit)return alert("Unit number required.");
+ const unit=(document.getElementById("vpUnit")?.value||"").trim();if(!unit)return alert(tr("Unit number required."));
  const data={unit,vin:(vpVin.value||"").trim().toUpperCase(),customer:vpCustomer.value.trim(),mileage:+vpMileage.value||0,year:vpYear.value.trim(),make:vpMake.value.trim(),model:vpModel.value.trim(),plate:vpPlate.value.trim(),engine:vpEngine.value.trim(),transmission:vpTransmission.value.trim(),parking:vpParking.value.trim(),notes:vpNotes.value.trim(),updatedAt:new Date().toISOString()};
  const i=PRO.vehicles.findIndex(v=>String(v.unit).toLowerCase()===unit.toLowerCase());
  if(i>=0)PRO.vehicles[i]={...PRO.vehicles[i],...data};else PRO.vehicles.push(data);
@@ -2899,13 +3022,13 @@ function openUnitInTruckSearch(encoded){
  const unit=decodeURIComponent(encoded);showView("trucksearch");setTimeout(()=>{const e=document.getElementById("truckGlobalSearch");if(e){e.value=unit;renderTruckSearch()}},0);
 }
 async function decodeVehicleVIN(){
- const vin=(document.getElementById("vpVin")?.value||"").trim();if(vin.length!==17)return alert("Enter a 17-character VIN.");
+ const vin=(document.getElementById("vpVin")?.value||"").trim();if(vin.length!==17)return alert(tr("Enter a 17-character VIN."));
  const out=await proAI("/api/vin",{vin});if(!out)return;
  try{const d=typeof out==="string"?JSON.parse(out):out;["year","make","model","engine","transmission"].forEach(k=>{const el=document.getElementById("vp"+k.charAt(0).toUpperCase()+k.slice(1));if(el&&d[k])el.value=d[k]})}catch(e){alert(out)}
 }
 function addMaintenancePlan(){
  const unit=maintUnit.value.trim(),service=maintService.value.trim(),interval=+maintInterval.value,last=+maintLastMileage.value;
- if(!unit||!service||!interval)return alert("Unit, service and interval are required.");
+ if(!unit||!service||!interval)return alert(tr("Unit, service and interval are required."));
  PRO.maintenance.push({id:Date.now(),unit,service,interval,lastMileage:last,createdAt:new Date().toISOString()});savePro();audit("Maintenance plan added",`${service} every ${interval} miles`,unit);renderMaintenance();
 }
 function maintenanceState(m){
@@ -2922,7 +3045,7 @@ function setProfessionalStatus(id,status){
 }
 function startDelay(id,type,note=""){
  const w=state.workorders.find(x=>x.id==id);if(!w)return;
- const active=PRO.delays.find(d=>d.wo==id&&!d.endedAt);if(active)return alert("A delay is already running.");
+ const active=PRO.delays.find(d=>d.wo==id&&!d.endedAt);if(active)return alert(tr("A delay is already running."));
  PRO.delays.unshift({id:Date.now(),wo:id,unit:w.unit,type,note,startedAt:new Date().toISOString(),endedAt:""});savePro();audit("Delay started",type,w.unit);
 }
 function stopDelay(id){
@@ -2989,7 +3112,7 @@ async function checkAIConnection(){
 
 async function proAI(endpoint,payload){
  if(location.protocol==="file:"){
-   alert("AI tools require the ITTR server. Run the server and use http://localhost:3000.");
+   alert(tr("AI tools require the ITTR server. Run the server and use http://localhost:3000."));
    return null;
  }
  try{
@@ -3015,13 +3138,13 @@ async function aiPartAssistant(){
  const query=aiPartQuery.value.trim();if(!query)return;aiPartResult.textContent="Working…";const r=await proAI("/api/ai/part",{vin:aiPartVin.value.trim(),query});aiPartResult.textContent=r||"";
 }
 async function startVoiceNote(){
- if(!navigator.mediaDevices?.getUserMedia)return alert("Microphone is not available in this browser.");
+ if(!navigator.mediaDevices?.getUserMedia)return alert(tr("Microphone is not available in this browser."));
  try{
   const stream=await navigator.mediaDevices.getUserMedia({audio:true}),rec=new MediaRecorder(stream),chunks=[];
   rec.ondataavailable=e=>chunks.push(e.data);
   rec.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());const blob=new Blob(chunks,{type:rec.mimeType});const fd=new FormData();fd.append("audio",blob,"note.webm");aiShopResult.textContent="Transcribing…";try{const rr=await fetch("/api/transcribe",{method:"POST",headers:authHeaders(),body:fd}),d=await rr.json();if(!rr.ok)throw new Error(d.error||"Transcription failed");aiShopText.value=d.text||"";aiShopResult.textContent="Transcription complete."}catch(e){aiShopResult.textContent=e.message}};
-  rec.start();aiShopResult.textContent="Recording… press OK to stop.";setTimeout(()=>{alert("Recording started. Press OK here, then recording will stop.");if(rec.state==="recording")rec.stop()},200);
- }catch(e){alert("Microphone permission is required.")}
+  rec.start();aiShopResult.textContent="Recording… press OK to stop.";setTimeout(()=>{alert(tr("Recording started. Press OK here, then recording will stop."));if(rec.state==="recording")rec.stop()},200);
+ }catch(e){alert(tr("Microphone permission is required."))}
 }
 function renderProCenter(){
  renderVehicleProfiles();renderMaintenance();renderProductivity();renderProNotifications();renderDailyReport();renderAuditLog();
@@ -3037,7 +3160,7 @@ function render(){
 
    const completedTable=document.getElementById("completedTable");
    if(completedTable){
-     completedTable.innerHTML=completed.map(w=>`<tr><td>#${w.id}</td><td><b>${esc(w.unit)}</b></td><td>${esc(w.customer)}</td><td>${esc(mechanicDisplay(w.mechanic))}</td><td>${esc(w.completedAt||"")}</td><td>${esc(w.parking||"—")}</td><td><button class="secondary" onclick="openDetail(${w.id})">View</button></td></tr>`).join("")||'<tr><td colspan="7" class="empty">No completed work orders yet.</td></tr>';
+     completedTable.innerHTML=completed.map(w=>`<tr><td>#${w.id}</td><td><b>${esc(w.unit)}</b></td><td>${esc(w.customer)}</td><td>${esc(mechanicDisplay(w.mechanic))}</td><td>${esc(w.completedAt||"")}</td><td>${esc(w.parking||"—")}</td><td><button class="secondary" onclick="openDetail(${w.id})">View</button> <button class="secondary" onclick="downloadWorkOrderPDF(${w.id})">Download Work Order PDF</button></td></tr>`).join("")||'<tr><td colspan="7" class="empty">No completed work orders yet.</td></tr>';
    }
 
    renderFindingsCenter();
@@ -3382,7 +3505,7 @@ function addApprovedFindingToWorkOrder(id){
 }
 
 function openWorkOrder(){if(!requireAdmin())return;refreshMechanicSelects();document.getElementById("woModal").classList.add("open")}
-function openIssue(workOrderId=null){if(!requireMechanic())return;if(!state.workorders.length)return alert("Create a work order first.");const sel=document.getElementById("issueWO");if(workOrderId!=null&&sel)[...sel.options].some(o=>String(o.value)===String(workOrderId))&&(sel.value=String(workOrderId));document.getElementById("issueModal").classList.add("open");updateMobileBackButton()}
+function openIssue(workOrderId=null){if(!requireMechanic())return;if(!state.workorders.length)return alert(tr("Create a work order first."));const sel=document.getElementById("issueWO");if(workOrderId!=null&&sel)[...sel.options].some(o=>String(o.value)===String(workOrderId))&&(sel.value=String(workOrderId));document.getElementById("issueModal").classList.add("open");updateMobileBackButton()}
 function closeModal(id){
  const modal=document.getElementById(id);
  if(modal) modal.classList.remove("open");
@@ -3419,7 +3542,7 @@ document.getElementById("issueForm").onsubmit=async e=>{
  const form=e.target,button=form.querySelector('button[type="submit"]');
  if(button?.disabled)return;
  const f=new FormData(form),file=f.get("photo"),woId=Number(f.get("wo")),linked=state.workorders.find(w=>w.id===woId);
- if(!linked)return alert("This work order is no longer available. Refresh and try again.");
+ if(!linked)return alert(tr("This work order is no longer available. Refresh and try again."));
  const findingId=Date.now();
  let photoId="";
  try{
@@ -3489,9 +3612,9 @@ document.getElementById("editForm").onsubmit=e=>{
 function mechanicMarkTruckHere(id){
  if(!requireMechanic())return;
  const w=state.workorders.find(x=>x.id===id);
- if(!w)return alert("Work order could not be found.");
- if(!assignedToCurrentMechanic(w))return alert("This unit is not assigned to you.");
- if(w.status==="Completed")return alert("This work order is already completed.");
+ if(!w)return alert(tr("Work order could not be found."));
+ if(!assignedToCurrentMechanic(w))return alert(tr("This unit is not assigned to you."));
+ if(w.status==="Completed")return alert(tr("This work order is already completed."));
 
  if(w.unitType==="fleet"){
    w.fleetAuto=true;
@@ -3567,10 +3690,10 @@ function taskOutcomeBadge(t,w=null){
 function openTaskOutcome(workOrderId,taskIndex){
  if(!requireMechanic())return;
  const w=state.workorders.find(x=>x.id===workOrderId);
- if(!w || !visibleToCurrentMechanic(w))return alert("This work order is not active for your account.");
+ if(!w || !visibleToCurrentMechanic(w))return alert(tr("This work order is not active for your account."));
  const t=w.tasks?.[taskIndex];
- if(!t)return alert("Job could not be found.");
- if(t.startedAt && !t.stoppedAt)return alert("Stop the running timer first.");
+ if(!t)return alert(tr("Job could not be found."));
+ if(t.startedAt && !t.stoppedAt)return alert(tr("Stop the running timer first."));
  const form=document.getElementById("taskOutcomeForm");
  form.elements["workOrderId"].value=workOrderId;
  form.elements["taskIndex"].value=taskIndex;
@@ -3586,7 +3709,7 @@ function clearTaskOutcome(workOrderId,taskIndex){
  if(!w || !visibleToCurrentMechanic(w))return;
  const t=w.tasks?.[taskIndex];
  if(!t)return;
- if(t.startedAt && !t.stoppedAt)return alert("Stop the running timer first.");
+ if(t.startedAt && !t.stoppedAt)return alert(tr("Stop the running timer first."));
  t.done=false;
  t.completedAt="";
  t.taskOutcome="";
@@ -3739,7 +3862,7 @@ function taskTimerRow(w,t,i){
 }
 async function applyTaskServerAction(workOrderId,taskUid,action,extra={}){
  if(!requireMechanic())return false;
- if(!taskUid){alert("This task is missing its permanent ID. Refresh the work order and try again.");return false;}
+ if(!taskUid){alert(tr("This task is missing its permanent ID. Refresh the work order and try again."));return false;}
  try{
    const d=await apiJSON(`/api/work-orders/${encodeURIComponent(workOrderId)}/tasks/by-uid/${encodeURIComponent(taskUid)}/action`,{
      method:"POST",body:JSON.stringify({action,...extra})
@@ -3759,10 +3882,10 @@ async function applyTaskServerAction(workOrderId,taskUid,action,extra={}){
 }
 async function startTask(workOrderId,taskIndex){
  const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
- if(!w || !visibleToCurrentMechanic(w))return alert("You do not have access to this work order.");
- const task=w.tasks?.[taskIndex]; if(!task)return alert("This job could not be found.");
- if(task.findingDecision==="Do Not Proceed")return alert("This repair was declined. Do not perform this task.");
- if(task.findingDecision==="Waiting for Customer")return alert("This repair is waiting for customer approval.");
+ if(!w || !visibleToCurrentMechanic(w))return alert(tr("You do not have access to this work order."));
+ const task=w.tasks?.[taskIndex]; if(!task)return alert(tr("This job could not be found."));
+ if(task.findingDecision==="Do Not Proceed")return alert(tr("This repair was declined. Do not perform this task."));
+ if(task.findingDecision==="Waiting for Customer")return alert(tr("This repair is waiting for customer approval."));
  const au=USERS;
  if(au?.[session.username]?.currentActivity?.code){closeCurrentMechanicActivity(au,session.username);try{saveUsers(au)}catch(e){saveUsers()}}
  await applyTaskServerAction(workOrderId,task.uid,"start");
@@ -3771,8 +3894,8 @@ function openPauseTask(workOrderId,taskIndex){
  if(!requireMechanic())return;
  const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
  const t=w?.tasks?.[taskIndex];
- if(!t)return alert("This job could not be found.");
- if(!(t.startedAt&&!t.stoppedAt&&!t.done))return alert("This job is not currently running.");
+ if(!t)return alert(tr("This job could not be found."));
+ if(!(t.startedAt&&!t.stoppedAt&&!t.done))return alert(tr("This job is not currently running."));
  const f=document.getElementById("taskPauseForm");
  f.elements["workOrderId"].value=workOrderId;
  f.elements["taskIndex"].value=taskIndex;
@@ -3784,21 +3907,21 @@ function openPauseTask(workOrderId,taskIndex){
 async function pauseTask(workOrderId,taskIndex,reason,note=""){
  const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
  const task=w?.tasks?.[taskIndex];
- if(!task)return alert("This task no longer exists. Refresh the work order.");
+ if(!task)return alert(tr("This task no longer exists. Refresh the work order."));
  const ok=await applyTaskServerAction(workOrderId,task.uid,"pause",{reason,note});
  if(ok)closeModal("taskPauseModal");
 }
 async function resumeTask(workOrderId,taskIndex){
  const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
  const task=w?.tasks?.[taskIndex];
- if(!task)return alert("This task no longer exists. Refresh the work order.");
+ if(!task)return alert(tr("This task no longer exists. Refresh the work order."));
  await applyTaskServerAction(workOrderId,task.uid,"resume");
 }
 async function stopTask(workOrderId,taskIndex){
  const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
  const task=w?.tasks?.[taskIndex];
- if(!task)return alert("This task no longer exists. Refresh the work order.");
- if(!confirm("Mark this job as completed?"))return;
+ if(!task)return alert(tr("This task no longer exists. Refresh the work order."));
+ if(!confirm(tr("Mark this job as completed?")))return;
  await applyTaskServerAction(workOrderId,task.uid,"complete");
 }
 
@@ -3838,7 +3961,7 @@ function openDetail(id){
  let w=state.workorders.find(x=>x.id===id); if(!w)return; if(session?.role==="mechanic"){
  const ownCompleted=w.status==="Completed" && (w.completedBy===session.username || mechanicAssignedToWorkOrder(w,session.username) || (w.tasks||[]).some(t=>t.outcomeBy===session.username));
  const ownUpcoming=upcomingForCurrentMechanic(w);
- if(!visibleToCurrentMechanic(w) && !ownCompleted && !ownUpcoming) return alert("You do not have access to this work order.");
+ if(!visibleToCurrentMechanic(w) && !ownCompleted && !ownUpcoming) return alert(tr("You do not have access to this work order."));
 }
  document.getElementById("detailTitle").textContent=session?.role==="mechanic"?`Unit ${w.unit}`:`Work Order #${w.id} — ${w.unit}`;
  const adminControls=(session?.role==="admin" && w.status!=="Completed")?`
@@ -3870,11 +3993,31 @@ function openDetail(id){
   ${w.status==="Completed" && Number(w.outcomeWorkflowVersion||0)===0?`<div class="notice" style="margin-bottom:10px">This work order was completed before per-job outcomes were introduced. Missing outcomes are historical only and do not require action.</div>`:""}
   ${w.tasks.map((t,i)=>taskTimerRow(w,t,i)).join("")}
   ${workOrderNotesBlock(w)}
+  ${w.status==="Completed"?`<div style="margin-top:12px"><button class="secondary" onclick="downloadWorkOrderPDF(${w.id})">Download Work Order PDF</button></div>`:""}
   <div class="card mechanicWorkSummary"><h2 style="margin:0">Mechanic Work Summary</h2><div class="muted">Who worked on each job and their recorded labor time.</div><div data-mechanic-work-summary-wo="${esc(String(w.id))}" style="margin-top:8px"><div class="muted">Loading mechanic labor…</div></div></div>
   ${adminControls}
   ${mechanicControls}`;
  document.getElementById("detailModal").classList.add("open");
  loadWorkOrderTaskSessions(w.id);
+}
+
+
+async function downloadWorkOrderPDF(id){
+ try{
+  const r=await fetch(`/api/work-orders/${encodeURIComponent(id)}/pdf`,{credentials:"same-origin",cache:"no-store"});
+  if(!r.ok){
+   let msg=`PDF download failed (${r.status}).`;
+   try{const d=await r.json();if(d?.error)msg=d.error}catch(_){}
+   throw new Error(msg);
+  }
+  const blob=await r.blob();
+  const cd=r.headers.get("content-disposition")||"";
+  const m=cd.match(/filename="?([^";]+)"?/i);
+  const name=m?m[1]:`ITTR-Work-Order-${id}.pdf`;
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+ }catch(e){alert(e.message||"Unable to download work order PDF.");}
 }
 
 function deleteWorkOrder(id){
@@ -3913,7 +4056,7 @@ const passwordFormEl=document.getElementById("passwordForm");
 if(passwordFormEl)passwordFormEl.onsubmit=async e=>{
  e.preventDefault();if(!requireAdmin())return;
  const f=new FormData(e.target),username=String(f.get("username")||""),password=String(f.get("password")||""),confirmPassword=String(f.get("confirmPassword")||"");
- if(password.length<6)return alert("Password must be at least 6 characters.");if(password!==confirmPassword)return alert("Passwords do not match.");
+ if(password.length<6)return alert(tr("Password must be at least 6 characters."));if(password!==confirmPassword)return alert(tr("Passwords do not match."));
  try{await apiJSON(`/api/admin/users/${encodeURIComponent(username)}/password`,{method:"PATCH",body:JSON.stringify({password})});closeModal("passwordModal");alert(`Password changed for ${USERS[username]?.display||username}.`)}catch(ex){alert(ex.message)}
 };
 
@@ -3933,13 +4076,13 @@ if(taskOutcomeFormEl)taskOutcomeFormEl.onsubmit=e=>{
  const taskIndex=Number(f.get("taskIndex"));
  const outcome=String(f.get("outcome")||"");
  const note=String(f.get("note")||"").trim();
- if(!["not_completed","next_visit"].includes(outcome))return alert("Choose Not Completed or Next Visit.");
- if(!note)return alert("Please enter a reason or next-visit note.");
+ if(!["not_completed","next_visit"].includes(outcome))return alert(tr("Choose Not Completed or Next Visit."));
+ if(!note)return alert(tr("Please enter a reason or next-visit note."));
  const w=state.workorders.find(x=>x.id===workOrderId);
- if(!w || !visibleToCurrentMechanic(w))return alert("This work order is not active for your account.");
+ if(!w || !visibleToCurrentMechanic(w))return alert(tr("This work order is not active for your account."));
  const t=w.tasks?.[taskIndex];
- if(!t)return alert("Job could not be found.");
- if(t.startedAt && !t.stoppedAt)return alert("Stop the running timer first.");
+ if(!t)return alert(tr("Job could not be found."));
+ if(t.startedAt && !t.stoppedAt)return alert(tr("Stop the running timer first."));
  t.done=false;
  t.completedAt="";
  t.taskOutcome=outcome;

@@ -1,0 +1,28 @@
+ITTR v23.3 TRANSLATION + PDF AUDIT
+
+TRANSLATION
+- Deterministic Ukrainian dictionary expanded for collaboration, mobile, R2 photo, task timeline,
+  pause/resume, statuses, operations center, findings, and PDF controls.
+- Existing DOM translation runs after every render.
+- Static alert() strings are routed through the Ukrainian dictionary.
+- User-entered customer/unit/job/note text is intentionally preserved exactly as entered.
+- AI translation remains a fallback for newly introduced English UI phrases.
+- Static literal audit candidates still requiring human review: 124
+  (many are brand names, field examples, generated fragments, or text containing nested markup).
+
+PDF
+- New authenticated endpoint: GET /api/work-orders/:id/pdf
+- Available only after status=Completed.
+- Admin or assigned/participating mechanic access.
+- Includes customer/unit/schedule/completion, primary + helpers, every task/outcome,
+  exact task_time_sessions, per-mechanic labor totals, findings/recommendations/photo counts,
+  initial notes, completion notes, future/next-visit notes, revisit mileage.
+- PDF generated server-side with PDFKit.
+- Download button added to Completed Jobs and completed Work Order detail.
+
+STATIC AUDIT
+- server.js syntax PASS
+- frontend JS syntax PASS
+- root/public index identical PASS
+- duplicate static IDs NONE
+- destructive database reset NONE
