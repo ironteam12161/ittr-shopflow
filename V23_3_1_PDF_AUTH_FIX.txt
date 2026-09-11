@@ -1,0 +1,25 @@
+ITTR v23.3.1 — PDF AUTH FIX
+
+ROOT CAUSE
+The app does not authenticate with browser cookies. It stores the Railway session token in
+sessionStorage and every protected API request must send:
+  Authorization: Bearer <session token>
+
+The new PDF button used a plain fetch() with credentials:"same-origin". That sends cookies,
+but there is no auth cookie for this app, so the backend correctly returned:
+  401 Please sign in.
+
+FIX
+- PDF download now sends authHeaders(), the same Bearer token used by the rest of ShopFlow.
+- A 401 during PDF download now clears the expired local session and opens the login screen.
+- Audited every direct protected /api fetch in the frontend; no other missing Bearer-header calls remain.
+- PDF endpoint and all v23.3 translation/PDF features remain intact.
+- No database changes or reset.
+
+AUDIT
+- Backend JS syntax: PASS
+- Frontend JS syntax: PASS
+- Root/public index identical: PASS
+- Duplicate static IDs: NONE
+- Protected fetch auth-header audit: PASS
+- PDF endpoint present: PASS

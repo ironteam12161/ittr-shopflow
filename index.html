@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v23.3</title>
+<title>ITTR ShopFlow v23.3.1</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -1130,7 +1130,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION="23.3.0";
+const FRONTEND_VERSION="23.3.1";
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
@@ -4004,10 +4004,17 @@ function openDetail(id){
 
 async function downloadWorkOrderPDF(id){
  try{
-  const r=await fetch(`/api/work-orders/${encodeURIComponent(id)}/pdf`,{credentials:"same-origin",cache:"no-store"});
+  const r=await fetch(`/api/work-orders/${encodeURIComponent(id)}/pdf`,{headers:authHeaders(),cache:"no-store"});
   if(!r.ok){
    let msg=`PDF download failed (${r.status}).`;
    try{const d=await r.json();if(d?.error)msg=d.error}catch(_){}
+   if(r.status===401){
+    cloudToken="";
+    sessionStorage.removeItem("ittr_cloud_token");
+    session=null;
+    sessionStorage.removeItem("ittr_session");
+    showLogin();
+   }
    throw new Error(msg);
   }
   const blob=await r.blob();
