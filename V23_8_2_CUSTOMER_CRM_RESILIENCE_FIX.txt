@@ -1,0 +1,11 @@
+ITTR v23.8.2 Customer CRM Resilience Fix
+
+Fixes:
+- Customer list no longer fails just because background unit reconciliation encounters one bad legacy work-order/unit record.
+- Legacy/non-numeric customerId values are normalized instead of being sent to PostgreSQL bigint fields.
+- Unit reconciliation isolates failures per record and continues with the remaining records.
+- Customer profile and unit autocomplete tolerate reconciliation warnings.
+- Added admin-only /api/admin/customer-crm-diagnostics for future diagnosis.
+- Build/version banner updated to 23.8.2.
+- Preserves v23.7.1 Fullbay inventory SQL fix.
+- No destructive database reset.
