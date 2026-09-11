@@ -402,6 +402,9 @@ function cleanFullbayCell(v){
  let s=String(v??"").trim();
  const m=s.match(/^=\"([\s\S]*)\"$/);
  if(m)s=m[1].replace(/\"\"/g,'"');
+ // Some CSV parsers remove the quote wrapper but leave Excel's leading = marker.
+ s=s.replace(/^=+(?=[A-Za-z0-9])/,'');
+ if(/^\"[\s\S]*\"$/.test(s))s=s.slice(1,-1).replace(/\"\"/g,'"');
  return s.trim();
 }
 function pickField(row,names){const m=new Map(Object.entries(row||{}).map(([k,v])=>[normHeader(k),cleanFullbayCell(v)]));for(const n of names){const v=m.get(normHeader(n));if(v!=null&&String(v).trim()!=="")return String(v).trim()}return ""}
@@ -480,6 +483,19 @@ app.post("/api/fullbay/import/service-history",auth,adminOnly,upload.single("fil
   res.json({ok:true,received:rows.length,imported,skipped,customers:customersTouched.size,units:unitsTouched.size});
  }catch(e){next(e)}
 });
+
+app.get("/api/fullbay/service-orders/:so",auth,async(req,res,next)=>{try{
+ const db=requireDb(),so=String(req.params.so||"").trim(),customerId=String(req.query.customerId||"").trim(),unit=String(req.query.unit||"").trim();
+ if(!so)return res.status(400).json({error:"Service order is required."});
+ const params=[so];let where="service_order=$1";
+ if(customerId){params.push(customerId);where+=` AND customer_id::text=$${params.length}::text`}
+ if(unit){params.push(unit);where+=` AND coalesce(unit_number,'')=$${params.length}`}
+ const r=await db.query(`SELECT * FROM fullbay_service_history WHERE ${where} ORDER BY action_completed_at NULLS LAST,action_number,id`,params);
+ if(!r.rowCount)return res.status(404).json({error:"Service order not found."});
+ const rows=r.rows,first=rows[0];
+ const sum=k=>rows.reduce((n,x)=>n+Number(x[k]||0),0);
+ res.json({order:{source:"fullbay",serviceOrder:first.service_order,invoice:first.invoice_number,po:first.po_number,customerId:first.customer_id,customer:first.customer_name,unit:first.unit_number,vin:first.vin,status:first.unit_status,unitType:first.unit_type,unitSubtype:first.unit_subtype,completedAt:rows.map(x=>x.action_completed_at).filter(Boolean).sort().pop()||null,mileage:Math.max(...rows.map(x=>Number(x.unit_miles||0))),leadTech:rows.map(x=>x.lead_tech).find(Boolean)||"",technicians:[...new Set(rows.map(x=>x.tech).filter(Boolean))],hours:sum("hours"),laborAmount:sum("labor_amount"),partAmount:sum("part_amount"),totalAmount:sum("total_amount"),actions:rows.map(x=>({action:x.action_number,complaint:x.complaint,correction:x.actual_correction,hours:Number(x.hours||0),laborAmount:Number(x.labor_amount||0),partAmount:Number(x.part_amount||0),totalAmount:Number(x.total_amount||0),tech:x.tech||x.lead_tech||"",component:x.component||"",system:x.system||""}))}});
+}catch(e){next(e)}});
 
 app.get("/api/fullbay/customers",auth,async(req,res,next)=>{try{
  const q=String(req.query.q||"").trim(),limit=Math.min(200,Math.max(1,Number(req.query.limit)||50)),offset=Math.max(0,Number(req.query.offset)||0),like=`%${q}%`;
@@ -705,7 +721,7 @@ app.get("/api/smart-search",auth,adminOnly,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"24.1.0",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"24.2.0",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -723,8 +739,23 @@ app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
   out.ok=true;res.json(out);
  }catch(e){out.error=String(e?.message||e).slice(0,500);console.error("Customer CRM diagnostics failed:",e);res.status(500).json(out)}
 });
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.1.0",backend:"24.1.0",build:"ITTR-24.1.0-SMART-UNIFIED-UX-20260911"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.1.0",photoStorageConfigured:r2Configured})});
+async function reconcileDuplicateImportedCustomers(){
+ if(!pool)return {merged:0};let merged=0;
+ const r=await pool.query(`SELECT id,customer_name,fullbay_id FROM fullbay_import_customers ORDER BY id`);
+ const groups=new Map();for(const c of r.rows){const k=normCustomerName(String(c.customer_name||"").replace(/^=+/,""));if(!k)continue;if(!groups.has(k))groups.set(k,[]);groups.get(k).push(c)}
+ for(const items of groups.values()){
+  if(items.length<2)continue;const canonical=items.slice().sort((a,b)=>(b.fullbay_id?1:0)-(a.fullbay_id?1:0)||Number(a.id)-Number(b.id))[0];
+  for(const dupe of items){if(String(dupe.id)===String(canonical.id))continue;
+   await pool.query("UPDATE customer_units SET customer_id=$1,customer_name=$2,updated_at=now() WHERE customer_id::text=$3::text OR (customer_id IS NULL AND lower(customer_name)=lower($4))",[canonical.id,canonical.customer_name,dupe.id,dupe.customer_name]);
+   await pool.query("UPDATE fullbay_service_history SET customer_id=$1,customer_name=$2,updated_at=now() WHERE customer_id::text=$3::text OR (customer_id IS NULL AND lower(customer_name)=lower($4))",[canonical.id,canonical.customer_name,dupe.id,dupe.customer_name]);
+   await pool.query("DELETE FROM fullbay_import_customers WHERE id=$1",[dupe.id]);merged++;
+  }
+ }
+ return {merged};
+}
+
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.2.0",backend:"24.2.0",build:"ITTR-24.2.0-VEHICLE-CENTRIC-HISTORY-20260911"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.2.0",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -1677,5 +1708,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(()=>app.listen(port,()=>console.log(`ITTR v24.1.0 Online running on port ${port}`)))
+  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}app.listen(port,()=>console.log(`ITTR v24.2.0 Online running on port ${port}`))})
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});
