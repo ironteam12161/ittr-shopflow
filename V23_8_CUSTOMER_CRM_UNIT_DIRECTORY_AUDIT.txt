@@ -1,0 +1,34 @@
+ITTR ShopFlow v23.8.0 — Customer CRM + Unit Directory
+
+New in this release
+- Separate Admin "Customers" tab.
+- Searchable customer directory using the imported Fullbay customer records plus manually created customers.
+- Customer profile includes company/contact info, email, phone, DOT, address, billing/credit/payment fields, internal notes and active/inactive status.
+- Customer truck/unit list with editable Unit #, VIN, year, make, model, plate, mileage, engine, transmission and notes.
+- Customer service history is built from ITTR work orders and shows jobs, completion notes and next-visit notes.
+- Existing Vehicle Profiles and historical work orders are automatically reconciled into the customer unit directory.
+- New Work Order and Edit Work Order Unit fields now search Unit #, VIN, plate or company.
+- Selecting a unit automatically fills customer/company and snapshots VIN/year/make/model/plate/mileage/DOT into the work order.
+- Work-order detail shows matched vehicle identity information.
+- Professional PDF now falls back to the work-order vehicle snapshot when needed.
+- Customer profile has one-click New Work Order for a selected unit.
+
+Fullbay import safety
+- v23.7.1 inventory import fix is preserved. The parts INSERT uses the corrected 22-value parameter contract.
+- Fullbay customer re-import preserves manually entered email when the source export does not contain an email field.
+- Fullbay customer import maps Repair Authorizer/Billing Contact as an initial contact when available.
+- Portal Code is still excluded.
+- No destructive database reset or delete migration.
+
+Database
+- Adds customer_units table and indexes.
+- Adds optional notes/contact_name fields to customer records.
+- Existing Fullbay customers, imported inventory, work orders, photos, findings and task-time history are preserved.
+
+Static audit
+- server.js syntax: PASS
+- frontend script syntax: PASS
+- root/public index identical: PASS
+- duplicate DOM IDs: none
+- missing inline handler functions: none
+- frontend/backend release contract: 23.8.0

@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v23.7</title>
+<title>ITTR ShopFlow v23.8.0</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -524,6 +524,8 @@ body.modalOpen{overflow:hidden}
 @media(max-width:760px){.productivityToolbar{grid-template-columns:1fr}.productivityQuick{display:grid;grid-template-columns:1fr 1fr}.productivityQuick button{width:100%}.productivityTable{display:block;overflow-x:auto;white-space:nowrap}.productivityDetailRow{grid-template-columns:1fr}.aiActionGrid{display:grid;grid-template-columns:1fr}.aiActionGrid button{width:100%}}
 
 .fullbayGrid{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:10px}.fullbayStat{background:#f9fafb;border:1px solid #eaecf0;border-radius:10px;padding:10px}.fullbayStat b{display:block;font-size:20px}.fullbayBrowser{overflow-x:auto}.fullbayBrowser table{min-width:980px}.fullbaySearchRow{display:flex;gap:8px;flex-wrap:wrap;align-items:end}.fullbaySearchRow .field{min-width:240px;flex:1}.stockLow{font-weight:700}.fullbayPager{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:10px}.fullbayDetails{font-size:12px;white-space:normal;max-width:360px}@media(max-width:700px){.fullbayGrid{grid-template-columns:1fr 1fr}.fullbaySearchRow{display:block}.fullbaySearchRow .field{margin-bottom:8px}}
+
+.customerDirectoryGrid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px;margin-bottom:14px}.customerStat{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px}.customerStat b{display:block;font-size:22px}.customerTableWrap{overflow:auto}.customerTableWrap table{min-width:980px}.customerNameLink{background:none!important;color:#175cd3!important;border:0!important;padding:0!important;text-align:left;font-weight:800;cursor:pointer}.customerProfileHeader{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}.customerProfileMeta{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}.customerUnitGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}.customerUnitCard{border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:#fff}.serviceHistoryCard{border-left:4px solid #98a2b3;padding:10px 12px;margin:8px 0;background:#f9fafb;border-radius:8px}.unitSuggestBox{position:relative}.unitSuggestResults{position:absolute;z-index:2000;top:100%;left:0;right:0;background:white;border:1px solid #d0d5dd;border-radius:10px;box-shadow:0 10px 24px rgba(16,24,40,.16);max-height:300px;overflow:auto;margin-top:4px}.unitSuggestResults:empty{display:none}.unitSuggestItem{display:block;width:100%;text-align:left;background:white!important;color:#101828!important;border:0!important;border-bottom:1px solid #eaecf0!important;border-radius:0!important;padding:10px!important}.unitSuggestItem:hover{background:#f2f4f7!important}.vehicleMatchCard{margin-top:8px;border:1px solid #b2ddff;background:#eff8ff;border-radius:10px;padding:10px}.customerProfileTabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.customerProfileSection{margin-top:14px}@media(max-width:700px){.customerDirectoryGrid{grid-template-columns:1fr 1fr}.customerProfileHeader{display:block}.customerUnitGrid{grid-template-columns:1fr}.customerTableWrap table{min-width:760px}}
 </style>
 </head>
 <body>
@@ -563,7 +565,7 @@ body.modalOpen{overflow:hidden}
     <button class="navbtn active adminOnly" data-view="dashboard">Calendar</button>
     <button class="navbtn adminOnly" data-view="workorders">Admin Work Orders</button>
     <button class="navbtn mechanicOnly" data-view="mechanic">My Work Orders</button>
-    <button class="navbtn adminOnly" data-view="completed">Completed Jobs</button><button class="navbtn adminOnly" data-view="approvals">Findings <span id="approvalNotify" class="notifyBadge" style="display:none">0</span></button><button class="navbtn adminOnly" data-view="trucksearch">Truck Search</button>
+    <button class="navbtn adminOnly" data-view="completed">Completed Jobs</button><button class="navbtn adminOnly" data-view="approvals">Findings <span id="approvalNotify" class="notifyBadge" style="display:none">0</span></button><button class="navbtn adminOnly" data-view="trucksearch">Truck Search</button><button class="navbtn adminOnly" data-view="customers">Customers</button>
 <button class="navbtn adminOnly" data-view="procenter">Operations Center</button>
 <button class="navbtn adminOnly" data-view="activityhistory">Mechanic Activity History</button>
 <button class="navbtn adminOnly" data-view="accounts">Mechanic Accounts</button>
@@ -753,6 +755,16 @@ body.modalOpen{overflow:hidden}
 </section>
 
 
+
+<section id="customers" class="hidden">
+  <div class="toolbar"><div><h1>Customers & Fleet Directory</h1><div class="muted">Customer records, truck/unit profiles, contact information and complete service history.</div></div><button onclick="openCustomerEditor()">+ Add Customer</button></div>
+  <div id="customerDirectoryStats" class="customerDirectoryGrid"></div>
+  <div class="card">
+    <div class="row"><div class="field full"><label>Search customers</label><input id="customerDirectorySearch" type="search" placeholder="Company, contact, email, phone, DOT, city..." oninput="debouncedCustomerDirectory()"></div></div>
+  </div>
+  <div class="card customerTableWrap"><table><thead><tr><th>Customer / Company</th><th>Contact</th><th>DOT / Location</th><th>Units</th><th>Service History</th><th></th></tr></thead><tbody id="customerDirectoryTable"></tbody></table></div>
+</section>
+
 <section id="activityhistory" class="hidden">
   <div class="toolbar"><div>
     <h1>Mechanic Activity History</h1>
@@ -940,14 +952,15 @@ body.modalOpen{overflow:hidden}
 <datalist id="fullbayCustomerList"></datalist>
 <datalist id="fullbayPartNumberList"></datalist>
 <datalist id="fullbayPartDescriptionList"></datalist>
+<datalist id="unitDirectoryList"></datalist>
 
 <div id="woModal" class="modal">
 <div class="modalbox">
   <div class="modalhead"><h2>Create Work Order</h2><button class="x" onclick="closeModal('woModal')">✕</button></div>
   <form id="woForm">
     <div class="row">
-      <div class="field"><label>Truck / Unit #</label><input name="unit" required placeholder="Unit 214"></div>
-      <div class="field"><label>Customer</label><input name="customer" list="fullbayCustomerList" placeholder="Customer / company" oninput="fullbayCustomerSuggest(this)"></div>
+      <div class="field unitSuggestBox"><label>Truck / Unit #</label><input name="unit" required placeholder="Start typing unit #, VIN or plate" autocomplete="off" oninput="customerUnitSuggest(this,'new')" onblur="setTimeout(()=>hideUnitSuggestions('new'),180)"><div id="woUnitSuggestions" class="unitSuggestResults"></div></div>
+      <div class="field"><label>Customer</label><input name="customer" list="fullbayCustomerList" placeholder="Customer / company" oninput="fullbayCustomerSuggest(this)"></div><input type="hidden" name="customerId"><input type="hidden" name="unitRecordId"><input type="hidden" name="vin"><input type="hidden" name="year"><input type="hidden" name="make"><input type="hidden" name="model"><input type="hidden" name="plate"><input type="hidden" name="mileage"><input type="hidden" name="dotNumber"><div id="woVehicleMatch" class="field full hidden"></div>
       <div class="field"><label>Scheduled date</label><input name="date" type="date" required></div>
       <div class="field"><label>Scheduled time</label><input name="time" type="time" required></div>
       <div class="field"><label>Assigned mechanic</label><select name="mechanic" id="newMechanicSelect"></select></div>
@@ -1046,8 +1059,8 @@ body.modalOpen{overflow:hidden}
   <form id="editForm">
     <input type="hidden" name="id" id="editId">
     <div class="row">
-      <div class="field"><label>Truck / Unit #</label><input name="unit" id="editUnit" required></div>
-      <div class="field"><label>Customer</label><input name="customer" id="editCustomer" list="fullbayCustomerList" oninput="fullbayCustomerSuggest(this)"></div>
+      <div class="field unitSuggestBox"><label>Truck / Unit #</label><input name="unit" id="editUnit" required autocomplete="off" oninput="customerUnitSuggest(this,'edit')" onblur="setTimeout(()=>hideUnitSuggestions('edit'),180)"><div id="editUnitSuggestions" class="unitSuggestResults"></div></div>
+      <div class="field"><label>Customer</label><input name="customer" id="editCustomer" list="fullbayCustomerList" oninput="fullbayCustomerSuggest(this)"></div><input type="hidden" name="customerId" id="editCustomerId"><input type="hidden" name="unitRecordId" id="editUnitRecordId"><input type="hidden" name="vin" id="editVin"><input type="hidden" name="year" id="editYear"><input type="hidden" name="make" id="editMake"><input type="hidden" name="model" id="editModel"><input type="hidden" name="plate" id="editPlate"><input type="hidden" name="mileage" id="editMileage"><input type="hidden" name="dotNumber" id="editDotNumber"><div id="editVehicleMatch" class="field full hidden"></div>
       <div class="field"><label>Scheduled date</label><input name="date" id="editDate" type="date" required></div>
       <div class="field"><label>Scheduled time</label><input name="time" id="editTime" type="time" required></div>
       <div class="field"><label>Assigned mechanic</label><select name="mechanic" id="editMechanic"></select></div>
@@ -1070,6 +1083,39 @@ body.modalOpen{overflow:hidden}
 </div></div>
 
 
+
+<div id="customerModal" class="modal"><div class="modalbox" style="max-width:1100px">
+  <div class="modalhead"><h2 id="customerModalTitle">Customer Profile</h2><button class="x" onclick="closeModal('customerModal')">✕</button></div>
+  <div id="customerProfileBody"></div>
+</div></div>
+<div id="customerEditModal" class="modal"><div class="modalbox" style="max-width:900px">
+  <div class="modalhead"><h2 id="customerEditTitle">Add Customer</h2><button class="x" onclick="closeModal('customerEditModal')">✕</button></div>
+  <form id="customerEditForm"><input type="hidden" name="id" id="customerEditId"><div class="row">
+    <div class="field"><label>Company / Customer Name</label><input name="customer_name" id="ceName" required></div>
+    <div class="field"><label>Primary Contact</label><input name="contact_name" id="ceContact"></div>
+    <div class="field"><label>Email</label><input name="email" id="ceEmail" type="email"></div>
+    <div class="field"><label>DOT Number</label><input name="dot_number" id="ceDot"></div>
+    <div class="field"><label>Main Phone</label><input name="phone" id="cePhone"></div>
+    <div class="field"><label>Secondary Phone</label><input name="secondary_phone" id="cePhone2"></div>
+    <div class="field full"><label>Street Address</label><input name="address" id="ceAddress"></div>
+    <div class="field"><label>City</label><input name="city" id="ceCity"></div><div class="field"><label>State</label><input name="state" id="ceState"></div><div class="field"><label>ZIP</label><input name="postal_code" id="ceZip"></div><div class="field"><label>Country</label><input name="country" id="ceCountry"></div>
+    <div class="field"><label>Billing Contact</label><input name="billing_contact" id="ceBillingContact"></div><div class="field"><label>Payment Method</label><input name="payment_method" id="cePayment"></div>
+    <div class="field"><label>Credit Terms</label><input name="credit_terms" id="ceTerms"></div><div class="field"><label>Credit Limit</label><input name="credit_limit" id="ceLimit" type="number" step="0.01"></div>
+    <div class="field full"><label>Billing Address</label><input name="billing_address" id="ceBillingAddress"></div>
+    <div class="field"><label>Billing City</label><input name="billing_city" id="ceBillingCity"></div><div class="field"><label>Billing State</label><input name="billing_state" id="ceBillingState"></div><div class="field"><label>Billing ZIP</label><input name="billing_postal_code" id="ceBillingZip"></div>
+    <div class="field full"><label>Internal Notes</label><textarea name="notes" id="ceNotes" placeholder="Fleet contact, approval rules, account notes, preferred communication, special instructions..."></textarea></div>
+    <div class="field full"><label class="checkline"><input name="active" id="ceActive" type="checkbox" checked> Active customer</label></div>
+  </div><button type="submit">Save Customer</button></form>
+</div></div>
+<div id="customerUnitModal" class="modal"><div class="modalbox" style="max-width:820px">
+  <div class="modalhead"><h2 id="customerUnitTitle">Add Truck / Unit</h2><button class="x" onclick="closeModal('customerUnitModal')">✕</button></div>
+  <form id="customerUnitForm"><input type="hidden" name="customerId" id="cuCustomerId"><input type="hidden" name="unitId" id="cuUnitId"><div class="row">
+    <div class="field"><label>Unit Number</label><input name="unit_number" id="cuUnit" required></div><div class="field"><label>VIN</label><input name="vin" id="cuVin" maxlength="17"></div>
+    <div class="field"><label>Year</label><input name="year" id="cuYear"></div><div class="field"><label>Make</label><input name="make" id="cuMake"></div><div class="field"><label>Model</label><input name="model" id="cuModel"></div><div class="field"><label>License Plate</label><input name="plate" id="cuPlate"></div>
+    <div class="field"><label>Mileage</label><input name="mileage" id="cuMileage" type="number" min="0"></div><div class="field"><label>Engine</label><input name="engine" id="cuEngine"></div><div class="field"><label>Transmission</label><input name="transmission" id="cuTransmission"></div>
+    <div class="field full"><label>Unit Notes</label><textarea name="notes" id="cuNotes"></textarea></div>
+  </div><button type="submit">Save Unit</button></form>
+</div></div>
 <div id="helperModal" class="modal">
 <div class="modalbox" style="max-width:560px">
   <div class="modalhead"><h2>Add Helper Mechanic</h2><button class="x" onclick="closeModal('helperModal')">✕</button></div>
@@ -1191,7 +1237,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION="23.7.0";
+const FRONTEND_VERSION="23.8.0";
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
@@ -1333,13 +1379,13 @@ function mechanicDisplay(username){
 let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
-const APP_VIEWS=["dashboard","workorders","trucksearch","procenter","activityhistory","mechanic","completed","approvals","accounts","inspection","mycompleted"];
+const APP_VIEWS=["dashboard","workorders","trucksearch","customers","procenter","activityhistory","mechanic","completed","approvals","accounts","inspection","mycompleted"];
 let currentView=null;
 let viewHistory=[];
 
 function allowedViewForRole(view){
  if(!session)return false;
- const adminViews=["dashboard","workorders","trucksearch","procenter","activityhistory","completed","approvals","accounts"];
+ const adminViews=["dashboard","workorders","trucksearch","customers","procenter","activityhistory","completed","approvals","accounts"];
  const mechanicViews=["mechanic","inspection","mycompleted"];
  return session.role==="admin" ? adminViews.includes(view) : mechanicViews.includes(view);
 }
@@ -1381,6 +1427,7 @@ function showView(view,{push=true,replace=false}={}){
  });
 
  currentView=view;
+ if(view==="customers")renderCustomerDirectory();
 
  const state={ittr:true,view};
  try{
@@ -3013,6 +3060,36 @@ function renderTruckSearch(){
 }
 
 
+
+
+Object.assign(UI_TRANSLATIONS,{"Customers":"Клієнти","Customers & Fleet Directory":"Клієнти та автопарк","Customer records, truck/unit profiles, contact information and complete service history.":"Клієнти, траки/юніти, контакти та повна історія сервісу.","Add Customer":"Додати клієнта","Search customers":"Пошук клієнтів","Known Units":"Відомі юніти","Service Records":"Історія сервісу","Truck / Unit List":"Список траків / юнітів","Service History":"Історія сервісу","Edit Customer":"Редагувати клієнта","Add Truck / Unit":"Додати трак / юніт","Primary Contact":"Основний контакт","DOT Number":"DOT номер","Internal Notes":"Внутрішні примітки"});
+/* ===== ITTR CUSTOMER CRM + UNIT DIRECTORY v23.8 ===== */
+let customerDirectoryTimer=null,customerDirectoryCache=[],customerProfileCache=null,unitLookupTimer=null,unitSuggestionCache=[];
+function debouncedCustomerDirectory(){clearTimeout(customerDirectoryTimer);customerDirectoryTimer=setTimeout(renderCustomerDirectory,220)}
+async function renderCustomerDirectory(){
+ if(session?.role!=="admin")return;const tbody=document.getElementById("customerDirectoryTable");if(!tbody)return;const q=document.getElementById("customerDirectorySearch")?.value?.trim()||"";tbody.innerHTML='<tr><td colspan="6">Loading customers…</td></tr>';
+ try{const d=await apiJSON(`/api/customers?q=${encodeURIComponent(q)}`);customerDirectoryCache=d.items||[];const total=customerDirectoryCache.length,units=customerDirectoryCache.reduce((a,x)=>a+Number(x.unit_count||0),0),services=customerDirectoryCache.reduce((a,x)=>a+Number(x.service_count||0),0),active=customerDirectoryCache.filter(x=>x.active!==false).length;const stats=document.getElementById("customerDirectoryStats");if(stats)stats.innerHTML=`<div class="customerStat"><span class="muted">Customers</span><b>${total}</b></div><div class="customerStat"><span class="muted">Active</span><b>${active}</b></div><div class="customerStat"><span class="muted">Known Units</span><b>${units}</b></div><div class="customerStat"><span class="muted">Service Records</span><b>${services}</b></div>`;
+ tbody.innerHTML=customerDirectoryCache.length?customerDirectoryCache.map(c=>`<tr><td><button class="customerNameLink" onclick="openCustomerProfile(${c.id})">${esc(c.customer_name||"")}</button><div class="muted">${c.fullbay_id?`Fullbay ${esc(c.fullbay_id)} · `:""}${c.active===false?"Inactive":"Active"}</div></td><td>${esc(c.contact_name||"—")}<div class="muted">${esc(c.phone||"—")}${c.email?` · ${esc(c.email)}`:""}</div></td><td>DOT ${esc(c.dot_number||"—")}<div class="muted">${esc([c.city,c.state,c.postal_code].filter(Boolean).join(", ")||"—")}</div></td><td><b>${Number(c.unit_count||0)}</b></td><td><b>${Number(c.service_count||0)}</b></td><td><button class="secondary" onclick="openCustomerProfile(${c.id})">Open</button></td></tr>`).join(""):'<tr><td colspan="6" class="empty">No customers found.</td></tr>';applyTranslations();}
+ catch(e){tbody.innerHTML=`<tr><td colspan="6" class="error">${esc(e.message||"Unable to load customers.")}</td></tr>`}
+}
+function customerEditorFields(c={}){const map={ceName:"customer_name",ceContact:"contact_name",ceEmail:"email",ceDot:"dot_number",cePhone:"phone",cePhone2:"secondary_phone",ceAddress:"address",ceCity:"city",ceState:"state",ceZip:"postal_code",ceCountry:"country",ceBillingContact:"billing_contact",cePayment:"payment_method",ceTerms:"credit_terms",ceLimit:"credit_limit",ceBillingAddress:"billing_address",ceBillingCity:"billing_city",ceBillingState:"billing_state",ceBillingZip:"billing_postal_code",ceNotes:"notes"};Object.entries(map).forEach(([id,k])=>{const e=document.getElementById(id);if(e)e.value=c?.[k]??""});const a=document.getElementById("ceActive");if(a)a.checked=c?.active!==false;}
+function openCustomerEditor(id=null){if(!requireAdmin())return;const c=id?(customerDirectoryCache.find(x=>String(x.id)===String(id))||customerProfileCache?.customer||{}):{};document.getElementById("customerEditId").value=id||"";document.getElementById("customerEditTitle").textContent=id?"Edit Customer":"Add Customer";customerEditorFields(c);document.getElementById("customerEditModal").classList.add("open");updateMobileBackButton()}
+async function openCustomerProfile(id){if(!requireAdmin())return;const box=document.getElementById("customerProfileBody");document.getElementById("customerModal").classList.add("open");updateMobileBackButton();box.innerHTML='<div class="productivityLoading">Loading customer profile…</div>';try{const d=await apiJSON(`/api/customers/${id}/profile`);customerProfileCache=d;renderCustomerProfile()}catch(e){box.innerHTML=`<div class="error">${esc(e.message||"Unable to load customer profile.")}</div>`}}
+function renderCustomerProfile(){const d=customerProfileCache;if(!d)return;const c=d.customer||{},units=d.units||[],history=d.history||[];document.getElementById("customerModalTitle").textContent=c.customer_name||"Customer Profile";const box=document.getElementById("customerProfileBody");box.innerHTML=`<div class="customerProfileHeader"><div><h2 style="margin:0">${esc(c.customer_name||"")}</h2><div class="customerProfileMeta"><span class="badge">DOT ${esc(c.dot_number||"—")}</span><span class="badge">${units.length} units</span><span class="badge">${history.length} service records</span>${c.fullbay_id?`<span class="badge">Fullbay ${esc(c.fullbay_id)}</span>`:""}</div></div><div><button class="secondary" onclick="openCustomerEditor(${c.id})">Edit Customer</button> <button onclick="openCustomerUnitEditor(${c.id})">+ Add Unit</button></div></div>
+ <div class="card" style="margin-top:12px"><div class="row"><div class="field"><label>Contact</label><div>${esc(c.contact_name||"—")}</div></div><div class="field"><label>Email</label><div>${c.email?`<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>`:"—"}</div></div><div class="field"><label>Phone</label><div>${esc(c.phone||"—")}${c.secondary_phone?` / ${esc(c.secondary_phone)}`:""}</div></div><div class="field"><label>Address</label><div>${esc([c.address,c.city,c.state,c.postal_code].filter(Boolean).join(", ")||"—")}</div></div><div class="field"><label>Terms</label><div>${esc(c.credit_terms||"—")}${c.credit_limit!=null?` · ${money(c.credit_limit)}`:""}</div></div><div class="field"><label>Payment</label><div>${esc(c.payment_method||"—")}</div></div></div>${c.notes?`<div><b>Internal Notes:</b> ${esc(c.notes)}</div>`:""}</div>
+ <div class="customerProfileSection"><div class="toolbar"><h2>Truck / Unit List</h2><button onclick="openCustomerUnitEditor(${c.id})">+ Add Truck / Unit</button></div><div class="customerUnitGrid">${units.length?units.map(u=>`<div class="customerUnitCard"><div style="display:flex;justify-content:space-between;gap:8px"><div><h3 style="margin:0">Unit ${esc(u.unit_number)}</h3><div class="muted">${esc([u.year,u.make,u.model].filter(Boolean).join(" ")||"Vehicle details not entered")}</div></div><button class="secondary" onclick="openCustomerUnitEditor(${c.id},${u.id})">Edit</button></div><div class="muted" style="margin-top:8px">VIN: ${esc(u.vin||"—")} · Plate: ${esc(u.plate||"—")}</div><div class="muted">Mileage: ${u.mileage!=null?Number(u.mileage).toLocaleString()+" mi":"—"}${u.engine?` · ${esc(u.engine)}`:""}</div>${u.notes?`<div style="margin-top:6px">${esc(u.notes)}</div>`:""}<div class="actions"><button class="secondary" onclick="openUnitInTruckSearch('${encodeURIComponent(u.unit_number)}')">Service History</button><button onclick="createWorkOrderForUnit(${u.id})">New Work Order</button></div></div>`).join(""):'<div class="muted">No units saved yet. Existing work-order and Vehicle Profile units are automatically added when matched.</div>'}</div></div>
+ <div class="customerProfileSection"><h2>Service History</h2>${history.length?history.map(w=>`<div class="serviceHistoryCard"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><div><b>Unit ${esc(w.unit||"—")} · Work Order #${esc(w.id)}</b><div class="muted">${esc(w.completedAt?fmtDateTime(w.completedAt):`${w.date||""} ${w.time||""}`)} · ${esc(w.status||"")} · ${esc(mechanicDisplay(w.mechanic||""))}</div></div><button class="secondary" onclick="closeModal('customerModal');openDetail(${Number(w.id)})">Open WO</button></div><div style="margin-top:6px">${(w.tasks||[]).map(t=>`<div>${t.done?"✓":"○"} ${esc(t.t||"")}${t.outcomeNote?` — <span class="muted">${esc(t.outcomeNote)}</span>`:""}</div>`).join("")}</div>${w.completionNotes?`<div style="margin-top:6px"><b>Completion:</b> ${esc(w.completionNotes)}</div>`:""}${w.futureNotes?`<div style="margin-top:6px"><b>Next visit:</b> ${esc(w.futureNotes)}</div>`:""}</div>`).join(""):'<div class="muted">No service history yet.</div>'}</div>`;applyTranslations()}
+function openCustomerUnitEditor(customerId,unitId=null){const d=customerProfileCache;if(!d||String(d.customer?.id)!==String(customerId))return;const u=unitId?(d.units||[]).find(x=>String(x.id)===String(unitId)):{};document.getElementById("cuCustomerId").value=customerId;document.getElementById("cuUnitId").value=unitId||"";document.getElementById("customerUnitTitle").textContent=unitId?"Edit Truck / Unit":"Add Truck / Unit";const map={cuUnit:"unit_number",cuVin:"vin",cuYear:"year",cuMake:"make",cuModel:"model",cuPlate:"plate",cuMileage:"mileage",cuEngine:"engine",cuTransmission:"transmission",cuNotes:"notes"};Object.entries(map).forEach(([id,k])=>document.getElementById(id).value=u?.[k]??"");document.getElementById("customerUnitModal").classList.add("open");updateMobileBackButton()}
+document.getElementById("customerEditForm").onsubmit=async e=>{e.preventDefault();if(!requireAdmin())return;const f=new FormData(e.target),id=f.get("id"),body=Object.fromEntries(f.entries());body.active=document.getElementById("ceActive").checked;try{if(id)await apiJSON(`/api/customers/${id}`,{method:"PUT",body:JSON.stringify(body)});else await apiJSON("/api/customers",{method:"POST",body:JSON.stringify(body)});closeModal("customerEditModal");await renderCustomerDirectory();if(id&&customerProfileCache&&String(customerProfileCache.customer?.id)===String(id))await openCustomerProfile(id)}catch(err){alert(err.message||"Customer could not be saved.")}};
+document.getElementById("customerUnitForm").onsubmit=async e=>{e.preventDefault();if(!requireAdmin())return;const f=new FormData(e.target),customerId=f.get("customerId"),unitId=f.get("unitId"),body=Object.fromEntries(f.entries());try{if(unitId)await apiJSON(`/api/customer-units/${unitId}`,{method:"PUT",body:JSON.stringify(body)});else await apiJSON(`/api/customers/${customerId}/units`,{method:"POST",body:JSON.stringify(body)});closeModal("customerUnitModal");await openCustomerProfile(customerId);renderCustomerDirectory()}catch(err){alert(err.message||"Unit could not be saved.")}};
+function hideUnitSuggestions(mode){const el=document.getElementById(mode==="edit"?"editUnitSuggestions":"woUnitSuggestions");if(el)el.innerHTML=""}
+function workOrderFormEl(mode,name){const form=document.getElementById(mode==="edit"?"editForm":"woForm");return form?.elements?.namedItem(name)||null}
+function renderUnitSuggestions(mode,items){const box=document.getElementById(mode==="edit"?"editUnitSuggestions":"woUnitSuggestions");if(!box)return;box.innerHTML=(items||[]).map(x=>`<button type="button" class="unitSuggestItem" onclick="applyUnitSuggestion('${mode}',${Number(x.id)})"><b>Unit ${esc(x.unit_number||"")}</b> — ${esc(x.customer_name||"No customer")}<div class="muted">${esc([x.vin,[x.year,x.make,x.model].filter(Boolean).join(" "),x.plate?`Plate ${x.plate}`:""].filter(Boolean).join(" · ")||"No vehicle details")}</div></button>`).join("")}
+function renderWorkOrderVehicleMatch(mode,x){const box=document.getElementById(mode==="edit"?"editVehicleMatch":"woVehicleMatch");if(!box)return;if(!x){box.classList.add("hidden");box.innerHTML="";return}box.classList.remove("hidden");box.innerHTML=`<div class="vehicleMatchCard"><b>Matched Unit ${esc(x.unit_number||"")}</b><div>${esc(x.customer_name||"")}${x.dot_number?` · DOT ${esc(x.dot_number)}`:""}</div><div class="muted">${esc([x.vin,[x.year,x.make,x.model].filter(Boolean).join(" "),x.plate?`Plate ${x.plate}`:"",x.mileage!=null?`${Number(x.mileage).toLocaleString()} mi`:""].filter(Boolean).join(" · ")||"Vehicle details can be added in Customers")}</div></div>`}
+async function customerUnitSuggest(input,mode){clearTimeout(unitLookupTimer);const q=String(input?.value||"").trim();if(q.length<1){hideUnitSuggestions(mode);return}unitLookupTimer=setTimeout(async()=>{try{const d=await apiJSON(`/api/customer-units/suggest?q=${encodeURIComponent(q)}`);unitSuggestionCache=d.items||[];renderUnitSuggestions(mode,unitSuggestionCache);const exact=unitSuggestionCache.filter(x=>String(x.unit_number||"").toLowerCase()===q.toLowerCase());if(exact.length===1)applyUnitSuggestion(mode,exact[0].id,false)}catch{}},160)}
+function applyUnitSuggestion(mode,id,close=true){const x=unitSuggestionCache.find(v=>String(v.id)===String(id))||customerProfileCache?.units?.find(v=>String(v.id)===String(id));if(!x)return;const f=mode==="edit"?document.getElementById("editForm"):document.getElementById("woForm");const set=(name,val)=>{const e=f?.elements?.namedItem(name);if(e)e.value=val??""};set("unit",x.unit_number);set("customer",x.customer_name||x.canonical_customer||"");set("customerId",x.customer_id||"");set("unitRecordId",x.id||"");set("vin",x.vin||"");set("year",x.year||"");set("make",x.make||"");set("model",x.model||"");set("plate",x.plate||"");set("mileage",x.mileage??"");set("dotNumber",x.dot_number||"");renderWorkOrderVehicleMatch(mode,x);if(close)hideUnitSuggestions(mode)}
+function createWorkOrderForUnit(unitId){const x=customerProfileCache?.units?.find(v=>String(v.id)===String(unitId));if(!x)return;closeModal("customerModal");openWorkOrder();unitSuggestionCache=[{...x,customer_name:customerProfileCache.customer?.customer_name||x.customer_name,dot_number:customerProfileCache.customer?.dot_number||""}];setTimeout(()=>applyUnitSuggestion("new",unitId),0)}
+
 /* ===== ITTR PROFESSIONAL OPERATIONS MODULE v20 ===== */
 const PRO_KEY="ittr_pro_v20";
 function loadPro(){
@@ -3627,7 +3704,7 @@ function addApprovedFindingToWorkOrder(id){
  save();render();
 }
 
-function openWorkOrder(){if(!requireAdmin())return;refreshMechanicSelects();document.getElementById("woModal").classList.add("open")}
+function openWorkOrder(){if(!requireAdmin())return;refreshMechanicSelects();renderWorkOrderVehicleMatch("new",null);hideUnitSuggestions("new");document.getElementById("woModal").classList.add("open");updateMobileBackButton()}
 function openIssue(workOrderId=null){if(!requireMechanic())return;if(!state.workorders.length)return alert(tr("Create a work order first."));const sel=document.getElementById("issueWO");if(workOrderId!=null&&sel)[...sel.options].some(o=>String(o.value)===String(workOrderId))&&(sel.value=String(workOrderId));document.getElementById("issueModal").classList.add("open");updateMobileBackButton()}
 function closeModal(id){
  const modal=document.getElementById(id);
@@ -3652,13 +3729,13 @@ document.querySelectorAll(".modal").forEach(m=>modalObserver.observe(m,{attribut
 document.getElementById("woForm").onsubmit=e=>{
  e.preventDefault(); if(!requireAdmin())return; let f=new FormData(e.target), unitType=f.get("unitType");
  state.workorders.unshift({
-   id:Math.max(1000,...state.workorders.map(x=>x.id))+1,unit:f.get("unit"),customer:f.get("customer"),date:f.get("date"),time:f.get("time"),
+   id:Math.max(1000,...state.workorders.map(x=>x.id))+1,unit:f.get("unit"),customer:f.get("customer"),customerId:f.get("customerId")||"",unitRecordId:f.get("unitRecordId")||"",vin:f.get("vin")||"",year:f.get("year")||"",make:f.get("make")||"",model:f.get("model")||"",plate:f.get("plate")||"",mileage:Number(f.get("mileage")||0)||0,dotNumber:f.get("dotNumber")||"",date:f.get("date"),time:f.get("time"),
    mechanic:f.get("mechanic"),helpers:[],priority:f.get("priority"),parking:f.get("parking"),unitType,
    truckHere:f.get("truckHere")==="on",fleetAuto:unitType==="fleet" ? f.get("fleetAuto")==="on" : false,
    status:"Open",completedAt:"",
    tasks:f.get("tasks").split("\n").map(t=>t.trim()).filter(Boolean).map(t=>newTaskRecord(t)),notes:f.get("notes")
  });
- save();e.target.reset();document.querySelector('[name="fleetAuto"]').checked=true;closeModal("woModal");render();
+ save();e.target.reset();renderWorkOrderVehicleMatch("new",null);document.querySelector('[name="fleetAuto"]').checked=true;closeModal("woModal");render();
 };
 document.getElementById("issueForm").onsubmit=async e=>{
  e.preventDefault(); if(!requireMechanic())return;
@@ -3687,6 +3764,7 @@ function openEdit(id){if(!requireAdmin())return;
  document.getElementById("editId").value=w.id;
  document.getElementById("editUnit").value=w.unit||"";
  document.getElementById("editCustomer").value=w.customer||"";
+ [["editCustomerId","customerId"],["editUnitRecordId","unitRecordId"],["editVin","vin"],["editYear","year"],["editMake","make"],["editModel","model"],["editPlate","plate"],["editMileage","mileage"],["editDotNumber","dotNumber"]].forEach(([id,k])=>{const e=document.getElementById(id);if(e)e.value=w[k]??""}); renderWorkOrderVehicleMatch("edit",(w.vin||w.make||w.plate)?{unit_number:w.unit,customer_name:w.customer,vin:w.vin,year:w.year,make:w.make,model:w.model,plate:w.plate,mileage:w.mileage,dot_number:w.dotNumber}:null);
  document.getElementById("editDate").value=w.date||"";
  document.getElementById("editTime").value=w.time||"";
  refreshMechanicSelects(w.mechanic||"");
@@ -3716,6 +3794,7 @@ document.getElementById("editForm").onsubmit=e=>{
  });
  w.unit=f.get("unit");
  w.customer=f.get("customer");
+ w.customerId=f.get("customerId")||"";w.unitRecordId=f.get("unitRecordId")||"";w.vin=f.get("vin")||"";w.year=f.get("year")||"";w.make=f.get("make")||"";w.model=f.get("model")||"";w.plate=f.get("plate")||"";w.mileage=Number(f.get("mileage")||0)||0;w.dotNumber=f.get("dotNumber")||"";
  w.date=f.get("date");
  w.time=f.get("time");
  w.mechanic=f.get("mechanic");
@@ -4150,7 +4229,7 @@ function openDetail(id){
   <div style="margin-top:14px">${(w.completedBy===session.username || w.mechanic===session.username)?`<button class="secondary" onclick="closeModal('detailModal');openReactivate(${w.id})">Reactivate / Add Missed Work</button>`:`<div class="notice">You participated in this work order. Only the primary/completing mechanic can reactivate it.</div>`}</div>`:
  (session?.role==="mechanic"?`<div class="notice" style="margin-top:14px">This work order is not assigned/released to your mechanic account.</div>`:"")));
  document.getElementById("detailBody").innerHTML=`
-  <div class="muted">${esc(w.customer)} · ${esc(w.date)} ${esc(w.time)} · Parking: ${esc(w.parking||"—")}</div>
+  <div class="muted">${esc(w.customer)} · ${esc(w.date)} ${esc(w.time)} · Parking: ${esc(w.parking||"—")}</div>${(w.vin||w.make||w.model||w.plate||w.dotNumber)?`<div class="vehicleMatchCard" style="margin-top:8px"><b>${esc([w.year,w.make,w.model].filter(Boolean).join(" ")||`Unit ${w.unit}`)}</b><div class="muted">${esc([w.vin?`VIN ${w.vin}`:"",w.plate?`Plate ${w.plate}`:"",w.dotNumber?`DOT ${w.dotNumber}`:"",w.mileage?`${Number(w.mileage).toLocaleString()} mi`:""].filter(Boolean).join(" · "))}</div></div>`:""}
   <div class="assignmentStrip">${assignmentChips(w)}</div>
   ${(session?.role==="admin" || (session?.role==="mechanic"&&visibleToCurrentMechanic(w)))&&w.status!=="Completed"?`<div class="helperActions"><button type="button" class="secondary" onclick="openAddHelper(${w.id})">+ Add Helper Mechanic</button>${session?.role==="admin"?(w.helpers||[]).map(u=>`<button type="button" class="danger" data-helper="${encodeURIComponent(u)}" onclick="removeHelperMechanic(${w.id},decodeURIComponent(this.dataset.helper))">Remove ${esc(mechanicDisplay(u))}</button>`).join(""):""}</div>`:""}
   <p><b>Priority:</b> ${esc(w.priority)} &nbsp; <b>Status:</b> ${esc(w.status)} &nbsp; ${availabilityBadge(w)} ${w.isReactivated?'<span class="badge b-wait">Reactivated</span>':""}</p>
@@ -4341,7 +4420,7 @@ if("serviceWorker" in navigator){
   <button class="adminOnly mobileNavBtn" data-mobile-view="dashboard"><span class="icon">▦</span>Calendar</button>
   <button class="adminOnly mobileNavBtn" data-mobile-view="workorders"><span class="icon">▤</span>Work Orders</button>
   <button class="adminOnly mobileNavBtn" data-mobile-view="approvals"><span class="icon">!</span>Findings <span id="mobileApprovalNotify" class="notifyBadge" style="display:none">0</span></button>
-  <button class="adminOnly mobileNavBtn" data-mobile-view="trucksearch"><span class="icon">⌕</span>Search</button>
+  <button class="adminOnly mobileNavBtn" data-mobile-view="trucksearch"><span class="icon">⌕</span>Search</button><button class="adminOnly mobileNavBtn" data-mobile-view="customers"><span class="icon">👥</span>Customers</button>
 <button class="adminOnly mobileNavBtn" data-mobile-view="procenter"><span class="icon">⚙</span>Ops</button>
 <button class="adminOnly mobileNavBtn" data-mobile-view="activityhistory"><span class="icon">◷</span>History</button>
 <button class="adminOnly mobileNavBtn" data-mobile-view="accounts"><span class="icon">♟</span>Mechanics</button>

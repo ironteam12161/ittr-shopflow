@@ -1,3 +1,8 @@
+
+## v23.8.0 Customer CRM + Unit Directory
+
+Adds a separate Customers tab with editable customer information, truck/unit profiles, complete service history, and professional Unit/VIN/company suggestions in work orders. Preserves the v23.7.1 Fullbay inventory import fix and all existing data. See `V23_8_CUSTOMER_CRM_UNIT_DIRECTORY_AUDIT.txt`.
+
 # ITTR ShopFlow v23.5
 
 ## v23.5 additions
