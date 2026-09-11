@@ -464,7 +464,7 @@ async function syncCustomerUnitDirectory(force=false){
  const errors=[];
  for(const v of vehicles){try{await upsertDirectoryUnit(db,{customerName:v.customer,unit:v.unit,vin:v.vin,year:v.year,make:v.make,model:v.model,plate:v.plate,mileage:v.mileage,engine:v.engine,transmission:v.transmission,notes:v.notes,source:"vehicle_profile"})}catch(e){errors.push({source:"vehicle_profile",unit:String(v?.unit||""),error:String(e?.message||e).slice(0,220)});console.error("Customer unit sync skipped vehicle profile",v?.unit,e?.message)}}
  for(const w of workorders){try{await upsertDirectoryUnit(db,{customerId:w.customerId||null,customerName:w.customer,unit:w.unit,vin:w.vin,year:w.year,make:w.make,model:w.model,plate:w.plate,mileage:w.mileage,source:"work_order"})}catch(e){errors.push({source:"work_order",unit:String(w?.unit||""),workOrderId:String(w?.id||""),error:String(e?.message||e).slice(0,220)});console.error("Customer unit sync skipped work order",w?.id,w?.unit,e?.message)}}
- lastCustomerUnitDirectorySync=Date.now();
+ if(errors.length===0)lastCustomerUnitDirectorySync=Date.now();
  return {ok:errors.length===0,skipped:false,errors};
 }
 function cleanUsdot(value){return String(value||"").replace(/\D/g,"").slice(0,10)}
@@ -549,7 +549,12 @@ app.get("/api/customers",auth,adminOnly,async(req,res)=>{
  const warnings=[];
  try{
   const q=String(req.query.q||"").trim(),like=`%${q}%`,db=requireDb();
-  syncCustomerUnitDirectory().catch(e=>console.error("Background customer/unit sync failed:",e?.message));
+  // Reconcile before counting so the Customers page reflects newly saved Vehicle Profiles immediately.
+  // Individual bad legacy records are isolated inside syncCustomerUnitDirectory and returned as warnings.
+  try{
+   const syncResult=await syncCustomerUnitDirectory(false);
+   if(syncResult?.errors?.length)warnings.push(`Unit reconciliation skipped ${syncResult.errors.length} legacy record(s). Run Diagnostics for details.`);
+  }catch(e){warnings.push(`Unit reconciliation failed (${e.code||"SYNC"}).`);console.error("Customer/unit reconciliation warning:",e)}
   // Customer list must never depend on the unit-directory table being perfect.
   const rows=await db.query(`SELECT c.* FROM fullbay_import_customers c WHERE $1::text='' OR c.customer_name ILIKE $2::text OR coalesce(c.phone,'') ILIKE $2::text OR coalesce(c.email,'') ILIKE $2::text OR coalesce(c.dot_number,'') ILIKE $2::text OR coalesce(c.city,'') ILIKE $2::text ORDER BY c.active DESC NULLS LAST,c.customer_name LIMIT 500`,[q,like]);
   const unitCounts=new Map();
@@ -615,7 +620,7 @@ app.get("/api/customer-units/suggest",auth,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"23.10.2",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"23.10.3",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -626,12 +631,15 @@ app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
   // Count AFTER reconciliation. Older diagnostics counted before sync and could falsely report Units: 0.
   const uc=await db.query("SELECT count(*)::int n FROM customer_units");out.counts={customers:cc.rows[0].n,units:uc.rows[0].n};
   out.unitSamples=(await db.query(`SELECT id,unit_number,customer_id::text AS customer_id,customer_name,vin,make,model,source FROM customer_units ORDER BY updated_at DESC NULLS LAST,id DESC LIMIT 10`)).rows;
+  out.unitSourceCounts=(await db.query(`SELECT coalesce(source,'(none)') source,count(*)::int count FROM customer_units GROUP BY coalesce(source,'(none)') ORDER BY count(*) DESC`)).rows;
+  out.unlinkedUnits=(await db.query(`SELECT id,unit_number,customer_id::text AS customer_id,customer_name,vin,source FROM customer_units WHERE customer_id IS NULL ORDER BY updated_at DESC NULLS LAST,id DESC LIMIT 25`)).rows;
+  try{const core=await getCoreState();out.stateCounts={vehicleProfiles:Array.isArray(core.pro?.vehicles)?core.pro.vehicles.filter(v=>v&&typeof v==='object'&&String(v.unit||'').trim()).length:0,workOrders:Array.isArray(core.shopflow?.workorders)?core.shopflow.workorders.filter(w=>w&&typeof w==='object'&&String(w.unit||'').trim()).length:0}}catch(e){out.stateCounts={error:String(e?.message||e)}}
   const bad=await db.query(`SELECT id,unit_number,customer_id::text AS customer_id,customer_name FROM customer_units WHERE coalesce(unit_number,'')='' OR (customer_id IS NULL AND coalesce(customer_name,'')='') LIMIT 50`).catch(()=>({rows:[]}));out.suspiciousUnits=bad.rows;
   out.ok=true;res.json(out);
  }catch(e){out.error=String(e?.message||e).slice(0,500);console.error("Customer CRM diagnostics failed:",e);res.status(500).json(out)}
 });
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.10.2",backend:"23.10.2",build:"ITTR-23.10.2-UNIT-DIRECTORY-RECONCILIATION-20260911"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"23.10.2",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.10.3",backend:"23.10.3",build:"ITTR-23.10.3-UNIT-SYNC-DEPLOYMENT-PROOF-20260911"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"23.10.3",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -1584,5 +1592,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(()=>app.listen(port,()=>console.log(`ITTR v23.10.0 Online running on port ${port}`)))
+  .then(()=>app.listen(port,()=>console.log(`ITTR v23.10.3 Online running on port ${port}`)))
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

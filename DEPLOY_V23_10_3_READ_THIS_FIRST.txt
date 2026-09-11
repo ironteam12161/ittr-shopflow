@@ -1,0 +1,26 @@
+ITTR v23.10.3 - UNIT SYNC + DEPLOYMENT-PROOF RELEASE
+
+IMPORTANT: Your screenshot still shows frontend 23.10.0 and backend 23.10.0.
+That means Railway is still running the old root server.js/index.html. v23.10.1/v23.10.2 did not replace the deployed root files.
+
+DO NOT create a subfolder in the GitHub repo.
+Replace the files at the REPOSITORY ROOT.
+At minimum replace:
+  server.js
+  index.html
+  public/index.html
+
+Recommended: upload/replace all files from this release at the repo root.
+Do not reset PostgreSQL.
+
+After Railway redeploys, the green banner MUST show frontend 23.10.3 and backend 23.10.3.
+If it shows 23.10.0, stop: the new code is not deployed yet.
+
+v23.10.3 also:
+- waits for unit reconciliation before Customer counts are calculated
+- does not cache failed reconciliation for 60 seconds
+- keeps per-record legacy errors isolated
+- diagnostics show Vehicle Profile count, Work Order count, DB unit source counts, unlinked units, and exact skipped records
+- direct Vehicle Profile -> customer_units save from v23.10.1 remains enabled
+- direct Customer -> Add Truck/Unit save remains enabled
+- NHTSA VIN autofill, FMCSA, Fullbay, R2, task records, parts/PDF, productivity/AI are preserved
