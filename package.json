@@ -1,6 +1,6 @@
 {
   "name": "ittr-shopflow-online",
-  "version": "23.8.2",
+  "version": "23.8.3",
   "private": true,
   "type": "module",
   "scripts": {

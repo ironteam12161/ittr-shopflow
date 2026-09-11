@@ -254,6 +254,30 @@ async function initDb(){
  CREATE INDEX IF NOT EXISTS idx_finding_photos_uploader ON finding_photos(uploader_username,created_at);
  `);
 
+ // v23.8.3 CRM schema hardening: CREATE TABLE IF NOT EXISTS does not repair
+ // an older table that already exists with missing columns. Add each CRM column
+ // independently so upgrades from experimental/older deployments remain safe.
+ await pool.query(`
+   ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS customer_id BIGINT;
+   ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS customer_name TEXT;
+   ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS unit_number TEXT;
+   ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS vin TEXT;
+   ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS year TEXT;
+   ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS make TEXT;
+   ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS model TEXT;
+   ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS plate TEXT;
+   ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS mileage BIGINT;
+   ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS engine TEXT;
+   ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS transmission TEXT;
+   ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS notes TEXT;
+   ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'manual';
+   ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT now();
+   ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+ `);
+ await pool.query("CREATE INDEX IF NOT EXISTS idx_customer_units_unit ON customer_units(lower(unit_number))");
+ await pool.query("CREATE INDEX IF NOT EXISTS idx_customer_units_customer ON customer_units(customer_id)");
+ await pool.query("INSERT INTO schema_migrations(migration_key) VALUES($1) ON CONFLICT(migration_key) DO NOTHING",["026_customer_crm_hardening"]);
+
  await pool.query(`
  CREATE OR REPLACE FUNCTION ittr_capture_state_history() RETURNS trigger AS $$
  BEGIN
@@ -411,7 +435,7 @@ async function upsertDirectoryUnit(db,{customerId=null,customerName="",unit="",v
  unit=String(unit||"").trim();if(!unit)return null;
  let cid=(String(customerId??"").trim().match(/^\d+$/)?Number(customerId):null),cname=String(customerName||"").trim();
  if(!cid&&cname){const c=await db.query("SELECT id,customer_name FROM fullbay_import_customers WHERE lower(customer_name)=lower($1) ORDER BY id LIMIT 1",[cname]);if(c.rowCount){cid=c.rows[0].id;cname=c.rows[0].customer_name}}
- const existing=await db.query(`SELECT * FROM customer_units WHERE lower(unit_number)=lower($1) AND ((customer_id=$2) OR ($2::bigint IS NULL AND customer_id IS NULL AND lower(coalesce(customer_name,''))=lower($3))) ORDER BY id LIMIT 1`,[unit,cid,cname]);
+ const existing=await db.query(`SELECT * FROM customer_units WHERE lower(coalesce(unit_number,''))=lower($1) AND ((customer_id::text=$2::text) OR ($2::text IS NULL AND customer_id IS NULL AND lower(coalesce(customer_name,''))=lower($3))) ORDER BY id LIMIT 1`,[unit,cid,cname]);
  const vals=[cid,cname||null,unit,String(vin||"").trim().toUpperCase()||null,String(year||"").trim()||null,String(make||"").trim()||null,String(model||"").trim()||null,String(plate||"").trim()||null,Number.isFinite(Number(mileage))?Number(mileage):null,String(engine||"").trim()||null,String(transmission||"").trim()||null,String(notes||"").trim()||null,String(source||"state")];
  if(existing.rowCount){const old=existing.rows[0];const r=await db.query(`UPDATE customer_units SET customer_id=coalesce($1,customer_id),customer_name=coalesce(nullif($2,''),customer_name),unit_number=coalesce(nullif($3,''),unit_number),vin=coalesce(nullif($4,''),vin),year=coalesce(nullif($5,''),year),make=coalesce(nullif($6,''),make),model=coalesce(nullif($7,''),model),plate=coalesce(nullif($8,''),plate),mileage=coalesce($9,mileage),engine=coalesce(nullif($10,''),engine),transmission=coalesce(nullif($11,''),transmission),notes=CASE WHEN source='manual' THEN notes ELSE coalesce(nullif($12,''),notes) END,source=CASE WHEN source='manual' THEN source ELSE coalesce(nullif($13,''),source) END,updated_at=now() WHERE id=$14 RETURNING *`,[...vals,old.id]);return r.rows[0]}
  const r=await db.query(`INSERT INTO customer_units(customer_id,customer_name,unit_number,vin,year,make,model,plate,mileage,engine,transmission,notes,source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,vals);return r.rows[0];
@@ -419,7 +443,7 @@ async function upsertDirectoryUnit(db,{customerId=null,customerName="",unit="",v
 let lastCustomerUnitDirectorySync=0;
 async function syncCustomerUnitDirectory(force=false){
  if(!force && Date.now()-lastCustomerUnitDirectorySync<60000)return {ok:true,skipped:true,errors:[]};
- const db=requireDb(),core=await getCoreState(),vehicles=Array.isArray(core.pro?.vehicles)?core.pro.vehicles:[],workorders=Array.isArray(core.shopflow?.workorders)?core.shopflow.workorders:[];
+ const db=requireDb(),core=await getCoreState(),vehicles=(Array.isArray(core.pro?.vehicles)?core.pro.vehicles:[]).filter(v=>v&&typeof v==="object"),workorders=(Array.isArray(core.shopflow?.workorders)?core.shopflow.workorders:[]).filter(w=>w&&typeof w==="object");
  const errors=[];
  for(const v of vehicles){try{await upsertDirectoryUnit(db,{customerName:v.customer,unit:v.unit,vin:v.vin,year:v.year,make:v.make,model:v.model,plate:v.plate,mileage:v.mileage,engine:v.engine,transmission:v.transmission,notes:v.notes,source:"vehicle_profile"})}catch(e){errors.push({source:"vehicle_profile",unit:String(v?.unit||""),error:String(e?.message||e).slice(0,220)});console.error("Customer unit sync skipped vehicle profile",v?.unit,e?.message)}}
  for(const w of workorders){try{await upsertDirectoryUnit(db,{customerId:w.customerId||null,customerName:w.customer,unit:w.unit,vin:w.vin,year:w.year,make:w.make,model:w.model,plate:w.plate,mileage:w.mileage,source:"work_order"})}catch(e){errors.push({source:"work_order",unit:String(w?.unit||""),workOrderId:String(w?.id||""),error:String(e?.message||e).slice(0,220)});console.error("Customer unit sync skipped work order",w?.id,w?.unit,e?.message)}}
@@ -427,29 +451,55 @@ async function syncCustomerUnitDirectory(force=false){
  return {ok:errors.length===0,skipped:false,errors};
 }
 function customerPublic(row){if(!row)return null;const x={...row};delete x.raw;return x}
-app.get("/api/customers",auth,adminOnly,async(req,res,next)=>{try{
- const q=String(req.query.q||"").trim(),like=`%${q}%`,db=requireDb();syncCustomerUnitDirectory().catch(e=>console.error("Background customer/unit sync failed:",e?.message));
- const rows=await db.query(`SELECT c.*, (SELECT count(*)::int FROM customer_units u WHERE u.customer_id=c.id OR (u.customer_id IS NULL AND lower(coalesce(u.customer_name,''))=lower(c.customer_name))) unit_count FROM fullbay_import_customers c WHERE $1='' OR c.customer_name ILIKE $2 OR coalesce(c.phone,'') ILIKE $2 OR coalesce(c.email,'') ILIKE $2 OR coalesce(c.dot_number,'') ILIKE $2 OR coalesce(c.city,'') ILIKE $2 ORDER BY c.active DESC NULLS LAST,c.customer_name LIMIT 500`,[q,like]);
- const core=await getCoreState(),workorders=Array.isArray(core.shopflow?.workorders)?core.shopflow.workorders:[];
- const items=rows.rows.map(r=>({...customerPublic(r),service_count:workorders.filter(w=>String(w.customerId||"")===String(r.id)||normCustomerName(w.customer)===normCustomerName(r.customer_name)).length}));res.json({items,total:items.length});
-}catch(e){next(e)}});
+app.get("/api/customers",auth,adminOnly,async(req,res)=>{
+ const warnings=[];
+ try{
+  const q=String(req.query.q||"").trim(),like=`%${q}%`,db=requireDb();
+  syncCustomerUnitDirectory().catch(e=>console.error("Background customer/unit sync failed:",e?.message));
+  // Customer list must never depend on the unit-directory table being perfect.
+  const rows=await db.query(`SELECT c.* FROM fullbay_import_customers c WHERE $1::text='' OR c.customer_name ILIKE $2::text OR coalesce(c.phone,'') ILIKE $2::text OR coalesce(c.email,'') ILIKE $2::text OR coalesce(c.dot_number,'') ILIKE $2::text OR coalesce(c.city,'') ILIKE $2::text ORDER BY c.active DESC NULLS LAST,c.customer_name LIMIT 500`,[q,like]);
+  const unitCounts=new Map();
+  try{
+   const ur=await db.query(`SELECT customer_id::text AS customer_id,customer_name FROM customer_units`);
+   for(const u of ur.rows){const key=u.customer_id?`id:${u.customer_id}`:`name:${normCustomerName(u.customer_name)}`;unitCounts.set(key,(unitCounts.get(key)||0)+1)}
+  }catch(e){warnings.push(`Unit directory unavailable (${e.code||"DB"}).`);console.error("Customer list unit-count warning:",e)}
+  let workorders=[];
+  try{const core=await getCoreState();workorders=(Array.isArray(core.shopflow?.workorders)?core.shopflow.workorders:[]).filter(w=>w&&typeof w==="object")}
+  catch(e){warnings.push(`Service history unavailable (${e.code||"DB"}).`);console.error("Customer list history warning:",e)}
+  const items=rows.rows.map(r=>{
+   const keyById=`id:${String(r.id)}`,keyByName=`name:${normCustomerName(r.customer_name)}`;
+   const unit_count=(unitCounts.get(keyById)||0)+(unitCounts.get(keyByName)||0);
+   const service_count=workorders.filter(w=>String(w?.customerId||"")===String(r.id)||normCustomerName(w?.customer)===normCustomerName(r.customer_name)).length;
+   return {...customerPublic(r),unit_count,service_count};
+  });
+  res.json({items,total:items.length,warnings});
+ }catch(e){console.error("Customer directory fatal error:",e);res.status(500).json({error:`Customer directory database error${e?.code?` [${e.code}]`:""}.`,code:e?.code||"CUSTOMER_DIRECTORY"})}
+});
 app.post("/api/customers",auth,adminOnly,async(req,res,next)=>{try{
  const b=req.body||{},name=String(b.customer_name||"").trim();if(!name)return res.status(400).json({error:"Customer / company name is required."});
  const key=`manual:${crypto.randomUUID()}`;const r=await requireDb().query(`INSERT INTO fullbay_import_customers(source_key,customer_name,phone,secondary_phone,email,dot_number,address,city,state,postal_code,country,contact_name,notes,active,source_file) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,true,'ITTR manual') RETURNING *`,[key,name,b.phone||null,b.secondary_phone||null,b.email||null,b.dot_number||null,b.address||null,b.city||null,b.state||null,b.postal_code||null,b.country||null,b.contact_name||null,b.notes||null]);await audit(req.user.username,"customer_created",{customerId:r.rows[0].id,name});res.json({item:customerPublic(r.rows[0])});
 }catch(e){next(e)}});
 app.put("/api/customers/:id",auth,adminOnly,async(req,res,next)=>{try{
  const b=req.body||{},name=String(b.customer_name||"").trim();if(!name)return res.status(400).json({error:"Customer / company name is required."});
- const r=await requireDb().query(`UPDATE fullbay_import_customers SET customer_name=$2,contact_name=$3,phone=$4,secondary_phone=$5,email=$6,dot_number=$7,address=$8,city=$9,state=$10,postal_code=$11,country=$12,billing_contact=$13,billing_address=$14,billing_city=$15,billing_state=$16,billing_postal_code=$17,credit_terms=$18,credit_limit=$19,payment_method=$20,notes=$21,active=$22,updated_at=now() WHERE id=$1 RETURNING *`,[req.params.id,name,b.contact_name||null,b.phone||null,b.secondary_phone||null,b.email||null,b.dot_number||null,b.address||null,b.city||null,b.state||null,b.postal_code||null,b.country||null,b.billing_contact||null,b.billing_address||null,b.billing_city||null,b.billing_state||null,b.billing_postal_code||null,b.credit_terms||null,numOrNull(b.credit_limit),b.payment_method||null,b.notes||null,b.active!==false]);if(!r.rowCount)return res.status(404).json({error:"Customer not found."});await requireDb().query("UPDATE customer_units SET customer_name=$2,updated_at=now() WHERE customer_id=$1",[req.params.id,name]);await audit(req.user.username,"customer_updated",{customerId:req.params.id,name});res.json({item:customerPublic(r.rows[0])});
+ const r=await requireDb().query(`UPDATE fullbay_import_customers SET customer_name=$2,contact_name=$3,phone=$4,secondary_phone=$5,email=$6,dot_number=$7,address=$8,city=$9,state=$10,postal_code=$11,country=$12,billing_contact=$13,billing_address=$14,billing_city=$15,billing_state=$16,billing_postal_code=$17,credit_terms=$18,credit_limit=$19,payment_method=$20,notes=$21,active=$22,updated_at=now() WHERE id=$1 RETURNING *`,[req.params.id,name,b.contact_name||null,b.phone||null,b.secondary_phone||null,b.email||null,b.dot_number||null,b.address||null,b.city||null,b.state||null,b.postal_code||null,b.country||null,b.billing_contact||null,b.billing_address||null,b.billing_city||null,b.billing_state||null,b.billing_postal_code||null,b.credit_terms||null,numOrNull(b.credit_limit),b.payment_method||null,b.notes||null,b.active!==false]);if(!r.rowCount)return res.status(404).json({error:"Customer not found."});try{await requireDb().query("UPDATE customer_units SET customer_name=$2,updated_at=now() WHERE customer_id::text=$1::text",[req.params.id,name])}catch(e){console.error("Customer unit-name sync warning:",e?.message)};await audit(req.user.username,"customer_updated",{customerId:req.params.id,name});res.json({item:customerPublic(r.rows[0])});
 }catch(e){next(e)}});
-app.get("/api/customers/:id/profile",auth,adminOnly,async(req,res,next)=>{try{
- const db=requireDb();try{await syncCustomerUnitDirectory()}catch(e){console.error("Customer profile sync warning:",e?.message)}const c=await db.query("SELECT * FROM fullbay_import_customers WHERE id=$1",[req.params.id]);if(!c.rowCount)return res.status(404).json({error:"Customer not found."});const customer=c.rows[0];
- const units=await db.query(`SELECT * FROM customer_units WHERE customer_id=$1 OR (customer_id IS NULL AND lower(coalesce(customer_name,''))=lower($2)) ORDER BY unit_number`,[customer.id,customer.customer_name]);
- const core=await getCoreState(),workorders=(Array.isArray(core.shopflow?.workorders)?core.shopflow.workorders:[]).filter(w=>String(w.customerId||"")===String(customer.id)||normCustomerName(w.customer)===normCustomerName(customer.customer_name)).sort((a,b)=>String(b.completedAt||b.date||"").localeCompare(String(a.completedAt||a.date||"")));
- const history=workorders.slice(0,300).map(w=>({id:w.id,unit:w.unit,date:w.date,time:w.time,status:w.status,completedAt:w.completedAt,mechanic:w.mechanic,helpers:w.helpers||[],tasks:(w.tasks||[]).map(t=>({t:t.t,done:t.done,outcome:t.outcome,outcomeNote:t.outcomeNote})),notes:w.notes,completionNotes:w.completionNotes,futureNotes:w.futureNotes,revisitMiles:w.revisitMiles,vin:w.vin,year:w.year,make:w.make,model:w.model,plate:w.plate,mileage:w.mileage}));
- res.json({customer:customerPublic(customer),units:units.rows,history});
-}catch(e){next(e)}});
+app.get("/api/customers/:id/profile",auth,adminOnly,async(req,res)=>{
+ const warnings=[];
+ try{
+  const db=requireDb();syncCustomerUnitDirectory().catch(e=>console.error("Customer profile sync warning:",e?.message));
+  const c=await db.query("SELECT * FROM fullbay_import_customers WHERE id::text=$1::text",[req.params.id]);if(!c.rowCount)return res.status(404).json({error:"Customer not found."});const customer=c.rows[0];
+  let units=[];
+  try{const ur=await db.query(`SELECT * FROM customer_units WHERE customer_id::text=$1::text OR (customer_id IS NULL AND lower(coalesce(customer_name,''))=lower($2::text)) ORDER BY unit_number`,[customer.id,customer.customer_name]);units=ur.rows}
+  catch(e){warnings.push(`Unit directory unavailable (${e.code||"DB"}).`);console.error("Customer profile unit warning:",e)}
+  let workorders=[];
+  try{const core=await getCoreState();workorders=(Array.isArray(core.shopflow?.workorders)?core.shopflow.workorders:[]).filter(w=>w&&typeof w==="object"&& (String(w?.customerId||"")===String(customer.id)||normCustomerName(w?.customer)===normCustomerName(customer.customer_name))).sort((a,b)=>String(b?.completedAt||b?.date||"").localeCompare(String(a?.completedAt||a?.date||"")))}
+  catch(e){warnings.push(`Service history unavailable (${e.code||"DB"}).`);console.error("Customer profile history warning:",e)}
+  const history=workorders.slice(0,300).map(w=>({id:w?.id,unit:w?.unit,date:w?.date,time:w?.time,status:w?.status,completedAt:w?.completedAt,mechanic:w?.mechanic,helpers:Array.isArray(w?.helpers)?w.helpers:[],tasks:(Array.isArray(w?.tasks)?w.tasks:[]).filter(Boolean).map(t=>({t:t?.t,done:t?.done,outcome:t?.outcome,outcomeNote:t?.outcomeNote})),notes:w?.notes,completionNotes:w?.completionNotes,futureNotes:w?.futureNotes,revisitMiles:w?.revisitMiles,vin:w?.vin,year:w?.year,make:w?.make,model:w?.model,plate:w?.plate,mileage:w?.mileage}));
+  res.json({customer:customerPublic(customer),units,history,warnings});
+ }catch(e){console.error("Customer profile fatal error:",e);res.status(500).json({error:`Customer profile database error${e?.code?` [${e.code}]`:""}.`,code:e?.code||"CUSTOMER_PROFILE"})}
+});
 app.post("/api/customers/:id/units",auth,adminOnly,async(req,res,next)=>{try{
- const db=requireDb(),c=await db.query("SELECT id,customer_name FROM fullbay_import_customers WHERE id=$1",[req.params.id]);if(!c.rowCount)return res.status(404).json({error:"Customer not found."});const b=req.body||{};if(!String(b.unit_number||"").trim())return res.status(400).json({error:"Unit number is required."});const item=await upsertDirectoryUnit(db,{customerId:c.rows[0].id,customerName:c.rows[0].customer_name,unit:b.unit_number,vin:b.vin,year:b.year,make:b.make,model:b.model,plate:b.plate,mileage:b.mileage,engine:b.engine,transmission:b.transmission,notes:b.notes,source:"manual"});await audit(req.user.username,"customer_unit_saved",{customerId:req.params.id,unit:item.unit_number});res.json({item});
+ const db=requireDb(),c=await db.query("SELECT id,customer_name FROM fullbay_import_customers WHERE id::text=$1::text",[req.params.id]);if(!c.rowCount)return res.status(404).json({error:"Customer not found."});const b=req.body||{};if(!String(b.unit_number||"").trim())return res.status(400).json({error:"Unit number is required."});const item=await upsertDirectoryUnit(db,{customerId:c.rows[0].id,customerName:c.rows[0].customer_name,unit:b.unit_number,vin:b.vin,year:b.year,make:b.make,model:b.model,plate:b.plate,mileage:b.mileage,engine:b.engine,transmission:b.transmission,notes:b.notes,source:"manual"});await audit(req.user.username,"customer_unit_saved",{customerId:req.params.id,unit:item.unit_number});res.json({item});
 }catch(e){next(e)}});
 app.put("/api/customer-units/:id",auth,adminOnly,async(req,res,next)=>{try{
  const b=req.body||{},unit=String(b.unit_number||"").trim();if(!unit)return res.status(400).json({error:"Unit number is required."});const r=await requireDb().query(`UPDATE customer_units SET unit_number=$2,vin=$3,year=$4,make=$5,model=$6,plate=$7,mileage=$8,engine=$9,transmission=$10,notes=$11,source='manual',updated_at=now() WHERE id=$1 RETURNING *`,[req.params.id,unit,String(b.vin||"").trim().toUpperCase()||null,b.year||null,b.make||null,b.model||null,b.plate||null,Number.isFinite(Number(b.mileage))?Number(b.mileage):null,b.engine||null,b.transmission||null,b.notes||null]);if(!r.rowCount)return res.status(404).json({error:"Unit not found."});res.json({item:r.rows[0]});
@@ -457,22 +507,24 @@ app.put("/api/customer-units/:id",auth,adminOnly,async(req,res,next)=>{try{
 app.delete("/api/customer-units/:id",auth,adminOnly,async(req,res,next)=>{try{await requireDb().query("DELETE FROM customer_units WHERE id=$1",[req.params.id]);res.json({ok:true})}catch(e){next(e)}});
 app.get("/api/customer-units/suggest",auth,async(req,res,next)=>{try{
  try{await syncCustomerUnitDirectory()}catch(e){console.error("Unit suggest sync warning:",e?.message)}const q=String(req.query.q||"").trim();if(q.length<1)return res.json({items:[]});const like=`%${q}%`,db=requireDb();
- const r=await db.query(`SELECT u.*,c.customer_name AS canonical_customer,c.phone AS customer_phone,c.email AS customer_email,c.dot_number FROM customer_units u LEFT JOIN fullbay_import_customers c ON c.id=u.customer_id WHERE u.unit_number ILIKE $1 OR coalesce(u.vin,'') ILIKE $1 OR coalesce(u.plate,'') ILIKE $1 OR coalesce(c.customer_name,u.customer_name,'') ILIKE $1 ORDER BY CASE WHEN lower(u.unit_number)=lower($2) THEN 0 WHEN lower(u.unit_number) LIKE lower($3) THEN 1 ELSE 2 END,u.unit_number LIMIT 20`,[like,q,`${q}%`]);res.json({items:r.rows.map(x=>({...x,customer_name:x.canonical_customer||x.customer_name}))});
+ const r=await db.query(`SELECT u.*,c.customer_name AS canonical_customer,c.phone AS customer_phone,c.email AS customer_email,c.dot_number FROM customer_units u LEFT JOIN fullbay_import_customers c ON c.id::text=u.customer_id::text WHERE u.unit_number ILIKE $1 OR coalesce(u.vin,'') ILIKE $1 OR coalesce(u.plate,'') ILIKE $1 OR coalesce(c.customer_name,u.customer_name,'') ILIKE $1 ORDER BY CASE WHEN lower(u.unit_number)=lower($2) THEN 0 WHEN lower(u.unit_number) LIKE lower($3) THEN 1 ELSE 2 END,u.unit_number LIMIT 20`,[like,q,`${q}%`]);res.json({items:r.rows.map(x=>({...x,customer_name:x.canonical_customer||x.customer_name}))});
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"23.8.2",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"23.8.3",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
   const cols=await db.query("SELECT table_name,column_name,data_type FROM information_schema.columns WHERE table_schema='public' AND table_name IN ('fullbay_import_customers','customer_units') ORDER BY table_name,ordinal_position");
   out.columns=cols.rows.reduce((a,r)=>{(a[r.table_name]??=[]).push({name:r.column_name,type:r.data_type});return a},{});
   const cc=await db.query("SELECT count(*)::int n FROM fullbay_import_customers"),uc=await db.query("SELECT count(*)::int n FROM customer_units");out.counts={customers:cc.rows[0].n,units:uc.rows[0].n};
-  out.sync=await syncCustomerUnitDirectory(true);out.ok=true;res.json(out);
+  try{out.sync=await syncCustomerUnitDirectory(true)}catch(e){out.sync={ok:false,fatal:String(e?.message||e),code:e?.code||null}}
+  const bad=await db.query(`SELECT id,unit_number,customer_id::text AS customer_id,customer_name FROM customer_units WHERE coalesce(unit_number,'')='' OR (customer_id IS NULL AND coalesce(customer_name,'')='') LIMIT 50`).catch(()=>({rows:[]}));out.suspiciousUnits=bad.rows;
+  out.ok=true;res.json(out);
  }catch(e){out.error=String(e?.message||e).slice(0,500);console.error("Customer CRM diagnostics failed:",e);res.status(500).json(out)}
 });
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.8.2",backend:"23.8.2",build:"ITTR-23.8.2-CUSTOMER-CRM-RESILIENCE-20260911"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"23.8.2",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.8.3",backend:"23.8.3",build:"ITTR-23.8.3-CUSTOMER-CRM-RESILIENCE-20260911"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"23.8.3",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -1425,5 +1477,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(()=>app.listen(port,()=>console.log(`ITTR v23.8.1 Online running on port ${port}`)))
+  .then(()=>app.listen(port,()=>console.log(`ITTR v23.8.3 Online running on port ${port}`)))
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

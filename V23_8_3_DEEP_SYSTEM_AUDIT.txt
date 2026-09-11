@@ -1,0 +1,64 @@
+ITTR ShopFlow v23.8.3 — DEEP SYSTEM AUDIT
+Date: 2026-09-11
+
+WHY THE CUSTOMER PAGE COULD STILL SHOW "SERVER ERROR"
+
+The previous v23.8.2 change made background unit reconciliation tolerant of bad records, but the main GET /api/customers route itself still had two hard dependencies that could throw a PostgreSQL/runtime error before any customer rows were returned:
+
+1. Customer list SQL directly queried customer_units inside a correlated subquery. If customer_units existed with an older/incomplete schema or a different customer_id type, the whole customer list failed.
+2. Service-history counting assumed every historical work-order array item was a valid object. A legacy null/bad item could throw while building service_count.
+
+Additional upgrade weakness discovered:
+3. CREATE TABLE IF NOT EXISTS customer_units does not repair an already-existing table that is missing newer columns. No column-by-column CRM migration existed.
+4. Several customer/unit joins assumed customer_units.customer_id was BIGINT. A legacy TEXT customer_id could produce an operator/type error.
+5. Customer profile had the same hard dependency on customer_units and service-history state.
+6. Production error middleware intentionally reduces database errors to "Server error", which made the real cause invisible from the browser.
+7. v23.8.2 server startup log still printed v23.8.1 (cosmetic, but confusing during deployment verification).
+8. schema.sql and database/schema.sql had not been updated with the Fullbay/CRM tables, creating schema drift between runtime setup and documented production schema.
+9. There is still no package-lock.json because npm registry access from the build environment timed out. Top-level dependency versions remain pinned exactly in package.json.
+
+V23.8.3 FIXES
+
+- GET /api/customers now loads the customer table first and treats unit counts/service-history counts as optional enrichment. A damaged unit directory can no longer take down the customer list.
+- Unit counts are loaded separately and failures become warnings, not 500 responses.
+- Service history filters out null/non-object legacy work-order records.
+- Customer profile independently fails open for units and history while still returning the customer record.
+- customer_id joins/comparisons use text-safe casts where compatibility matters, preventing TEXT-vs-BIGINT legacy type errors.
+- Startup now adds every customer_units column independently with ALTER TABLE ... ADD COLUMN IF NOT EXISTS.
+- Added migration 026_customer_crm_hardening.sql.
+- Updated schema.sql and database/schema.sql with Fullbay/CRM tables.
+- Added visible Admin > Customers > Run Diagnostics control.
+- CRM diagnostics now reports table existence, columns/types, counts, sync warnings, and suspicious unit rows.
+- Deployment banner is now dynamically updated from /api/build so frontend/backend versions are visible together.
+- Fixed server startup version label to v23.8.3.
+- Existing v23.7.1 Fullbay inventory INSERT correction is preserved.
+
+DEEP STATIC AUDIT RESULTS
+
+PASS: server.js parses with node --check.
+PASS: extracted inline frontend JavaScript parses with node --check.
+PASS: root index.html and public/index.html are byte-identical.
+PASS: 233 DOM IDs checked; no duplicate IDs found.
+PASS: 83 inline handler names checked; no undefined handler functions found.
+PASS: 52 Express API routes checked; no duplicate method/path registrations found.
+PASS: 68 SQL statements containing PostgreSQL placeholders checked; no skipped placeholder-number sequences found.
+PASS: protected direct frontend API fetches reviewed; auth headers remain on upload/transcription/photo/PDF calls. /api/build is intentionally public.
+PASS: service-worker registration remains disabled; stale workers/caches are cleaned by existing startup logic.
+PASS: no destructive DROP TABLE / database reset added.
+PASS: root/public frontend release version and backend /api/build version agree at 23.8.3.
+PASS: Fullbay inventory import fix remains present.
+
+DATA SAFETY
+
+This release does NOT reset PostgreSQL and does NOT delete customers, inventory, work orders, photos, findings, task sessions, productivity history, or parts already recorded on jobs.
+
+IF CUSTOMER PAGE STILL FAILS AFTER THIS RELEASE
+
+1. Verify the top green bar says frontend 23.8.3 and backend 23.8.3.
+2. Open Customers and click Run Diagnostics.
+3. If diagnostics show a missing table/column or sync warning, the message now identifies the failing area instead of only saying "Server error".
+4. Do not reset the database. The diagnostics are designed to identify and repair legacy-schema issues safely.
+
+BUILD LIMITATION
+
+A package-lock.json could not be generated because registry access timed out in the build environment. package.json uses exact top-level versions. Railway will continue installing those pinned dependencies.
