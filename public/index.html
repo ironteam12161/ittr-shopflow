@@ -6,13 +6,13 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-23-STABLE-TASKS-20260910">
+<meta name="ittr-build" content="ITTR-23.2-MOBILE-COLLAB-20260910">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v23.0</title>
+<title>ITTR ShopFlow v23.3.1</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -36,7 +36,7 @@ form .row{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.field{margi
 .checkline{display:flex;gap:8px;align-items:center;margin-top:6px}.checkline input{width:auto}
 .modal{display:none;position:fixed;inset:0;background:rgba(17,24,39,.55);z-index:30;padding:18px;overflow:auto}.modal.open{display:block}.modalbox{max-width:800px;background:#fff;margin:30px auto;border-radius:15px;padding:20px}.modalhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.x{background:#eef2f7;color:#111827}
 .jobcard{margin-bottom:12px}.jobtop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.jobs{display:grid;grid-template-columns:1fr 1fr;gap:12px}.muted{color:var(--muted);font-size:13px}.task{padding:10px;border:1px solid var(--line);border-radius:9px;margin:8px 0;display:flex;gap:9px;align-items:flex-start}.task input{margin-top:3px}.taskrow{padding:12px;border:1px solid var(--line);border-radius:10px;margin:8px 0;background:#fff}.taskhead{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}.taskcontrols{display:flex;gap:7px;flex-wrap:wrap;align-items:center}.timerinfo{font-size:12px;color:var(--muted);margin-top:7px}.running{border-color:#f79009;background:#fffcf5}.taskdone{border-color:#75e0a7;background:#f6fef9}.historyitem{padding:10px 0;border-bottom:1px solid var(--line)}.historyitem:last-child{border-bottom:0}.reactivated{background:#fff7ed;border:1px solid #fedf89;border-radius:10px;padding:10px;margin:10px 0}.futureNote{background:#f9fafb;border-left:4px solid #98a2b3;padding:10px;border-radius:8px;margin:8px 0}
-.issue{border-left:4px solid #f79009}.photo{width:100%;max-width:220px;border-radius:8px;margin-top:8px;border:1px solid var(--line)}
+.issue{border-left:4px solid #f79009}.photo{width:100%;max-width:320px;max-height:320px;object-fit:cover;border-radius:8px;margin-top:8px;border:1px solid var(--line);background:#f2f4f7}.photoLoading{min-height:90px}.photoError{font-size:12px;color:#b42318;margin-top:6px}
 .hidden{display:none!important}.empty{text-align:center;padding:30px;color:var(--muted)}
 .filterbar{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px}.filterbtn{background:#eef2f7;color:#344054}.filterbtn.active{background:#111827;color:white}
 .notice{background:#fffaeb;border:1px solid #fedf89;color:#7a2e0e;border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:12px}
@@ -467,10 +467,57 @@ body{-webkit-text-size-adjust:100%}
 .statusFlow{display:flex;gap:6px;flex-wrap:wrap}
 @media(max-width:760px){.proMetricGrid{grid-template-columns:1fr 1fr}.proTabs{display:grid;grid-template-columns:1fr 1fr}}
 
+
+/* ---------- v23.2 mobile chrome + collaboration ---------- */
+:root{--mobile-nav-height:0px;--mobile-header-height:0px}
+.assignmentStrip{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.assignmentChip{display:inline-flex;align-items:center;gap:5px;background:#eef4ff;color:#1849a9;border:1px solid #d1e0ff;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:800}
+.assignmentChip.primary{background:#ecfdf3;color:#067647;border-color:#abefc6}
+.mechanicWorkSummary{margin-top:14px}
+.mechanicWorkSummaryGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
+.mechanicWorkPerson{border:1px solid var(--line);border-radius:12px;padding:12px;background:#fafafa}
+.mechanicWorkTask{padding:7px 0;border-top:1px dashed #d8dee8}.mechanicWorkTask:first-of-type{border-top:0}
+.helperActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.modal{z-index:200}
+body.modalOpen{overflow:hidden}
+@media(max-width:760px){
+  html{scroll-padding-top:calc(var(--mobile-header-height) + 8px)}
+  body{padding-bottom:calc(var(--mobile-nav-height) + 26px + env(safe-area-inset-bottom))}
+  main{padding-bottom:30px}
+  header{padding-top:max(10px,env(safe-area-inset-top));flex-wrap:nowrap;overflow:visible}
+  header .brand{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  header .userbar{flex-wrap:nowrap;min-width:0}
+  #currentUser,.aiTranslateToggle{display:none!important}
+  .languageSelect{min-width:58px;max-width:64px}
+  header .userbar .navbtn{white-space:nowrap}
+  .mobileBottomNav{display:flex;overflow-x:auto;overflow-y:hidden;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .mobileBottomNav::-webkit-scrollbar{display:none}
+  .mobileBottomNav button{flex:1 0 72px;min-width:72px;position:relative}
+  body.modalOpen .mobileBottomNav,body.keyboardOpen .mobileBottomNav{display:none!important}
+  body.modalOpen header{display:none!important}
+  body.modalOpen{padding-bottom:0}
+  .modal.open{display:block;inset:0;padding:0;background:#fff}
+  .modalbox{margin:0;width:100%;min-height:100dvh;height:100dvh;max-height:100dvh;padding:calc(14px + env(safe-area-inset-top)) 14px calc(28px + env(safe-area-inset-bottom));overflow-y:auto;overscroll-behavior:contain}
+  .modalhead{top:calc(-14px - env(safe-area-inset-top));margin:calc(-14px - env(safe-area-inset-top)) -14px 14px;padding:calc(12px + env(safe-area-inset-top)) 14px 12px;z-index:210}
+  .modalbox form>button[type="submit"]{position:relative;z-index:1;margin-bottom:8px}
+  .helperActions{display:grid;grid-template-columns:1fr}.helperActions button{width:100%}
+  .mechanicWorkSummaryGrid{grid-template-columns:1fr}
+  .assignmentStrip{gap:6px}
+  .assignmentChip{font-size:11px;padding:5px 8px}
+  .taskcontrols{display:grid;grid-template-columns:1fr;width:100%}
+  .taskcontrols button{width:100%}
+  .taskrow{scroll-margin-top:12px;scroll-margin-bottom:20px}
+  input:focus,select:focus,textarea:focus,button:focus{scroll-margin-top:12px;scroll-margin-bottom:24px}
+}
+@media(max-width:390px){
+  header .userbar .navbtn{font-size:11px;padding:6px 7px}
+  .languageSelect{min-width:54px;max-width:58px}
+}
+
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v23.0 ONLINE · STABLE TASK RECORDS · Full Work Timeline</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v23.1 ONLINE · R2 PHOTO STORAGE · Stable Task Records</div>
 <div id="appErrorBanner" style="display:none;position:fixed;left:8px;right:8px;top:66px;z-index:1000;background:#fef3f2;color:#b42318;border:1px solid #fecdca;border-radius:10px;padding:10px;font-size:13px"><b>App error:</b> <span id="appErrorText"></span> <button type="button" onclick="this.parentElement.style.display='none'" style="float:right;min-height:28px;padding:2px 8px">×</button></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -872,7 +919,7 @@ body{-webkit-text-size-adjust:100%}
       <div class="field"><label>Severity</label><select name="severity"><option>Needs Attention</option><option>High</option><option>Safety Critical</option></select></div>
       <div class="field full"><label>Problem found</label><textarea name="description" required placeholder="Example: RH steer tire has sidewall damage"></textarea></div>
       <div class="field full"><label>Recommended repair</label><textarea name="recommendation" placeholder="Replace tire before vehicle leaves shop"></textarea></div>
-      <div class="field full"><label>Photo</label><input name="photo" type="file" accept="image/*" capture="environment"><div class="muted">On a phone, this can open the camera.</div></div>
+      <div class="field full"><label>Photo</label><input id="findingPhotoInput" name="photo" type="file" accept="image/*" capture="environment"><div class="muted">Take a photo or choose one from the phone. Large phone photos are compressed automatically before upload.</div><div id="findingPhotoStatus" class="muted" style="margin-top:6px"></div></div>
     </div>
     <button type="submit">Save Finding</button>
   </form>
@@ -958,6 +1005,18 @@ body{-webkit-text-size-adjust:100%}
       <div class="field full"><label>Notes</label><textarea name="notes" id="editNotes"></textarea></div>
     </div>
     <button type="submit">Save Changes</button>
+  </form>
+</div></div>
+
+
+<div id="helperModal" class="modal">
+<div class="modalbox" style="max-width:560px">
+  <div class="modalhead"><h2>Add Helper Mechanic</h2><button class="x" onclick="closeModal('helperModal')">✕</button></div>
+  <form id="helperForm">
+    <input type="hidden" name="workOrderId" id="helperWorkOrderId">
+    <div class="field"><label>Mechanic helping on this work order</label><select name="username" id="helperMechanicSelect" required></select></div>
+    <div class="notice">The helper will see this unit in My Work and can start, pause, resume, complete jobs, and add findings. Their labor will be recorded under their own mechanic account.</div>
+    <button type="submit">Add Mechanic to Work Order</button>
   </form>
 </div></div>
 
@@ -1064,14 +1123,14 @@ function newTaskRecord(text,extra={}){
  return {
    uid:makeTaskUid("task"),
    t:String(text||"").trim(),
-   done:false,startedAt:"",stoppedAt:"",elapsedMs:0,completedAt:"",
+   done:false,startedAt:"",stoppedAt:"",runningBy:"",elapsedMs:0,completedAt:"",
    taskOutcome:"",outcomeNote:"",outcomeAt:"",outcomeBy:"",
    paused:false,pausedAt:"",pauseReason:"",pauseNote:"",
    ...extra
  };
 }
 
-const FRONTEND_VERSION="23.0.0";
+const FRONTEND_VERSION="23.3.1";
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
@@ -1228,12 +1287,16 @@ function defaultViewForRole(){
  return session?.role==="admin" ? "dashboard" : "mechanic";
 }
 
+function syncMobileChrome(){
+ const nav=document.getElementById("mobileBottomNav"),header=document.querySelector("header"),root=document.documentElement;
+ if(root){root.style.setProperty("--mobile-nav-height",`${nav&&getComputedStyle(nav).display!=="none"?Math.ceil(nav.getBoundingClientRect().height):0}px`);root.style.setProperty("--mobile-header-height",`${header&&getComputedStyle(header).display!=="none"?Math.ceil(header.getBoundingClientRect().height):0}px`)}
+}
+function syncModalState(){document.body?.classList.toggle("modalOpen",!!document.querySelector(".modal.open"));syncMobileChrome()}
 function updateMobileBackButton(){
  const btn=document.getElementById("mobileBackBtn");
- if(!btn)return;
  const hasModal=!!document.querySelector(".modal.open");
- const canBack=hasModal || viewHistory.length>0;
- btn.classList.toggle("visible",canBack);
+ if(btn){const canBack=hasModal || viewHistory.length>0;btn.classList.toggle("visible",canBack);}
+ syncModalState();
 }
 
 function showView(view,{push=true,replace=false}={}){
@@ -1392,11 +1455,11 @@ async function logout(){
   document.getElementById("loginUser").value="";document.getElementById("loginPass").value="";document.getElementById("loginScreen").style.display="flex";
 }
 function requireAdmin(){
-  if(session?.role!=="admin"){alert("Admin access required.");return false}
+  if(session?.role!=="admin"){alert(tr("Admin access required."));return false}
   return true;
 }
 function requireMechanic(){
-  if(session?.role!=="mechanic"){alert("Mechanic access required.");return false}
+  if(session?.role!=="mechanic"){alert(tr("Mechanic access required."));return false}
   return true;
 }
 
@@ -1671,6 +1734,122 @@ Object.assign(UI_TRANSLATIONS,{
 });
 
 Object.assign(UI_TRANSLATIONS,{"Operations Center":"Операційний центр","Vehicle Profiles":"Профілі техніки","Maintenance":"Техобслуговування","Productivity":"Продуктивність","Notifications":"Сповіщення","Daily Report":"Щоденний звіт","Audit Log":"Журнал змін","AI Tools":"AI інструменти","Mileage Maintenance":"Обслуговування за пробігом","Make Professional":"Оформити професійно","Suggest Diagnostic Steps":"Запропонувати кроки діагностики","Decode VIN":"Розшифрувати VIN","Permanent Vehicle Notes":"Постійні примітки про техніку"});
+
+Object.assign(UI_TRANSLATIONS,{
+ "Primary":"Основний",
+ "Helper":"Помічник",
+ "Helpers":"Помічники",
+ "Primary mechanic":"Основний механік",
+ "Helper mechanics":"Механіки-помічники",
+ "+ Add Helper Mechanic":"+ Додати механіка-помічника",
+ "Add Helper Mechanic":"Додати механіка-помічника",
+ "Choose a mechanic":"Оберіть механіка",
+ "Add Helper":"Додати помічника",
+ "Remove":"Видалити",
+ "Mechanic Work Summary":"Підсумок роботи механіків",
+ "Who worked on each job and their recorded labor time.":"Хто виконував кожну роботу та зафіксований робочий час.",
+ "Loading mechanic labor…":"Завантаження робочого часу механіків…",
+ "No recorded mechanic labor sessions yet.":"Зафіксованих сесій роботи механіків ще немає.",
+ "Total recorded labor":"Загальний зафіксований робочий час",
+ "Sessions":"Сесії",
+ "Paused":"Призупинено",
+ "Resumed":"Продовжено",
+ "Finished":"Завершено",
+ "Pause":"Призупинити",
+ "Resume":"Продовжити",
+ "Complete":"Завершити",
+ "Pause Job":"Призупинити роботу",
+ "Pause reason":"Причина призупинення",
+ "End of day":"Кінець робочого дня",
+ "Waiting for parts":"Очікування запчастин",
+ "Waiting for approval":"Очікування погодження",
+ "Need another mechanic":"Потрібен інший механік",
+ "Other reason":"Інша причина",
+ "Pause note":"Примітка до призупинення",
+ "Resume Job":"Продовжити роботу",
+ "Work Timeline":"Хронологія роботи",
+ "No work timeline for this job yet.":"Для цієї роботи ще немає хронології.",
+ "Not Completed / Next Visit":"Не виконано / Наступний візит",
+ "This unit is assigned to you but is still marked as on the way.":"Цей юніт призначено вам, але він ще позначений як такий, що в дорозі.",
+ "You participated in this work order. Only the primary/completing mechanic can reactivate it.":"Ви брали участь у цьому наряді. Відновити його може лише основний механік або механік, який його завершив.",
+ "This work order is not assigned/released to your mechanic account.":"Цей наряд не призначено або не відкрито для вашого акаунта механіка.",
+ "Fleet unit auto-release:":"Автоматичний доступ для автопарку:",
+ "ON":"УВІМК.",
+ "OFF":"ВИМК.",
+ "Mark Truck Is Here":"Позначити: трак прибув",
+ "Open Unit":"Відкрити юніт",
+ "Open Job":"Відкрити роботу",
+ "Open Work Order":"Відкрити наряд",
+ "View Assignment":"Переглянути завдання",
+ "Photo uploaded successfully.":"Фото успішно завантажено.",
+ "Preparing photo…":"Підготовка фото…",
+ "Uploading photo…":"Завантаження фото…",
+ "Upload failed":"Помилка завантаження",
+ "Take Photo / Choose Photo":"Зробити / вибрати фото",
+ "Choose Photo":"Вибрати фото",
+ "Photo evidence":"Фотопідтвердження",
+ "No photo":"Немає фото",
+ "Date Unknown":"Дата невідома",
+ "Admin approved this repair. Complete it once it appears in the work-order task list.":"Адміністратор погодив цей ремонт. Виконайте його після появи в списку робіт наряду.",
+ "Do not perform this additional repair.":"Не виконуйте цей додатковий ремонт.",
+ "Waiting for admin/customer decision.":"Очікуємо рішення адміністратора / клієнта.",
+ "Customer Decision":"Рішення клієнта",
+ "Proceed with Repair":"Виконувати ремонт",
+ "Wait for Customer":"Очікувати клієнта",
+ "Decline Repair":"Не виконувати ремонт",
+ "My Work":"Моя робота",
+ "History":"Історія",
+ "Finding":"Зауваження",
+ "Back":"Назад",
+ "Menu":"Меню",
+ "Ready":"Готово",
+ "Scheduled":"Заплановано",
+ "Truck On The Way":"Трак у дорозі",
+ "Truck Arrived":"Трак прибув",
+ "Waiting for Diagnosis":"Очікує діагностики",
+ "Diagnosis In Progress":"Діагностика виконується",
+ "Waiting for Parts":"Очікує запчастин",
+ "Parts Arrived":"Запчастини прибули",
+ "Ready for Mechanic":"Готовий для механіка",
+ "QC Inspection":"Контроль якості",
+ "Ready for Pickup":"Готовий до видачі",
+ "Invoiced":"Рахунок виставлено",
+ "Paid":"Оплачено",
+ "Vehicle Profile":"Профіль техніки",
+ "Year":"Рік",
+ "Make":"Марка",
+ "Model":"Модель",
+ "Plate":"Номерний знак",
+ "Engine":"Двигун",
+ "Transmission":"Трансмісія",
+ "Mileage":"Пробіг",
+ "VIN":"VIN",
+ "Service":"Обслуговування",
+ "Interval":"Інтервал",
+ "Last Service Mileage":"Пробіг останнього ТО",
+ "Due Soon":"Скоро потрібно",
+ "Overdue":"Прострочено",
+ "OK":"OK",
+ "Daily Shop Report":"Щоденний звіт майстерні",
+ "Active Work Orders":"Активні наряди",
+ "Completed Today":"Завершено сьогодні",
+ "Mechanics Working":"Механіків працює",
+ "Download Work Order PDF":"Завантажити PDF наряду",
+ "Work Order PDF":"PDF наряду",
+ "Completed By":"Завершив",
+ "Completed At":"Завершено",
+ "Initial Notes":"Початкові примітки",
+ "Future Repair / Next Visit":"Майбутній ремонт / Наступний візит",
+ "Recheck Mileage":"Пробіг для повторної перевірки",
+ "Findings / Recommendations":"Зауваження / Рекомендації",
+ "Task":"Робота",
+ "Outcome":"Результат",
+ "Mechanics":"Механіки",
+ "Recorded Labor":"Зафіксований робочий час",
+ "No findings recorded.":"Зауважень не зафіксовано.",
+ "No notes recorded.":"Приміток не зафіксовано."
+});
+
 const UI_PLACEHOLDER_TRANSLATIONS={
  "Type your activity...":"Введіть свою діяльність...",
  "Example: cleaning bay 2, checking trailers in yard...":"Наприклад: прибираю пост 2, перевіряю причепи у дворі...",
@@ -1693,6 +1872,8 @@ const UI_PLACEHOLDER_TRANSLATIONS={
 let currentLanguage=localStorage.getItem("ittr_language")||"en";
 const untranslatedUIPhrases=new Set();
 
+function tr(text){return currentLanguage==="uk"?(UI_TRANSLATIONS[text]||text):text;}
+
 function translateExact(text){
  if(currentLanguage!=="uk")return text;
  return UI_TRANSLATIONS[text]||text;
@@ -1710,6 +1891,11 @@ function translateDynamicText(text){
  if((m=text.match(/^(\d+) upcoming assigned truck(s?)$/))) return `Очікуваних призначених траків: ${m[1]}`;
  if((m=text.match(/^Unit (.+)$/))) return `Юніт ${m[1]}`;
  if((m=text.match(/^Work Order #(.+)$/))) return `Наряд #${m[1]}`;
+ if((m=text.match(/^Parking (.+)$/))) return `Паркування ${m[1]}`;
+ if((m=text.match(/^Remove (.+)$/))) return `Видалити ${m[1]}`;
+ if((m=text.match(/^(\d+) helpers?$/))) return `Помічників: ${m[1]}`;
+ if((m=text.match(/^(\d+) sessions?$/))) return `Сесій: ${m[1]}`;
+
  return text;
 }
 
@@ -2031,6 +2217,8 @@ if(state.workorders.length!==beforeDemoCleanup){
  if(typeof w.isReactivated==="undefined")w.isReactivated=false;
  if(typeof w.arrivedAt==="undefined")w.arrivedAt="";
  if(typeof w.arrivedBy==="undefined")w.arrivedBy="";
+ if(!Array.isArray(w.helpers))w.helpers=[];
+ w.helpers=[...new Set(w.helpers.map(x=>String(x||"").trim().toLowerCase()).filter(x=>x&&x!==String(w.mechanic||"").toLowerCase()))];
  (w.tasks||[]).forEach(t=>{
    if(typeof t.startedAt==="undefined")t.startedAt="";
    if(typeof t.stoppedAt==="undefined")t.stoppedAt="";
@@ -2040,6 +2228,7 @@ if(state.workorders.length!==beforeDemoCleanup){
    if(typeof t.outcomeNote==="undefined")t.outcomeNote="";
    if(typeof t.outcomeAt==="undefined")t.outcomeAt="";
    if(typeof t.outcomeBy==="undefined")t.outcomeBy="";
+   if(typeof t.runningBy==="undefined")t.runningBy=(t.startedAt&&!t.stoppedAt&&!t.done)?(w.mechanic||""):"";
  });
 });
 save();
@@ -2048,10 +2237,24 @@ let adminFilter="all";
 function save(){localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));queueCloudState("shopflow",state)}
 function esc(s){return String(s??"").replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]))}
 function readyForMechanic(w){return w.status!=="Completed" && (w.unitType==="fleet" ? w.fleetAuto!==false : !!w.truckHere)}
+function assignedMechanicUsernames(w){
+ const primary=String(w?.mechanic||"").trim().toLowerCase();
+ const helpers=Array.isArray(w?.helpers)?w.helpers.map(x=>String(x||"").trim().toLowerCase()).filter(Boolean):[];
+ return [...new Set([primary,...helpers].filter(Boolean))];
+}
+function mechanicAssignedToWorkOrder(w,username){return assignedMechanicUsernames(w).includes(String(username||"").trim().toLowerCase())}
+function mechanicAssignmentsLabel(w){
+ const names=assignedMechanicUsernames(w).map(u=>mechanicDisplay(u)).filter(Boolean);
+ return names.length?names.join(", "):"Unassigned";
+}
+function assignmentChips(w){
+ const primary=String(w?.mechanic||"").toLowerCase();
+ return assignedMechanicUsernames(w).map(u=>`<span class="assignmentChip ${u===primary?"primary":""}">${u===primary?"Primary · ":"Helper · "}${esc(mechanicDisplay(u))}</span>`).join("");
+}
 function assignedToCurrentMechanic(w){
  if(session?.role!=="mechanic")return false;
  if(w.status==="Completed")return false;
- return String(w.mechanic||"").toLowerCase()===String(session.username||"").toLowerCase();
+ return mechanicAssignedToWorkOrder(w,session.username);
 }
 function visibleToCurrentMechanic(w){
  if(!assignedToCurrentMechanic(w))return false;
@@ -2083,6 +2286,37 @@ function refreshMechanicSelects(selectedEdit=""){
  const e=document.getElementById("editMechanic");
  if(e)e.innerHTML=mechanicOptions(selectedEdit||e.value||"");
 }
+
+function openAddHelper(workOrderId){
+ const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
+ if(!w)return alert(tr("Work order not found."));
+ if(session?.role!=="admin" && !mechanicAssignedToWorkOrder(w,session?.username))return alert(tr("You are not assigned to this work order."));
+ const assigned=new Set(assignedMechanicUsernames(w));
+ const available=mechanicAccounts().filter(m=>!assigned.has(String(m.username||"").toLowerCase()));
+ if(!available.length)return alert(tr("Every mechanic is already assigned to this work order."));
+ const sel=document.getElementById("helperMechanicSelect");
+ sel.innerHTML=available.map(m=>`<option value="${esc(m.username)}">${esc(m.display)} (${esc(m.username)})</option>`).join("");
+ document.getElementById("helperWorkOrderId").value=workOrderId;
+ document.getElementById("helperModal").classList.add("open");
+ updateMobileBackButton();
+}
+async function addHelperMechanic(workOrderId,username){
+ try{
+  const d=await apiJSON(`/api/work-orders/${encodeURIComponent(workOrderId)}/helpers`,{method:"POST",body:JSON.stringify({username})});
+  if(d?.shopflow){state=d.shopflow;localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));}
+  if(d?.version!=null)cloudVersions.shopflow=Number(d.version);
+  closeModal("helperModal");render();openDetail(Number(workOrderId));
+ }catch(e){alert(e.message||"Could not add helper mechanic.")}
+}
+async function removeHelperMechanic(workOrderId,username){
+ if(!confirm(`Remove ${mechanicDisplay(username)} from this work order?`))return;
+ try{
+  const d=await apiJSON(`/api/work-orders/${encodeURIComponent(workOrderId)}/helpers/${encodeURIComponent(username)}`,{method:"DELETE"});
+  if(d?.shopflow){state=d.shopflow;localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));}
+  if(d?.version!=null)cloudVersions.shopflow=Number(d.version);
+  render();openDetail(Number(workOrderId));
+ }catch(e){alert(e.message||"Could not remove helper mechanic.")}
+}
 function openMechanicAccount(){
  if(!requireAdmin())return;
  document.getElementById("mechanicAccountForm").reset();
@@ -2096,14 +2330,14 @@ document.getElementById("mechanicAccountForm").onsubmit=async e=>{
 };
 async function deleteMechanicAccount(username){
  if(!requireAdmin())return;
- const assigned=(state.workorders||[]).some(w=>w.status!=="Completed"&&w.mechanic===username);if(assigned)return alert("This mechanic still has active assigned work orders. Reassign them first.");
+ const assigned=(state.workorders||[]).some(w=>w.status!=="Completed"&&mechanicAssignedToWorkOrder(w,username));if(assigned)return alert(tr("This mechanic still has active assigned work orders. Reassign or remove them first."));
  if(confirm(`Delete mechanic account ${username}?`))try{await apiJSON(`/api/admin/users/${encodeURIComponent(username)}`,{method:"DELETE"});delete USERS[username];saveUsers();render()}catch(ex){alert(ex.message)}
 }
 
 function openChangeMechanicPassword(username){
  if(!requireAdmin())return;
  const user=USERS[username];
- if(!user || user.role!=="mechanic")return alert("Mechanic account not found.");
+ if(!user || user.role!=="mechanic")return alert(tr("Mechanic account not found."));
  const form=document.getElementById("passwordForm");
  form.elements["username"].value=username;
  form.elements["password"].value="";
@@ -2191,7 +2425,7 @@ function mechanicCompletedCard(w){
      <span class="badge b-done">Completed</span>
    </div>
    <div style="margin-top:10px">
-     ${(w.tasks||[]).map(t=>`<div class="muted">${normalizedTaskOutcome(t)==="completed"?"✓":normalizedTaskOutcome(t)==="next_visit"?"↻":normalizedTaskOutcome(t)==="not_completed"?"✕":"•"} ${esc(t.t)} — ${esc(normalizedTaskOutcome(t)?taskOutcomeLabel(t):(Number(w.outcomeWorkflowVersion||0)===0?"Legacy — outcome not recorded":"Decision Required"))}${t.elapsedMs?` · ${fmtDuration(taskElapsed(t))}`:""}${t.outcomeNote?` · ${esc(t.outcomeNote)}`:""}</div>`).join("")}
+     ${(w.tasks||[]).map(t=>`<div class="muted">${normalizedTaskOutcome(t)==="completed"?"✓":normalizedTaskOutcome(t)==="next_visit"?"↻":normalizedTaskOutcome(t)==="not_completed"?"✕":"•"} ${esc(t.t)} — ${esc(normalizedTaskOutcome(t)?taskOutcomeLabel(t):(Number(w.outcomeWorkflowVersion||0)===0?"Legacy — outcome not recorded":"Decision Required"))}${t.elapsedMs?` · ${fmtDuration(taskElapsed(t))}`:""}${t.outcomeNote?` · ${esc(t.outcomeNote)}`:""}${t.outcomeBy?` · By ${esc(mechanicDisplay(t.outcomeBy))}`:""}</div>`).join("")}
    </div>
    ${w.completionNotes?`<div class="futureNote"><b>Completion notes</b><div>${esc(w.completionNotes)}</div></div>`:""}
    ${w.futureNotes?`<div class="futureNote"><b>Future / next visit</b><div>${esc(w.futureNotes)}</div>${w.revisitMiles?`<div class="muted">Recommended recheck in ${esc(String(w.revisitMiles))} miles</div>`:""}</div>`:""}
@@ -2199,7 +2433,7 @@ function mechanicCompletedCard(w){
    ${latestHistory?`<div style="margin-top:10px"><b>Recent history</b>${latestHistory}</div>`:""}
    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
      <button onclick="openDetail(${w.id})">View</button>
-     <button class="secondary" onclick="openReactivate(${w.id})">Reactivate / Add Missed Work</button>
+     ${(w.completedBy===session.username || w.mechanic===session.username)?`<button class="secondary" onclick="openReactivate(${w.id})">Reactivate / Add Missed Work</button>`:""}
    </div>
  </div>`;
 }
@@ -2207,7 +2441,7 @@ function renderMyCompleted(){
  const box=document.getElementById("myCompletedJobs");
  if(!box || session?.role!=="mechanic")return;
  const mine=(state.workorders||[])
-   .filter(w=>w.status==="Completed" && (w.completedBy===session.username || w.mechanic===session.username))
+   .filter(w=>w.status==="Completed" && (w.completedBy===session.username || mechanicAssignedToWorkOrder(w,session.username) || (w.tasks||[]).some(t=>t.outcomeBy===session.username)))
    .sort((a,b)=>new Date(b.completedAt||0)-new Date(a.completedAt||0));
  box.innerHTML=mine.map(mechanicCompletedCard).join("")||'<div class="card empty">You have no completed work orders yet.</div>';
 }
@@ -2215,7 +2449,7 @@ function openReactivate(id){
  if(!requireMechanic())return;
  const w=state.workorders.find(x=>x.id===id);
  if(!w || w.status!=="Completed")return;
- if(!(w.completedBy===session.username || w.mechanic===session.username))return alert("You can only reactivate your own completed work.");
+ if(!(w.completedBy===session.username || w.mechanic===session.username))return alert(tr("You can only reactivate your own completed work."));
  document.getElementById("reactivateWorkOrderId").value=id;
  document.getElementById("reactivateForm").reset();
  document.getElementById("reactivateWorkOrderId").value=id;
@@ -2228,7 +2462,7 @@ document.getElementById("reactivateForm").onsubmit=e=>{
  const id=Number(f.get("workOrderId"));
  const w=state.workorders.find(x=>x.id===id);
  if(!w || w.status!=="Completed")return;
- if(!(w.completedBy===session.username || w.mechanic===session.username))return alert("You can only reactivate your own completed work.");
+ if(!(w.completedBy===session.username || w.mechanic===session.username))return alert(tr("You can only reactivate your own completed work."));
  const reason=(f.get("reason")||"").trim();
  const added=(f.get("tasks")||"").split("\n").map(x=>x.trim()).filter(Boolean);
  if(!reason || !added.length)return;
@@ -2260,7 +2494,7 @@ document.getElementById("reactivateForm").onsubmit=e=>{
 function canCurrentMechanicComplete(w){
  if(!w || session?.role!=="mechanic")return false;
  if(w.status==="Completed")return false;
- const assigned=String(w.mechanic||"").toLowerCase()===String(session.username||"").toLowerCase();
+ const assigned=mechanicAssignedToWorkOrder(w,session.username);
  if(!assigned)return false;
  // Reactivated jobs remain completable by the mechanic that reactivated them.
  if(w.isReactivated && String(w.reactivatedBy||"").toLowerCase()===String(session.username||"").toLowerCase())return true;
@@ -2270,8 +2504,8 @@ function canCurrentMechanicComplete(w){
 function openCompleteWithNotes(id){
  if(!requireMechanic())return;
  const w=state.workorders.find(x=>x.id===id);
- if(!w)return alert("Work order could not be found.");
- if(!canCurrentMechanicComplete(w))return alert("This work order is not active for your mechanic account.");
+ if(!w)return alert(tr("Work order could not be found."));
+ if(!canCurrentMechanicComplete(w))return alert(tr("This work order is not active for your mechanic account."));
  const activeIdx=activeTaskIndex(w);
  if(activeIdx!==-1){
    const activeName=w.tasks?.[activeIdx]?.t||"current job";
@@ -2283,7 +2517,7 @@ function openCompleteWithNotes(id){
    return alert(`Every assigned job needs a mechanic decision before completing the work order.\nStill needs decision: ${names}${undecided.length>5?"...":""}`);
  }
  const form=document.getElementById("closeNotesForm");
- if(!form)return alert("Completion form is unavailable. Please reopen the work order.");
+ if(!form)return alert(tr("Completion form is unavailable. Please reopen the work order."));
  document.getElementById("closeNotesWorkOrderId").value=id;
  form.elements["completionNotes"].value=w.completionNotes||"";
  form.elements["futureNotes"].value=w.futureNotes||"";
@@ -2298,11 +2532,11 @@ document.getElementById("closeNotesForm").onsubmit=e=>{
  const f=new FormData(e.target);
  const id=Number(f.get("workOrderId"));
  const w=state.workorders.find(x=>x.id===id);
- if(!w)return alert("Work order could not be found.");
- if(!canCurrentMechanicComplete(w))return alert("This work order is no longer active for your account.");
- if(activeTaskIndex(w)!==-1)return alert("A job is still running. Stop it before completing the work order.");
+ if(!w)return alert(tr("Work order could not be found."));
+ if(!canCurrentMechanicComplete(w))return alert(tr("This work order is no longer active for your account."));
+ if(activeTaskIndex(w)!==-1)return alert(tr("A job is still running. Stop it before completing the work order."));
  const undecided=(w.tasks||[]).filter(t=>!taskHasFinalDecision(t));
- if(undecided.length)return alert("Every assigned job must be marked Completed, Not Completed, or Next Visit before the work order can be closed.");
+ if(undecided.length)return alert(tr("Every assigned job must be marked Completed, Not Completed, or Next Visit before the work order can be closed."));
 
  const completionNotes=(f.get("completionNotes")||"").trim();
  const futureNotes=(f.get("futureNotes")||"").trim();
@@ -2464,20 +2698,24 @@ function activeTaskForWorkOrder(w){
  const idx=activeTaskIndex(w);
  return idx>=0 ? w.tasks[idx] : null;
 }
+function activeTaskForMechanic(w,username){
+ const idx=activeTaskIndexForMechanic(w,username);
+ return idx>=0 ? w.tasks[idx] : null;
+}
 function mechanicUpcomingCount(username){
  return (state.workorders||[]).filter(w=>
-   String(w.mechanic||"").toLowerCase()===String(username||"").toLowerCase() &&
+   mechanicAssignedToWorkOrder(w,username) &&
    w.status!=="Completed" &&
    ((w.unitType==="customer"&&!w.truckHere) || (w.unitType==="fleet"&&w.fleetAuto===false))
  ).length;
 }
 function mechanicCurrentWork(username){
  const assigned=(state.workorders||[]).filter(w=>
-   String(w.mechanic||"").toLowerCase()===String(username||"").toLowerCase() &&
+   mechanicAssignedToWorkOrder(w,username) &&
    w.status!=="Completed"
  );
  for(const w of assigned){
-   const task=activeTaskForWorkOrder(w);
+   const task=activeTaskForMechanic(w,username);
    if(task)return {w,task};
  }
  const inProgress=assigned.find(w=>w.status==="In Progress" && readyForMechanic(w));
@@ -2754,7 +2992,7 @@ function showProPanel(name){
  if(name==="aitools")checkAIConnection();
 }
 function saveVehicleProfile(){
- const unit=(document.getElementById("vpUnit")?.value||"").trim();if(!unit)return alert("Unit number required.");
+ const unit=(document.getElementById("vpUnit")?.value||"").trim();if(!unit)return alert(tr("Unit number required."));
  const data={unit,vin:(vpVin.value||"").trim().toUpperCase(),customer:vpCustomer.value.trim(),mileage:+vpMileage.value||0,year:vpYear.value.trim(),make:vpMake.value.trim(),model:vpModel.value.trim(),plate:vpPlate.value.trim(),engine:vpEngine.value.trim(),transmission:vpTransmission.value.trim(),parking:vpParking.value.trim(),notes:vpNotes.value.trim(),updatedAt:new Date().toISOString()};
  const i=PRO.vehicles.findIndex(v=>String(v.unit).toLowerCase()===unit.toLowerCase());
  if(i>=0)PRO.vehicles[i]={...PRO.vehicles[i],...data};else PRO.vehicles.push(data);
@@ -2784,13 +3022,13 @@ function openUnitInTruckSearch(encoded){
  const unit=decodeURIComponent(encoded);showView("trucksearch");setTimeout(()=>{const e=document.getElementById("truckGlobalSearch");if(e){e.value=unit;renderTruckSearch()}},0);
 }
 async function decodeVehicleVIN(){
- const vin=(document.getElementById("vpVin")?.value||"").trim();if(vin.length!==17)return alert("Enter a 17-character VIN.");
+ const vin=(document.getElementById("vpVin")?.value||"").trim();if(vin.length!==17)return alert(tr("Enter a 17-character VIN."));
  const out=await proAI("/api/vin",{vin});if(!out)return;
  try{const d=typeof out==="string"?JSON.parse(out):out;["year","make","model","engine","transmission"].forEach(k=>{const el=document.getElementById("vp"+k.charAt(0).toUpperCase()+k.slice(1));if(el&&d[k])el.value=d[k]})}catch(e){alert(out)}
 }
 function addMaintenancePlan(){
  const unit=maintUnit.value.trim(),service=maintService.value.trim(),interval=+maintInterval.value,last=+maintLastMileage.value;
- if(!unit||!service||!interval)return alert("Unit, service and interval are required.");
+ if(!unit||!service||!interval)return alert(tr("Unit, service and interval are required."));
  PRO.maintenance.push({id:Date.now(),unit,service,interval,lastMileage:last,createdAt:new Date().toISOString()});savePro();audit("Maintenance plan added",`${service} every ${interval} miles`,unit);renderMaintenance();
 }
 function maintenanceState(m){
@@ -2807,7 +3045,7 @@ function setProfessionalStatus(id,status){
 }
 function startDelay(id,type,note=""){
  const w=state.workorders.find(x=>x.id==id);if(!w)return;
- const active=PRO.delays.find(d=>d.wo==id&&!d.endedAt);if(active)return alert("A delay is already running.");
+ const active=PRO.delays.find(d=>d.wo==id&&!d.endedAt);if(active)return alert(tr("A delay is already running."));
  PRO.delays.unshift({id:Date.now(),wo:id,unit:w.unit,type,note,startedAt:new Date().toISOString(),endedAt:""});savePro();audit("Delay started",type,w.unit);
 }
 function stopDelay(id){
@@ -2874,7 +3112,7 @@ async function checkAIConnection(){
 
 async function proAI(endpoint,payload){
  if(location.protocol==="file:"){
-   alert("AI tools require the ITTR server. Run the server and use http://localhost:3000.");
+   alert(tr("AI tools require the ITTR server. Run the server and use http://localhost:3000."));
    return null;
  }
  try{
@@ -2900,13 +3138,13 @@ async function aiPartAssistant(){
  const query=aiPartQuery.value.trim();if(!query)return;aiPartResult.textContent="Working…";const r=await proAI("/api/ai/part",{vin:aiPartVin.value.trim(),query});aiPartResult.textContent=r||"";
 }
 async function startVoiceNote(){
- if(!navigator.mediaDevices?.getUserMedia)return alert("Microphone is not available in this browser.");
+ if(!navigator.mediaDevices?.getUserMedia)return alert(tr("Microphone is not available in this browser."));
  try{
   const stream=await navigator.mediaDevices.getUserMedia({audio:true}),rec=new MediaRecorder(stream),chunks=[];
   rec.ondataavailable=e=>chunks.push(e.data);
   rec.onstop=async()=>{stream.getTracks().forEach(t=>t.stop());const blob=new Blob(chunks,{type:rec.mimeType});const fd=new FormData();fd.append("audio",blob,"note.webm");aiShopResult.textContent="Transcribing…";try{const rr=await fetch("/api/transcribe",{method:"POST",headers:authHeaders(),body:fd}),d=await rr.json();if(!rr.ok)throw new Error(d.error||"Transcription failed");aiShopText.value=d.text||"";aiShopResult.textContent="Transcription complete."}catch(e){aiShopResult.textContent=e.message}};
-  rec.start();aiShopResult.textContent="Recording… press OK to stop.";setTimeout(()=>{alert("Recording started. Press OK here, then recording will stop.");if(rec.state==="recording")rec.stop()},200);
- }catch(e){alert("Microphone permission is required.")}
+  rec.start();aiShopResult.textContent="Recording… press OK to stop.";setTimeout(()=>{alert(tr("Recording started. Press OK here, then recording will stop."));if(rec.state==="recording")rec.stop()},200);
+ }catch(e){alert(tr("Microphone permission is required."))}
 }
 function renderProCenter(){
  renderVehicleProfiles();renderMaintenance();renderProductivity();renderProNotifications();renderDailyReport();renderAuditLog();
@@ -2922,7 +3160,7 @@ function render(){
 
    const completedTable=document.getElementById("completedTable");
    if(completedTable){
-     completedTable.innerHTML=completed.map(w=>`<tr><td>#${w.id}</td><td><b>${esc(w.unit)}</b></td><td>${esc(w.customer)}</td><td>${esc(mechanicDisplay(w.mechanic))}</td><td>${esc(w.completedAt||"")}</td><td>${esc(w.parking||"—")}</td><td><button class="secondary" onclick="openDetail(${w.id})">View</button></td></tr>`).join("")||'<tr><td colspan="7" class="empty">No completed work orders yet.</td></tr>';
+     completedTable.innerHTML=completed.map(w=>`<tr><td>#${w.id}</td><td><b>${esc(w.unit)}</b></td><td>${esc(w.customer)}</td><td>${esc(mechanicDisplay(w.mechanic))}</td><td>${esc(w.completedAt||"")}</td><td>${esc(w.parking||"—")}</td><td><button class="secondary" onclick="openDetail(${w.id})">View</button> <button class="secondary" onclick="downloadWorkOrderPDF(${w.id})">Download Work Order PDF</button></td></tr>`).join("")||'<tr><td colspan="7" class="empty">No completed work orders yet.</td></tr>';
    }
 
    renderFindingsCenter();
@@ -2978,6 +3216,7 @@ function render(){
 
  updateMobileBackButton();
  applyTranslations();
+ hydrateFindingPhotos();
 }
 function renderAdminTable(){
  const table=document.getElementById("workTable");
@@ -2988,10 +3227,10 @@ function renderAdminTable(){
  if(adminFilter==="here")wo=wo.filter(w=>w.truckHere);
  if(adminFilter==="fleet")wo=wo.filter(w=>w.unitType==="fleet");
 
- table.innerHTML=wo.map(w=>`<tr><td>#${w.id}</td><td><b>${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · ${w.unitType==="fleet"?"Fleet":"Customer"}</div></td><td>${esc(w.date)} ${esc(w.time)}</td><td>${esc(mechanicDisplay(w.mechanic))}</td><td>${esc(w.parking||"—")}</td><td>${availabilityBadge(w)}</td><td>${statusBadge(w.status)}</td><td><button class="secondary" onclick="openDetail(${w.id})">Open</button> <button class="secondary" onclick="openEdit(${w.id})">Edit</button></td></tr>`).join("")||'<tr><td colspan="8" class="empty">No work orders in this view.</td></tr>';
+ table.innerHTML=wo.map(w=>`<tr><td>#${w.id}</td><td><b>${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · ${w.unitType==="fleet"?"Fleet":"Customer"}</div></td><td>${esc(w.date)} ${esc(w.time)}</td><td>${esc(mechanicAssignmentsLabel(w))}</td><td>${esc(w.parking||"—")}</td><td>${availabilityBadge(w)}</td><td>${statusBadge(w.status)}</td><td><button class="secondary" onclick="openDetail(${w.id})">Open</button> <button class="secondary" onclick="openEdit(${w.id})">Edit</button></td></tr>`).join("")||'<tr><td colspan="8" class="empty">No work orders in this view.</td></tr>';
 }
 function setAdminFilter(f,btn){adminFilter=f;document.querySelectorAll(".filterbtn").forEach(x=>x.classList.remove("active"));btn.classList.add("active");renderAdminTable()}
-function jobCard(w){return `<div class="card jobcard"><div class="jobtop"><div><b>#${w.id} — ${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · ${esc(mechanicDisplay(w.mechanic))} · ${esc(w.date)} ${esc(w.time)} · Parking ${esc(w.parking||"—")}</div></div>${statusBadge(w.status)}</div><div style="margin-top:8px">${availabilityBadge(w)}</div><div style="margin-top:10px"><b>Assigned to you:</b>${w.tasks.map(t=>`<div class="muted">${t.done?"✓":(t.startedAt&&!t.stoppedAt?"▶":"○")} ${esc(t.t)}${t.done?` · ${fmtDuration(taskElapsed(t))}`:""}</div>`).join("")}</div><div style="margin-top:10px"><button class="secondary" onclick="openDetail(${w.id})">Open Work Order</button></div></div>`}
+function jobCard(w){return `<div class="card jobcard"><div class="jobtop"><div><b>#${w.id} — ${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · ${esc(mechanicAssignmentsLabel(w))} · ${esc(w.date)} ${esc(w.time)} · Parking ${esc(w.parking||"—")}</div></div>${statusBadge(w.status)}</div><div style="margin-top:8px">${availabilityBadge(w)}</div><div style="margin-top:10px"><b>Assigned to you:</b>${w.tasks.map(t=>`<div class="muted">${t.done?"✓":(t.startedAt&&!t.stoppedAt?"▶":"○")} ${esc(t.t)}${t.done?` · ${fmtDuration(taskElapsed(t))}`:""}</div>`).join("")}</div><div style="margin-top:10px"><button class="secondary" onclick="openDetail(${w.id})">Open Work Order</button></div></div>`}
 function futureCard(w){return `<div class="card jobcard"><div class="jobtop"><div><b>#${w.id} — ${esc(w.unit)}</b><div class="muted">${esc(w.date)} ${esc(w.time)} · ${esc(mechanicDisplay(w.mechanic))} · Parking ${esc(w.parking||"—")}</div></div>${availabilityBadge(w)}</div><p class="muted">${esc(w.notes||"")}</p><div style="display:flex;gap:8px;flex-wrap:wrap">${w.unitType==="customer"?`<button class="success" onclick="markTruckHere(${w.id})">✓ Truck Is Here</button>`:""}<button class="secondary" onclick="openDetail(${w.id})">Open</button><button class="secondary" onclick="openEdit(${w.id})">Edit</button></div></div>`}
 function mechanicUpcomingCard(w){
  const assignedJobs=(w.tasks||[]).map(t=>`<div class="muted">○ ${esc(t.t)}</div>`).join("");
@@ -3017,6 +3256,69 @@ function mechanicUpcomingCard(w){
 
 // MECHANIC UI RULE: never display internal work-order numbers; identify work by Unit Number only.
 function mechanicCard(w){return `<div class="card jobcard"><div class="jobtop"><div><b>Unit ${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · Parking ${esc(w.parking||"—")} · ${esc(w.date)} ${esc(w.time)}</div></div>${statusBadge(w.status)}</div><div style="margin-top:10px">${w.tasks.map(t=>`<div class="muted">${t.done?"✓":(t.startedAt&&!t.stoppedAt?"▶":"○")} ${esc(t.t)}${t.done?` · ${fmtDuration(taskElapsed(t))}`:""}</div>`).join("")}</div><div style="margin-top:10px"><button onclick="openDetail(${w.id})">Open Job</button></div></div>`}
+const findingPhotoUrlCache=new Map();
+function findingPhotoMarkup(i){
+ const photoId=String(i?.photoId||"").trim();
+ if(photoId)return `<img class="photo photoLoading" data-finding-photo-id="${esc(photoId)}" alt="Finding photo" loading="lazy"><div class="photoError" data-photo-error-for="${esc(photoId)}" style="display:none"></div>`;
+ if(typeof i?.photo==="string"&&i.photo.startsWith("data:image/"))return `<img class="photo" src="${i.photo}" alt="Legacy finding photo" loading="lazy">`;
+ return "";
+}
+async function getFindingPhotoUrl(photoId){
+ const cached=findingPhotoUrlCache.get(photoId),now=Date.now();
+ if(cached&&cached.expiresAt>now)return cached.url;
+ const d=await apiJSON(`/api/photos/${encodeURIComponent(photoId)}/url`);
+ const url=String(d?.url||"");
+ if(!url)throw new Error("Photo URL was not returned by the server.");
+ findingPhotoUrlCache.set(photoId,{url,expiresAt:now+Math.max(60,Number(d.expiresIn||600)-120)*1000});
+ return url;
+}
+function hydrateFindingPhotos(){
+ document.querySelectorAll("img[data-finding-photo-id]").forEach(img=>{
+   if(img.dataset.loading==="1"||img.dataset.loaded==="1")return;
+   const photoId=img.dataset.findingPhotoId;if(!photoId)return;
+   img.dataset.loading="1";
+   getFindingPhotoUrl(photoId).then(url=>{
+     if(!img.isConnected)return;
+     img.src=url;img.dataset.loaded="1";img.dataset.loading="0";img.classList.remove("photoLoading");
+   }).catch(e=>{
+     img.dataset.loading="0";img.classList.remove("photoLoading");img.style.display="none";
+     const er=document.querySelector(`[data-photo-error-for="${CSS.escape(photoId)}"]`);if(er){er.textContent=e.message||"Photo unavailable";er.style.display="block";}
+   });
+ });
+}
+function setFindingPhotoStatus(text,isError=false){
+ const el=document.getElementById("findingPhotoStatus");if(!el)return;el.textContent=text||"";el.style.color=isError?"#b42318":"";
+}
+async function browserCompressFindingPhoto(file){
+ if(!file||!file.size)return null;
+ if(file.size>25*1024*1024)throw new Error("Photo is larger than 25 MB. Please retake it at normal camera resolution.");
+ setFindingPhotoStatus("Preparing photo…");
+ try{
+   const bitmap=await createImageBitmap(file,{imageOrientation:"from-image"});
+   const max=1920,scale=Math.min(1,max/Math.max(bitmap.width,bitmap.height)),w=Math.max(1,Math.round(bitmap.width*scale)),h=Math.max(1,Math.round(bitmap.height*scale));
+   const canvas=document.createElement("canvas");canvas.width=w;canvas.height=h;
+   const ctx=canvas.getContext("2d",{alpha:false});ctx.drawImage(bitmap,0,0,w,h);bitmap.close?.();
+   const blob=await new Promise((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error("Photo compression failed.")),"image/jpeg",0.82));
+   return new File([blob],String(file.name||"finding-photo").replace(/\.[^.]+$/,"")+".jpg",{type:"image/jpeg",lastModified:Date.now()});
+ }catch(e){
+   // Some iPhone/HEIC browser versions cannot decode locally. The server has a second conversion path.
+   console.warn("Browser photo compression fallback:",e);
+   return file;
+ }
+}
+async function uploadFindingPhoto(file,workOrderId,findingId){
+ const prepared=await browserCompressFindingPhoto(file);
+ setFindingPhotoStatus(`Uploading photo${prepared?.size?` (${Math.max(1,Math.round(prepared.size/1024))} KB)`:""}…`);
+ const fd=new FormData();fd.append("photo",prepared,prepared.name||"finding-photo.jpg");fd.append("workOrderId",String(workOrderId));
+ const r=await fetch(`/api/findings/${encodeURIComponent(findingId)}/photo`,{method:"POST",headers:authHeaders(),body:fd});
+ let d={};try{d=await r.json()}catch(_){}
+ if(r.status===401){cloudToken="";sessionStorage.removeItem("ittr_cloud_token");throw new Error("Session expired. Log in again.");}
+ if(!r.ok)throw new Error(d.error||`Photo upload failed (${r.status}).`);
+ if(!d.photoId)throw new Error("Server did not return a photo ID.");
+ setFindingPhotoStatus("Photo uploaded successfully.");
+ return d.photoId;
+}
+
 function issueCard(i){
  let w=state.workorders.find(x=>x.id==i.wo);
  return `<div class="card issue">
@@ -3026,7 +3328,7 @@ function issueCard(i){
    </div>
    <p>${esc(i.description)}</p>
    ${i.recommendation?`<div class="muted"><b>Recommended:</b> ${esc(i.recommendation)}</div>`:""}
-   ${i.photo?`<img class="photo" src="${i.photo}">`:""}
+   ${findingPhotoMarkup(i)}
    <div style="margin-top:10px"><b>Customer decision:</b> ${approvalBadge(i)}</div>
    ${i.approval==="Proceed"
       ?'<div class="muted" style="margin-top:8px">Admin approved this repair. Complete it once it appears in the work-order task list.</div>'
@@ -3082,7 +3384,7 @@ function findingRecordCard(i,w){
  return `<div class="findingRecord ${resolved?"findingResolved":""}">
   <div class="findingRecordTop"><div><div class="muted">${esc(i.severity||"Needs Attention")} · ${esc(findingTimeLabel(i))}${i.mechanic?` · ${esc(mechanicDisplay(i.mechanic))}`:""}</div><div class="findingProblem">${esc(i.description||"No description")}</div></div>${approvalBadge(i)}</div>
   ${i.recommendation?`<div class="muted"><b>Recommended:</b> ${esc(i.recommendation)}</div>`:""}
-  ${i.photo?`<img class="photo" src="${i.photo}">`:""}
+  ${findingPhotoMarkup(i)}
   ${i.adminNote?`<div class="outcomeNoteBox"><b>Admin / customer note:</b> ${esc(i.adminNote)}</div>`:""}
   <div class="findingDecisionActions">
    <button class="success" onclick="setApproval(${i.id},'Proceed')">Proceed</button>
@@ -3134,7 +3436,7 @@ function adminIssueCard(i){
    </div>
    <p><b>Problem:</b> ${esc(i.description)}</p>
    ${i.recommendation?`<div class="muted"><b>Recommended repair:</b> ${esc(i.recommendation)}</div>`:""}
-   ${i.photo?`<img class="photo" src="${i.photo}">`:""}
+   ${findingPhotoMarkup(i)}
    ${i.adminNote?`<div class="card" style="background:#fafafa;margin-top:10px"><b>Admin note:</b><div>${esc(i.adminNote)}</div></div>`:""}
    <div class="decision">
      <button class="success" onclick="setApproval(${i.id},'Proceed')">Proceed</button>
@@ -3203,7 +3505,7 @@ function addApprovedFindingToWorkOrder(id){
 }
 
 function openWorkOrder(){if(!requireAdmin())return;refreshMechanicSelects();document.getElementById("woModal").classList.add("open")}
-function openIssue(){if(!requireMechanic())return;if(!state.workorders.length)return alert("Create a work order first.");document.getElementById("issueModal").classList.add("open")}
+function openIssue(workOrderId=null){if(!requireMechanic())return;if(!state.workorders.length)return alert(tr("Create a work order first."));const sel=document.getElementById("issueWO");if(workOrderId!=null&&sel)[...sel.options].some(o=>String(o.value)===String(workOrderId))&&(sel.value=String(workOrderId));document.getElementById("issueModal").classList.add("open");updateMobileBackButton()}
 function closeModal(id){
  const modal=document.getElementById(id);
  if(modal) modal.classList.remove("open");
@@ -3228,17 +3530,33 @@ document.getElementById("woForm").onsubmit=e=>{
  e.preventDefault(); if(!requireAdmin())return; let f=new FormData(e.target), unitType=f.get("unitType");
  state.workorders.unshift({
    id:Math.max(1000,...state.workorders.map(x=>x.id))+1,unit:f.get("unit"),customer:f.get("customer"),date:f.get("date"),time:f.get("time"),
-   mechanic:f.get("mechanic"),priority:f.get("priority"),parking:f.get("parking"),unitType,
+   mechanic:f.get("mechanic"),helpers:[],priority:f.get("priority"),parking:f.get("parking"),unitType,
    truckHere:f.get("truckHere")==="on",fleetAuto:unitType==="fleet" ? f.get("fleetAuto")==="on" : false,
    status:"Open",completedAt:"",
    tasks:f.get("tasks").split("\n").map(t=>t.trim()).filter(Boolean).map(t=>newTaskRecord(t)),notes:f.get("notes")
  });
  save();e.target.reset();document.querySelector('[name="fleetAuto"]').checked=true;closeModal("woModal");render();
 };
-document.getElementById("issueForm").onsubmit=e=>{
- e.preventDefault(); if(!requireMechanic())return; let f=new FormData(e.target), file=f.get("photo");
- const finish=(photo)=>{const woId=Number(f.get("wo")),linked=state.workorders.find(w=>w.id===woId),now=new Date();state.issues.unshift({id:Date.now(),wo:woId,unitSnapshot:linked?.unit||"",customerSnapshot:linked?.customer||"",mechanic:session.username,severity:f.get("severity"),description:f.get("description"),recommendation:f.get("recommendation"),photo,status:"Reported",approval:"Waiting for Customer",adminNote:"",convertedToTask:false,created:now.toLocaleString(),createdAt:now.toISOString(),decisionAt:"",decisionBy:""});save();e.target.reset();closeModal("issueModal");render();}
- if(file&&file.size){let r=new FileReader();r.onload=()=>finish(r.result);r.readAsDataURL(file)}else finish("");
+document.getElementById("issueForm").onsubmit=async e=>{
+ e.preventDefault(); if(!requireMechanic())return;
+ const form=e.target,button=form.querySelector('button[type="submit"]');
+ if(button?.disabled)return;
+ const f=new FormData(form),file=f.get("photo"),woId=Number(f.get("wo")),linked=state.workorders.find(w=>w.id===woId);
+ if(!linked)return alert(tr("This work order is no longer available. Refresh and try again."));
+ const findingId=Date.now();
+ let photoId="";
+ try{
+   if(button){button.disabled=true;button.dataset.oldText=button.textContent;button.textContent="Saving…";}
+   setFindingPhotoStatus("");
+   if(file&&file.size)photoId=await uploadFindingPhoto(file,woId,findingId);
+   const now=new Date();
+   state.issues.unshift({id:findingId,wo:woId,unitSnapshot:linked?.unit||"",customerSnapshot:linked?.customer||"",mechanic:session.username,severity:f.get("severity"),description:f.get("description"),recommendation:f.get("recommendation"),photoId,photo:"",status:"Reported",approval:"Waiting for Customer",adminNote:"",convertedToTask:false,created:now.toLocaleString(),createdAt:now.toISOString(),decisionAt:"",decisionBy:""});
+   save();form.reset();setFindingPhotoStatus("");closeModal("issueModal");render();
+ }catch(err){
+   console.error("Finding save/photo upload failed:",err);setFindingPhotoStatus(err.message||"Photo upload failed.",true);alert(err.message||"Finding could not be saved.");
+ }finally{
+   if(button){button.disabled=false;button.textContent=button.dataset.oldText||"Save Finding";delete button.dataset.oldText;}
+ }
 };
 
 function openEdit(id){if(!requireAdmin())return;
@@ -3278,6 +3596,7 @@ document.getElementById("editForm").onsubmit=e=>{
  w.date=f.get("date");
  w.time=f.get("time");
  w.mechanic=f.get("mechanic");
+ w.helpers=(Array.isArray(w.helpers)?w.helpers:[]).filter(u=>String(u).toLowerCase()!==String(w.mechanic||"").toLowerCase());
  w.priority=f.get("priority");
  w.parking=f.get("parking");
  w.unitType=f.get("unitType");
@@ -3293,9 +3612,9 @@ document.getElementById("editForm").onsubmit=e=>{
 function mechanicMarkTruckHere(id){
  if(!requireMechanic())return;
  const w=state.workorders.find(x=>x.id===id);
- if(!w)return alert("Work order could not be found.");
- if(!assignedToCurrentMechanic(w))return alert("This unit is not assigned to you.");
- if(w.status==="Completed")return alert("This work order is already completed.");
+ if(!w)return alert(tr("Work order could not be found."));
+ if(!assignedToCurrentMechanic(w))return alert(tr("This unit is not assigned to you."));
+ if(w.status==="Completed")return alert(tr("This work order is already completed."));
 
  if(w.unitType==="fleet"){
    w.fleetAuto=true;
@@ -3333,8 +3652,13 @@ function taskElapsed(t){
  }
  return ms;
 }
+function taskRunningBy(t,w){return String(t?.runningBy||((t?.startedAt&&!t?.stoppedAt&&!t?.done)?w?.mechanic||"":"")).toLowerCase()}
 function activeTaskIndex(w){
  return (w.tasks||[]).findIndex(t=>t.startedAt && !t.stoppedAt && !t.done);
+}
+function activeTaskIndexForMechanic(w,username){
+ const u=String(username||"").toLowerCase();
+ return (w.tasks||[]).findIndex(t=>t.startedAt&&!t.stoppedAt&&!t.done&&taskRunningBy(t,w)===u);
 }
 
 function normalizedTaskOutcome(t){
@@ -3366,10 +3690,10 @@ function taskOutcomeBadge(t,w=null){
 function openTaskOutcome(workOrderId,taskIndex){
  if(!requireMechanic())return;
  const w=state.workorders.find(x=>x.id===workOrderId);
- if(!w || !visibleToCurrentMechanic(w))return alert("This work order is not active for your account.");
+ if(!w || !visibleToCurrentMechanic(w))return alert(tr("This work order is not active for your account."));
  const t=w.tasks?.[taskIndex];
- if(!t)return alert("Job could not be found.");
- if(t.startedAt && !t.stoppedAt)return alert("Stop the running timer first.");
+ if(!t)return alert(tr("Job could not be found."));
+ if(t.startedAt && !t.stoppedAt)return alert(tr("Stop the running timer first."));
  const form=document.getElementById("taskOutcomeForm");
  form.elements["workOrderId"].value=workOrderId;
  form.elements["taskIndex"].value=taskIndex;
@@ -3385,7 +3709,7 @@ function clearTaskOutcome(workOrderId,taskIndex){
  if(!w || !visibleToCurrentMechanic(w))return;
  const t=w.tasks?.[taskIndex];
  if(!t)return;
- if(t.startedAt && !t.stoppedAt)return alert("Stop the running timer first.");
+ if(t.startedAt && !t.stoppedAt)return alert(tr("Stop the running timer first."));
  t.done=false;
  t.completedAt="";
  t.taskOutcome="";
@@ -3404,6 +3728,25 @@ function sessionDurationMs(s){
  const end=s.ended_at?new Date(s.ended_at).getTime():Date.now();
  return Math.max(0,end-start);
 }
+function mechanicWorkSummaryHTML(w,sessions){
+ const grouped={};
+ const taskByUid=Object.fromEntries((w?.tasks||[]).map(t=>[String(t.uid||""),t]));
+ for(const s of (sessions||[])){
+  const u=String(s.mechanic_username||"").trim();if(!u)continue;
+  const g=grouped[u]||(grouped[u]={total:0,tasks:{}});g.total+=sessionDurationMs(s);
+  const uid=String(s.task_uid||"");const name=s.task_name||taskByUid[uid]?.t||"Job";
+  const t=g.tasks[uid||name]||(g.tasks[uid||name]={name,total:0,sessions:0});t.total+=sessionDurationMs(s);t.sessions++;
+ }
+ for(const t of (w?.tasks||[])){
+  const u=String(t.outcomeBy||"").trim();if(!u)continue;
+  const g=grouped[u]||(grouped[u]={total:0,tasks:{}});const key=String(t.uid||t.t||"");
+  const row=g.tasks[key]||(g.tasks[key]={name:t.t||"Job",total:0,sessions:0});row.outcome=taskOutcomeLabel(t);
+ }
+ const people=Object.entries(grouped);
+ if(!people.length)return '<div class="muted">No mechanic labor has been recorded yet.</div>';
+ return `<div class="mechanicWorkSummaryGrid">${people.map(([u,g])=>`<div class="mechanicWorkPerson"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(mechanicDisplay(u)||u)}</b><b>${fmtDuration(g.total)}</b></div>${Object.values(g.tasks).map(t=>`<div class="mechanicWorkTask"><b>${esc(t.name)}</b><div class="muted">${t.total?fmtDuration(t.total)+" worked":"Outcome recorded"}${t.outcome?` · ${esc(t.outcome)}`:""}</div></div>`).join("")}</div>`).join("")}</div>`;
+}
+
 function taskSessionTimelineHTML(sessions){
  if(!Array.isArray(sessions)||!sessions.length)return "";
  const total=sessions.reduce((sum,x)=>sum+sessionDurationMs(x),0);
@@ -3428,7 +3771,7 @@ function taskSessionTimelineHTML(sessions){
    return `<div style="padding:7px 0;${idx?"border-top:1px dashed #d8dee8;":""}">
       <div><b>${startLabel}:</b> ${fmtDateTime(x.started_at)}</div>
       <div><b>${stopLabel}:</b> ${x.ended_at?fmtDateTime(x.ended_at):"Now"} ${status}</div>
-      <div class="muted">Work time this session: ${fmtDuration(sessionDurationMs(x))}</div>
+      <div class="muted"><b>${esc(mechanicDisplay(x.mechanic_username)||x.mechanic_username||"Mechanic")}</b> · Work time this session: ${fmtDuration(sessionDurationMs(x))}</div>
       ${reason}
    </div>`;
  }).join("");
@@ -3452,6 +3795,9 @@ async function loadWorkOrderTaskSessions(workOrderId){
      const ownSessions=uid?(byUid[uid]||[]):[];
      el.innerHTML=ownSessions.length?taskSessionTimelineHTML(ownSessions):"";
    });
+   const summary=document.querySelector(`[data-mechanic-work-summary-wo="${CSS.escape(String(workOrderId))}"]`);
+   const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
+   if(summary&&w)summary.innerHTML=mechanicWorkSummaryHTML(w,sessions);
  }catch(e){
    document.querySelectorAll(`[data-task-timeline-wo="${CSS.escape(String(workOrderId))}"]`).forEach(el=>{
      el.innerHTML=`<div class="muted" style="margin-top:6px">Timeline unavailable: ${esc(e.message||"Unable to load")}${String(e.message||"").includes("API endpoint not found")?" — frontend/backend version mismatch. Deploy server.js from this same release.":""}</div>`;
@@ -3464,8 +3810,10 @@ function taskTimerRow(w,t,i){
  const running=!!(t.startedAt && !t.stoppedAt && !t.done);
  const outcome=normalizedTaskOutcome(t);
  const completed=outcome==="completed";
- const activeIdx=activeTaskIndex(w);
+ const activeIdx=activeTaskIndexForMechanic(w,session?.username);
  const anotherRunning=activeIdx!==-1 && activeIdx!==i;
+ const runner=taskRunningBy(t,w);
+ const runningByMe=running && runner===String(session?.username||"").toLowerCase();
  let controls="";
 
  if(isMechanic){
@@ -3474,7 +3822,7 @@ function taskTimerRow(w,t,i){
    }else if(t.findingDecision==="Waiting for Customer"){
      controls=`<span class="badge b-wait">WAITING FOR CUSTOMER</span>`;
    }else if(running){
-     controls=`<button class="secondary" onclick="openPauseTask(${w.id},${i})">Ⅱ Pause</button> <button class="success" onclick="stopTask(${w.id},${i})">✓ Complete</button>`;
+     controls=runningByMe?`<button class="secondary" onclick="openPauseTask(${w.id},${i})">Ⅱ Pause</button> <button class="success" onclick="stopTask(${w.id},${i})">✓ Complete</button>`:`<span class="badge b-progress">Working · ${esc(mechanicDisplay(runner)||runner||"Mechanic")}</span>`;
    }else if(completed){
      controls=`<span class="badge b-done">✓ Completed</span>`;
    }else if(["not_completed","next_visit"].includes(outcome)){
@@ -3514,7 +3862,7 @@ function taskTimerRow(w,t,i){
 }
 async function applyTaskServerAction(workOrderId,taskUid,action,extra={}){
  if(!requireMechanic())return false;
- if(!taskUid){alert("This task is missing its permanent ID. Refresh the work order and try again.");return false;}
+ if(!taskUid){alert(tr("This task is missing its permanent ID. Refresh the work order and try again."));return false;}
  try{
    const d=await apiJSON(`/api/work-orders/${encodeURIComponent(workOrderId)}/tasks/by-uid/${encodeURIComponent(taskUid)}/action`,{
      method:"POST",body:JSON.stringify({action,...extra})
@@ -3534,10 +3882,10 @@ async function applyTaskServerAction(workOrderId,taskUid,action,extra={}){
 }
 async function startTask(workOrderId,taskIndex){
  const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
- if(!w || !visibleToCurrentMechanic(w))return alert("You do not have access to this work order.");
- const task=w.tasks?.[taskIndex]; if(!task)return alert("This job could not be found.");
- if(task.findingDecision==="Do Not Proceed")return alert("This repair was declined. Do not perform this task.");
- if(task.findingDecision==="Waiting for Customer")return alert("This repair is waiting for customer approval.");
+ if(!w || !visibleToCurrentMechanic(w))return alert(tr("You do not have access to this work order."));
+ const task=w.tasks?.[taskIndex]; if(!task)return alert(tr("This job could not be found."));
+ if(task.findingDecision==="Do Not Proceed")return alert(tr("This repair was declined. Do not perform this task."));
+ if(task.findingDecision==="Waiting for Customer")return alert(tr("This repair is waiting for customer approval."));
  const au=USERS;
  if(au?.[session.username]?.currentActivity?.code){closeCurrentMechanicActivity(au,session.username);try{saveUsers(au)}catch(e){saveUsers()}}
  await applyTaskServerAction(workOrderId,task.uid,"start");
@@ -3546,8 +3894,8 @@ function openPauseTask(workOrderId,taskIndex){
  if(!requireMechanic())return;
  const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
  const t=w?.tasks?.[taskIndex];
- if(!t)return alert("This job could not be found.");
- if(!(t.startedAt&&!t.stoppedAt&&!t.done))return alert("This job is not currently running.");
+ if(!t)return alert(tr("This job could not be found."));
+ if(!(t.startedAt&&!t.stoppedAt&&!t.done))return alert(tr("This job is not currently running."));
  const f=document.getElementById("taskPauseForm");
  f.elements["workOrderId"].value=workOrderId;
  f.elements["taskIndex"].value=taskIndex;
@@ -3559,21 +3907,21 @@ function openPauseTask(workOrderId,taskIndex){
 async function pauseTask(workOrderId,taskIndex,reason,note=""){
  const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
  const task=w?.tasks?.[taskIndex];
- if(!task)return alert("This task no longer exists. Refresh the work order.");
+ if(!task)return alert(tr("This task no longer exists. Refresh the work order."));
  const ok=await applyTaskServerAction(workOrderId,task.uid,"pause",{reason,note});
  if(ok)closeModal("taskPauseModal");
 }
 async function resumeTask(workOrderId,taskIndex){
  const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
  const task=w?.tasks?.[taskIndex];
- if(!task)return alert("This task no longer exists. Refresh the work order.");
+ if(!task)return alert(tr("This task no longer exists. Refresh the work order."));
  await applyTaskServerAction(workOrderId,task.uid,"resume");
 }
 async function stopTask(workOrderId,taskIndex){
  const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
  const task=w?.tasks?.[taskIndex];
- if(!task)return alert("This task no longer exists. Refresh the work order.");
- if(!confirm("Mark this job as completed?"))return;
+ if(!task)return alert(tr("This task no longer exists. Refresh the work order."));
+ if(!confirm(tr("Mark this job as completed?")))return;
  await applyTaskServerAction(workOrderId,task.uid,"complete");
 }
 
@@ -3596,6 +3944,8 @@ function workOrderNotesBlock(w){
      if(h.type==="truck_arrived"){
        return `<div class="historyitem"><b>Truck marked here</b> · ${fmtDateTime(h.at)}<div class="muted">${esc(h.byDisplay||h.by||"")}</div></div>`;
      }
+     if(h.type==="helper_added"){return `<div class="historyitem"><b>Helper added: ${esc(h.helperDisplay||mechanicDisplay(h.helper)||h.helper||"")}</b> · ${fmtDateTime(h.at)}<div class="muted">Added by ${esc(h.byDisplay||h.by||"")}</div></div>`;}
+     if(h.type==="helper_removed"){return `<div class="historyitem"><b>Helper removed: ${esc(mechanicDisplay(h.helper)||h.helper||"")}</b> · ${fmtDateTime(h.at)}<div class="muted">By ${esc(h.byDisplay||h.by||"")}</div></div>`;}
      if(h.type==="task_outcome"){
        const label=h.outcome==="next_visit"?"Next Visit":"Not Completed";
        return `<div class="historyitem"><b>${esc(h.task||"Job")} — ${label}</b> · ${fmtDateTime(h.at)}<div class="muted">${esc(h.note||"")} · ${esc(h.byDisplay||h.by||"")}</div></div>`;
@@ -3609,9 +3959,9 @@ function workOrderNotesBlock(w){
 
 function openDetail(id){
  let w=state.workorders.find(x=>x.id===id); if(!w)return; if(session?.role==="mechanic"){
- const ownCompleted=w.status==="Completed" && (w.completedBy===session.username || w.mechanic===session.username);
+ const ownCompleted=w.status==="Completed" && (w.completedBy===session.username || mechanicAssignedToWorkOrder(w,session.username) || (w.tasks||[]).some(t=>t.outcomeBy===session.username));
  const ownUpcoming=upcomingForCurrentMechanic(w);
- if(!visibleToCurrentMechanic(w) && !ownCompleted && !ownUpcoming) return alert("You do not have access to this work order.");
+ if(!visibleToCurrentMechanic(w) && !ownCompleted && !ownUpcoming) return alert(tr("You do not have access to this work order."));
 }
  document.getElementById("detailTitle").textContent=session?.role==="mechanic"?`Unit ${w.unit}`:`Work Order #${w.id} — ${w.unit}`;
  const adminControls=(session?.role==="admin" && w.status!=="Completed")?`
@@ -3625,25 +3975,56 @@ function openDetail(id){
  `:"");
  const mechanicControls=(session?.role==="mechanic" && visibleToCurrentMechanic(w))?`
   <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
-   ${w.status!=="Completed"?`<button onclick="setStatus(${w.id},'In Progress')">Start Work Order</button><button onclick="openCompleteWithNotes(${w.id})">Complete Work Order</button><button class="secondary" onclick="closeModal('detailModal');openIssue()">Add Inspection Finding</button>`:""}
+   ${w.status!=="Completed"?`<button onclick="setStatus(${w.id},'In Progress')">Start Work Order</button><button onclick="openCompleteWithNotes(${w.id})">Complete Work Order</button><button class="secondary" onclick="closeModal('detailModal');openIssue(${w.id})">Add Inspection Finding</button>`:""}
   </div>`:
  (session?.role==="mechanic" && upcomingForCurrentMechanic(w)?`
   <div class="notice" style="margin-top:14px">This unit is assigned to you but is still marked as on the way.</div>
   <div style="margin-top:10px"><button class="success" onclick="mechanicMarkTruckHere(${w.id});closeModal('detailModal')">✓ Truck Is Here</button></div>`:
- (session?.role==="mechanic" && w.status==="Completed" && (w.completedBy===session.username || w.mechanic===session.username)?`
-  <div style="margin-top:14px"><button class="secondary" onclick="closeModal('detailModal');openReactivate(${w.id})">Reactivate / Add Missed Work</button></div>`:
+ (session?.role==="mechanic" && w.status==="Completed" && (w.completedBy===session.username || mechanicAssignedToWorkOrder(w,session.username) || (w.tasks||[]).some(t=>t.outcomeBy===session.username))?`
+  <div style="margin-top:14px">${(w.completedBy===session.username || w.mechanic===session.username)?`<button class="secondary" onclick="closeModal('detailModal');openReactivate(${w.id})">Reactivate / Add Missed Work</button>`:`<div class="notice">You participated in this work order. Only the primary/completing mechanic can reactivate it.</div>`}</div>`:
  (session?.role==="mechanic"?`<div class="notice" style="margin-top:14px">This work order is not assigned/released to your mechanic account.</div>`:"")));
  document.getElementById("detailBody").innerHTML=`
-  <div class="muted">${esc(w.customer)} · ${esc(w.date)} ${esc(w.time)} · Mechanic: ${esc(mechanicDisplay(w.mechanic))} · Parking: ${esc(w.parking||"—")}</div>
+  <div class="muted">${esc(w.customer)} · ${esc(w.date)} ${esc(w.time)} · Parking: ${esc(w.parking||"—")}</div>
+  <div class="assignmentStrip">${assignmentChips(w)}</div>
+  ${(session?.role==="admin" || (session?.role==="mechanic"&&visibleToCurrentMechanic(w)))&&w.status!=="Completed"?`<div class="helperActions"><button type="button" class="secondary" onclick="openAddHelper(${w.id})">+ Add Helper Mechanic</button>${session?.role==="admin"?(w.helpers||[]).map(u=>`<button type="button" class="danger" data-helper="${encodeURIComponent(u)}" onclick="removeHelperMechanic(${w.id},decodeURIComponent(this.dataset.helper))">Remove ${esc(mechanicDisplay(u))}</button>`).join(""):""}</div>`:""}
   <p><b>Priority:</b> ${esc(w.priority)} &nbsp; <b>Status:</b> ${esc(w.status)} &nbsp; ${availabilityBadge(w)} ${w.isReactivated?'<span class="badge b-wait">Reactivated</span>':""}</p>
   ${w.notes?`<div class="card" style="background:#fafafa"><b>Notes</b><div>${esc(w.notes)}</div></div>`:""}
   <h2 style="margin-top:16px">Assigned Jobs</h2>
   ${w.status==="Completed" && Number(w.outcomeWorkflowVersion||0)===0?`<div class="notice" style="margin-bottom:10px">This work order was completed before per-job outcomes were introduced. Missing outcomes are historical only and do not require action.</div>`:""}
   ${w.tasks.map((t,i)=>taskTimerRow(w,t,i)).join("")}
-  ${workOrderNotesBlock(w)}${adminControls}
+  ${workOrderNotesBlock(w)}
+  ${w.status==="Completed"?`<div style="margin-top:12px"><button class="secondary" onclick="downloadWorkOrderPDF(${w.id})">Download Work Order PDF</button></div>`:""}
+  <div class="card mechanicWorkSummary"><h2 style="margin:0">Mechanic Work Summary</h2><div class="muted">Who worked on each job and their recorded labor time.</div><div data-mechanic-work-summary-wo="${esc(String(w.id))}" style="margin-top:8px"><div class="muted">Loading mechanic labor…</div></div></div>
+  ${adminControls}
   ${mechanicControls}`;
  document.getElementById("detailModal").classList.add("open");
  loadWorkOrderTaskSessions(w.id);
+}
+
+
+async function downloadWorkOrderPDF(id){
+ try{
+  const r=await fetch(`/api/work-orders/${encodeURIComponent(id)}/pdf`,{headers:authHeaders(),cache:"no-store"});
+  if(!r.ok){
+   let msg=`PDF download failed (${r.status}).`;
+   try{const d=await r.json();if(d?.error)msg=d.error}catch(_){}
+   if(r.status===401){
+    cloudToken="";
+    sessionStorage.removeItem("ittr_cloud_token");
+    session=null;
+    sessionStorage.removeItem("ittr_session");
+    showLogin();
+   }
+   throw new Error(msg);
+  }
+  const blob=await r.blob();
+  const cd=r.headers.get("content-disposition")||"";
+  const m=cd.match(/filename="?([^";]+)"?/i);
+  const name=m?m[1]:`ITTR-Work-Order-${id}.pdf`;
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+ }catch(e){alert(e.message||"Unable to download work order PDF.");}
 }
 
 function deleteWorkOrder(id){
@@ -3670,11 +4051,19 @@ function setStatus(id,s){if(!requireMechanic())return;let w=state.workorders.fin
 function completeIssue(id){if(!requireMechanic())return;let i=state.issues.find(x=>x.id===id);i.status="Completed";save();render()}
 
 
+
+const helperFormEl=document.getElementById("helperForm");
+if(helperFormEl)helperFormEl.onsubmit=e=>{
+ e.preventDefault();
+ const f=new FormData(e.target);
+ addHelperMechanic(Number(f.get("workOrderId")),String(f.get("username")||""));
+};
+
 const passwordFormEl=document.getElementById("passwordForm");
 if(passwordFormEl)passwordFormEl.onsubmit=async e=>{
  e.preventDefault();if(!requireAdmin())return;
  const f=new FormData(e.target),username=String(f.get("username")||""),password=String(f.get("password")||""),confirmPassword=String(f.get("confirmPassword")||"");
- if(password.length<6)return alert("Password must be at least 6 characters.");if(password!==confirmPassword)return alert("Passwords do not match.");
+ if(password.length<6)return alert(tr("Password must be at least 6 characters."));if(password!==confirmPassword)return alert(tr("Passwords do not match."));
  try{await apiJSON(`/api/admin/users/${encodeURIComponent(username)}/password`,{method:"PATCH",body:JSON.stringify({password})});closeModal("passwordModal");alert(`Password changed for ${USERS[username]?.display||username}.`)}catch(ex){alert(ex.message)}
 };
 
@@ -3694,13 +4083,13 @@ if(taskOutcomeFormEl)taskOutcomeFormEl.onsubmit=e=>{
  const taskIndex=Number(f.get("taskIndex"));
  const outcome=String(f.get("outcome")||"");
  const note=String(f.get("note")||"").trim();
- if(!["not_completed","next_visit"].includes(outcome))return alert("Choose Not Completed or Next Visit.");
- if(!note)return alert("Please enter a reason or next-visit note.");
+ if(!["not_completed","next_visit"].includes(outcome))return alert(tr("Choose Not Completed or Next Visit."));
+ if(!note)return alert(tr("Please enter a reason or next-visit note."));
  const w=state.workorders.find(x=>x.id===workOrderId);
- if(!w || !visibleToCurrentMechanic(w))return alert("This work order is not active for your account.");
+ if(!w || !visibleToCurrentMechanic(w))return alert(tr("This work order is not active for your account."));
  const t=w.tasks?.[taskIndex];
- if(!t)return alert("Job could not be found.");
- if(t.startedAt && !t.stoppedAt)return alert("Stop the running timer first.");
+ if(!t)return alert(tr("Job could not be found."));
+ if(t.startedAt && !t.stoppedAt)return alert(tr("Stop the running timer first."));
  t.done=false;
  t.completedAt="";
  t.taskOutcome=outcome;
@@ -3715,25 +4104,50 @@ if(taskOutcomeFormEl)taskOutcomeFormEl.onsubmit=e=>{
  openDetail(workOrderId);
 };
 
+function coreReleaseVersion(v){
+ const m=String(v||"").match(/\d+\.\d+\.\d+/);
+ return m?m[0]:String(v||"").trim();
+}
 async function verifyReleaseCompatibility(){
  try{
-  const r=await fetch("/api/health",{cache:"no-store"});
+  const r=await fetch("/api/build",{cache:"no-store"});
+  if(!r.ok)throw new Error(`Build check failed (${r.status})`);
   const d=await r.json();
-  const backend=String(d?.version||"unknown");
-  if(!backend.startsWith("22.3.")){
-   const b=document.getElementById("appErrorBanner");
-   if(b){b.style.display="block";b.textContent=`VERSION MISMATCH — Frontend but backend is ${backend}. Replace/deploy server.js from the same frontend/backend release. Timeline and transactional features may not work until versions match.`;}
+  const backend=coreReleaseVersion(d?.backend||"unknown");
+  const expected=coreReleaseVersion(FRONTEND_VERSION);
+  const b=document.getElementById("appErrorBanner");
+  if(backend!==expected){
+   if(b){
+    b.style.display="block";
+    b.textContent=`VERSION MISMATCH — Frontend ${expected} but backend ${backend}. Deploy index.html and server.js from the same release.`;
+   }
    return false;
+  }
+  if(b && String(b.textContent||"").startsWith("VERSION MISMATCH")){
+   b.style.display="none";
+   b.textContent="";
   }
   return true;
  }catch(e){
   const b=document.getElementById("appErrorBanner");
-  if(b){b.style.display="block";b.textContent="BACKEND HEALTH CHECK FAILED — The browser cannot verify the deployed server version.";}
+  if(b){
+   b.style.display="block";
+   b.textContent=`BACKEND BUILD CHECK FAILED — ${e.message||"Unable to verify deployed server version."}`;
+  }
   return false;
  }
 }
 
 document.addEventListener("DOMContentLoaded",async()=>{
+ const mobileChromeResize=()=>{
+   if(window.visualViewport){document.body.classList.toggle("keyboardOpen",window.visualViewport.height < window.innerHeight*0.72);}
+   syncMobileChrome();
+ };
+ window.addEventListener("resize",mobileChromeResize,{passive:true});
+ window.addEventListener("orientationchange",()=>setTimeout(mobileChromeResize,150),{passive:true});
+ window.visualViewport?.addEventListener("resize",mobileChromeResize,{passive:true});
+ if(window.ResizeObserver){const ro=new ResizeObserver(syncMobileChrome);const n=document.getElementById("mobileBottomNav"),h=document.querySelector("header");if(n)ro.observe(n);if(h)ro.observe(h);}
+ mobileChromeResize();
  await verifyReleaseCompatibility();
  startAITranslationObserver();
  const aiToggle=document.getElementById("aiTranslateEnabled");if(aiToggle)aiToggle.checked=aiTranslationEnabled;
