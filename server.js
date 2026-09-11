@@ -19,6 +19,8 @@ const {Pool}=pg;
 const FMCSA_WEBKEY=String(process.env.FMCSA_WEBKEY||"").trim();
 const FMCSA_API_BASE="https://mobile.fmcsa.dot.gov/qc/services";
 const fmcsaCache=new Map();
+const NHTSA_VPIC_BASE="https://vpic.nhtsa.dot.gov/api/vehicles";
+const vinDecodeCache=new Map();
 const app=express();
 const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:20*1024*1024}});
 const photoUpload=multer({
@@ -487,7 +489,7 @@ async function lookupFmcsaCarrier(dot){
  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
  try{
   const url=`${FMCSA_API_BASE}/carriers/${encodeURIComponent(usdot)}?webKey=${encodeURIComponent(FMCSA_WEBKEY)}`;
-  const r=await fetch(url,{headers:{Accept:"application/json","User-Agent":"ITTR-ShopFlow/23.9"},signal:ctl.signal});
+  const r=await fetch(url,{headers:{Accept:"application/json","User-Agent":"ITTR-ShopFlow/23.10"},signal:ctl.signal});
   let data=null;try{data=await r.json()}catch{}
   if(r.status===404)throw Object.assign(new Error(`No FMCSA carrier found for USDOT ${usdot}.`),{status:404,code:"FMCSA_NOT_FOUND"});
   if(r.status===401||r.status===403)throw Object.assign(new Error("FMCSA rejected the WebKey. Check FMCSA_WEBKEY in Railway."),{status:502,code:"FMCSA_AUTH"});
@@ -499,6 +501,46 @@ async function lookupFmcsaCarrier(dot){
 }
 app.get("/api/fmcsa/status",auth,adminOnly,(req,res)=>res.json({configured:Boolean(FMCSA_WEBKEY),provider:"FMCSA QCMobile / SAFER",official:true}));
 app.get("/api/fmcsa/carriers/:dotNumber",auth,adminOnly,async(req,res)=>{try{const item=await lookupFmcsaCarrier(req.params.dotNumber);res.json({item,source:"FMCSA QCMobile API",official:true,checkedAt:new Date().toISOString()})}catch(e){res.status(e.status||500).json({error:e.message||"FMCSA lookup failed.",code:e.code||"FMCSA_LOOKUP"})}});
+function cleanVin(value){return String(value||"").trim().toUpperCase().replace(/\s+/g,"")}
+function vinCoreValid(vin){return /^[A-HJ-NPR-Z0-9]{17}$/.test(vin)}
+function textOrEmpty(v){return v==null?"":String(v).trim()}
+function normalizeNhtsaVin(raw,vin){
+ const transmission=[textOrEmpty(raw.TransmissionStyle),raw.TransmissionSpeeds?`${textOrEmpty(raw.TransmissionSpeeds)}-speed`:""].filter(Boolean).join(" ").trim();
+ const engineParts=[];
+ if(raw.EngineManufacturer)engineParts.push(textOrEmpty(raw.EngineManufacturer));
+ if(raw.EngineModel)engineParts.push(textOrEmpty(raw.EngineModel));
+ if(raw.DisplacementL)engineParts.push(`${textOrEmpty(raw.DisplacementL)}L`);
+ if(raw.EngineCylinders)engineParts.push(`${textOrEmpty(raw.EngineCylinders)} cyl`);
+ const errorCode=textOrEmpty(raw.ErrorCode),errorText=textOrEmpty(raw.ErrorText);
+ return {
+  vin,
+  year:textOrEmpty(raw.ModelYear),make:textOrEmpty(raw.Make),model:textOrEmpty(raw.Model),manufacturer:textOrEmpty(raw.Manufacturer),
+  vehicleType:textOrEmpty(raw.VehicleType),bodyClass:textOrEmpty(raw.BodyClass),series:textOrEmpty(raw.Series),trim:textOrEmpty(raw.Trim),cabType:textOrEmpty(raw.CabType),
+  gvwr:textOrEmpty(raw.GVWR),driveType:textOrEmpty(raw.DriveType),fuelType:textOrEmpty(raw.FuelTypePrimary),
+  engine:engineParts.join(" ").trim(),engineManufacturer:textOrEmpty(raw.EngineManufacturer),engineModel:textOrEmpty(raw.EngineModel),engineCylinders:textOrEmpty(raw.EngineCylinders),displacementL:textOrEmpty(raw.DisplacementL),
+  transmission,transmissionStyle:textOrEmpty(raw.TransmissionStyle),transmissionSpeeds:textOrEmpty(raw.TransmissionSpeeds),
+  plantCity:textOrEmpty(raw.PlantCity),plantState:textOrEmpty(raw.PlantState),plantCountry:textOrEmpty(raw.PlantCountry),
+  errorCode,errorText,valid:errorCode==="0" || (!errorCode && Boolean(raw.Make||raw.ModelYear)),raw
+ };
+}
+async function lookupNhtsaVin(value){
+ const vin=cleanVin(value);
+ if(!vinCoreValid(vin))throw Object.assign(new Error("Enter a valid 17-character VIN. VINs cannot contain I, O, or Q."),{status:400,code:"VIN_INVALID"});
+ const cached=vinDecodeCache.get(vin);if(cached&&Date.now()-cached.at<24*60*60*1000)return cached.data;
+ const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
+ try{
+  const url=`${NHTSA_VPIC_BASE}/DecodeVinValues/${encodeURIComponent(vin)}?format=json`;
+  const r=await fetch(url,{headers:{Accept:"application/json","User-Agent":"ITTR-ShopFlow/23.10"},signal:ctl.signal});
+  if(!r.ok)throw Object.assign(new Error(`NHTSA VIN service returned ${r.status}. Try again shortly.`),{status:502,code:"NHTSA_UPSTREAM"});
+  const data=await r.json(),raw=Array.isArray(data?.Results)?data.Results[0]:null;
+  if(!raw)throw Object.assign(new Error("NHTSA returned no VIN decode record."),{status:502,code:"NHTSA_EMPTY"});
+  const item=normalizeNhtsaVin(raw,vin);
+  if(!item.year&&!item.make&&!item.model)throw Object.assign(new Error(item.errorText||"NHTSA could not identify this VIN."),{status:422,code:"VIN_NOT_DECODED",details:item});
+  vinDecodeCache.set(vin,{at:Date.now(),data:item});return item;
+ }catch(e){if(e?.name==="AbortError")throw Object.assign(new Error("NHTSA VIN lookup timed out. Try again."),{status:504,code:"NHTSA_TIMEOUT"});throw e}finally{clearTimeout(timer)}
+}
+app.get("/api/vin/status",auth,(req,res)=>res.json({configured:true,provider:"NHTSA vPIC",official:true,keyRequired:false}));
+app.get("/api/vin/:vin",auth,async(req,res)=>{try{const item=await lookupNhtsaVin(req.params.vin);res.json({item,source:"NHTSA vPIC",official:true,decodedAt:new Date().toISOString()})}catch(e){res.status(e.status||500).json({error:e.message||"VIN decode failed.",code:e.code||"VIN_LOOKUP",details:e.details||undefined})}});
 function customerPublic(row){if(!row)return null;const x={...row};delete x.raw;return x}
 app.get("/api/customers",auth,adminOnly,async(req,res)=>{
  const warnings=[];
@@ -560,7 +602,7 @@ app.get("/api/customer-units/suggest",auth,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"23.9.0",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"23.10.0",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -572,8 +614,8 @@ app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
   out.ok=true;res.json(out);
  }catch(e){out.error=String(e?.message||e).slice(0,500);console.error("Customer CRM diagnostics failed:",e);res.status(500).json(out)}
 });
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.9.0",backend:"23.9.0",build:"ITTR-23.9.0-FMCSA-SAFER-AUTOFILL-20260911"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"23.9.0",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"23.10.0",backend:"23.10.0",build:"ITTR-23.10.0-NHTSA-VIN-AUTOFILL-20260911"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"23.10.0",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -1502,7 +1544,7 @@ app.post("/api/ai/note",auth,async(req,res)=>{try{const text=String(req.body?.te
 app.post("/api/ai/diagnostic",auth,async(req,res)=>{try{const text=String(req.body?.text||"").trim();if(!text)return res.status(400).json({error:"text required"});res.json({result:await textAI("You are a diagnostic assistant for professional heavy-duty diesel technicians. Provide a prioritized diagnostic plan, likely systems/causes, tests and measurements to verify. Clearly distinguish possibilities from confirmed facts. Do not claim a diagnosis without evidence. Include safety cautions when a test requires vehicle lifting, rotating components, fuel pressure, high voltage, air pressure, or hot systems.",text)})}catch(e){return aiErrorResponse(res,e,"AI diagnostic failed")}});
 app.post("/api/ai/part",auth,async(req,res)=>{try{const vin=String(req.body?.vin||"").trim(),query=String(req.body?.query||"").trim();if(!query)return res.status(400).json({error:"query required"});res.json({result:await textAI("You assist a professional heavy-duty truck parts counter. Analyze the supplied part number/description and VIN context. List likely OEM numbers, supersessions, cross-reference candidates, manufacturer/application clues, and practical verification steps. Never present an uncertain cross-reference or fitment as confirmed. Clearly label each candidate as VERIFIED FROM PROVIDED FACTS, LIKELY / NEEDS CATALOG VERIFICATION, or INSUFFICIENT INFORMATION. Do not invent a part number just to provide an answer. End with a short 'Verify before ordering' checklist.",`VIN: ${vin||"not supplied"}\nPart/query: ${query}`)})}catch(e){return aiErrorResponse(res,e,"AI part assistant failed")}});
 app.post("/api/ai/productivity-summary",auth,adminOnly,async(req,res)=>{try{const period=String(req.body?.period||"").slice(0,120),sessions=Array.isArray(req.body?.sessions)?req.body.sessions.slice(0,1000):[];res.json({result:await textAI("You are an operations analyst for a heavy-duty truck repair shop. Summarize the supplied factual mechanic task-session history for management. Focus on recorded repair labor, workload distribution, units/tasks worked, completed sessions, unusually long or fragmented jobs, and useful follow-up questions. Do not rank mechanics as good/bad and do not infer productivity percentage, attendance, idle time, or performance from missing data. Clearly state that the report is based only on recorded task sessions.",`Period: ${period}\nRecorded task sessions JSON:\n${JSON.stringify(sessions)}`)})}catch(e){return aiErrorResponse(res,e,"AI productivity summary failed")}});
-app.post("/api/vin",auth,async(req,res)=>{try{const vin=String(req.body?.vin||"").trim();if(vin.length!==17)return res.status(400).json({error:"17-character VIN required"});res.json({result:await textAI("Given a 17-character heavy-duty vehicle VIN, return ONLY a JSON object with keys year, make, model, engine, transmission. Use empty strings for anything not reliably determined. Do not guess.",vin)})}catch(e){return aiErrorResponse(res,e,"VIN decode failed")}});
+app.post("/api/vin",auth,async(req,res)=>{try{const item=await lookupNhtsaVin(req.body?.vin);res.json({result:item,item,source:"NHTSA vPIC",official:true,decodedAt:new Date().toISOString()})}catch(e){res.status(e.status||500).json({error:e.message||"VIN decode failed.",code:e.code||"VIN_LOOKUP",details:e.details||undefined})}});
 app.post("/api/transcribe",auth,upload.single("audio"),async(req,res)=>{try{if(!req.file)return res.status(400).json({error:"audio required"});const file=new File([req.file.buffer],req.file.originalname||"note.webm",{type:req.file.mimetype||"audio/webm"});const t=await requireAIClient().audio.transcriptions.create({file,model:process.env.OPENAI_TRANSCRIBE_MODEL||"gpt-4o-transcribe"});res.json({text:t.text||""})}catch(e){return aiErrorResponse(res,e,"transcription failed")}});
 
 app.get("/api/admin/server-audit",auth,adminOnly,async(req,res,next)=>{try{const q=await requireDb().query("SELECT username,action,details,created_at FROM server_audit ORDER BY id DESC LIMIT 500");res.json({rows:q.rows})}catch(e){next(e)}});
@@ -1526,5 +1568,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(()=>app.listen(port,()=>console.log(`ITTR v23.9.0 Online running on port ${port}`)))
+  .then(()=>app.listen(port,()=>console.log(`ITTR v23.10.0 Online running on port ${port}`)))
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

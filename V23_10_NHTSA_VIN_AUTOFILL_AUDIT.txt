@@ -1,0 +1,13 @@
+ITTR v23.10.0 NHTSA VIN AUTO-FILL
+
+Provider: U.S. DOT / NHTSA vPIC official VIN decoder.
+No API key required.
+
+Behavior:
+- 17-character VIN validation excludes I, O, Q.
+- Server-side NHTSA request with 10 second timeout and 24-hour in-memory cache.
+- Customer Unit editor auto-decodes at 17 characters and fills blank Year/Make/Model/Engine/Transmission.
+- Existing populated fields remain untouched until user chooses Replace.
+- Vehicle Profiles use the same official decode route.
+- Raw NHTSA response is returned to the authenticated browser only for the active lookup; it is not persisted by this release.
+- FMCSA integration and prior Fullbay inventory SQL fix preserved.
