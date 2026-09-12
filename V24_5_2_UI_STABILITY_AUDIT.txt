@@ -1,0 +1,42 @@
+ITTR v24.5.2 — Responsive UI Stability Audit
+Date: 2026-09-12
+
+Primary regression fixed
+- Mobile "More" bottom sheet had no desktop default CSS, so its raw HTML rendered as normal page content on desktop.
+- Added desktop-safe hidden defaults for .mobileMoreSheet and .mobileMoreBtn.
+- Added explicit desktop breakpoint enforcement so mobile navigation chrome cannot leak into desktop views.
+- openMobileMore() now no-ops on desktop.
+- If the viewport grows above the mobile breakpoint while the sheet is open (rotation/resize/devtools), the sheet closes automatically.
+
+Responsive/navigation hardening
+- Desktop: mobile bottom nav + mobile More sheet forcibly hidden.
+- Mobile: More sheet remains an overlay/bottom sheet only, above normal application content.
+- More sheet uses one/two-column responsive layout and safe-area padding.
+- Existing nested modal z-index fixes for barcode scanner, inventory count, task pause/outcome/helpers remain preserved.
+- Modal overscroll containment retained/improved.
+
+Performance/interaction polish
+- Mobile chrome resize work is requestAnimationFrame-throttled to reduce repeated layout work during browser resize, keyboard animation, and orientation changes.
+- Focus-visible treatment added for keyboard/accessibility navigation.
+- Small interaction transitions added without heavy animations.
+- Existing cloud refresh intervals and core business logic were intentionally left unchanged.
+
+Static audit results
+- server.js node --check: PASS
+- extracted frontend JavaScript node --check: PASS
+- duplicate DOM IDs: 0
+- duplicate Express method/path routes: 0
+- PostgreSQL placeholder gap audit: 0
+- root index.html == public/index.html: PASS
+- inline-handler undefined-function audit: no missing application handlers found
+- destructive database reset/migration added: NO
+- v23.7.1 Fullbay inventory INSERT placeholder fix: preserved
+- v24.3.2 nested mobile scanner behavior: preserved
+- v24.4.x paid OpenRouter invoice workflow: preserved
+- v24.5.1 manufacturer barcode + physical inventory count + receiving transaction safeguards: preserved
+
+Deployment
+- Deploy over the same Railway service and PostgreSQL database.
+- Do not reset PostgreSQL.
+- Do not re-import Fullbay solely for this release.
+- After deployment hard-refresh the browser and verify frontend/backend 24.5.2.

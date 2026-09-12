@@ -1,0 +1,36 @@
+ITTR v24.5.3 — Smart Receiving + Runtime Audit
+
+ROOT CAUSE FIXED
+- server.js is an ES module (package.json type=module) and already imports crypto.
+- Two newer parts routes incorrectly used CommonJS require('crypto').
+- In production this produced: Receiving failed at line_1_create: require is not defined.
+- Both calls now use the imported crypto.createHash API.
+- Static scan confirms no require('crypto') / require("crypto") remains.
+
+SMART RECEIVING EDITOR
+- AI-extracted invoice lines can be edited before receiving.
+- Remove Line excludes an unwanted AI line completely.
+- Add Missing Line adds a manual receiving row when AI omitted an item.
+- Manual line supports part number, description, quantity, buy price, core, taxable status, inventory matching, or Create New.
+- Header/vendor/tax/freight/total edits are preserved when rows are added or removed.
+- Receive Inventory captures the current edited form before submitting.
+- Nothing changes stock until explicit Receive Inventory confirmation.
+
+SAFETY PRESERVED
+- Transactional invoice receiving / rollback.
+- Duplicate vendor invoice protection.
+- Exact inventory match validation.
+- Weighted-average cost and last-purchase cost history.
+- Inventory ledger.
+- Vendor canonicalization/aliases.
+- Manufacturer barcodes and physical inventory count.
+- v24.5.2 desktop/mobile More-menu fix.
+- v23.7.1 inventory SQL placeholder fix.
+
+STATIC AUDIT
+- node --check server.js: PASS
+- extracted frontend JS node --check: PASS
+- duplicate literal DOM ids: 0
+- root/public index: identical
+- require(crypto) misuse: 0
+- no destructive DB reset/migration added
