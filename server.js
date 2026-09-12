@@ -171,6 +171,30 @@ async function initDb(){
  );
  CREATE INDEX IF NOT EXISTS idx_part_tx_part_time ON part_inventory_transactions(part_id,created_at DESC);
  CREATE INDEX IF NOT EXISTS idx_part_tx_work_order ON part_inventory_transactions(work_order_id);
+ ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS last_purchase_cost NUMERIC;
+ ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS previous_purchase_cost NUMERIC;
+ ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS last_purchase_at TIMESTAMPTZ;
+ CREATE TABLE IF NOT EXISTS parts_vendor_invoices(
+   id BIGSERIAL PRIMARY KEY, vendor TEXT, invoice_number TEXT, invoice_date DATE, po_number TEXT,
+   subtotal NUMERIC, tax NUMERIC, freight NUMERIC, total NUMERIC, source_filename TEXT,
+   source_method TEXT DEFAULT 'scan', status TEXT DEFAULT 'draft', raw_extract JSONB NOT NULL DEFAULT '{}'::jsonb,
+   created_by TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT now(), received_at TIMESTAMPTZ
+ );
+ CREATE UNIQUE INDEX IF NOT EXISTS idx_parts_vendor_invoice_unique ON parts_vendor_invoices(lower(coalesce(vendor,'')),lower(coalesce(invoice_number,''))) WHERE invoice_number IS NOT NULL;
+ CREATE TABLE IF NOT EXISTS parts_vendor_invoice_lines(
+   id BIGSERIAL PRIMARY KEY, invoice_id BIGINT NOT NULL REFERENCES parts_vendor_invoices(id) ON DELETE CASCADE,
+   line_no INTEGER, vendor_part_number TEXT, manufacturer TEXT, description TEXT, quantity NUMERIC,
+   unit_cost NUMERIC, core_cost NUMERIC DEFAULT 0, line_total NUMERIC, matched_part_id BIGINT REFERENCES fullbay_import_parts(id) ON DELETE SET NULL,
+   match_status TEXT DEFAULT 'unmatched', received_quantity NUMERIC DEFAULT 0, created_at TIMESTAMPTZ DEFAULT now()
+ );
+ CREATE INDEX IF NOT EXISTS idx_vendor_invoice_lines_invoice ON parts_vendor_invoice_lines(invoice_id,line_no);
+ CREATE TABLE IF NOT EXISTS part_purchase_cost_history(
+   id BIGSERIAL PRIMARY KEY, part_id BIGINT NOT NULL REFERENCES fullbay_import_parts(id) ON DELETE RESTRICT,
+   vendor TEXT, invoice_number TEXT, invoice_id BIGINT REFERENCES parts_vendor_invoices(id) ON DELETE SET NULL,
+   purchased_at TIMESTAMPTZ DEFAULT now(), quantity NUMERIC NOT NULL, unit_cost NUMERIC NOT NULL, core_cost NUMERIC DEFAULT 0,
+   username TEXT NOT NULL
+ );
+ CREATE INDEX IF NOT EXISTS idx_part_cost_history_part ON part_purchase_cost_history(part_id,purchased_at DESC);
 
  CREATE TABLE IF NOT EXISTS fullbay_import_log(
    id BIGSERIAL PRIMARY KEY, import_type TEXT NOT NULL, source_file TEXT, rows_received INTEGER DEFAULT 0, rows_imported INTEGER DEFAULT 0, rows_skipped INTEGER DEFAULT 0, username TEXT, created_at TIMESTAMPTZ DEFAULT now()
@@ -805,7 +829,7 @@ app.get("/api/smart-search",auth,adminOnly,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"24.3.1",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"24.4.0",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -838,8 +862,8 @@ async function reconcileDuplicateImportedCustomers(){
  return {merged};
 }
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.3.1",backend:"24.3.1",build:"ITTR-24.3.1-PARTS-UI-BARCODE-PRINT-FIX-20260912"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.3.1",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.4.0",backend:"24.4.0",build:"ITTR-24.4.0-SMART-VENDOR-RECEIVING-20260912"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.4.0",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -1734,6 +1758,34 @@ app.post("/api/admin/users",auth,adminOnly,async(req,res,next)=>{try{
 app.patch("/api/admin/users/:username/password",auth,adminOnly,async(req,res,next)=>{try{const username=cleanUsername(req.params.username),password=String(req.body?.password||"");if(password.length<6)return res.status(400).json({error:"Password must be at least 6 characters."});const h=await bcrypt.hash(password,12);const q=await pool.query("UPDATE auth_users SET password_hash=$2,updated_at=now() WHERE username=$1 AND role='mechanic' RETURNING username",[username,h]);if(!q.rowCount)return res.status(404).json({error:"Mechanic account not found."});await audit(req.user.username,"mechanic_password_changed",{username});res.json({ok:true})}catch(e){next(e)}});
 app.delete("/api/admin/users/:username",auth,adminOnly,async(req,res,next)=>{try{const username=cleanUsername(req.params.username);const q=await pool.query("DELETE FROM auth_users WHERE username=$1 AND role='mechanic' RETURNING username",[username]);if(!q.rowCount)return res.status(404).json({error:"Mechanic account not found."});await audit(req.user.username,"mechanic_deleted",{username});res.json({ok:true})}catch(e){next(e)}});
 
+function parseAiJson(text){let t=String(text||'').trim();t=t.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');return JSON.parse(t)}
+app.post("/api/parts/receiving/scan-invoice",auth,adminOnly,upload.single("invoice"),async(req,res)=>{try{
+ if(!req.file)return res.status(400).json({error:"Take a photo or upload a vendor invoice."});
+ if(!client)return res.status(503).json({error:"Invoice scanning requires OPENAI_API_KEY on Railway. Your existing OpenRouter text key is not used for invoice images."});
+ const mime=String(req.file.mimetype||''); if(!mime.startsWith('image/')&&mime!=="application/pdf")return res.status(415).json({error:"Use an invoice photo (JPG/PNG/WEBP) or PDF."});
+ const b64=req.file.buffer.toString('base64'); const content=[{type:'input_text',text:`Extract this heavy-duty truck parts vendor invoice. Return ONLY strict JSON with this shape: {"vendor":"","invoiceNumber":"","invoiceDate":"YYYY-MM-DD or empty","poNumber":"","subtotal":0,"tax":0,"freight":0,"total":0,"lines":[{"partNumber":"","manufacturer":"","description":"","quantity":0,"unitCost":0,"coreCost":0,"lineTotal":0}]}. Preserve part numbers exactly. Do not invent missing values. Costs must be numbers. If quantity/unit cost are unclear use 0.`}];
+ if(mime==='application/pdf')content.push({type:'input_file',filename:req.file.originalname||'invoice.pdf',file_data:`data:application/pdf;base64,${b64}`}); else content.push({type:'input_image',image_url:`data:${mime};base64,${b64}`,detail:'high'});
+ const r=await client.responses.create({model:process.env.OPENAI_VISION_MODEL||process.env.OPENAI_TEXT_MODEL||'gpt-5.6-luna',input:[{role:'user',content}]});
+ const parsed=parseAiJson(r.output_text); parsed.lines=Array.isArray(parsed.lines)?parsed.lines:[];
+ const db=requireDb(); for(const line of parsed.lines){const pn=String(line.partNumber||'').trim();let m={rows:[]};if(pn)m=await db.query(`SELECT id,part_number,description,manufacturer,quantity,cost,price,vendor FROM fullbay_import_parts WHERE lower(regexp_replace(coalesce(part_number,''),'[^a-zA-Z0-9]','','g'))=lower(regexp_replace($1,'[^a-zA-Z0-9]','','g')) ORDER BY CASE WHEN lower(part_number)=lower($1) THEN 0 ELSE 1 END LIMIT 3`,[pn]);line.matches=m.rows;line.matchedPartId=m.rowCount===1?m.rows[0].id:null;line.matchStatus=m.rowCount===1?'matched':m.rowCount>1?'possible':'new'}
+ res.json({extract:parsed,filename:req.file.originalname||'invoice',warnings:[]});
+ }catch(e){return aiErrorResponse(res,e,'Invoice scan failed')}});
+app.post("/api/parts/receiving/receive",auth,adminOnly,async(req,res,next)=>{const db=await requireDb().connect();try{
+ const inv=req.body?.invoice||{},lines=Array.isArray(req.body?.lines)?req.body.lines:[];if(!lines.length)return res.status(400).json({error:'No invoice lines to receive.'});
+ await db.query('BEGIN');const ir=await db.query(`INSERT INTO parts_vendor_invoices(vendor,invoice_number,invoice_date,po_number,subtotal,tax,freight,total,source_filename,source_method,status,raw_extract,created_by,received_at) VALUES($1,$2,NULLIF($3,'')::date,$4,$5,$6,$7,$8,$9,'scan','received',$10::jsonb,$11,now()) RETURNING id`,[String(inv.vendor||'').trim()||null,String(inv.invoiceNumber||'').trim()||null,String(inv.invoiceDate||'').trim(),String(inv.poNumber||'').trim()||null,Number(inv.subtotal||0),Number(inv.tax||0),Number(inv.freight||0),Number(inv.total||0),String(req.body?.filename||'').slice(0,255)||null,JSON.stringify(inv),req.user.username]);const invoiceId=ir.rows[0].id;let received=0,created=0;
+ for(let i=0;i<lines.length;i++){const l=lines[i]||{};let partId=Number(l.matchedPartId||0)||null;const qty=Math.max(0,Number(l.quantity||0)),unitCost=Math.max(0,Number(l.unitCost||0)),core=Math.max(0,Number(l.coreCost||0));if(!qty)continue;
+  if(!partId&&l.createNew){const pn=String(l.partNumber||'').trim();if(!pn)throw new Error(`Line ${i+1}: part number required to create a new part.`);const sk=`ittr-receive:${Date.now()}:${i}:${Math.random().toString(36).slice(2)}`;const nr=await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,manufacturer,quantity,cost,price,vendor,status,inventory_managed,raw,source_file) VALUES($1,$2,$3,$4,0,$5,0,$6,'Active',true,'{}'::jsonb,'ITTR Smart Receiving') RETURNING id`,[sk,pn,String(l.description||'').trim()||null,String(l.manufacturer||'').trim()||null,unitCost,String(inv.vendor||'').trim()||null]);partId=nr.rows[0].id;created++}
+  const lr=await db.query(`INSERT INTO parts_vendor_invoice_lines(invoice_id,line_no,vendor_part_number,manufacturer,description,quantity,unit_cost,core_cost,line_total,matched_part_id,match_status,received_quantity) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$6) RETURNING id`,[invoiceId,i+1,String(l.partNumber||'').trim()||null,String(l.manufacturer||'').trim()||null,String(l.description||'').trim()||null,qty,unitCost,core,Number(l.lineTotal||qty*unitCost),partId,partId?'matched':'unmatched']);
+  if(!partId)continue;const pr=await db.query('SELECT * FROM fullbay_import_parts WHERE id=$1 FOR UPDATE',[partId]);if(!pr.rowCount)throw new Error(`Line ${i+1}: matched part no longer exists.`);const oldQty=Number(pr.rows[0].quantity||0),oldAvg=Number(pr.rows[0].cost||0),newQty=oldQty+qty,newAvg=newQty>0?((oldQty*oldAvg)+(qty*unitCost))/newQty:unitCost;
+  await db.query(`UPDATE fullbay_import_parts SET quantity=$2,previous_purchase_cost=last_purchase_cost,last_purchase_cost=$3,last_purchase_at=now(),cost=$4,vendor=COALESCE(NULLIF($5,''),vendor),inventory_value=$2*$4,updated_at=now() WHERE id=$1`,[partId,newQty,unitCost,newAvg,String(inv.vendor||'').trim()]);
+  await db.query(`INSERT INTO part_inventory_transactions(part_id,transaction_type,quantity_delta,quantity_before,quantity_after,reference,reason,username,metadata) VALUES($1,'vendor_receive',$2,$3,$4,$5,$6,$7,$8::jsonb)`,[partId,qty,oldQty,newQty,String(inv.invoiceNumber||'').trim()||`Invoice ${invoiceId}`,'Smart Receiving',req.user.username,JSON.stringify({invoiceId,vendor:inv.vendor,unitCost,coreCost:core,poNumber:inv.poNumber})]);
+  await db.query(`INSERT INTO part_purchase_cost_history(part_id,vendor,invoice_number,invoice_id,quantity,unit_cost,core_cost,username) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,[partId,String(inv.vendor||'').trim()||null,String(inv.invoiceNumber||'').trim()||null,invoiceId,qty,unitCost,core,req.user.username]);received++;
+ }
+ await db.query('COMMIT');await audit(req.user.username,'vendor_invoice_received',{invoiceId,received,created});res.json({ok:true,invoiceId,received,created});
+ }catch(e){try{await db.query('ROLLBACK')}catch{}if(e?.code==='23505')return res.status(409).json({error:'This vendor invoice number has already been received. Duplicate receiving was blocked.'});next(e)}finally{db.release()}});
+app.get("/api/parts/receiving/invoices",auth,adminOnly,async(req,res,next)=>{try{const r=await requireDb().query(`SELECT i.*,count(l.id)::int line_count,coalesce(sum(l.received_quantity),0) received_qty FROM parts_vendor_invoices i LEFT JOIN parts_vendor_invoice_lines l ON l.invoice_id=i.id GROUP BY i.id ORDER BY i.created_at DESC LIMIT 100`);res.json({items:r.rows})}catch(e){next(e)}});
+app.get("/api/parts/:id/cost-history",auth,adminOnly,async(req,res,next)=>{try{const r=await requireDb().query(`SELECT * FROM part_purchase_cost_history WHERE part_id=$1 ORDER BY purchased_at DESC LIMIT 100`,[req.params.id]);res.json({items:r.rows})}catch(e){next(e)}});
+
 const memoryCache=new Map();
 function aiErrorResponse(res,err,fallback){
  console.error("AI ERROR:",err?.status,err?.code,err?.message);
@@ -1796,5 +1848,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}app.listen(port,()=>console.log(`ITTR v24.3.1 Online running on port ${port}`))})
+  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}app.listen(port,()=>console.log(`ITTR v24.4.0 Online running on port ${port}`))})
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

@@ -1,0 +1,37 @@
+ITTR v24.4.0 SMART RECEIVING AUDIT
+
+Implemented
+- Smart Vendor Receiving modal, mobile-first photo/PDF upload.
+- Server-side AI invoice extraction: vendor, invoice #/date, PO, totals, part #, manufacturer, description, qty, unit cost, core, line total.
+- Exact normalized part-number matching with explicit review.
+- Existing-part match or create-new-part choice per invoice line.
+- Transactional Receive: all lines commit together or roll back.
+- Duplicate vendor+invoice number protection.
+- Weighted-average inventory cost.
+- Last and previous purchase cost fields.
+- Purchase cost history table by vendor/invoice.
+- Inventory ledger entries for every received part.
+- Vendor invoice header/line history.
+- Core charge capture.
+- Price-rise indicator during review.
+- Existing barcode/scanner/work-order workflow preserved.
+
+Competitor patterns reviewed
+- Fullbay: centralized POs + barcode receiving/use.
+- Tekmetric: ordered/received/partial states, invoice numbers, cost/core, reconciliation.
+- Shopmonkey: vendor invoice number, PO-to-WO linking, receive all/partial receiving.
+
+Safety/data integrity
+- AI never changes inventory automatically; human review + Receive required.
+- Duplicate invoice protection.
+- DB transaction prevents partial receiving on failure.
+- No destructive migration/reset.
+- Existing v23.7.1 Fullbay inventory SQL fix preserved.
+
+Static checks
+- server.js node --check PASS
+- extracted frontend JS node --check PASS
+- duplicate DOM IDs: 0
+- duplicate API method/path routes: 0
+- SQL numbered-placeholder gaps: 0
+- root/public index identical

@@ -1,0 +1,52 @@
+ITTR v24.3.2 MOBILE SCANNER STACK AUDIT
+Build: ITTR-24.3.2-MOBILE-NESTED-SCANNER-STACK-FIX-20260912
+
+USER-REPORTED ISSUE
+- On mobile, pressing "Scan Part" inside an already-open Work Order opened the scanner behind the Work Order modal.
+- User had to close the Work Order before the scanner became visible.
+
+ROOT CAUSE
+- All application modals shared z-index: 200.
+- partsScannerModal is earlier in DOM order than detailModal/work-order detail.
+- When both modals were open, the later Work Order modal painted above the scanner.
+- Mobile back/popstate logic chose the last DOM modal rather than the visually top modal.
+- Generic modal close did not guarantee the camera stream was stopped if mobile Back was used.
+
+FIXES
+1. partsScannerModal is now an explicit nested action layer at z-index 420.
+2. Task outcome/pause/helper nested dialogs use z-index 360.
+3. Added getTopOpenModal() to select the visually highest open modal by computed z-index + DOM order.
+4. Added closeTopOpenModal() so Mobile Back / browser Back / Escape closes only the top layer.
+5. If scanner is the top layer, closeTopOpenModal() calls closePartsScanner(), ensuring camera shutdown.
+6. Work Order remains open underneath the scanner; closing scanner returns directly to the same Work Order.
+7. Scanner opening resets its own scroll position.
+8. On mobile, barcode text input is not forcibly focused, avoiding unnecessary keyboard pop-up over the scanner.
+9. Scanner still supports camera, USB/Bluetooth scanner, and manual barcode entry.
+
+AUDIT RESULTS
+- server.js node --check: PASS
+- frontend extracted JS node --check: PASS
+- duplicate DOM IDs: 0
+- duplicate API method/path routes: 0
+- PostgreSQL numbered-placeholder gap audit: 0
+- root/public index.html identical: PASS
+- scanner work-order integration present: PASS
+- explicit scanner top-layer CSS present: PASS
+- v23.7.1 inventory SQL fix preserved
+- destructive database reset/migration: NONE
+- ZIP integrity: PASS
+
+DEPLOYMENT
+- Deploy over the same Railway project.
+- Keep the same PostgreSQL database and environment variables.
+- Do not re-import Fullbay.
+- Hard refresh after deployment.
+- Verify frontend 24.3.2 / backend 24.3.2.
+
+MOBILE TEST
+1. Open any active Work Order.
+2. Open a task/job that contains Parts Used.
+3. Tap Scan Part.
+4. Scanner must immediately appear ABOVE the Work Order.
+5. Close scanner using X or Mobile Back.
+6. The same Work Order must still be open beneath it.
