@@ -1,0 +1,1 @@
+Deploy over the same Railway project/database. Do not reset PostgreSQL. Verify frontend/backend 24.6.3. Test invoice labor and part rows on desktop and mobile.

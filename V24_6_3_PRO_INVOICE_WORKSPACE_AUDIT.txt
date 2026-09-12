@@ -1,0 +1,12 @@
+ITTR v24.6.3 Professional Invoice Workspace
+
+Changes:
+- Expanded invoice editor up to 1500px / 96vw so billing columns do not clip.
+- Rebuilt invoice charge rows into a professional primary + secondary layout.
+- Primary row always shows Type, Description, Hours/Qty, Rate/Unit Price, Amount, Tax, Delete.
+- Part # only appears for Part lines.
+- Internal Cost moved to secondary/admin row so customer billing values remain readable.
+- Service / Job is directly editable per line.
+- Add Line job name starts blank and uses a professional placeholder instead of forcing Additional Service.
+- Mobile layout stacks cleanly; summary becomes non-sticky under 980px.
+- Existing service-order automation, pricing, tax, PDF, receiving, inventory and database logic preserved.
