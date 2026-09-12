@@ -1,0 +1,35 @@
+ITTR v24.5.0 — PRO PARTS & PURCHASING AUDIT
+
+Built from v24.4.2 and preserves paid OpenRouter invoice extraction + v24.3.2 scanner stacking.
+
+KEY FIXES
+- Mobile Smart Receiving action bar is no longer sticky/floating in the middle of the screen. Start Over / Receive Inventory stay after the invoice lines.
+- New Part workflow: part #, description, manufacturer, category, vendor, location, starting qty, buy cost, selling price, min/max/reorder, purchase/sale tax settings.
+- Manual selling price can be changed later in each Part profile. Work-order parts snapshot unitPrice and sellTaxable for future customer invoicing.
+- Low-stock/out-of-stock alert badge on Parts navigation plus Restock alert in Parts Center.
+- Reorder logic uses min/reorder point and includes out-of-stock items.
+- Smart Receiving now captures editable subtotal, purchase tax, freight/fees, invoice total, optional tax rate, line taxable flags, and optional tax-in-landed-cost behavior.
+- Purchase tax is stored per vendor invoice and allocated to taxable lines for audit. Weighted average cost can include allocated purchase tax only when explicitly selected.
+- Vendor Master normalization added. Website/domain forms and prior aliases resolve to a canonical vendor name. Example: cittrucks.com can match existing CIT Trucks rather than creating a website-looking vendor.
+- Existing imported vendor names seed the Vendor Master automatically. New aliases are remembered.
+- New vendor invoice extraction is canonicalized server-side before review.
+- No destructive database reset. Existing parts, Fullbay imports, barcodes, work orders and history remain.
+
+COMPETITOR REVIEW APPLIED
+- Fullbay: low-stock alerts, barcode inventory, pricing overrides, centralized purchasing.
+- Tekmetric: min/max restocking suggestions, retail price editing, order/usage history.
+- Shopmonkey: reorder status, vendor/PO receiving, fees/tax handling, pricing matrices.
+- Mitchell 1: reorder/stocking levels, vendor-linked inventory, vendor invoice traceability.
+
+AUDIT
+- backend node --check: PASS
+- frontend extracted JS node --check: PASS
+- duplicate DOM ids: 0
+- duplicate API method/path routes: 0
+- PostgreSQL placeholder gaps: 0
+- root/public frontend identical: PASS
+- v23.7.1 Fullbay inventory SQL placeholder fix preserved
+- no destructive migration/reset
+
+DEPLOY
+Use the SAME Railway service/database. Do not reset PostgreSQL and do not re-import Fullbay.
