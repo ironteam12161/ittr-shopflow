@@ -1,0 +1,27 @@
+ITTR v24.6.1 PROFESSIONAL WORKFLOW AUDIT
+
+Design references reviewed: Tekmetric repair-order workflow/odometer/time tracking; Mitchell 1 Manager SE/Truck Job View, customer snapshot, vehicle history and Estimate->RO->Invoice flow.
+
+Implemented:
+- Removed browser prompt from New Invoice.
+- Professional customer/vehicle search launcher.
+- Unit/customer/VIN/plate/DOT search.
+- Vehicle snapshot with VIN, last mileage, last service and history count.
+- Completed WO -> Service Order Review -> Invoice workflow.
+- Service order numbers.
+- Per-job/per-mechanic labor review after WO completion.
+- Audited time adjustments: original time preserved, corrected hours + reason + admin recorded.
+- Invoice uses adjusted hours automatically.
+- Parts already attached/scanned to jobs transfer automatically.
+- Invoice stores mileage and unit ID.
+- Invoice PDF includes mileage.
+- Existing AR/payments/tax/PDF workflow retained.
+
+Safety/quality checks:
+- node --check server.js PASS
+- extracted frontend JS node --check PASS
+- duplicate DOM IDs: 0
+- duplicate method+path API routes: 0
+- root/public frontend identical
+- no destructive database reset
+- v24.5.5 receiving PostgreSQL type fix retained
