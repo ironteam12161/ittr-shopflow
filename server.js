@@ -45,7 +45,9 @@ const configuredOpenRouterKey=String(process.env.OPENROUTER_API_KEY||"").trim();
 const openRouterKeyLooksConfigured=Boolean(configuredOpenRouterKey && !configuredOpenRouterKey.toLowerCase().includes("replace") && !configuredOpenRouterKey.toLowerCase().includes("your_"));
 const openRouterClient=openRouterKeyLooksConfigured?new OpenAI({apiKey:configuredOpenRouterKey,baseURL:"https://openrouter.ai/api/v1",defaultHeaders:{"HTTP-Referer":String(process.env.APP_PUBLIC_URL||"").trim()||"https://ittr-shopflow.invalid","X-Title":"ITTR ShopFlow"}}):null;
 const aiProvider=String(process.env.AI_PROVIDER||"auto").trim().toLowerCase();
-const openRouterModel=String(process.env.OPENROUTER_MODEL||"openrouter/free").trim()||"openrouter/free";
+const openRouterModel=String(process.env.OPENROUTER_MODEL||"google/gemini-2.5-flash-lite").trim()||"google/gemini-2.5-flash-lite";
+const openRouterInvoiceModel=String(process.env.OPENROUTER_INVOICE_MODEL||"google/gemini-2.5-flash-lite").trim()||"google/gemini-2.5-flash-lite";
+const openRouterInvoiceFallbackModel=String(process.env.OPENROUTER_INVOICE_FALLBACK_MODEL||"google/gemini-2.5-flash").trim()||"google/gemini-2.5-flash";
 const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATABASE_URL,ssl:isProd?{rejectUnauthorized:false}:undefined}):null;
 
 const r2Bucket=String(process.env.R2_BUCKET_NAME||"").trim();
@@ -829,7 +831,7 @@ app.get("/api/smart-search",auth,adminOnly,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"24.4.0",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"24.4.1",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -862,8 +864,8 @@ async function reconcileDuplicateImportedCustomers(){
  return {merged};
 }
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.4.0",backend:"24.4.0",build:"ITTR-24.4.0-SMART-VENDOR-RECEIVING-20260912"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.4.0",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.4.1",backend:"24.4.1",build:"ITTR-24.4.1-PAID-OPENROUTER-INVOICE-AI-20260912"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.4.1",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -1759,16 +1761,28 @@ app.patch("/api/admin/users/:username/password",auth,adminOnly,async(req,res,nex
 app.delete("/api/admin/users/:username",auth,adminOnly,async(req,res,next)=>{try{const username=cleanUsername(req.params.username);const q=await pool.query("DELETE FROM auth_users WHERE username=$1 AND role='mechanic' RETURNING username",[username]);if(!q.rowCount)return res.status(404).json({error:"Mechanic account not found."});await audit(req.user.username,"mechanic_deleted",{username});res.json({ok:true})}catch(e){next(e)}});
 
 function parseAiJson(text){let t=String(text||'').trim();t=t.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');return JSON.parse(t)}
+async function openRouterInvoiceExtract(file){
+ const or=requireOpenRouterClient();
+ const mime=String(file.mimetype||'');
+ const b64=file.buffer.toString('base64');
+ const prompt=`Extract this heavy-duty truck parts vendor invoice. Return ONLY strict JSON with this shape: {"vendor":"","invoiceNumber":"","invoiceDate":"YYYY-MM-DD or empty","poNumber":"","subtotal":0,"tax":0,"freight":0,"total":0,"lines":[{"partNumber":"","manufacturer":"","description":"","quantity":0,"unitCost":0,"coreCost":0,"lineTotal":0}]}. Preserve part numbers exactly. Never invent missing values. Costs and quantities must be numbers. If a quantity or cost is unclear use 0. Carefully distinguish unit cost, core charge, tax, freight and line total.`;
+ const content=[{type:'text',text:prompt}];
+ if(mime==='application/pdf') content.push({type:'file',file:{filename:file.originalname||'invoice.pdf',file_data:`data:application/pdf;base64,${b64}`}});
+ else content.push({type:'image_url',image_url:{url:`data:${mime};base64,${b64}`}});
+ const extra={models:[openRouterInvoiceFallbackModel],response_format:{type:'json_object'}};
+ if(mime==='application/pdf')extra.plugins=[{id:'file-parser',pdf:{engine:'cloudflare-ai'}}];
+ const r=await or.chat.completions.create({model:openRouterInvoiceModel,messages:[{role:'user',content}],temperature:0,max_tokens:5000,...extra});
+ const text=String(r.choices?.[0]?.message?.content||'').trim();
+ return {parsed:parseAiJson(text),model:String(r.model||openRouterInvoiceModel),usage:r.usage||null};
+}
 app.post("/api/parts/receiving/scan-invoice",auth,adminOnly,upload.single("invoice"),async(req,res)=>{try{
  if(!req.file)return res.status(400).json({error:"Take a photo or upload a vendor invoice."});
- if(!client)return res.status(503).json({error:"Invoice scanning requires OPENAI_API_KEY on Railway. Your existing OpenRouter text key is not used for invoice images."});
+ if(!openRouterClient)return res.status(503).json({error:"Invoice scanning requires OPENROUTER_API_KEY on Railway."});
  const mime=String(req.file.mimetype||''); if(!mime.startsWith('image/')&&mime!=="application/pdf")return res.status(415).json({error:"Use an invoice photo (JPG/PNG/WEBP) or PDF."});
- const b64=req.file.buffer.toString('base64'); const content=[{type:'input_text',text:`Extract this heavy-duty truck parts vendor invoice. Return ONLY strict JSON with this shape: {"vendor":"","invoiceNumber":"","invoiceDate":"YYYY-MM-DD or empty","poNumber":"","subtotal":0,"tax":0,"freight":0,"total":0,"lines":[{"partNumber":"","manufacturer":"","description":"","quantity":0,"unitCost":0,"coreCost":0,"lineTotal":0}]}. Preserve part numbers exactly. Do not invent missing values. Costs must be numbers. If quantity/unit cost are unclear use 0.`}];
- if(mime==='application/pdf')content.push({type:'input_file',filename:req.file.originalname||'invoice.pdf',file_data:`data:application/pdf;base64,${b64}`}); else content.push({type:'input_image',image_url:`data:${mime};base64,${b64}`,detail:'high'});
- const r=await client.responses.create({model:process.env.OPENAI_VISION_MODEL||process.env.OPENAI_TEXT_MODEL||'gpt-5.6-luna',input:[{role:'user',content}]});
- const parsed=parseAiJson(r.output_text); parsed.lines=Array.isArray(parsed.lines)?parsed.lines:[];
+ const result=await openRouterInvoiceExtract(req.file);
+ const parsed=result.parsed; parsed.lines=Array.isArray(parsed.lines)?parsed.lines:[];
  const db=requireDb(); for(const line of parsed.lines){const pn=String(line.partNumber||'').trim();let m={rows:[]};if(pn)m=await db.query(`SELECT id,part_number,description,manufacturer,quantity,cost,price,vendor FROM fullbay_import_parts WHERE lower(regexp_replace(coalesce(part_number,''),'[^a-zA-Z0-9]','','g'))=lower(regexp_replace($1,'[^a-zA-Z0-9]','','g')) ORDER BY CASE WHEN lower(part_number)=lower($1) THEN 0 ELSE 1 END LIMIT 3`,[pn]);line.matches=m.rows;line.matchedPartId=m.rowCount===1?m.rows[0].id:null;line.matchStatus=m.rowCount===1?'matched':m.rowCount>1?'possible':'new'}
- res.json({extract:parsed,filename:req.file.originalname||'invoice',warnings:[]});
+ res.json({extract:parsed,filename:req.file.originalname||'invoice',warnings:[],ai:{provider:'openrouter',model:result.model,usage:result.usage}});
  }catch(e){return aiErrorResponse(res,e,'Invoice scan failed')}});
 app.post("/api/parts/receiving/receive",auth,adminOnly,async(req,res,next)=>{const db=await requireDb().connect();try{
  const inv=req.body?.invoice||{},lines=Array.isArray(req.body?.lines)?req.body.lines:[];if(!lines.length)return res.status(400).json({error:'No invoice lines to receive.'});
@@ -1805,10 +1819,10 @@ async function textAI(system,user){
  if(aiProvider==="openai")return openAITextAI(system,user);
  if(openRouterClient){try{return await openRouterTextAI(system,user)}catch(e){if(!client)throw e;console.warn("OpenRouter failed; falling back to OpenAI:",e?.status,e?.message)}}
  if(client)return openAITextAI(system,user);
- const e=new Error("No AI provider is configured. Add OPENROUTER_API_KEY (recommended free option) or OPENAI_API_KEY in Railway.");e.code="AI_NOT_CONFIGURED";throw e;
+ const e=new Error("No AI provider is configured. Add OPENROUTER_API_KEY or OPENAI_API_KEY in Railway.");e.code="AI_NOT_CONFIGURED";throw e;
 }
 function selectedAIProvider(){if(aiProvider==="openrouter")return openRouterClient?"openrouter":"none";if(aiProvider==="openai")return client?"openai":"none";return openRouterClient?"openrouter":client?"openai":"none"}
-app.get("/api/ai/status",auth,(req,res)=>res.json({server:true,aiConfigured:Boolean(openRouterClient||client),provider:selectedAIProvider(),openRouterConfigured:Boolean(openRouterClient),openAIConfigured:Boolean(client),model:selectedAIProvider()==="openrouter"?openRouterModel:String(process.env.OPENAI_TEXT_MODEL||"gpt-5.6-luna"),message:openRouterClient?`Free AI ready via OpenRouter (${openRouterModel}).`:client?"AI ready via OpenAI.":"No AI key is configured."}));
+app.get("/api/ai/status",auth,(req,res)=>res.json({server:true,aiConfigured:Boolean(openRouterClient||client),provider:selectedAIProvider(),openRouterConfigured:Boolean(openRouterClient),openAIConfigured:Boolean(client),model:selectedAIProvider()==="openrouter"?openRouterModel:String(process.env.OPENAI_TEXT_MODEL||"gpt-5.6-luna"),message:openRouterClient?`OpenRouter paid-credit AI ready (${openRouterModel}).`:client?"AI ready via OpenAI.":"No AI key is configured."}));
 app.post("/api/translate",auth,async(req,res)=>{try{const {text,sourceLanguage="English",targetLanguage="Ukrainian",domain="semi-truck and trailer repair shop software"}=req.body||{};if(typeof text!=="string"||!text.trim())return res.status(400).json({error:"text is required"});if(text.length>5000)return res.status(400).json({error:"text is too long"});const key=cacheKey(text,targetLanguage);if(memoryCache.has(key))return res.json({translation:memoryCache.get(key),cached:true});const translation=await textAI(`You are the professional translator for a US semi-truck and trailer repair shop management application. Translate ${sourceLanguage} into ${targetLanguage}. Preserve truck/unit numbers, part numbers, VINs, usernames, company names, abbreviations, measurements, timestamps, and proper nouns. Use natural terminology used by diesel mechanics. Return only the translated text.`,`Domain: ${domain}\n\nText:\n${text}`);memoryCache.set(key,translation);res.json({translation,cached:false})}catch(e){return aiErrorResponse(res,e,"translation_failed")}});
 const NOTE_MODES={
  professional:"Detect the input language automatically. Translate to professional American English and rewrite as a concise heavy-duty truck repair service note.",
@@ -1848,5 +1862,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}app.listen(port,()=>console.log(`ITTR v24.4.0 Online running on port ${port}`))})
+  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}app.listen(port,()=>console.log(`ITTR v24.4.1 Online running on port ${port}`))})
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

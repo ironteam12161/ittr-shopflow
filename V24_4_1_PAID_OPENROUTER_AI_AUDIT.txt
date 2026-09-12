@@ -1,0 +1,31 @@
+ITTR v24.4.1 — PAID OPENROUTER AI AUDIT
+
+Invoice AI
+- OpenRouter paid-credit path is now the primary invoice extraction provider.
+- Primary model: google/gemini-2.5-flash-lite (override with OPENROUTER_INVOICE_MODEL).
+- Fallback model: google/gemini-2.5-flash (override with OPENROUTER_INVOICE_FALLBACK_MODEL).
+- OpenRouter provider failover remains available automatically.
+- Invoice images use multimodal image_url input.
+- Invoice PDFs use OpenRouter file input with the free Cloudflare AI PDF parser.
+- Structured JSON response requested.
+- Human review remains mandatory before inventory is received.
+- Invoice response reports actual model/usage to the frontend API response.
+
+General text AI
+- Default OpenRouter text model changed from openrouter/free to google/gemini-2.5-flash-lite.
+- OPENROUTER_MODEL can still override this.
+- Existing OpenAI fallback remains available when AI_PROVIDER=auto and OPENAI_API_KEY is configured.
+
+Deployment
+- Keep existing OPENROUTER_API_KEY in Railway. Do not expose it in frontend code.
+- Recommended optional variables:
+  OPENROUTER_MODEL=google/gemini-2.5-flash-lite
+  OPENROUTER_INVOICE_MODEL=google/gemini-2.5-flash-lite
+  OPENROUTER_INVOICE_FALLBACK_MODEL=google/gemini-2.5-flash
+  AI_PROVIDER=openrouter
+
+Safety / data
+- No destructive DB reset.
+- Existing v23.7.1 inventory SQL parameter fix preserved.
+- Existing v24.3.2 mobile scanner stacking fix preserved.
+- Existing v24.4.0 vendor receiving transaction workflow preserved.
