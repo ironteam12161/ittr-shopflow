@@ -1,0 +1,27 @@
+ITTR v24.6.4 LABOR-CENTRIC INVOICE AUDIT
+
+Design research direction
+- Fullbay: estimate/service order/invoice reuses entered data and separates service, parts and labor hours.
+- Mitchell Manager SE Job View: groups labor tasks and related parts into logical job containers.
+
+Architecture implemented
+- customer_invoice_lines.parent_line_id added non-destructively.
+- Top-level labor line = repair operation.
+- Part/sublet/fee child lines reference the labor line through parent_line_id.
+- Server validates parent belongs to same invoice and is a labor line.
+- Child line inherits job UID/name from parent labor server-side.
+- Updating labor job name/UID propagates to child charges.
+- Deleting labor deletes attached children first in same DB transaction.
+- Work Order and Service Order invoice conversion create labor first and attach task parts to it.
+- Startup reconciliation links legacy non-labor invoice lines to the nearest matching labor when possible.
+- Invoice PDF prints labor then its attached charges.
+
+Static verification
+- server.js node --check: PASS
+- frontend extracted JS node --check: PASS
+- duplicate DOM IDs: 0
+- duplicate Express method/path routes: 0
+- PostgreSQL numbered placeholder gaps: 0
+- root/public index identical: PASS
+- v24.5.5 receiving fixes preserved
+- destructive reset: NONE
