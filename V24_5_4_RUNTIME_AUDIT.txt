@@ -1,0 +1,24 @@
+ITTR v24.5.4 — Smart Receiving Runtime Fix
+
+FIXED
+- Restored normalizeReceivingVendor(), which was accidentally removed during the v24.5.3 Smart Receiving editor patch while its onblur/render calls remained.
+- Vendor normalization now fails safely: a vendor-resolution network/server error no longer breaks Smart Receiving rendering.
+- Canonical vendor result is written back into the active Smart Receiving draft.
+- Preserved v24.5.3 editable receiving: add missing line, remove line, edit part/description/qty/cost/core/tax/match, create unmatched part.
+- Preserved v24.5.3 ES-module crypto fix for invoice-created parts.
+- Preserved v24.5.2 responsive desktop/mobile navigation fix.
+
+AUDIT
+- server.js syntax: PASS
+- extracted frontend JavaScript syntax: PASS
+- root/public index.html identical: PASS
+- duplicate DOM IDs: 0
+- duplicate API method/path routes: 0
+- PostgreSQL placeholder-gap candidates: 0
+- CommonJS require('crypto') calls: 0
+- normalizeReceivingVendor definition: present
+- destructive DB migration/reset: none
+
+DEPLOYMENT
+Use the same Railway project and PostgreSQL database. Do not reset or re-import Fullbay.
+After deploy, hard refresh and verify frontend/backend 24.5.4.
