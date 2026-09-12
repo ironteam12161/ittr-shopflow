@@ -6,13 +6,13 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.5.5-POSTGRES-NUMERIC-TYPING-RECEIVING-AUDIT-20260912">
+<meta name="ittr-build" content="ITTR-24.6.0-POSTGRES-NUMERIC-TYPING-RECEIVING-AUDIT-20260912">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.5.5</title>
+<title>ITTR ShopFlow v24.6.0</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -468,7 +468,7 @@ body{-webkit-text-size-adjust:100%}
 @media(max-width:760px){.proMetricGrid{grid-template-columns:1fr 1fr}.proTabs{display:grid;grid-template-columns:1fr 1fr}}
 
 
-/* ===== v24.5.5 RESPONSIVE SHELL SAFETY + POLISH ===== */
+/* ===== v24.6.0 RESPONSIVE SHELL SAFETY + POLISH ===== */
 /* Mobile-only chrome must never leak into desktop layout. */
 .mobileMoreSheet{display:none}
 .mobileMoreBtn{display:none!important}
@@ -641,9 +641,13 @@ body.modalOpen{overflow:hidden}
 #inventoryCountModal{z-index:470}.inventoryCountBox{max-width:980px!important}.inventoryCountSummary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:12px 0}.countStat{padding:12px;border:1px solid #e3e8ef;border-radius:13px;background:#f8fafc}.countStat span{display:block;color:#667085;font-size:12px}.countStat b{display:block;font-size:22px;margin-top:3px}.countToolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0}.countLine{display:grid;grid-template-columns:minmax(150px,1.1fr) minmax(180px,1.5fr) 100px 120px 110px;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid #eaecf0}.countLineHead{font-size:11px;font-weight:800;color:#667085;text-transform:uppercase}.countQty{width:100%;font-weight:800}.varianceGood{color:#067647;font-weight:800}.varianceBad{color:#b42318;font-weight:800}.countUnknown{border:1px solid #f7c27b;background:#fff8eb;padding:12px;border-radius:12px}.scanSuccess{border:1px solid #abefc6;background:#ecfdf3;padding:12px;border-radius:12px}.receiveErrorCard{border:1px solid #fda29b;background:#fef3f2;border-radius:14px;padding:14px}.receiveBusyBtn{opacity:.65;pointer-events:none}.barcodeScanAssign{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
 @media(max-width:760px){.inventoryCountBox{width:100%!important;max-width:none!important}.inventoryCountSummary{display:flex;overflow-x:auto;margin-left:-10px;margin-right:-10px;padding:0 10px 4px}.countStat{min-width:128px}.countLineHead{display:none}.countLine{grid-template-columns:1fr auto;border:1px solid #e1e7ef;border-radius:14px;background:#fff;padding:12px;margin-bottom:9px}.countLine>div{min-width:0}.countLine .countDesc{grid-column:1/-1;color:#475467}.countLine .countLocation{grid-column:1/2}.countLine .countSystem{grid-column:2/3;grid-row:1;text-align:right}.countLine .countPhysical{grid-column:1/2}.countLine .countVariance{grid-column:2/3;text-align:right}.countToolbar{display:grid;grid-template-columns:1fr}.countToolbar button{width:100%}.barcodeScanAssign{display:grid;grid-template-columns:1fr}.barcodeScanAssign button{width:100%}}
 </style>
+<style>
+.invoiceStatus{display:inline-flex;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:800;text-transform:uppercase}.is-draft{background:#f2f4f7;color:#475467}.is-sent,.is-partial{background:#fff4e5;color:#b54708}.is-paid{background:#ecfdf3;color:#027a48}.is-void{background:#fef3f2;color:#b42318}.invoiceEditorGrid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px}.invoiceLine{display:grid;grid-template-columns:90px 1fr 95px 90px 90px 70px 38px;gap:7px;align-items:center;padding:9px 0;border-bottom:1px solid #eaecf0}.invoiceLine input,.invoiceLine select{min-width:0}.invoiceTotals{position:sticky;top:12px}.moneyBig{font-size:28px;font-weight:900}.invoiceJob{background:#f8fafc;border:1px solid #eaecf0;border-radius:12px;padding:10px;margin:10px 0}.overdueText{color:#b42318;font-weight:800}@media(max-width:760px){.invoiceEditorGrid{grid-template-columns:1fr}.invoiceTotals{position:static}.invoiceLine{grid-template-columns:1fr 1fr}.invoiceLine .wide{grid-column:1/-1}.invoiceLine button{min-height:42px}.invoiceEditorGrid .card{padding:12px}.invoiceTableMobile{display:block}}
+</style>
+<style>@media(max-width:760px){#invoices .card:has(#invoiceTable){background:transparent;border:0;box-shadow:none;overflow:visible!important}#invoices table,#invoices thead,#invoices tbody,#invoices tr,#invoices td{display:block;width:100%}#invoices thead{display:none}#invoices tr{background:#fff;border:1px solid #e4e7ec;border-radius:15px;margin:10px 0;padding:12px;box-shadow:0 3px 12px rgba(16,24,40,.05)}#invoices td{border:0!important;padding:4px 0!important}#invoices td:nth-child(5),#invoices td:nth-child(6),#invoices td:nth-child(7){display:inline-block;width:32%;vertical-align:top}#invoices td:nth-child(5):before{content:'Total';display:block;color:#667085;font-size:10px}#invoices td:nth-child(6):before{content:'Paid';display:block;color:#667085;font-size:10px}#invoices td:nth-child(7):before{content:'Balance';display:block;color:#667085;font-size:10px}#invoices td:last-child button{width:100%;margin-top:6px}}</style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.5.5 ONLINE · RESPONSIVE UI · PARTS + BARCODE · SMART RECEIVING</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.6.0 ONLINE · RESPONSIVE UI · PARTS + BARCODE · SMART RECEIVING</div>
 <div id="appErrorBanner" style="display:none;position:fixed;left:8px;right:8px;top:66px;z-index:1000;background:#fef3f2;color:#b42318;border:1px solid #fecdca;border-radius:10px;padding:10px;font-size:13px"><b>App error:</b> <span id="appErrorText"></span> <button type="button" onclick="this.parentElement.style.display='none'" style="float:right;min-height:28px;padding:2px 8px">×</button></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -675,7 +679,7 @@ body.modalOpen{overflow:hidden}
   </label>
   <button class="navbtn" onclick="logout()">Logout</button>
 </div>
-  <nav><button class="navbtn active adminOnly" data-view="dashboard">Dashboard</button><button class="navbtn adminOnly" data-view="workorders">Work Orders</button><button class="navbtn adminOnly" data-view="customers">Customers & Vehicles</button><button class="navbtn adminOnly" data-view="parts">Parts <span id="partsNavBadge" class="partsNavBadge" style="display:none">0</span></button><button class="navbtn adminOnly" data-view="approvals">Findings <span id="approvalNotify" class="notifyBadge" style="display:none">0</span></button><button class="navbtn adminOnly" data-view="procenter">Operations</button><button class="navbtn mechanicOnly" data-view="mechanic">My Work Orders</button><button class="navbtn mechanicOnly" data-view="inspection">Inspection</button><button class="navbtn mechanicOnly" data-view="mycompleted">Completed</button></nav>
+  <nav><button class="navbtn active adminOnly" data-view="dashboard">Dashboard</button><button class="navbtn adminOnly" data-view="workorders">Work Orders</button><button class="navbtn adminOnly" data-view="invoices">Invoices <span id="invoiceNavBadge" class="notifyBadge" style="display:none">0</span></button><button class="navbtn adminOnly" data-view="customers">Customers & Vehicles</button><button class="navbtn adminOnly" data-view="parts">Parts <span id="partsNavBadge" class="partsNavBadge" style="display:none">0</span></button><button class="navbtn adminOnly" data-view="approvals">Findings <span id="approvalNotify" class="notifyBadge" style="display:none">0</span></button><button class="navbtn adminOnly" data-view="procenter">Operations</button><button class="navbtn mechanicOnly" data-view="mechanic">My Work Orders</button><button class="navbtn mechanicOnly" data-view="inspection">Inspection</button><button class="navbtn mechanicOnly" data-view="mycompleted">Completed</button></nav>
 </header>
 
 <main>
@@ -729,6 +733,14 @@ body.modalOpen{overflow:hidden}
       <tbody id="workTable"></tbody>
     </table>
   </div>
+</section>
+
+
+<section id="invoices" class="hidden">
+ <div class="toolbar"><div><h1>Invoices</h1><div class="muted">Create from completed work orders, manage balances, record payments and produce customer-ready PDFs.</div></div><button onclick="openManualInvoice()">+ New Invoice</button></div>
+ <div id="invoiceKpis" class="statgrid"></div>
+ <div class="filterbar"><button class="filterbtn active" data-invfilter="all" onclick="setInvoiceFilter('all',this)">All</button><button class="filterbtn" data-invfilter="draft" onclick="setInvoiceFilter('draft',this)">Draft</button><button class="filterbtn" data-invfilter="sent" onclick="setInvoiceFilter('sent',this)">Open</button><button class="filterbtn" data-invfilter="overdue" onclick="setInvoiceFilter('overdue',this)">Overdue</button><button class="filterbtn" data-invfilter="paid" onclick="setInvoiceFilter('paid',this)">Paid</button></div>
+ <div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Invoice</th><th>Customer / Unit</th><th>Date / Due</th><th>Status</th><th>Total</th><th>Paid</th><th>Balance</th><th></th></tr></thead><tbody id="invoiceTable"></tbody></table></div>
 </section>
 
 <section id="mechanic" class="hidden">
@@ -1354,7 +1366,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION="24.5.5";
+const FRONTEND_VERSION="24.6.0";
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
@@ -1496,13 +1508,13 @@ function mechanicDisplay(username){
 let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
-const APP_VIEWS=["dashboard","workorders","trucksearch","customers","parts","procenter","activityhistory","mechanic","completed","approvals","accounts","inspection","mycompleted"];
+const APP_VIEWS=["dashboard","workorders","invoices","trucksearch","customers","parts","procenter","activityhistory","mechanic","completed","approvals","accounts","inspection","mycompleted"];
 let currentView=null;
 let viewHistory=[];
 
 function allowedViewForRole(view){
  if(!session)return false;
- const adminViews=["dashboard","workorders","trucksearch","customers","parts","procenter","activityhistory","completed","approvals","accounts"];
+ const adminViews=["dashboard","workorders","invoices","trucksearch","customers","parts","procenter","activityhistory","completed","approvals","accounts"];
  const mechanicViews=["mechanic","inspection","mycompleted"];
  return session.role==="admin" ? adminViews.includes(view) : mechanicViews.includes(view);
 }
@@ -1560,11 +1572,12 @@ function showView(view,{push=true,replace=false}={}){
  document.querySelectorAll(".mobileNavBtn[data-mobile-view]").forEach(b=>{
    b.classList.toggle("active",b.dataset.mobileView===view);
  });
- const moreBtn=document.querySelector(".mobileMoreBtn");if(moreBtn)moreBtn.classList.toggle("active",["approvals","procenter","activityhistory","accounts","completed"].includes(view));
+ const moreBtn=document.querySelector(".mobileMoreBtn");if(moreBtn)moreBtn.classList.toggle("active",["invoices","approvals","procenter","activityhistory","accounts","completed"].includes(view));
 
  currentView=view;
  if(view==="customers")renderCustomerDirectory();
  if(view==="parts")loadPartsCenter();
+ if(view==="invoices")loadInvoices();
 
  const state={ittr:true,view};
  try{
@@ -3637,7 +3650,7 @@ function render(){
 
    const completedTable=document.getElementById("completedTable");
    if(completedTable){
-     completedTable.innerHTML=completed.map(w=>`<tr><td>#${w.id}</td><td><b>${esc(w.unit)}</b></td><td>${esc(w.customer)}</td><td>${esc(mechanicDisplay(w.mechanic))}</td><td>${esc(w.completedAt||"")}</td><td>${esc(w.parking||"—")}</td><td><button class="secondary" onclick="openDetail(${w.id})">View</button> <button class="secondary" onclick="downloadWorkOrderPDF(${w.id})">Download Work Order PDF</button></td></tr>`).join("")||'<tr><td colspan="7" class="empty">No completed work orders yet.</td></tr>';
+     completedTable.innerHTML=completed.map(w=>`<tr><td>#${w.id}</td><td><b>${esc(w.unit)}</b></td><td>${esc(w.customer)}</td><td>${esc(mechanicDisplay(w.mechanic))}</td><td>${esc(w.completedAt||"")}</td><td>${esc(w.parking||"—")}</td><td><button class="secondary" onclick="openDetail(${w.id})">View</button> <button class="secondary" onclick="downloadWorkOrderPDF(${w.id})">Download Work Order PDF</button> <button onclick="createInvoiceFromWO(${w.id})">Create Invoice</button></td></tr>`).join("")||'<tr><td colspan="7" class="empty">No completed work orders yet.</td></tr>';
    }
 
    renderFindingsCenter();
@@ -4618,7 +4631,7 @@ function openDetail(id){
   ${w.status==="Completed" && Number(w.outcomeWorkflowVersion||0)===0?`<div class="notice" style="margin-bottom:10px">This work order was completed before per-job outcomes were introduced. Missing outcomes are historical only and do not require action.</div>`:""}
   ${w.tasks.map((t,i)=>taskTimerRow(w,t,i)).join("")}
   ${workOrderNotesBlock(w)}
-  ${w.status==="Completed"?`<div style="margin-top:12px"><button class="secondary" onclick="downloadWorkOrderPDF(${w.id})">Download Work Order PDF</button></div>`:""}
+  ${w.status==="Completed"?`<div style="margin-top:12px"><button class="secondary" onclick="downloadWorkOrderPDF(${w.id})">Download Work Order PDF</button> <button onclick="createInvoiceFromWO(${w.id})">Create / Open Invoice</button></div>`:""}
   <div class="card mechanicWorkSummary"><h2 style="margin:0">Mechanic Work Summary</h2><div class="muted">Who worked on each job and their recorded labor time.</div><div data-mechanic-work-summary-wo="${esc(String(w.id))}" style="margin-top:8px"><div class="muted">Loading mechanic labor…</div></div></div>
   ${adminControls}
   ${mechanicControls}`;
@@ -4804,7 +4817,31 @@ if("serviceWorker" in navigator){
  });
 }
 
+
+let invoiceItems=[],invoiceFilter='all',activeInvoice=null;
+const invMoney=n=>`$${Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+function invStatus(i){const overdue=!['paid','void','draft'].includes(i.status)&&i.due_date&&new Date(String(i.due_date).slice(0,10)+'T23:59:59')<new Date();return overdue?'overdue':i.status}
+async function loadInvoices(){try{const r=await fetch('/api/invoices',{headers:authHeaders(),cache:'no-store'}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to load invoices');invoiceItems=d.items||[];renderInvoices()}catch(e){document.getElementById('invoiceTable').innerHTML=`<tr><td colspan="8" class="error">${esc(e.message)}</td></tr>`}}
+function setInvoiceFilter(v,b){invoiceFilter=v;document.querySelectorAll('[data-invfilter]').forEach(x=>x.classList.toggle('active',x===b));renderInvoices()}
+function renderInvoices(){const today=new Date(),items=invoiceItems.filter(i=>invoiceFilter==='all'||(invoiceFilter==='overdue'?invStatus(i)==='overdue':invoiceFilter==='sent'?['sent','partial'].includes(i.status):i.status===invoiceFilter));const open=invoiceItems.filter(i=>['sent','partial'].includes(i.status)),ar=open.reduce((a,i)=>a+Number(i.balance_due||0),0),over=open.filter(i=>invStatus(i)==='overdue').reduce((a,i)=>a+Number(i.balance_due||0),0),draft=invoiceItems.filter(i=>i.status==='draft').length;document.getElementById('invoiceKpis').innerHTML=`<div class="stat"><b>${invMoney(ar)}</b><span>Accounts Receivable</span></div><div class="stat"><b>${invMoney(over)}</b><span>Overdue</span></div><div class="stat"><b>${draft}</b><span>Drafts</span></div><div class="stat"><b>${invoiceItems.filter(i=>i.status==='paid').length}</b><span>Paid</span></div>`;document.getElementById('invoiceTable').innerHTML=items.map(i=>{const st=invStatus(i),due=String(i.due_date||'').slice(0,10);return `<tr><td><b>${esc(i.invoice_number)}</b>${i.work_order_id?`<div class="muted">WO #${esc(i.work_order_id)}</div>`:''}</td><td><b>${esc(i.customer_name)}</b><div class="muted">Unit ${esc(i.unit_number||'—')}</div></td><td>${esc(String(i.invoice_date||'').slice(0,10))}<div class="${st==='overdue'?'overdueText':'muted'}">Due ${esc(due||'—')}</div></td><td><span class="invoiceStatus is-${st==='overdue'?'sent':st}">${esc(st)}</span></td><td><b>${invMoney(i.total)}</b></td><td>${invMoney(i.amount_paid)}</td><td><b>${invMoney(i.balance_due)}</b></td><td><button class="secondary" onclick="openInvoice(${i.id})">Open</button></td></tr>`}).join('')||'<tr><td colspan="8" class="empty">No invoices in this view.</td></tr>';const badge=document.getElementById('invoiceNavBadge');if(badge){const n=open.filter(i=>invStatus(i)==='overdue').length;badge.textContent=n;badge.style.display=n?'inline-flex':'none'}}
+async function createInvoiceFromWO(id){try{const r=await fetch(`/api/invoices/from-work-order/${id}`,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({})}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to create invoice');showView('invoices');await loadInvoices();await openInvoice(d.id)}catch(e){alert(e.message)}}
+async function openManualInvoice(){const customer=prompt('Customer / company name');if(!customer)return;try{const r=await fetch('/api/invoices',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({customerName:customer})}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to create invoice');await openInvoice(d.id)}catch(e){alert(e.message)}}
+async function openInvoice(id){try{const r=await fetch(`/api/invoices/${id}`,{headers:authHeaders(),cache:'no-store'}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to load invoice');activeInvoice=d;renderInvoiceEditor();document.getElementById('invoiceModal').classList.add('open');syncModalState()}catch(e){alert(e.message)}}
+function renderInvoiceEditor(){const {invoice:i,lines,payments}=activeInvoice,locked=['paid','void'].includes(i.status);document.getElementById('invoiceEditor').innerHTML=`<div class="toolbar"><div><h1 style="margin:0">${esc(i.invoice_number)}</h1><div class="muted">${esc(i.customer_name)} · Unit ${esc(i.unit_number||'—')} ${i.work_order_id?`· WO #${esc(i.work_order_id)}`:''}</div></div><span class="invoiceStatus is-${i.status}">${esc(i.status)}</span></div><div class="invoiceEditorGrid"><div><div class="card"><h2 style="margin-top:0">Customer & Billing</h2><div class="row"><div class="field"><label>Customer</label><input id="invCustomer" value="${esc(i.customer_name)}" ${locked?'disabled':''}></div><div class="field"><label>Unit</label><input id="invUnit" value="${esc(i.unit_number||'')}" ${locked?'disabled':''}></div></div><div class="row"><div class="field"><label>VIN</label><input id="invVin" value="${esc(i.vin||'')}" ${locked?'disabled':''}></div><div class="field"><label>Customer PO #</label><input id="invPo" value="${esc(i.po_number||'')}" ${locked?'disabled':''}></div></div><div class="row"><div class="field"><label>Invoice Date</label><input id="invDate" type="date" value="${esc(String(i.invoice_date||'').slice(0,10))}" ${locked?'disabled':''}></div><div class="field"><label>Due Date</label><input id="invDue" type="date" value="${esc(String(i.due_date||'').slice(0,10))}" ${locked?'disabled':''}></div><div class="field"><label>Terms</label><input id="invTerms" value="${esc(i.terms||'')}" ${locked?'disabled':''}></div></div></div><div class="card"><div class="toolbar"><div><h2 style="margin:0">Jobs & Charges</h2><div class="muted">Group labor and parts by repair job. Edit quantities and customer prices before finalizing.</div></div>${locked?'':`<button class="secondary" onclick="addInvoiceLine()">+ Line Item</button>`}</div><div>${lines.map(l=>invoiceLineHtml(l,locked)).join('')||'<div class="empty">No charges yet.</div>'}</div></div><div class="card"><h2 style="margin-top:0">Customer Note</h2><textarea id="invCustomerNote" rows="3" ${locked?'disabled':''}>${esc(i.customer_note||'')}</textarea><h3>Internal Note</h3><textarea id="invInternalNote" rows="2" ${locked?'disabled':''}>${esc(i.internal_note||'')}</textarea></div></div><div><div class="card invoiceTotals"><h2 style="margin-top:0">Invoice Summary</h2><div class="field"><label>Sales Tax %</label><input id="invTaxRate" type="number" step="0.001" value="${Number(i.tax_rate||0)}" ${locked?'disabled':''}></div><div class="field"><label>Shop Supplies</label><input id="invShopSupplies" type="number" step="0.01" value="${Number(i.shop_supplies||0)}" ${locked?'disabled':''}></div><div class="field"><label>Environmental / Other Fee</label><input id="invEnvFee" type="number" step="0.01" value="${Number(i.environmental_fee||0)}" ${locked?'disabled':''}></div><div class="field"><label>Invoice Discount</label><input id="invDiscount" type="number" step="0.01" value="${Number(i.discount||0)}" ${locked?'disabled':''}></div><hr><div class="muted">Subtotal <b style="float:right">${invMoney(i.subtotal)}</b></div><div class="muted">Tax <b style="float:right">${invMoney(i.tax)}</b></div><div style="margin-top:12px">Total <b style="float:right">${invMoney(i.total)}</b></div><div class="muted">Paid <b style="float:right">${invMoney(i.amount_paid)}</b></div><div style="margin-top:12px">Balance Due</div><div class="moneyBig">${invMoney(i.balance_due)}</div><div class="actions" style="margin-top:14px">${locked?'':`<button onclick="saveInvoiceHeader()">Save Changes</button>`}<button class="secondary" onclick="downloadInvoicePDF(${i.id})">PDF</button>${i.status==='draft'?`<button class="success" onclick="finalizeInvoice(${i.id})">Finalize / Mark Sent</button>`:''}${['sent','partial'].includes(i.status)?`<button class="success" onclick="recordInvoicePayment(${i.id},${Number(i.balance_due||0)})">Record Payment</button>`:''}${i.status!=='void'&&Number(i.amount_paid||0)===0?`<button class="danger" onclick="voidInvoice(${i.id})">Void</button>`:''}</div><h3>Payments</h3>${payments.map(p=>`<div class="historyitem"><b>${invMoney(p.amount)}</b> · ${esc(p.method||'Other')}<div class="muted">${esc(String(p.paid_at||'').slice(0,19).replace('T',' '))} ${p.reference?`· ${esc(p.reference)}`:''}</div></div>`).join('')||'<div class="muted">No payments recorded.</div>'}</div></div></div>`}
+function invoiceLineHtml(l,locked){return `<div class="invoiceLine" data-invoice-line="${l.id}"><select class="ilType" ${locked?'disabled':''}><option value="labor" ${l.line_type==='labor'?'selected':''}>Labor</option><option value="part" ${l.line_type==='part'?'selected':''}>Part</option><option value="sublet" ${l.line_type==='sublet'?'selected':''}>Sublet</option><option value="fee" ${l.line_type==='fee'?'selected':''}>Fee</option><option value="other" ${l.line_type==='other'?'selected':''}>Other</option></select><input class="ilDesc wide" value="${esc(l.description)}" placeholder="Description" ${locked?'disabled':''}><input class="ilQty" type="number" step="0.01" value="${Number(l.quantity||0)}" ${locked?'disabled':''}><input class="ilPrice" type="number" step="0.01" value="${Number(l.unit_price||0)}" ${locked?'disabled':''}><input class="ilCost" type="number" step="0.01" value="${Number(l.unit_cost||0)}" title="Internal cost" ${locked?'disabled':''}><label style="font-size:11px"><input class="ilTax" type="checkbox" ${l.taxable?'checked':''} ${locked?'disabled':''}> Tax</label>${locked?'':`<button class="danger" onclick="deleteInvoiceLine(${l.id})">×</button>`}<div class="muted wide">${esc(l.job_name||'General')} · ${l.part_number?esc(l.part_number)+' · ':''}${invMoney(l.line_total)}</div>${locked?'':`<button class="secondary wide" onclick="saveInvoiceLine(${l.id})">Save line</button>`}</div>`}
+async function saveInvoiceHeader(){const i=activeInvoice.invoice,b={customerName:document.getElementById('invCustomer').value,unitNumber:document.getElementById('invUnit').value,vin:document.getElementById('invVin').value,poNumber:document.getElementById('invPo').value,invoiceDate:document.getElementById('invDate').value,dueDate:document.getElementById('invDue').value,terms:document.getElementById('invTerms').value,taxRate:Number(document.getElementById('invTaxRate').value||0),shopSupplies:Number(document.getElementById('invShopSupplies').value||0),environmentalFee:Number(document.getElementById('invEnvFee').value||0),discount:Number(document.getElementById('invDiscount').value||0),customerNote:document.getElementById('invCustomerNote').value,internalNote:document.getElementById('invInternalNote').value};const r=await fetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(b)}),d=await r.json();if(!r.ok)return alert(d.error||'Save failed');await openInvoice(i.id);await loadInvoices()}
+async function saveInvoiceLine(id){const el=document.querySelector(`[data-invoice-line="${id}"]`),i=activeInvoice.invoice,b={lineType:el.querySelector('.ilType').value,description:el.querySelector('.ilDesc').value,quantity:Number(el.querySelector('.ilQty').value||0),unitPrice:Number(el.querySelector('.ilPrice').value||0),unitCost:Number(el.querySelector('.ilCost').value||0),taxable:el.querySelector('.ilTax').checked,jobName:activeInvoice.lines.find(x=>String(x.id)===String(id))?.job_name||'General'};const r=await fetch(`/api/invoices/${i.id}/lines/${id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(b)}),d=await r.json();if(!r.ok)return alert(d.error||'Line save failed');await openInvoice(i.id)}
+async function addInvoiceLine(){const i=activeInvoice.invoice,desc=prompt('Description');if(!desc)return;const r=await fetch(`/api/invoices/${i.id}/lines`,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({lineType:'other',description:desc,quantity:1,unitPrice:0,taxable:false,jobName:'Additional Charges'})}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to add line');await openInvoice(i.id)}
+async function deleteInvoiceLine(lineId){if(!confirm('Remove this invoice line?'))return;const i=activeInvoice.invoice,r=await fetch(`/api/invoices/${i.id}/lines/${lineId}`,{method:'DELETE',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to remove line');await openInvoice(i.id)}
+async function finalizeInvoice(id){if(!confirm('Finalize this invoice and mark it sent/open? Review prices, tax and customer PO first.'))return;await saveInvoiceHeader();const r=await fetch(`/api/invoices/${id}/finalize`,{method:'POST',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to finalize');await openInvoice(id);await loadInvoices()}
+async function recordInvoicePayment(id,balance){const amount=Number(prompt(`Payment amount (balance ${invMoney(balance)}):`,Number(balance).toFixed(2)));if(!amount)return;const method=prompt('Payment method (Check, ACH, Credit Card, Cash, Other):','Check')||'Other',reference=prompt('Check # / transaction reference (optional):','')||'';const r=await fetch(`/api/invoices/${id}/payments`,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({amount,method,reference})}),d=await r.json();if(!r.ok)return alert(d.error||'Payment failed');await openInvoice(id);await loadInvoices()}
+async function voidInvoice(id){if(!confirm('Void this invoice? This keeps the audit record but removes it from accounts receivable.'))return;const r=await fetch(`/api/invoices/${id}/void`,{method:'POST',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to void');await openInvoice(id);await loadInvoices()}
+async function downloadInvoicePDF(id){try{const r=await fetch(`/api/invoices/${id}/pdf`,{headers:authHeaders(),cache:'no-store'});if(!r.ok){const d=await r.json();throw new Error(d.error||'PDF failed')}const b=await r.blob(),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=`Invoice-${id}.pdf`;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}catch(e){alert(e.message)}}
+
 </script>
+
+
+<div id="invoiceModal" class="modal"><div class="modalbox" style="max-width:1120px"><button class="x" onclick="closeModal('invoiceModal')">×</button><div id="invoiceEditor"></div></div></div>
 
 <div id="aiTranslationStatus" class="aiTranslationStatus">AI translating…</div>
 <div id="mobileBottomNav" class="mobileBottomNav">
@@ -4824,6 +4861,7 @@ if("serviceWorker" in navigator){
     <div class="mobileMoreGrab"></div>
     <div class="mobileMoreHead"><h3>More</h3><button class="x" onclick="closeMobileMore()">×</button></div>
     <div class="mobileMoreGrid">
+      <button class="mobileMoreItem" onclick="mobileMoreGo('invoices')"><span class="mi">$</span><b>Invoices</b><span>Billing, balances & payments</span></button>
       <button class="mobileMoreItem" onclick="mobileMoreGo('approvals')"><span class="mi">!</span><b>Findings</b><span>Customer decisions & approvals</span></button>
       <button class="mobileMoreItem" onclick="mobileMoreGo('procenter')"><span class="mi">⚙</span><b>Operations</b><span>Shop controls & reporting</span></button>
       <button class="mobileMoreItem" onclick="mobileMoreGo('activityhistory')"><span class="mi">◷</span><b>Activity History</b><span>Mechanic work timeline</span></button>

@@ -1,0 +1,51 @@
+ITTR v24.6.0 — Professional Customer Invoicing
+Build: ITTR-24.6.0-PRO-INVOICING-AR-PAYMENTS-20260912
+
+MARKET PATTERNS REVIEWED
+- Fullbay: estimate -> approval -> invoice -> payment, customer portals/reminders, QuickBooks sync.
+- Tekmetric: configurable taxes, digital approvals, payment options, parts/labor estimate workflow.
+- Shopmonkey: job/service grouping, line visibility, fees/discounts/taxes, customer-specific pricing, AR/reporting.
+- Mitchell 1 Manager SE: Job View grouping, job profitability, deferred work/revisions, professional invoice organization.
+
+IMPLEMENTED IN v24.6.0
+- Dedicated top-level Invoices workspace (mobile under More).
+- Invoice dashboard: Accounts Receivable, Overdue, Draft, Paid.
+- Statuses: Draft, Sent/Open, Partial, Paid, Void + overdue detection.
+- Create/Open Invoice directly from completed ITTR work orders.
+- Prevent duplicate active invoice for the same work order.
+- Invoice number sequence: IT-YYYY-00001 with PostgreSQL transaction advisory lock.
+- Pull completed WO customer, unit, VIN, PO, repair jobs, task labor time, and task parts.
+- Job-linked labor and parts invoice lines.
+- Manual line types: labor, part, sublet, fee, other.
+- Editable customer price, quantity, internal cost and taxable flag per line.
+- Sales tax rate, shop supplies, environmental/other fee, invoice discount.
+- Customer note + internal note.
+- Credit terms and due date.
+- Payment ledger: amount, method, reference, timestamp, receiving employee.
+- Automatic partial/paid status and balance calculation.
+- Void workflow preserves record and blocks void after payment.
+- Professional authenticated PDF invoice.
+- Mobile invoice list cards and responsive invoice editor.
+- Paid/void invoices are locked from normal editing.
+- Server-side monetary recalculation; browser totals are display only.
+- Explicit PostgreSQL numeric casts on invoice arithmetic.
+- No destructive database reset/migration.
+
+IMPORTANT ACCOUNTING / TAX DESIGN
+- Tax defaults to 0 unless explicitly configured on an invoice.
+- Individual invoice lines control taxable/non-taxable treatment.
+- ITTR does not guess a jurisdictional tax rate.
+- Purchase tax from vendor receiving remains separate from customer sales tax.
+
+AUDIT RESULTS
+- server.js node --check: PASS
+- frontend inline JavaScript node --check: PASS
+- duplicate API method/path routes: 0
+- duplicate literal DOM ids: 0
+- root/public frontend identical: PASS
+- /api/build frontend/backend: 24.6.0 / 24.6.0
+- invoice API routes: 12
+- existing v24.5.5 PostgreSQL receiving numeric fix preserved
+- manufacturer barcode + inventory count preserved
+- smart vendor receiving preserved
+- destructive DB reset: NONE
