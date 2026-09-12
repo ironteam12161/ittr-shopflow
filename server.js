@@ -411,9 +411,25 @@ function pickField(row,names){const m=new Map(Object.entries(row||{}).map(([k,v]
 function numOrNull(v){const n=Number(cleanFullbayCell(v).replace(/[$,%\s,]/g,""));return Number.isFinite(n)?n:null}
 function boolOrNull(v){const s=cleanFullbayCell(v).toLowerCase();if(["yes","true","1","active","on"].includes(s))return true;if(["no","false","0","inactive","off"].includes(s))return false;return null}
 function dateOrNull(v){const s=cleanFullbayCell(v);if(!s)return null;const d=new Date(s.replace(" ","T"));return Number.isFinite(d.getTime())?d.toISOString():null}
-function fullbayDateOrNull(v){const s=cleanFullbayCell(v);if(!s)return null;let d=new Date(s);if(Number.isFinite(d.getTime()))return d.toISOString();const m=s.match(/^([0-9]{1,2}:[0-9]{2}(?:[AP]M)?)\s+([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{4})$/i);if(m){d=new Date(`${m[2]} ${m[1]}`);if(Number.isFinite(d.getTime()))return d.toISOString()}return null}
+function fullbayDateOrNull(v){
+ const s=cleanFullbayCell(v);if(!s)return null;
+ // Fullbay Details exports dates like: ="2:55PM 5/2/2023".
+ const m=s.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)\s+(\d{1,2})\/(\d{1,2})\/(\d{4})$/i);
+ if(m){let h=Number(m[1])%12;if(m[3].toUpperCase()==="PM")h+=12;const d=new Date(Date.UTC(Number(m[6]),Number(m[4])-1,Number(m[5]),h,Number(m[2]),0));return Number.isFinite(d.getTime())?d.toISOString():null}
+ let d=new Date(s);if(Number.isFinite(d.getTime()))return d.toISOString();
+ const m2=s.match(/^(\d{1,2}:\d{2}(?:\s*[AP]M)?)\s+(\d{1,2}\/\d{1,2}\/\d{4})$/i);if(m2){d=new Date(`${m2[2]} ${m2[1]}`);if(Number.isFinite(d.getTime()))return d.toISOString()}
+ return null;
+}
 function cleanRawRow(row){const out={};for(const [k,v] of Object.entries(row||{})){if(normHeader(k)==="portalcode")continue;out[k]=cleanFullbayCell(v)}return out}
 function sourceKey(prefix,...vals){const raw=vals.map(v=>String(v||"").trim().toLowerCase()).filter(Boolean).join("|");return prefix+":"+crypto.createHash("sha256").update(raw||crypto.randomUUID()).digest("hex")}
+
+async function repairFullbayServiceDatesAtStartup(){
+ if(!pool)return {checked:0,repaired:0};
+ const r=await pool.query(`SELECT id,raw FROM fullbay_service_history WHERE action_completed_at IS NULL ORDER BY id`);
+ let repaired=0;
+ for(const row of r.rows){const raw=row.raw||{};const value=raw["Action Completed Date"]||raw["Completed Date"]||raw["Date"]||"";const parsed=fullbayDateOrNull(value);if(!parsed)continue;await pool.query("UPDATE fullbay_service_history SET action_completed_at=$2,updated_at=now() WHERE id=$1 AND action_completed_at IS NULL",[row.id,parsed]);repaired++}
+ return {checked:r.rowCount,repaired};
+}
 
 app.get("/api/fullbay/import/status",auth,adminOnly,async(req,res,next)=>{try{
  const db=requireDb();const [c,p,srv,u,l]=await Promise.all([db.query("SELECT count(*)::int n,max(updated_at) last FROM fullbay_import_customers"),db.query("SELECT count(*)::int n,max(updated_at) last FROM fullbay_import_parts"),db.query("SELECT count(*)::int n,count(DISTINCT service_order)::int orders,max(updated_at) last FROM fullbay_service_history"),db.query("SELECT count(*)::int n FROM customer_units"),db.query("SELECT * FROM fullbay_import_log ORDER BY created_at DESC LIMIT 10")]);
@@ -703,6 +719,20 @@ app.post("/api/customer-units/decode-missing-vins",auth,adminOnly,async(req,res,
  await audit(req.user.username,"unit_vin_bulk_decode",{requested:rows.length,updated,failed});res.json({ok:true,checked:rows.length,updated,failed,errors});
 }catch(e){next(e)}});
 
+app.get("/api/customer-units/:id/profile",auth,adminOnly,async(req,res,next)=>{try{
+ const db=requireDb();
+ const ur=await db.query(`SELECT u.*,c.customer_name AS canonical_customer,c.dot_number,c.phone AS customer_phone,c.email AS customer_email FROM customer_units u LEFT JOIN fullbay_import_customers c ON c.id::text=u.customer_id::text WHERE u.id=$1`,[req.params.id]);
+ if(!ur.rowCount)return res.status(404).json({error:"Vehicle not found."});
+ const unit={...ur.rows[0],customer_name:ur.rows[0].canonical_customer||ur.rows[0].customer_name};
+ let fullbayHistory=[];
+ try{const hr=await db.query(`SELECT service_order,invoice_number,unit_number,vin,max(action_completed_at) completed_at,max(unit_miles) unit_miles,max(lead_tech) lead_tech,max(tech) tech,sum(coalesce(hours,0)) hours,sum(coalesce(labor_amount,0)) labor_amount,sum(coalesce(part_amount,0)) part_amount,sum(coalesce(total_amount,0)) total_amount,json_agg(json_build_object('action',action_number,'complaint',complaint,'correction',actual_correction,'hours',hours,'component',component,'system',system) ORDER BY action_completed_at,action_number) actions FROM fullbay_service_history WHERE (unit_record_id=$1 OR (lower(coalesce(unit_number,''))=lower($2) AND (customer_id::text=$3::text OR lower(coalesce(customer_name,''))=lower($4)))) GROUP BY service_order,invoice_number,unit_number,vin ORDER BY max(action_completed_at) DESC NULLS LAST LIMIT 1000`,[unit.id,unit.unit_number||"",unit.customer_id,unit.customer_name||""]);fullbayHistory=hr.rows.map(x=>({source:"fullbay",id:x.service_order,invoice:x.invoice_number,unit:x.unit_number,vin:x.vin,completedAt:x.completed_at,status:"Completed (Fullbay)",mechanic:x.tech||x.lead_tech||"",mileage:x.unit_miles,hours:Number(x.hours||0),laborAmount:Number(x.labor_amount||0),partAmount:Number(x.part_amount||0),totalAmount:Number(x.total_amount||0),tasks:(Array.isArray(x.actions)?x.actions:[]).map(a=>({t:a.complaint||a.correction||`Action ${a.action||""}`,outcomeNote:a.correction||"",hours:a.hours,component:a.component,system:a.system}))}))}catch(e){console.error("Vehicle Fullbay history warning:",e?.message)}
+ let ittrHistory=[];
+ try{const core=await getCoreState(),unitKey=String(unit.unit_number||"").trim().toLowerCase(),customerKey=normCustomerName(unit.customer_name);ittrHistory=(Array.isArray(core.shopflow?.workorders)?core.shopflow.workorders:[]).filter(w=>w&&typeof w==="object"&&String(w.unit||"").trim().toLowerCase()===unitKey&&(!customerKey||!w.customer||normCustomerName(w.customer)===customerKey)).map(w=>({source:"ittr",id:w.id,unit:w.unit,date:w.date,time:w.time,status:w.status,completedAt:w.completedAt,mechanic:w.mechanic,mileage:w.mileage,tasks:(Array.isArray(w.tasks)?w.tasks:[]).filter(Boolean).map(t=>({t:t.t,outcome:t.outcome,outcomeNote:t.outcomeNote})),notes:w.notes,completionNotes:w.completionNotes,futureNotes:w.futureNotes})).sort((a,b)=>new Date(b.completedAt||b.date||0)-new Date(a.completedAt||a.date||0))}catch(e){console.error("Vehicle ITTR history warning:",e?.message)}
+ const history=[...fullbayHistory,...ittrHistory].sort((a,b)=>new Date(b.completedAt||b.date||0)-new Date(a.completedAt||a.date||0));
+ const active=ittrHistory.filter(x=>x.status!=="Completed");
+ res.json({unit,customer:unit.customer_id?{id:unit.customer_id,customer_name:unit.customer_name,dot_number:unit.dot_number,phone:unit.customer_phone,email:unit.customer_email}:null,history,active});
+}catch(e){next(e)}});
+
 app.get("/api/customer-units/suggest",auth,async(req,res,next)=>{try{
  try{await syncCustomerUnitDirectory()}catch(e){console.error("Unit suggest sync warning:",e?.message)}const q=String(req.query.q||"").trim();if(q.length<1)return res.json({items:[]});const like=`%${q}%`,db=requireDb();
  const r=await db.query(`SELECT u.*,c.customer_name AS canonical_customer,c.phone AS customer_phone,c.email AS customer_email,c.dot_number FROM customer_units u LEFT JOIN fullbay_import_customers c ON c.id::text=u.customer_id::text WHERE u.unit_number ILIKE $1 OR coalesce(u.vin,'') ILIKE $1 OR coalesce(u.plate,'') ILIKE $1 OR coalesce(c.customer_name,u.customer_name,'') ILIKE $1 ORDER BY CASE WHEN lower(u.unit_number)=lower($2) THEN 0 WHEN lower(u.unit_number) LIKE lower($3) THEN 1 ELSE 2 END,u.unit_number LIMIT 20`,[like,q,`${q}%`]);res.json({items:r.rows.map(x=>({...x,customer_name:x.canonical_customer||x.customer_name}))});
@@ -716,12 +746,12 @@ app.get("/api/smart-search",auth,adminOnly,async(req,res,next)=>{try{
  const customers=(await db.query(`SELECT id,customer_name,contact_name,phone,email,dot_number,address,city,state,postal_code,active FROM fullbay_import_customers WHERE customer_name ILIKE $1 OR coalesce(contact_name,'') ILIKE $1 OR coalesce(phone,'') ILIKE $1 OR coalesce(email,'') ILIKE $1 OR coalesce(dot_number,'') ILIKE $1 OR coalesce(address,'') ILIKE $1 OR coalesce(city,'') ILIKE $1 ORDER BY active DESC NULLS LAST,customer_name LIMIT $2`,[like,limit])).rows;
  const units=(await db.query(`SELECT u.id,u.customer_id::text AS customer_id,coalesce(c.customer_name,u.customer_name) AS customer_name,u.unit_number,u.vin,u.year,u.make,u.model,u.plate,u.mileage,u.engine,u.transmission,u.notes FROM customer_units u LEFT JOIN fullbay_import_customers c ON c.id::text=u.customer_id::text WHERE u.unit_number ILIKE $1 OR coalesce(u.vin,'') ILIKE $1 OR coalesce(u.plate,'') ILIKE $1 OR coalesce(u.make,'') ILIKE $1 OR coalesce(u.model,'') ILIKE $1 OR coalesce(u.engine,'') ILIKE $1 OR coalesce(u.notes,'') ILIKE $1 OR coalesce(c.customer_name,u.customer_name,'') ILIKE $1 ORDER BY u.unit_number LIMIT $2`,[like,limit])).rows;
  let workorders=[];try{const core=await getCoreState(),needle=q.toLowerCase();workorders=(Array.isArray(core.shopflow?.workorders)?core.shopflow.workorders:[]).filter(w=>{if(!w||typeof w!=="object")return false;const tasks=(Array.isArray(w.tasks)?w.tasks:[]).map(t=>[t?.t,t?.outcomeNote,t?.completionNote].filter(Boolean).join(" ")).join(" "),hay=[w.id,w.unit,w.customer,w.status,w.notes,w.completionNotes,w.futureNotes,w.parking,tasks].filter(v=>v!=null).join(" ").toLowerCase();return hay.includes(needle)}).sort((a,b)=>Number(b.id||0)-Number(a.id||0)).slice(0,limit).map(w=>({source:"ittr",id:w.id,unit:w.unit,customer:w.customer,status:w.status,date:w.date,time:w.time,completedAt:w.completedAt,summary:(w.tasks||[]).map(t=>t?.t).filter(Boolean).slice(0,3).join(", ")||w.notes||w.completionNotes||w.futureNotes||""}))}catch(e){console.error("Smart search work-order warning:",e?.message)}
- try{const sr=await db.query(`SELECT customer_id::text AS customer_id,customer_name,service_order,invoice_number,unit_number,max(action_completed_at) completed_at,string_agg(DISTINCT coalesce(complaint,''),' | ') FILTER (WHERE coalesce(complaint,'')<>'') complaints,string_agg(DISTINCT coalesce(actual_correction,''),' | ') FILTER (WHERE coalesce(actual_correction,'')<>'') corrections FROM fullbay_service_history WHERE customer_name ILIKE $1 OR coalesce(unit_number,'') ILIKE $1 OR coalesce(vin,'') ILIKE $1 OR coalesce(service_order,'') ILIKE $1 OR coalesce(invoice_number,'') ILIKE $1 OR coalesce(complaint,'') ILIKE $1 OR coalesce(actual_correction,'') ILIKE $1 OR coalesce(component,'') ILIKE $1 OR coalesce(system,'') ILIKE $1 GROUP BY customer_id,customer_name,service_order,invoice_number,unit_number ORDER BY max(action_completed_at) DESC NULLS LAST LIMIT $2`,[like,limit]);for(const x of sr.rows)workorders.push({source:"fullbay",id:x.service_order,invoice:x.invoice_number,unit:x.unit_number,customer:x.customer_name,customer_id:x.customer_id,status:"Fullbay History",completedAt:x.completed_at,summary:[x.complaints,x.corrections].filter(Boolean).join(" — ").slice(0,400)})}catch(e){console.error("Smart search Fullbay history warning:",e?.message)}
+ try{const sr=await db.query(`SELECT customer_id::text AS customer_id,customer_name,service_order,invoice_number,unit_number,max(action_completed_at) completed_at,count(*)::int job_count,(array_agg(nullif(complaint,'') ORDER BY action_completed_at NULLS LAST,action_number) FILTER (WHERE coalesce(complaint,'')<>''))[1] first_complaint,(array_agg(nullif(actual_correction,'') ORDER BY action_completed_at NULLS LAST,action_number) FILTER (WHERE coalesce(actual_correction,'')<>''))[1] first_correction FROM fullbay_service_history WHERE customer_name ILIKE $1 OR coalesce(unit_number,'') ILIKE $1 OR coalesce(vin,'') ILIKE $1 OR coalesce(service_order,'') ILIKE $1 OR coalesce(invoice_number,'') ILIKE $1 OR coalesce(complaint,'') ILIKE $1 OR coalesce(actual_correction,'') ILIKE $1 OR coalesce(component,'') ILIKE $1 OR coalesce(system,'') ILIKE $1 GROUP BY customer_id,customer_name,service_order,invoice_number,unit_number ORDER BY max(action_completed_at) DESC NULLS LAST LIMIT $2`,[like,limit]);for(const x of sr.rows){const first=x.first_complaint||x.first_correction||"Service record";workorders.push({source:"fullbay",id:x.service_order,invoice:x.invoice_number,unit:x.unit_number,customer:x.customer_name,customer_id:x.customer_id,status:"Fullbay History",completedAt:x.completed_at,jobCount:Number(x.job_count||0),summary:`${first}${Number(x.job_count||0)>1?` + ${Number(x.job_count)-1} more job${Number(x.job_count)-1===1?"":"s"}`:""}`})}}catch(e){console.error("Smart search Fullbay history warning:",e?.message)}
  workorders.sort((a,b)=>new Date(b.completedAt||b.date||0)-new Date(a.completedAt||a.date||0));res.json({customers,units,workorders:workorders.slice(0,limit),q});
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"24.2.0",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"24.2.1",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -754,8 +784,8 @@ async function reconcileDuplicateImportedCustomers(){
  return {merged};
 }
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.2.0",backend:"24.2.0",build:"ITTR-24.2.0-VEHICLE-CENTRIC-HISTORY-20260911"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.2.0",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.2.1",backend:"24.2.1",build:"ITTR-24.2.1-VEHICLE-DIRECT-ROUTING-DATE-REPAIR-20260911"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.2.1",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -1708,5 +1738,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}app.listen(port,()=>console.log(`ITTR v24.2.0 Online running on port ${port}`))})
+  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}app.listen(port,()=>console.log(`ITTR v24.2.1 Online running on port ${port}`))})
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

@@ -1,0 +1,18 @@
+ITTR ShopFlow v24.2.1 — Vehicle Direct Routing + Fullbay Date Repair
+
+Fixed:
+1. Clicking a VEHICLE in Smart Search now opens that vehicle's dedicated profile, not the customer Overview.
+2. Vehicle profile has Overview, Service History, and Current Work tabs.
+3. Vehicle Service History is scoped to that unit only.
+4. Fullbay service orders open directly from Smart Search and vehicle history.
+5. Smart Search service results are compact and no longer dump the entire repair history into the dropdown.
+6. Fullbay service dates exported as ="2:55PM 5/2/2023" are parsed correctly.
+7. Existing imported history with missing action_completed_at is repaired automatically at server startup from saved raw Fullbay data. No re-import is required.
+8. Vehicle editing works when the vehicle was opened directly from Smart Search.
+9. Customer > Vehicles > Open Vehicle now uses the same vehicle profile.
+
+Deployment:
+- Deploy over the SAME Railway project.
+- DO NOT reset PostgreSQL.
+- DO NOT re-import Fullbay just for these fixes.
+- Confirm the green build bar shows frontend 24.2.1 and backend 24.2.1.
