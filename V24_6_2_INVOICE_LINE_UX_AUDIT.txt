@@ -1,0 +1,46 @@
+ITTR v24.6.2 — PROFESSIONAL INVOICE LINE UX AUDIT
+Date: 2026-09-12
+
+Scope
+- Reworked invoice charge-entry UI to match the efficient heavy-duty shop pattern used by systems such as Fullbay: repairs/services are grouped, with labor and parts added only when needed.
+- Removed browser prompt from + Add Line flow.
+- Added explicit field labels so the office can immediately see Hours/Qty, Labor Rate/Unit Price, Internal Cost, Tax, and calculated Amount.
+- Added type-aware line editor: Labor, Part, Sublet, Fee, Other.
+- Part # appears only for Part lines.
+- Labor line labels change to Hours and Labor Rate.
+- Part/other line labels change to Qty and Unit Price.
+- Added live Amount preview (Qty/Hours × Price/Rate).
+- Added per-service quick actions: + Labor, + Part, + Sublet.
+- Added professional Add Line panel with Service / Job name so manual invoices can create charges under the correct repair.
+- Global Save Changes now saves visible invoice lines before saving header/totals to reduce extra clicks.
+- Preserved line-level Save for focused edits.
+- Blank newly-created invoice lines are allowed in draft mode so staff can enter the actual description instead of receiving a fake 'Line item' description.
+
+Data / Safety
+- Existing invoice tables and records preserved.
+- No destructive migration or database reset.
+- Existing v24.6.1 service-order conversion, audited mechanic time adjustments, Parts, Smart Receiving, inventory counting, customer/vehicle history, PDF, payments and AR preserved.
+- v24.5.5 PostgreSQL numeric inventory-value typing fix preserved.
+- v23.7.1 Fullbay inventory import SQL parameter fix preserved.
+
+Static audit
+- server.js syntax: PASS
+- inline frontend JavaScript syntax: PASS
+- root/public index identical: PASS
+- duplicate DOM IDs: 0
+- duplicate Express method/path routes: 0
+- duplicate addInvoiceLine definitions: 0
+- normalizeReceivingVendor definition present: PASS
+- require('crypto') occurrences: 0
+- Changed invoice SQL reviewed for contiguous numbered placeholders and explicit numeric casts: PASS
+
+Recommended acceptance test
+1. Open a draft invoice created from a completed Work Order / Service Order.
+2. Confirm each service/job is grouped in its own card.
+3. Add Labor under an existing service; verify fields show Hours, Labor Rate, Amount.
+4. Add Part under the same service; verify Part #, Qty, Unit Price, Amount.
+5. Use global + Add Line, enter a new Service / Job name, choose Labor or Part.
+6. Change type between Labor and Part; verify labels and Part # visibility update.
+7. Edit hours/qty and price; verify Amount preview updates immediately.
+8. Click Save Changes; reopen invoice and verify all line edits persisted.
+9. Generate PDF and verify customer-facing grouping and totals remain correct.
