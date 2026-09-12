@@ -1,0 +1,51 @@
+ITTR v24.5.1 — Parts Receiving / Manufacturer Barcode / Physical Inventory Audit
+
+RECEIVING HARDENING
+- Rebuilt the vendor-invoice Receive Inventory transaction with explicit stages.
+- Duplicate vendor invoice protection preserved.
+- Selected matched parts are verified before stock changes.
+- New-part creation first checks normalized exact part number to avoid accidental duplicate inventory records.
+- Invalid/blank invoice dates no longer cause a fragile database date cast.
+- Every invoice remains atomic: BEGIN -> all lines -> COMMIT; any failure -> ROLLBACK.
+- Production errors now include a safe incident/error message. Receiving additionally returns the exact failed stage so the UI no longer gives only a generic "Server error".
+- Receive button is locked while processing to prevent double taps.
+
+MANUFACTURER BARCODES
+- Added atomic POST /api/parts/:id/barcodes.
+- Part Detail has "Scan Manufacturer Barcode" using the phone camera/scanner.
+- Manufacturer/vendor UPC/EAN/Code128 aliases resolve to the same ITTR inventory part.
+- The server rejects a barcode already assigned to another part, internal barcode, or part number.
+- Manual alias entry remains supported.
+
+PHYSICAL INVENTORY
+- Added persistent inventory count sessions and count lines.
+- "Scan Each Item": each scan adds one physical piece.
+- "Scan Shelf / Bin": scan a SKU and enter its actual physical quantity.
+- Quantity can be corrected manually before posting.
+- Unknown barcode flow can search inventory, assign that manufacturer barcode to the correct part, and continue counting.
+- Only scanned/reviewed parts are changed; unscanned parts remain untouched.
+- Completion compares current stock against the stock captured when each part was counted. If a mechanic used/returned/received that part meanwhile, posting is blocked for safety instead of overwriting the live movement.
+- Every posted difference is an inventory_count ledger transaction with before/after/delta/user/session.
+
+INVENTORY VALUE CONSISTENCY
+- Manual adjustments, WO use, WO returns and physical inventory now keep inventory_value synchronized with quantity * average cost.
+- Vendor receiving already updates weighted cost/value and remains preserved.
+
+PRESERVED FEATURES
+- Selling price and customer-sale taxable settings.
+- Purchase tax/freight/landed-cost receiving.
+- Low-stock/reorder notifications.
+- Vendor master/alias normalization (e.g. website-looking invoice vendor names map back to existing canonical vendors when possible).
+- Paid OpenRouter invoice extraction.
+- Work-order Scan Part and mobile scanner stacking.
+- Fullbay importer and v23.7.1 inventory INSERT SQL parameter fix.
+- No destructive database reset/migration.
+
+STATIC AUDIT
+- server.js node --check: PASS
+- extracted frontend JavaScript node --check: PASS
+- duplicate DOM IDs: 0
+- duplicate API method/path routes: 0
+- root/public index.html: IDENTICAL
+- package version: 24.5.1
+- v23.7.1 Fullbay inventory SQL: PRESERVED

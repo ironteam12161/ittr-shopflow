@@ -126,3 +126,40 @@ CREATE INDEX IF NOT EXISTS idx_fullbay_service_customer ON fullbay_service_histo
 CREATE INDEX IF NOT EXISTS idx_fullbay_service_unit ON fullbay_service_history(lower(unit_number),action_completed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_fullbay_service_vin ON fullbay_service_history(lower(vin));
 CREATE INDEX IF NOT EXISTS idx_fullbay_service_so ON fullbay_service_history(service_order);
+
+
+-- v24.5.1 Parts, vendor receiving, manufacturer barcodes, and physical inventory count
+ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS internal_barcode TEXT;
+ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS barcode_aliases JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS reorder_point NUMERIC;
+ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS on_order NUMERIC DEFAULT 0;
+ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS inventory_managed BOOLEAN DEFAULT TRUE;
+ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS purchase_taxable BOOLEAN DEFAULT TRUE;
+ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS sell_taxable BOOLEAN DEFAULT TRUE;
+ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS purchase_tax_rate NUMERIC DEFAULT 0;
+ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS last_purchase_cost NUMERIC;
+ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS previous_purchase_cost NUMERIC;
+ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS last_purchase_at TIMESTAMPTZ;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fullbay_parts_internal_barcode ON fullbay_import_parts(internal_barcode) WHERE internal_barcode IS NOT NULL;
+CREATE TABLE IF NOT EXISTS parts_vendors(
+ id BIGSERIAL PRIMARY KEY, canonical_name TEXT UNIQUE NOT NULL, aliases JSONB NOT NULL DEFAULT '[]'::jsonb, website_domain TEXT, phone TEXT, notes TEXT, active BOOLEAN DEFAULT TRUE, created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS part_inventory_transactions(
+ id BIGSERIAL PRIMARY KEY, part_id BIGINT NOT NULL REFERENCES fullbay_import_parts(id) ON DELETE RESTRICT, transaction_type TEXT NOT NULL, quantity_delta NUMERIC NOT NULL, quantity_before NUMERIC, quantity_after NUMERIC, work_order_id TEXT, task_uid TEXT, task_name TEXT, unit_number TEXT, customer_name TEXT, reference TEXT, reason TEXT, username TEXT NOT NULL, metadata JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS parts_vendor_invoices(
+ id BIGSERIAL PRIMARY KEY, vendor TEXT, invoice_number TEXT, invoice_date DATE, po_number TEXT, subtotal NUMERIC, tax NUMERIC, freight NUMERIC, total NUMERIC, tax_rate NUMERIC DEFAULT 0, tax_included_in_cost BOOLEAN DEFAULT FALSE, source_filename TEXT, source_method TEXT DEFAULT 'scan', status TEXT DEFAULT 'draft', raw_extract JSONB NOT NULL DEFAULT '{}'::jsonb, created_by TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT now(), received_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_parts_vendor_invoice_unique ON parts_vendor_invoices(lower(coalesce(vendor,'')),lower(coalesce(invoice_number,''))) WHERE invoice_number IS NOT NULL;
+CREATE TABLE IF NOT EXISTS parts_vendor_invoice_lines(
+ id BIGSERIAL PRIMARY KEY, invoice_id BIGINT NOT NULL REFERENCES parts_vendor_invoices(id) ON DELETE CASCADE, line_no INTEGER, vendor_part_number TEXT, manufacturer TEXT, description TEXT, quantity NUMERIC, unit_cost NUMERIC, core_cost NUMERIC DEFAULT 0, line_total NUMERIC, taxable BOOLEAN DEFAULT TRUE, tax_amount NUMERIC DEFAULT 0, matched_part_id BIGINT REFERENCES fullbay_import_parts(id) ON DELETE SET NULL, match_status TEXT DEFAULT 'unmatched', received_quantity NUMERIC DEFAULT 0, created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS part_purchase_cost_history(
+ id BIGSERIAL PRIMARY KEY, part_id BIGINT NOT NULL REFERENCES fullbay_import_parts(id) ON DELETE RESTRICT, vendor TEXT, invoice_number TEXT, invoice_id BIGINT REFERENCES parts_vendor_invoices(id) ON DELETE SET NULL, purchased_at TIMESTAMPTZ DEFAULT now(), quantity NUMERIC NOT NULL, unit_cost NUMERIC NOT NULL, core_cost NUMERIC DEFAULT 0, username TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS inventory_count_sessions(
+ id BIGSERIAL PRIMARY KEY, status TEXT NOT NULL DEFAULT 'open', mode TEXT NOT NULL DEFAULT 'shelf', notes TEXT, started_by TEXT NOT NULL, started_at TIMESTAMPTZ DEFAULT now(), completed_by TEXT, completed_at TIMESTAMPTZ
+);
+CREATE TABLE IF NOT EXISTS inventory_count_lines(
+ id BIGSERIAL PRIMARY KEY, session_id BIGINT NOT NULL REFERENCES inventory_count_sessions(id) ON DELETE CASCADE, part_id BIGINT NOT NULL REFERENCES fullbay_import_parts(id) ON DELETE RESTRICT, system_qty NUMERIC NOT NULL DEFAULT 0, counted_qty NUMERIC NOT NULL DEFAULT 0, last_barcode TEXT, counted_by TEXT, first_counted_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(), UNIQUE(session_id,part_id)
+);
