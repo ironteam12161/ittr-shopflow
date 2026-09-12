@@ -399,13 +399,18 @@ function csvObjects(buffer){
 }
 function normHeader(s){return String(s||"").toLowerCase().replace(/[^a-z0-9]+/g,"")}
 function cleanFullbayCell(v){
- let s=String(v??"").trim();
- const m=s.match(/^=\"([\s\S]*)\"$/);
- if(m)s=m[1].replace(/\"\"/g,'"');
- // Some CSV parsers remove the quote wrapper but leave Excel's leading = marker.
- s=s.replace(/^=+(?=[A-Za-z0-9])/,'');
- if(/^\"[\s\S]*\"$/.test(s))s=s.slice(1,-1).replace(/\"\"/g,'"');
- return s.trim();
+ let s=String(v??"").replace(/^\uFEFF/,"").trim();
+ if(!s)return "";
+ // Fullbay CSV exports often use Excel formulas: ="value". Different parsers can leave =, quotes, or both.
+ for(let i=0;i<3;i++){
+  const m=s.match(/^=+\s*"([\s\S]*)"$/);
+  if(m){s=m[1].replace(/""/g,'"').trim();continue}
+  if(/^"[\s\S]*"$/.test(s)){s=s.slice(1,-1).replace(/""/g,'"').trim();continue}
+  break;
+ }
+ s=s.replace(/^=+\s*/,"");
+ s=s.replace(/(^|[\s|;,])=+(?=[A-Za-z0-9#])/g,"$1");
+ return s.replace(/\s{2,}/g," ").trim();
 }
 function pickField(row,names){const m=new Map(Object.entries(row||{}).map(([k,v])=>[normHeader(k),cleanFullbayCell(v)]));for(const n of names){const v=m.get(normHeader(n));if(v!=null&&String(v).trim()!=="")return String(v).trim()}return ""}
 function numOrNull(v){const n=Number(cleanFullbayCell(v).replace(/[$,%\s,]/g,""));return Number.isFinite(n)?n:null}
@@ -429,6 +434,28 @@ async function repairFullbayServiceDatesAtStartup(){
  let repaired=0;
  for(const row of r.rows){const raw=row.raw||{};const value=raw["Action Completed Date"]||raw["Completed Date"]||raw["Date"]||"";const parsed=fullbayDateOrNull(value);if(!parsed)continue;await pool.query("UPDATE fullbay_service_history SET action_completed_at=$2,updated_at=now() WHERE id=$1 AND action_completed_at IS NULL",[row.id,parsed]);repaired++}
  return {checked:r.rowCount,repaired};
+}
+
+async function repairFullbayTextArtifactsAtStartup(){
+ if(!pool)return {units:0,history:0,customers:0,parts:0};
+ const client=await pool.connect(),counts={units:0,history:0,customers:0,parts:0};
+ const cleanRow=(row,fields)=>{const out={};let changed=false;for(const f of fields){const old=row[f],next=old==null?old:cleanFullbayCell(old);out[f]=next;if(old!=null&&String(old)!==String(next))changed=true}return {out,changed}};
+ try{
+  await client.query("BEGIN");
+  const unitFields=["customer_name","unit_number","vin","year","make","model","plate","engine","transmission","notes","unit_status","unit_type","unit_subtype"];
+  const ur=await client.query(`SELECT id,${unitFields.join(",")} FROM customer_units`);
+  for(const row of ur.rows){const {out,changed}=cleanRow(row,unitFields);if(!changed)continue;await client.query(`UPDATE customer_units SET customer_name=$2,unit_number=$3,vin=$4,year=$5,make=$6,model=$7,plate=$8,engine=$9,transmission=$10,notes=$11,unit_status=$12,unit_type=$13,unit_subtype=$14,updated_at=now() WHERE id=$1`,[row.id,...unitFields.map(f=>out[f])]);counts.units++}
+  const historyFields=["customer_name","unit_number","vin","unit_status","unit_type","unit_subtype","service_order","invoice_number","po_number","action_number","lead_tech","tech","complaint","actual_correction","component","system"];
+  const hr=await client.query(`SELECT id,${historyFields.join(",")} FROM fullbay_service_history`);
+  for(const row of hr.rows){const {out,changed}=cleanRow(row,historyFields);if(!changed)continue;await client.query(`UPDATE fullbay_service_history SET customer_name=$2,unit_number=$3,vin=$4,unit_status=$5,unit_type=$6,unit_subtype=$7,service_order=$8,invoice_number=$9,po_number=$10,action_number=$11,lead_tech=$12,tech=$13,complaint=$14,actual_correction=$15,component=$16,system=$17,updated_at=now() WHERE id=$1`,[row.id,...historyFields.map(f=>out[f])]);counts.history++}
+  const customerFields=["customer_name","phone","address","city","state","postal_code","customer_group","secondary_phone","dot_number","external_id","country","assigned_shop","tax_exempt_number","credit_terms","billing_contact","payment_method","price_level","access_method","billing_address","billing_city","billing_state","billing_postal_code","ext_accounting","contact_name"];
+  const cr=await client.query(`SELECT id,${customerFields.join(",")} FROM fullbay_import_customers`);
+  for(const row of cr.rows){const {out,changed}=cleanRow(row,customerFields);if(!changed)continue;await client.query(`UPDATE fullbay_import_customers SET customer_name=$2,phone=$3,address=$4,city=$5,state=$6,postal_code=$7,customer_group=$8,secondary_phone=$9,dot_number=$10,external_id=$11,country=$12,assigned_shop=$13,tax_exempt_number=$14,credit_terms=$15,billing_contact=$16,payment_method=$17,price_level=$18,access_method=$19,billing_address=$20,billing_city=$21,billing_state=$22,billing_postal_code=$23,ext_accounting=$24,contact_name=$25,updated_at=now() WHERE id=$1`,[row.id,...customerFields.map(f=>out[f])]);counts.customers++}
+  const partFields=["part_number","description","location","vendor","status","uom","category","manufacturer","notes"];
+  const pr=await client.query(`SELECT id,${partFields.join(",")} FROM fullbay_import_parts`);
+  for(const row of pr.rows){const {out,changed}=cleanRow(row,partFields);if(!changed)continue;await client.query(`UPDATE fullbay_import_parts SET part_number=$2,description=$3,location=$4,vendor=$5,status=$6,uom=$7,category=$8,manufacturer=$9,notes=$10,updated_at=now() WHERE id=$1`,[row.id,...partFields.map(f=>out[f])]);counts.parts++}
+  await client.query("COMMIT");return counts;
+ }catch(e){await client.query("ROLLBACK");throw e}finally{client.release()}
 }
 
 app.get("/api/fullbay/import/status",auth,adminOnly,async(req,res,next)=>{try{
@@ -695,10 +722,10 @@ app.get("/api/customers/:id/profile",auth,adminOnly,async(req,res)=>{
  }catch(e){console.error("Customer profile fatal error:",e);res.status(500).json({error:`Customer profile database error${e?.code?` [${e.code}]`:""}.`,code:e?.code||"CUSTOMER_PROFILE"})}
 });
 app.post("/api/customers/:id/units",auth,adminOnly,async(req,res,next)=>{try{
- const db=requireDb(),c=await db.query("SELECT id,customer_name FROM fullbay_import_customers WHERE id::text=$1::text",[req.params.id]);if(!c.rowCount)return res.status(404).json({error:"Customer not found."});const b=req.body||{};if(!String(b.unit_number||"").trim())return res.status(400).json({error:"Unit number is required."});const item=await upsertDirectoryUnit(db,{customerId:c.rows[0].id,customerName:c.rows[0].customer_name,unit:b.unit_number,vin:b.vin,year:b.year,make:b.make,model:b.model,plate:b.plate,mileage:b.mileage,engine:b.engine,transmission:b.transmission,notes:b.notes,source:"manual"});await audit(req.user.username,"customer_unit_saved",{customerId:req.params.id,unit:item.unit_number});res.json({item});
+ const db=requireDb(),c=await db.query("SELECT id,customer_name FROM fullbay_import_customers WHERE id::text=$1::text",[req.params.id]);if(!c.rowCount)return res.status(404).json({error:"Customer not found."});const b=req.body||{};if(!String(b.unit_number||"").trim())return res.status(400).json({error:"Unit number is required."});const item=await upsertDirectoryUnit(db,{customerId:c.rows[0].id,customerName:c.rows[0].customer_name,unit:cleanFullbayCell(b.unit_number),vin:cleanFullbayCell(b.vin),year:cleanFullbayCell(b.year),make:cleanFullbayCell(b.make),model:cleanFullbayCell(b.model),plate:cleanFullbayCell(b.plate),mileage:b.mileage,engine:cleanFullbayCell(b.engine),transmission:cleanFullbayCell(b.transmission),notes:cleanFullbayCell(b.notes),source:"manual"});await audit(req.user.username,"customer_unit_saved",{customerId:req.params.id,unit:item.unit_number});res.json({item});
 }catch(e){next(e)}});
 app.put("/api/customer-units/:id",auth,adminOnly,async(req,res,next)=>{try{
- const b=req.body||{},unit=String(b.unit_number||"").trim();if(!unit)return res.status(400).json({error:"Unit number is required."});const r=await requireDb().query(`UPDATE customer_units SET unit_number=$2,vin=$3,year=$4,make=$5,model=$6,plate=$7,mileage=$8,engine=$9,transmission=$10,notes=$11,source='manual',updated_at=now() WHERE id=$1 RETURNING *`,[req.params.id,unit,String(b.vin||"").trim().toUpperCase()||null,b.year||null,b.make||null,b.model||null,b.plate||null,Number.isFinite(Number(b.mileage))?Number(b.mileage):null,b.engine||null,b.transmission||null,b.notes||null]);if(!r.rowCount)return res.status(404).json({error:"Unit not found."});res.json({item:r.rows[0]});
+ const b=req.body||{},unit=cleanFullbayCell(b.unit_number);if(!unit)return res.status(400).json({error:"Unit number is required."});const r=await requireDb().query(`UPDATE customer_units SET unit_number=$2,vin=$3,year=$4,make=$5,model=$6,plate=$7,mileage=$8,engine=$9,transmission=$10,notes=$11,source='manual',updated_at=now() WHERE id=$1 RETURNING *`,[req.params.id,unit,cleanFullbayCell(b.vin).toUpperCase()||null,cleanFullbayCell(b.year)||null,cleanFullbayCell(b.make)||null,cleanFullbayCell(b.model)||null,cleanFullbayCell(b.plate)||null,Number.isFinite(Number(b.mileage))?Number(b.mileage):null,cleanFullbayCell(b.engine)||null,cleanFullbayCell(b.transmission)||null,cleanFullbayCell(b.notes)||null]);if(!r.rowCount)return res.status(404).json({error:"Unit not found."});res.json({item:r.rows[0]});
 }catch(e){next(e)}});
 app.delete("/api/customer-units/:id",auth,adminOnly,async(req,res,next)=>{try{await requireDb().query("DELETE FROM customer_units WHERE id=$1",[req.params.id]);res.json({ok:true})}catch(e){next(e)}});
 app.post("/api/customer-units/from-vehicle-profile",auth,adminOnly,async(req,res,next)=>{try{
@@ -751,7 +778,7 @@ app.get("/api/smart-search",auth,adminOnly,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"24.2.2",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"24.2.3",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -784,8 +811,8 @@ async function reconcileDuplicateImportedCustomers(){
  return {merged};
 }
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.2.2",backend:"24.2.2",build:"ITTR-24.2.2-PROFESSIONAL-FULLBAY-TEXT-CLEANUP-20260912"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.2.2",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.2.3",backend:"24.2.3",build:"ITTR-24.2.3-PROFESSIONAL-DATA-NORMALIZATION-20260912"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.2.3",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -1738,5 +1765,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}app.listen(port,()=>console.log(`ITTR v24.2.2 Online running on port ${port}`))})
+  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}app.listen(port,()=>console.log(`ITTR v24.2.3 Online running on port ${port}`))})
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

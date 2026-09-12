@@ -1,0 +1,68 @@
+ITTR ShopFlow v24.2.3 — PROFESSIONAL DATA NORMALIZATION + FULL AUDIT
+Build: ITTR-24.2.3-PROFESSIONAL-DATA-NORMALIZATION-20260912
+
+PURPOSE
+This release fixes Fullbay/Excel formatting artifacts such as:
+  =026317
+  =527RS...
+  =Tractor
+  =PM SERVICE: CHANGE OIL AND FILTERS
+and prevents those artifacts from propagating into new ITTR work orders.
+
+FULLBAY SOURCE DATA AUDIT
+Source checked: details.csv supplied for Fullbay service-history import.
+Rows: 2,064
+Non-empty cells inspected: 40,310
+Excel formula-style cells beginning with =: 27,770
+Cells still beginning with = after the v24.2.3 cleaner: 0
+
+WHAT WAS FIXED
+1. Centralized Fullbay/Excel text normalization for display.
+2. Startup repair normalizes existing imported text in:
+   - customer_units
+   - fullbay_service_history
+   - fullbay_import_customers
+   - fullbay_import_parts
+   Only text formatting artifacts are normalized; records are not deleted/reset.
+3. Customer > Vehicles cards now clean Unit, VIN, year/make/model, type/status and plate values.
+4. Duplicate make/model labels are suppressed where the imported make/model are identical.
+5. Vehicle profile uses the same professional formatting.
+6. Customer service history and vehicle service history use cleaned SO/invoice/unit text.
+7. Fullbay service-order detail cleans complaint, correction, technician, component, system, PO, VIN and action labels.
+8. Smart Search and Customers & Vehicles search use cleaned labels without altering routing identifiers.
+9. Work-order Unit suggestions display clean data and write clean Unit/VIN/customer fields into new/edit work orders.
+10. Customer and Unit edit forms open with normalized text so saving an old imported record does not preserve the = artifact.
+11. Fullbay Data Center customer/part browsing also uses normalized display text.
+12. Existing v24.2.1 direct vehicle routing and Fullbay service date repair remain intact.
+
+SAFETY / DATA PRESERVATION
+- No PostgreSQL reset.
+- No destructive migration.
+- No re-import required.
+- Existing IDs and relationships are preserved.
+- Fullbay source_key values are preserved.
+- Existing service-order navigation remains based on stored record identifiers.
+- Existing R2 photo, NHTSA VIN, FMCSA, mechanic/task/labor and PDF functionality remains in place.
+- v23.7.1 Fullbay inventory SQL parameter fix remains preserved.
+
+STATIC AUDIT RESULTS
+- server.js syntax: PASS
+- frontend inline JavaScript syntax: PASS
+- package.json JSON: PASS
+- railway.json JSON: PASS
+- duplicate DOM IDs: 0
+- duplicate API method/path routes: 0
+- inline event handler calls with missing app functions: 0
+- PostgreSQL numbered-placeholder gaps detected: 0
+- root index.html and public/index.html: IDENTICAL
+- version references found in active frontend/backend: 24.2.3 only
+- guarded legacy getElementById('viewCustomers') reference: SAFE (existence checked before use)
+- core workflow functions verified present: openWorkOrder, openDetail, openEdit, completeWorkOrder, Findings/CRM, VIN, FMCSA, vehicle profile, Fullbay service order, Smart Search.
+
+DEPLOYMENT
+Deploy over the SAME Railway/GitHub project.
+Do NOT reset PostgreSQL.
+Do NOT re-import Fullbay just for this formatting repair.
+After Railway deploys, hard refresh the browser (Ctrl+Shift+R) and verify:
+  ITTR v24.2.3 ONLINE
+  backend 24.2.3
