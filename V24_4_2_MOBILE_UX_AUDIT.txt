@@ -1,0 +1,32 @@
+ITTR v24.4.2 MOBILE UX AUDIT
+
+Scope audited:
+- Admin bottom navigation
+- Dashboard/card density
+- Work Orders/action areas
+- Customers & Vehicles tabs/history
+- Parts inventory list and detail modal
+- Barcode scanner modal
+- Smart Vendor Receiving start/progress/review/confirmation
+- Findings/Operations/history/mechanic navigation access
+- General modal, action, tab, filter, safe-area and keyboard behavior
+
+Main problems corrected:
+- Eight admin bottom-nav buttons were cramped on phones. Reduced to four core destinations plus a More sheet.
+- Invoice review used a desktop six-column grid on phones. Rebuilt as one card per invoice line.
+- Numeric invoice fields had poor visual hierarchy. Qty/Buy Price/Core now use a compact labeled grid.
+- Receive controls were visually detached from invoice totals. Added mobile sticky confirmation panel.
+- Parts list was a horizontally compressed table. It becomes card-based inventory rows on phones.
+- Large tab sets could wrap into multiple awkward rows. They now scroll horizontally on phones.
+- Toolbar/actions and inventory controls use full-width touch targets where appropriate.
+- Smart receiving progress state is now a dedicated mobile status card.
+- Safe-area spacing retained for modern iPhone/Android browsers.
+
+Preserved:
+- v24.3.2 scanner modal stacking behavior
+- v24.4.1 paid OpenRouter invoice extraction
+- Fullbay data normalization
+- barcode aliases and Code 128 labels
+- atomic inventory receiving + cost history
+- PostgreSQL data and migrations
+- v23.7.1 Fullbay inventory SQL parameter fix
