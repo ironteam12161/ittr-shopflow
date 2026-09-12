@@ -1,0 +1,35 @@
+ITTR v24.3.1 PARTS INTERFACE AUDIT
+Build: ITTR-24.3.1-PARTS-UI-BARCODE-PRINT-FIX-20260912
+
+VISIBLE ISSUES FOUND AND FIXED
+1. Part Detail and Barcode Scanner used CSS class names modalBox/modalHeader/iconBtn, while the application styles use modalbox/modalhead/x. This caused the parts modal to lose the normal centered modal shell/header/close-button styling.
+2. Barcode <img> pointed directly to an authenticated API route. Normal image requests do not include the app Bearer Authorization header, causing the broken barcode image shown in the screenshot.
+3. Print Label reused that authenticated image URL inside a popup, so the printed barcode could also be missing.
+4. Print output had no fixed label page size, so browser print preview could place a tiny label on a full sheet.
+5. Inventory Receive/Adjust actions used browser prompt dialogs instead of a professional in-app form.
+6. Manufacturer barcode entry used a browser prompt and did not provide a clean alias management UI.
+7. html5-qrcode fallback had a server route but the frontend library was not actually loaded, reducing camera compatibility on browsers without BarcodeDetector.
+8. Work-order barcode quantity used a browser prompt rather than an inline confirmation control.
+
+FIXES
+- Professional responsive Part Detail layout with hero, stock badge, metric cards, pricing/location information, barcode panel and audit ledger.
+- Correct modal classes and mobile behavior.
+- Barcode SVG is fetched with authHeaders(), converted to a Blob URL, and displayed securely.
+- Print Label fetches the authenticated SVG first and embeds it directly in the print document.
+- 3.5 x 2 inch @page print layout with part number, description, barcode, ITTR code and location.
+- Barcode API now outputs bars only; human-readable code is controlled by ITTR UI/label formatting.
+- In-app Receive / Adjust form requiring a reason for adjustments.
+- Inline manufacturer barcode add/remove management.
+- html5-qrcode fallback library loaded from same-origin /vendor/html5-qrcode.min.js.
+- Scan-to-work-order quantity is confirmed inline.
+- Existing barcode scanner, inventory transactions, work-order part linkage, Fullbay inventory data and database records preserved.
+
+STATIC AUDIT
+- server.js node --check: PASS
+- frontend JavaScript node --check: PASS
+- duplicate DOM IDs: 0
+- duplicate API method/path routes: 0
+- PostgreSQL numbered placeholder gaps: 0
+- root index.html and public/index.html: IDENTICAL
+- v23.7.1 inventory SQL correction remains present
+- no destructive database migration/reset added
