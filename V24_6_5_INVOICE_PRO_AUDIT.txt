@@ -1,0 +1,26 @@
+ITTR v24.6.5 — Professional Invoice Workflow Audit
+
+Changes
+- Labor is visually identified on the SAME billing row with a LABOR badge; redundant visible Service/Job editor beneath labor was removed.
+- Parts remain children of their labor operation.
+- Part # and Part Description now search the existing ITTR/Fullbay inventory catalog as the user types.
+- Selecting a part fills part number, description, customer selling price, internal cost, and sell-tax setting from inventory.
+- + Part / + Sublet / + Fee / + New Labor now saves all currently edited invoice lines BEFORE creating/re-rendering a new line, preventing typed values from disappearing.
+- Finalized sent/partial/paid invoices can be edited; server rejects any edit that would reduce invoice total below payments already recorded.
+- Permanent Delete Invoice added for invoices with zero recorded payments. Invoices with payments cannot be deleted.
+- Existing Void workflow retained for accounting history.
+
+Competitor/workflow rationale
+- Job-centric hierarchy: labor operation first, related parts beneath the labor.
+- Inventory-backed parts lookup rather than free-text-only part entry.
+- Final invoice correction supported with payment-integrity protection.
+
+Safety / regression checks
+- server.js node --check: PASS
+- frontend extracted JS node --check: PASS
+- duplicate Express method/path routes: 0
+- PostgreSQL numbered-placeholder gaps: 0
+- root index.html and public/index.html identical: PASS
+- no destructive database reset
+- existing invoice parent_line_id hierarchy preserved
+- v24.5.5 receiving fixes preserved
