@@ -1,0 +1,44 @@
+ITTR v24.3.0 PARTS + BARCODE INVENTORY AUDIT
+Build: ITTR-24.3.0-PARTS-BARCODE-INVENTORY-20260912
+
+Implemented
+- Top-level Parts workspace for admins.
+- Existing Fullbay inventory remains the source catalog; no destructive reset or re-import required.
+- Permanent internal Code 128 barcode generated per part: ITTR-P-######.
+- Printable part labels.
+- Manufacturer/vendor barcode aliases can be attached to a part.
+- Scan lookup accepts internal barcode, exact part number, or saved barcode alias.
+- Live camera scan uses native BarcodeDetector where available and bundled html5-qrcode fallback otherwise.
+- USB/Bluetooth keyboard-wedge scanners work through scan input.
+- Work-order job/task has Scan Part action.
+- Scanned inventory part is linked to permanent inventory part ID.
+- Using a scanned inventory part deducts stock atomically with the work-order update.
+- Removing that linked part from the open WO returns stock and writes a return ledger entry.
+- Inventory transaction ledger records before/after quantity, user, time, WO, unit and task.
+- Admin Receive / Adjust + / Adjust - actions.
+- Low stock, out-of-stock, on-order and inventory-value dashboard.
+- Part detail includes stock, allocated, available, location, vendor, pricing, barcode and ledger.
+- Existing per-task Parts Used workflow preserved.
+
+Safety / integrity
+- No PostgreSQL reset.
+- No destructive migration.
+- Completed WO lock preserved.
+- Mechanic work-order ownership check preserved.
+- Negative inventory prevented for inventory-linked part use and manual decrement.
+- v23.7.1 Fullbay Inventory SQL 22-parameter fix preserved.
+- Root/public index.html identical.
+- No duplicate DOM IDs.
+- No duplicate API method/path routes.
+- Frontend and backend syntax checks pass.
+
+Barcode compatibility
+- Code 128 is used for ITTR labels.
+- Camera scanner has native BarcodeDetector path plus html5-qrcode fallback.
+- USB/Bluetooth scanner and manual entry remain available if camera permission/support fails.
+
+Future expansion (not required for v24.3.0)
+- Purchase-order workflow with partial receiving/backorders.
+- Vendor catalog integrations.
+- Cycle-count sessions and multi-location/bin transfers.
+- Core charge and warranty return workflows.

@@ -10,6 +10,7 @@ import rateLimit from "express-rate-limit";
 import pg from "pg";
 import sharp from "sharp";
 import PDFDocument from "pdfkit";
+import bwipjs from "bwip-js";
 import {S3Client,PutObjectCommand,GetObjectCommand,DeleteObjectCommand,HeadBucketCommand} from "@aws-sdk/client-s3";
 import {getSignedUrl} from "@aws-sdk/s3-request-presigner";
 import { fileURLToPath } from "url";
@@ -86,6 +87,7 @@ app.use(express.json({limit:"3mb"}));
 // ITTR v22.6 authoritative frontend path:
 // Always serve the repository root index.html in production.
 // This prevents an older public/index.html from shadowing the current frontend.
+app.get("/vendor/html5-qrcode.min.js",(req,res)=>res.sendFile(path.join(__dirname,"node_modules","html5-qrcode","html5-qrcode.min.js")));
 const publicDir=path.join(__dirname,"public");
 const webRoot=__dirname;
 const authoritativeIndex=path.join(__dirname,"index.html");
@@ -154,6 +156,22 @@ async function initDb(){
  );
  CREATE INDEX IF NOT EXISTS idx_fullbay_parts_number ON fullbay_import_parts(lower(part_number));
  CREATE INDEX IF NOT EXISTS idx_fullbay_parts_description ON fullbay_import_parts(lower(description));
+ ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS internal_barcode TEXT;
+ ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS barcode_aliases JSONB NOT NULL DEFAULT '[]'::jsonb;
+ ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS reorder_point NUMERIC;
+ ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS on_order NUMERIC DEFAULT 0;
+ ALTER TABLE fullbay_import_parts ADD COLUMN IF NOT EXISTS inventory_managed BOOLEAN DEFAULT TRUE;
+ CREATE UNIQUE INDEX IF NOT EXISTS idx_fullbay_parts_internal_barcode ON fullbay_import_parts(internal_barcode) WHERE internal_barcode IS NOT NULL;
+ CREATE TABLE IF NOT EXISTS part_inventory_transactions(
+   id BIGSERIAL PRIMARY KEY, part_id BIGINT NOT NULL REFERENCES fullbay_import_parts(id) ON DELETE RESTRICT,
+   transaction_type TEXT NOT NULL, quantity_delta NUMERIC NOT NULL, quantity_before NUMERIC, quantity_after NUMERIC,
+   work_order_id TEXT, task_uid TEXT, task_name TEXT, unit_number TEXT, customer_name TEXT,
+   reference TEXT, reason TEXT, username TEXT NOT NULL, metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+   created_at TIMESTAMPTZ DEFAULT now()
+ );
+ CREATE INDEX IF NOT EXISTS idx_part_tx_part_time ON part_inventory_transactions(part_id,created_at DESC);
+ CREATE INDEX IF NOT EXISTS idx_part_tx_work_order ON part_inventory_transactions(work_order_id);
+
  CREATE TABLE IF NOT EXISTS fullbay_import_log(
    id BIGSERIAL PRIMARY KEY, import_type TEXT NOT NULL, source_file TEXT, rows_received INTEGER DEFAULT 0, rows_imported INTEGER DEFAULT 0, rows_skipped INTEGER DEFAULT 0, username TEXT, created_at TIMESTAMPTZ DEFAULT now()
  );
@@ -548,6 +566,15 @@ app.get("/api/fullbay/customers",auth,async(req,res,next)=>{try{
 
 app.get("/api/fullbay/customers/:id",auth,async(req,res,next)=>{try{const r=await requireDb().query(`SELECT * FROM fullbay_import_customers WHERE id=$1`,[req.params.id]);if(!r.rowCount)return res.status(404).json({error:"Customer not found."});const item=r.rows[0];delete item.raw?.['Portal Code'];res.json({item});}catch(e){next(e)}});
 
+function partBarcodeForId(id){return `ITTR-P-${String(id).padStart(6,"0")}`}
+async function ensurePartBarcode(db,id){const r=await db.query("SELECT id,internal_barcode FROM fullbay_import_parts WHERE id=$1",[id]);if(!r.rowCount)return null;let code=r.rows[0].internal_barcode;if(!code){code=partBarcodeForId(id);await db.query("UPDATE fullbay_import_parts SET internal_barcode=$2,updated_at=now() WHERE id=$1",[id,code])}return code}
+app.get("/api/parts/summary",auth,async(req,res,next)=>{try{const db=requireDb();const r=await db.query(`SELECT count(*)::int total,count(*) FILTER (WHERE coalesce(quantity,0)<=0)::int out_of_stock,count(*) FILTER (WHERE coalesce(quantity,0)>0 AND coalesce(quantity,0)<=coalesce(reorder_point,min_qty,0) AND coalesce(reorder_point,min_qty,0)>0)::int low_stock,coalesce(sum(coalesce(inventory_value,coalesce(quantity,0)*coalesce(cost,0))),0)::numeric inventory_value,coalesce(sum(coalesce(on_order,0)),0)::numeric on_order FROM fullbay_import_parts`);res.json(r.rows[0])}catch(e){next(e)}});
+app.get("/api/parts",auth,async(req,res,next)=>{try{const q=String(req.query.q||"").trim(),filter=String(req.query.filter||"all"),limit=Math.min(200,Math.max(1,Number(req.query.limit||100))),like=`%${q}%`;let extra="";if(filter==="low")extra=" AND coalesce(quantity,0)>0 AND coalesce(quantity,0)<=coalesce(reorder_point,min_qty,0) AND coalesce(reorder_point,min_qty,0)>0";if(filter==="out")extra=" AND coalesce(quantity,0)<=0";if(filter==="order")extra=" AND coalesce(on_order,0)>0";const db=requireDb();const r=await db.query(`SELECT id,part_number,description,status,uom,quantity,allocated,cost,price,min_qty,max_qty,reorder_point,on_order,location,vendor,category,manufacturer,notes,internal_barcode,barcode_aliases,updated_at,(coalesce(quantity,0)-coalesce(allocated,0)) available FROM fullbay_import_parts WHERE ($1='' OR coalesce(part_number,'') ILIKE $2 OR coalesce(description,'') ILIKE $2 OR coalesce(manufacturer,'') ILIKE $2 OR coalesce(vendor,'') ILIKE $2 OR coalesce(location,'') ILIKE $2 OR coalesce(internal_barcode,'') ILIKE $2 OR barcode_aliases::text ILIKE $2) ${extra} ORDER BY CASE WHEN lower(coalesce(part_number,''))=lower($1) THEN 0 WHEN lower(coalesce(internal_barcode,''))=lower($1) THEN 0 ELSE 1 END,part_number NULLS LAST LIMIT $3`,[q,like,limit]);for(const x of r.rows)if(!x.internal_barcode)x.internal_barcode=await ensurePartBarcode(db,x.id);res.json({items:r.rows})}catch(e){next(e)}});
+app.get("/api/parts/scan/:code",auth,async(req,res,next)=>{try{const code=String(req.params.code||"").trim();const db=requireDb();let r=await db.query(`SELECT *,coalesce(quantity,0)-coalesce(allocated,0) available FROM fullbay_import_parts WHERE lower(coalesce(internal_barcode,''))=lower($1) OR lower(coalesce(part_number,''))=lower($1) OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(coalesce(barcode_aliases,'[]'::jsonb)) a WHERE lower(a)=lower($1)) LIMIT 1`,[code]);if(!r.rowCount&&/^ITTR-P-0*([0-9]+)$/i.test(code)){const id=Number(code.match(/^ITTR-P-0*([0-9]+)$/i)[1]);r=await db.query(`SELECT *,coalesce(quantity,0)-coalesce(allocated,0) available FROM fullbay_import_parts WHERE id=$1`,[id])}if(!r.rowCount)return res.status(404).json({error:"Barcode is not assigned to an inventory part."});if(!r.rows[0].internal_barcode)r.rows[0].internal_barcode=await ensurePartBarcode(db,r.rows[0].id);res.json({item:r.rows[0]})}catch(e){next(e)}});
+app.get("/api/parts/:id",auth,async(req,res,next)=>{try{const db=requireDb();const r=await db.query(`SELECT *,coalesce(quantity,0)-coalesce(allocated,0) available FROM fullbay_import_parts WHERE id=$1`,[req.params.id]);if(!r.rowCount)return res.status(404).json({error:"Part not found."});r.rows[0].internal_barcode=await ensurePartBarcode(db,r.rows[0].id);const tx=await db.query("SELECT * FROM part_inventory_transactions WHERE part_id=$1 ORDER BY created_at DESC LIMIT 100",[req.params.id]);res.json({item:r.rows[0],transactions:tx.rows})}catch(e){next(e)}});
+app.get("/api/parts/:id/barcode.svg",auth,async(req,res,next)=>{try{const db=requireDb(),code=await ensurePartBarcode(db,req.params.id);if(!code)return res.status(404).send("Part not found");const svg=bwipjs.toSVG({bcid:"code128",text:code,scale:3,height:12,includetext:true,textxalign:"center",textsize:11});res.type("image/svg+xml").send(svg)}catch(e){next(e)}});
+app.patch("/api/parts/:id",auth,adminOnly,async(req,res,next)=>{try{const db=requireDb(),cur=await db.query("SELECT * FROM fullbay_import_parts WHERE id=$1",[req.params.id]);if(!cur.rowCount)return res.status(404).json({error:"Part not found."});const c=cur.rows[0],aliases=Array.isArray(req.body?.barcodeAliases)?req.body.barcodeAliases.map(x=>String(x||"").trim()).filter(Boolean).slice(0,20):(Array.isArray(c.barcode_aliases)?c.barcode_aliases:[]);const val=(k,old)=>Object.prototype.hasOwnProperty.call(req.body||{},k)?String(req.body[k]??"").trim()||null:old,num=(k,old)=>Object.prototype.hasOwnProperty.call(req.body||{},k)?(Number.isFinite(Number(req.body[k]))?Number(req.body[k]):null):old;const vals=[val("location",c.location),val("vendor",c.vendor),num("minQty",c.min_qty),num("maxQty",c.max_qty),num("reorderPoint",c.reorder_point),JSON.stringify(aliases),req.params.id];const r=await db.query(`UPDATE fullbay_import_parts SET location=$1,vendor=$2,min_qty=$3,max_qty=$4,reorder_point=$5,barcode_aliases=$6::jsonb,updated_at=now() WHERE id=$7 RETURNING *`,vals);await audit(req.user.username,"part_profile_updated",{partId:req.params.id});res.json({ok:true,item:r.rows[0]})}catch(e){next(e)}});
+app.post("/api/parts/:id/transaction",auth,async(req,res,next)=>{const db=await requireDb().connect();try{const type=String(req.body?.type||"").toLowerCase(),qty=Math.abs(Number(req.body?.qty||0));if(!qty||qty>999999)return res.status(400).json({error:"Enter a valid quantity."});if(!["receive","return","adjust_add","adjust_remove"].includes(type))return res.status(400).json({error:"Unsupported inventory transaction."});if(req.user.role!=="admin"&&!(["return"].includes(type)))return res.status(403).json({error:"Admin access required."});const delta=["receive","return","adjust_add"].includes(type)?qty:-qty;await db.query("BEGIN");const r=await db.query("SELECT * FROM fullbay_import_parts WHERE id=$1 FOR UPDATE",[req.params.id]);if(!r.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Part not found."})}const before=Number(r.rows[0].quantity||0),after=before+delta;if(after<0){await db.query("ROLLBACK");return res.status(409).json({error:`Only ${before} in stock.`})}await db.query("UPDATE fullbay_import_parts SET quantity=$2,updated_at=now() WHERE id=$1",[req.params.id,after]);await db.query(`INSERT INTO part_inventory_transactions(part_id,transaction_type,quantity_delta,quantity_before,quantity_after,reference,reason,username,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,[req.params.id,type,delta,before,after,String(req.body?.reference||"").trim()||null,String(req.body?.reason||"").trim()||null,req.user.username,JSON.stringify({method:req.body?.method||"manual"})]);await db.query("COMMIT");await audit(req.user.username,"inventory_transaction",{partId:req.params.id,type,delta});res.json({ok:true,quantity:after})}catch(e){try{await db.query("ROLLBACK")}catch{}next(e)}finally{db.release()}});
 app.get("/api/fullbay/parts",auth,async(req,res,next)=>{try{
  const q=String(req.query.q||"").trim(),limit=Math.min(200,Math.max(1,Number(req.query.limit)||50)),offset=Math.max(0,Number(req.query.offset)||0),like=`%${q}%`;
  const r=await requireDb().query(`SELECT id,part_number,description,status,uom,quantity,allocated,cost,price,min_qty,max_qty,location,vendor,track_quantity,category,cost_floor,inventory_value,inventory_balance,manufacturer,notes,updated_at FROM fullbay_import_parts WHERE $1='' OR coalesce(part_number,'') ILIKE $2 OR coalesce(description,'') ILIKE $2 OR coalesce(vendor,'') ILIKE $2 OR coalesce(manufacturer,'') ILIKE $2 OR coalesce(category,'') ILIKE $2 ORDER BY CASE WHEN lower(coalesce(part_number,'')) LIKE lower($3) THEN 0 ELSE 1 END,part_number NULLS LAST,description LIMIT $4 OFFSET $5`,[q,like,`${q}%`,limit,offset]);
@@ -778,7 +805,7 @@ app.get("/api/smart-search",auth,adminOnly,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"24.2.3",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"24.3.0",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -811,8 +838,8 @@ async function reconcileDuplicateImportedCustomers(){
  return {merged};
 }
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.2.3",backend:"24.2.3",build:"ITTR-24.2.3-PROFESSIONAL-DATA-NORMALIZATION-20260912"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.2.3",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.3.0",backend:"24.3.0",build:"ITTR-24.3.0-PARTS-BARCODE-INVENTORY-20260912"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.3.0",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -943,7 +970,8 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/parts",auth,async(req,res,n
   const partNumber=String(req.body?.partNumber||"").trim().slice(0,120);
   const description=String(req.body?.description||"").trim().slice(0,500);
   const qty=Math.max(.01,Math.min(99999,Number(req.body?.qty||1)));
-  if(!partNumber&&!description)return res.status(400).json({error:"Enter a part number or description."});
+  const inventoryPartId=req.body?.inventoryPartId?Number(req.body.inventoryPartId):null;
+  if(!partNumber&&!description&&!inventoryPartId)return res.status(400).json({error:"Enter or scan a part."});
   await db.query("BEGIN");
   const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
   if(!q.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Shop data not found."});}
@@ -956,7 +984,9 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/parts",auth,async(req,res,n
   const matches=(Array.isArray(w.tasks)?w.tasks:[]).filter(t=>String(t?.uid||"")===uid);
   if(matches.length!==1){await db.query("ROLLBACK");return res.status(409).json({error:"Task identity could not be resolved."});}
   const t=matches[0];t.parts=Array.isArray(t.parts)?t.parts:[];
-  const part={id:`part_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,partNumber,description,qty,addedBy:req.user.username,addedAt:new Date().toISOString()};
+  let inv=null,finalPartNumber=partNumber,finalDescription=description;
+  if(inventoryPartId){const ir=await db.query("SELECT * FROM fullbay_import_parts WHERE id=$1 FOR UPDATE",[inventoryPartId]);if(!ir.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Inventory part not found."})}inv=ir.rows[0];const before=Number(inv.quantity||0);if(before<qty){await db.query("ROLLBACK");return res.status(409).json({error:`Only ${before} ${inv.uom||""} in stock.`})}const after=before-qty;await db.query("UPDATE fullbay_import_parts SET quantity=$2,updated_at=now() WHERE id=$1",[inventoryPartId,after]);finalPartNumber=inv.part_number||partNumber;finalDescription=inv.description||description;await db.query(`INSERT INTO part_inventory_transactions(part_id,transaction_type,quantity_delta,quantity_before,quantity_after,work_order_id,task_uid,task_name,unit_number,customer_name,reference,username,metadata) VALUES($1,'used',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)`,[inventoryPartId,-qty,before,after,workOrderId,uid,String(t.t||""),String(w.unit||""),String(w.customer||""),`WO ${workOrderId}`,req.user.username,JSON.stringify({method:req.body?.method||"work_order"})]);}
+  const part={id:`part_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,partNumber:finalPartNumber,description:finalDescription,qty,inventoryPartId:inventoryPartId||null,unitCost:inv?.cost??null,unitPrice:inv?.price??null,barcode:inv?await ensurePartBarcode(db,inventoryPartId):null,addedBy:req.user.username,addedAt:new Date().toISOString()};
   t.parts.push(part);
   w.history=Array.isArray(w.history)?w.history:[];w.history.push({type:"part_added",at:part.addedAt,by:req.user.username,task:t.t,partNumber,description,qty});
   const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
@@ -984,6 +1014,7 @@ app.delete("/api/work-orders/:id/tasks/by-uid/:taskUid/parts/:partId",auth,async
   if(req.user.role!=="admin"&&String(p.addedBy||"").toLowerCase()!==String(req.user.username||"").toLowerCase()){
     await db.query("ROLLBACK");return res.status(403).json({error:"Only the mechanic who added this part or an admin can remove it."});
   }
+  if(p.inventoryPartId){const ir=await db.query("SELECT quantity FROM fullbay_import_parts WHERE id=$1 FOR UPDATE",[p.inventoryPartId]);if(ir.rowCount){const before=Number(ir.rows[0].quantity||0),qty=Number(p.qty||1),after=before+qty;await db.query("UPDATE fullbay_import_parts SET quantity=$2,updated_at=now() WHERE id=$1",[p.inventoryPartId,after]);await db.query(`INSERT INTO part_inventory_transactions(part_id,transaction_type,quantity_delta,quantity_before,quantity_after,work_order_id,task_uid,task_name,unit_number,customer_name,reference,reason,username,metadata) VALUES($1,'returned',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)`,[p.inventoryPartId,qty,before,after,workOrderId,uid,String(t.t||""),String(w.unit||""),String(w.customer||""),`WO ${workOrderId}`,"Removed from work order",req.user.username,JSON.stringify({originalPartId:partId})]);}}
   t.parts=t.parts.filter(x=>String(x?.id||"")!==partId);
   const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
   await db.query("COMMIT");await audit(req.user.username,"task_part_removed",{workOrderId,taskUid:uid,partId});
@@ -1765,5 +1796,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}app.listen(port,()=>console.log(`ITTR v24.2.3 Online running on port ${port}`))})
+  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}app.listen(port,()=>console.log(`ITTR v24.3.0 Online running on port ${port}`))})
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});
