@@ -6,13 +6,13 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.5.4-SMART-RECEIVING-EDITOR-CRYPTO-FIX-20260912">
+<meta name="ittr-build" content="ITTR-24.5.5-POSTGRES-NUMERIC-TYPING-RECEIVING-AUDIT-20260912">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.5.4</title>
+<title>ITTR ShopFlow v24.5.5</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -468,7 +468,7 @@ body{-webkit-text-size-adjust:100%}
 @media(max-width:760px){.proMetricGrid{grid-template-columns:1fr 1fr}.proTabs{display:grid;grid-template-columns:1fr 1fr}}
 
 
-/* ===== v24.5.4 RESPONSIVE SHELL SAFETY + POLISH ===== */
+/* ===== v24.5.5 RESPONSIVE SHELL SAFETY + POLISH ===== */
 /* Mobile-only chrome must never leak into desktop layout. */
 .mobileMoreSheet{display:none}
 .mobileMoreBtn{display:none!important}
@@ -643,7 +643,7 @@ body.modalOpen{overflow:hidden}
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.5.4 ONLINE · RESPONSIVE UI · PARTS + BARCODE · SMART RECEIVING</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.5.5 ONLINE · RESPONSIVE UI · PARTS + BARCODE · SMART RECEIVING</div>
 <div id="appErrorBanner" style="display:none;position:fixed;left:8px;right:8px;top:66px;z-index:1000;background:#fef3f2;color:#b42318;border:1px solid #fecdca;border-radius:10px;padding:10px;font-size:13px"><b>App error:</b> <span id="appErrorText"></span> <button type="button" onclick="this.parentElement.style.display='none'" style="float:right;min-height:28px;padding:2px 8px">×</button></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1354,7 +1354,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION="24.5.4";
+const FRONTEND_VERSION="24.5.5";
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}

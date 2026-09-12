@@ -1,0 +1,43 @@
+ITTR v24.5.5 — PostgreSQL / Smart Receiving Audit
+
+ROOT CAUSE CONFIRMED
+Production reported: receiving failed at line_1_stock: operator is not unique.
+The failing line_1_stock SQL in v24.5.4 contained:
+  inventory_value=$2*$4
+Both $2 and $4 are PostgreSQL bind parameters. Without explicit types, PostgreSQL can see unknown * unknown and cannot choose a unique multiplication operator.
+
+FIX
+- quantity=$2::numeric
+- last_purchase_cost=$3::numeric
+- cost=$4::numeric
+- vendor uses $5::text
+- inventory_value=($2::numeric*$4::numeric)
+- id=$1::bigint
+
+WIDER AUDIT / HARDENING
+The same class of issue was removed from all inventory-value mutations:
+- inventory count completion
+- manual Receive / Adjust +/-
+- Work Order inventory consumption
+- Work Order inventory return
+- Smart Vendor Receiving
+
+Smart Receiving was additionally hardened by explicit parameter types on:
+- vendor invoice header amounts and tax flags
+- invoice line quantities/costs/core/tax/matched part id
+- new inventory part creation
+- purchase cost history
+
+PRESERVED
+- Add Missing Line / Remove Line / editable AI extraction
+- vendor canonicalization/aliases
+- manufacturer barcode aliases
+- physical inventory counting
+- low-stock notification and reorder fields
+- manual selling price/tax settings
+- weighted-average purchase cost
+- paid OpenRouter invoice extraction
+- responsive UI and nested mobile scanner modal behavior
+- v23.7.1 Fullbay inventory import SQL parameter-count fix
+
+NO DESTRUCTIVE DATABASE RESET OR DATA MIGRATION.
