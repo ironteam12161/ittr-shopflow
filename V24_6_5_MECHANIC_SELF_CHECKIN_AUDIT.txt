@@ -1,0 +1,15 @@
+ITTR v24.6.5 Mechanic Self Check-In Audit
+- Mechanic can create a work order from USDOT + 17-character VIN.
+- USDOT must resolve to exactly one existing customer; ambiguous/missing records stop safely.
+- VIN duplicate across unit records stops safely.
+- VIN belonging to another customer stops safely.
+- Existing active WO for VIN blocks duplicate WO creation.
+- New VIN creates a customer unit record under verified USDOT; optional Unit #, otherwise temporary VIN-last-6 label.
+- Mileage updates vehicle directory only when it is not older/lower than stored mileage.
+- New WO assigns logged-in mechanic, marks truck here, and creates initial labor/customer-concern task.
+- Mechanic can add additional labor/jobs only to a WO assigned to them.
+- Existing server-atomic task start/pause/resume/complete and parts routes remain authoritative.
+- Mechanic cannot edit completed WO through these routes.
+- All actions audit username/time.
+- Root/public frontend identical.
+- No destructive DB migration/reset.
