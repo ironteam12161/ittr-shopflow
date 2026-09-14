@@ -9,10 +9,11 @@ const html = read('index.html');
 const pub = read('public/index.html');
 const server = read('server.js');
 const pkg = JSON.parse(read('package.json'));
+const modulesInvoicesHtml = read('modules/invoices.html');
 
-check('release package version is 24.13.0', pkg.version === '24.13.0', pkg.version);
-check('frontend release is 24.13.0', html.includes("const FRONTEND_VERSION='24.13.0';") || html.includes('const FRONTEND_VERSION="24.13.0";'));
-check('backend release is 24.13.0', server.includes('frontendExpected:"24.13.0",backend:"24.13.0"'));
+check('release package version is 24.14.0', pkg.version === '24.14.0', pkg.version);
+check('frontend release is 24.14.0', html.includes("const FRONTEND_VERSION='24.14.0';") || html.includes('const FRONTEND_VERSION="24.14.0";'));
+check('backend release is 24.14.0', server.includes('frontendExpected:"24.14.0",backend:"24.14.0"'));
 check('root/public frontend byte-identical', html === pub, crypto.createHash('sha256').update(html).digest('hex').slice(0,12));
 
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
@@ -116,8 +117,8 @@ check('WebSocket client reconnect wrapper', html.includes('function connectLiveS
 check('WebSocket reconnect max 30 seconds', html.includes('Math.min(30000'));
 check('ws package dependency', pkg.dependencies?.ws === '8.18.3');
 
-check('invoice categorized labor section', html.includes('Labor & Services'));
-check('invoice categorized parts section', html.includes('Parts & Materials'));
+check('invoice compact labor row', html.includes('invoiceGridItemLabel is-labor'));
+check('invoice compact part row', html.includes('invoiceGridItemLabel is-part'));
 check('invoice per-line discount type', html.includes('ilDiscountType'));
 check('invoice per-line taxable control', html.includes('Taxable'));
 check('invoice print stylesheet', read('public/modules/invoices.html').includes('@media print'));
@@ -143,14 +144,26 @@ check('invoice professional print branding', html.includes('IRON TEAM TRUCK &amp
 
 // v24.13.0 service-card invoice workflow regression guards.
 check('invoice service-card grouping', html.includes('invoiceServiceCard') && html.includes('invoiceServiceGroups'));
-check('invoice parts shown before labor in service card', html.indexOf('Parts & Materials') < html.indexOf('Labor & Services'));
+check('invoice labor shown before attached parts', html.includes("labors.slice(0,1).map(x=>invoiceLaborRowHtml(x,locked)).join('')}${parts.map"));
 for(const rate of ['115','110','100','60']) check(`legacy labor rate preset ${rate}`, html.includes(`value=\"${rate}\"`) || html.includes(`value="${rate}"`));
-check('legacy labor rate labels restored', html.includes('New client — $115/hr') && html.includes('Our client — $110/hr') && html.includes('Old client — $100/hr') && html.includes('Owner — $60/hr'));
+check('legacy labor rate labels restored', html.includes('New Client — $115/hr') && html.includes('Our Client — $110/hr') && html.includes('Old Client — $100/hr') && html.includes('Owner — $60/hr'));
 check('customer default labor rate supported', read('public/modules/invoices.js').includes('default_labor_rate') && read('public/modules/invoices.js').includes('preferredLaborRate'));
 check('service supports direct part add', html.includes('+ Add Part') && html.includes('addInvoiceChildLine'));
 check('service supports additional labor', html.includes('+ Add Labor') && html.includes('addInvoiceLaborToService'));
 check('new service workflow', html.includes('+ New Service') && html.includes('addInvoiceService()'));
 
+
+// v24.14.0 compact Fullbay-inspired service-grid invoice guards.
+check('invoice compact grid header', modulesInvoicesHtml.includes('invoiceGridHeader'));
+check('invoice grid shows Cost column', html.includes('<span>Cost</span>'));
+check('invoice grid shows Selling Price column', html.includes('<span>Selling Price</span>'));
+check('invoice part cost remains editable', html.includes('class="ilCost" type="number"'));
+check('invoice bottom Add Labor Line', html.includes('Add Labor Line'));
+check('invoice bottom Add a Service', html.includes('Add a Service'));
+check('invoice bottom Add Misc Charge', html.includes('Add Misc Charge'));
+check('invoice service quick Add Part', html.includes('title="Add part to this service"'));
+check('invoice service subtotal row', modulesInvoicesHtml.includes('invoiceServiceSubtotal'));
+check('invoice old rate presets all preserved', ['115','110','100','60'].every(v=>html.includes(`value="${v}"`)));
 const failed = checks.filter(x=>!x.ok);
 for (const x of checks) console.log(`${x.ok?'PASS':'FAIL'}  ${x.name}${x.detail?` — ${x.detail}`:''}`);
 console.log(`\n${checks.length-failed.length}/${checks.length} checks passed.`);

@@ -1,0 +1,30 @@
+ITTR ShopFlow v24.14.0 — Compact Service Grid Invoice Audit
+Date: 2026-09-14
+
+Goal
+- Rework invoice editor to match the compact professional workflow reference supplied by the shop.
+- Preserve v24.13 backend, tax, discounts, customer/unit autofill, payments, PDF, deletion, AI, Fullbay, and mechanic workflows.
+
+Invoice UX
+- Customer + Unit remain at the top with VIN/USDOT/mileage/PO metadata.
+- Compact billing grid columns: Item, Description, Qty, Cost, Selling Price, Tax, Discount, Total.
+- Each repair group is shown as:
+  1) Service header
+  2) Primary Labor row
+  3) Parts directly under that service
+  4) Additional Labor rows
+  5) Service subtotal
+- Each service includes + Add Part, + Add Labor, + Misc Charge.
+- Bottom actions: Add Labor Line, Add a Service, Add Misc Charge.
+- Existing labor-rate presets restored/preserved:
+  New Client $115/hr
+  Our Client $110/hr
+  Old Client $100/hr
+  Owner $60/hr
+  Custom Rate
+- Part cost is visible/editable independently from selling price.
+- Existing per-line taxable and discount logic remains.
+- Responsive mobile layout retained.
+- Customer-facing print layout preserved.
+
+No destructive database changes are required.
