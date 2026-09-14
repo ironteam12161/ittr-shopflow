@@ -1055,7 +1055,7 @@ app.get("/api/smart-search",auth,adminOnly,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"24.17.3",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"24.17.5",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -1088,8 +1088,8 @@ async function reconcileDuplicateImportedCustomers(){
  return {merged};
 }
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.17.3",backend:"24.17.3",build:"ITTR-24.17.3-PRO-INVOICE-NOTES-PDF-FIX-20260914"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.8.0",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.17.5",backend:"24.17.5",build:"ITTR-24.17.5-FEES-WARRANTY-TIRE-NOTICE-20260914"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.17.5",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -2258,7 +2258,7 @@ app.get('/api/invoices/:id/pdf',auth,managerPermission("invoices"),async(req,res
    if(children.length){
     rect(L,y,W,18,'#eef2f6',null);
     doc.fillColor('#475569').font('Helvetica-Bold').fontSize(7);
-    text('PARTS USED FOR THIS LABOR',L+48,y+6,{width:250});
+    text('PARTS & CHARGES FOR THIS LABOR',L+48,y+6,{width:250});
     y+=18;
    }
 
@@ -2318,9 +2318,13 @@ app.get('/api/invoices/:id/pdf',auth,managerPermission("invoices"),async(req,res
 
   // Customer notes are printed exactly as saved. Never replace them with generic text.
   const customerNote=s(i.customer_note);
+  const shopSupplies=Number(i.shop_supplies||0);
+  const environmentalFee=Number(i.environmental_fee||0);
+  const additionalFees=shopSupplies+environmentalFee;
   doc.font('Helvetica').fontSize(8);
   const noteTextHeight=customerNote?doc.heightOfString(customerNote,{width:278,lineGap:2}):0;
-  const bottomPanelH=Math.max(138,Math.min(224,noteTextHeight+48));
+  const summaryRows=7+(shopSupplies>0?1:0)+(environmentalFee>0?1:0)+(Number(i.discount||0)>0?1:0);
+  const bottomPanelH=Math.max(158,Math.min(240,Math.max(noteTextHeight+48,summaryRows*20+20)));
   ensure(bottomPanelH+4);
 
   const notesW=300,gap2=14,summaryX=L+notesW+gap2,summaryW=W-notesW-gap2,top=y;
@@ -2342,12 +2346,33 @@ app.get('/api/invoices/:id/pdf',auth,managerPermission("invoices"),async(req,res
    sy+=20;
   };
   const rawSubtotal=Number(i.subtotal||0)+Number(i.discount||0);
+  const itemsSubtotal=Math.max(0,rawSubtotal-additionalFees);
+  row('Items Subtotal',money(itemsSubtotal));
+  if(shopSupplies>0)row('Shop Supplies',money(shopSupplies));
+  if(environmentalFee>0)row('Environmental / Other',money(environmentalFee));
   row('Subtotal',money(rawSubtotal));
   if(Number(i.discount||0)>0)row('Discount',`-${money(i.discount)}`);
   row(`Tax (${Number(i.tax_rate||0).toFixed(3)}%)`,money(i.tax));
   row('TOTAL',money(i.total),{bold:true,size:11,fill:BLUE});
   row('Paid',money(i.amount_paid));
   row('BALANCE DUE',money(i.balance_due),{bold:true,size:10.5,fill:PALE});
+
+  // Standard customer-facing warranty and wheel safety notice.
+  y=top+bottomPanelH+12;
+  const warrantyNotice='PARTS WARRANTY: We are responsible for handling eligible warranty claims on parts supplied and installed by Iron Team Truck & Trailer Repair, subject to the applicable manufacturer warranty and shop terms.';
+  const tireNotice='TIRE / WHEEL SAFETY: After tire or wheel service, wheel fasteners / lug nuts must be checked and re-torqued after approximately 50 miles of driving. Please return to our shop for this safety check. Stop driving and have the vehicle inspected if looseness, vibration, noise, or any abnormal condition is noticed.';
+  doc.font('Helvetica').fontSize(7.1);
+  const warrantyH=doc.heightOfString(warrantyNotice,{width:W-20,lineGap:1.3});
+  const tireH=doc.heightOfString(tireNotice,{width:W-20,lineGap:1.3});
+  const noticeH=Math.max(66,warrantyH+tireH+30);
+  ensure(noticeH+8);
+  rect(L,y,W,noticeH,SOFT,LINE);
+  doc.fillColor(INK).font('Helvetica-Bold').fontSize(7.3);
+  text('IMPORTANT WARRANTY & TIRE / WHEEL SAFETY NOTICE',L+10,y+9,{width:W-20});
+  doc.fillColor('#334155').font('Helvetica').fontSize(7.1);
+  text(warrantyNotice,L+10,y+24,{width:W-20,lineGap:1.3});
+  text(tireNotice,L+10,y+25+warrantyH,{width:W-20,lineGap:1.3});
+  y+=noticeH+8;
 
   // Footer remains safely inside every page's printable area.
   const pages=doc.bufferedPageRange();
@@ -2367,7 +2392,7 @@ const stripeSecret=String(process.env.STRIPE_SECRET_KEY||'').trim();
 const resendKey=String(process.env.RESEND_API_KEY||'').trim();
 const invoiceFromEmail=String(process.env.INVOICE_FROM_EMAIL||'').trim();
 app.post('/api/invoices/:id/payment-link',auth,managerPermission("invoices"),async(req,res,next)=>{try{if(!stripeSecret)return res.status(503).json({error:'Stripe is not configured. Add STRIPE_SECRET_KEY in Railway.'});const x=await getInvoiceBundle(requireDb(),req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const i=x.invoice,amount=Math.round(Number(i.balance_due||0)*100);if(amount<50)return res.status(409).json({error:'Invoice has no payable balance.'});const base=String(process.env.APP_PUBLIC_URL||'').replace(/\/$/,'');const p=new URLSearchParams();p.set('mode','payment');p.set('success_url',`${base}/?payment=success&invoice=${encodeURIComponent(i.invoice_number)}`);p.set('cancel_url',`${base}/?payment=cancel&invoice=${encodeURIComponent(i.invoice_number)}`);p.set('line_items[0][price_data][currency]','usd');p.set('line_items[0][price_data][product_data][name]',`Invoice ${i.invoice_number}`);p.set('line_items[0][price_data][unit_amount]',String(amount));p.set('line_items[0][quantity]','1');p.set('metadata[invoice_id]',String(i.id));p.set('metadata[invoice_number]',String(i.invoice_number));const rr=await fetch('https://api.stripe.com/v1/checkout/sessions',{method:'POST',headers:{Authorization:`Bearer ${stripeSecret}`,'Content-Type':'application/x-www-form-urlencoded'},body:p});const d=await rr.json();if(!rr.ok)throw new Error(d?.error?.message||'Stripe checkout could not be created.');await requireDb().query('UPDATE customer_invoices SET payment_url=$2,stripe_session_id=$3,updated_at=now() WHERE id=$1::bigint',[i.id,d.url,d.id]);await audit(req.user.username,'invoice_payment_link_created',{invoiceId:i.id});res.json({ok:true,url:d.url})}catch(e){next(e)}});
-app.post('/api/invoices/:id/email',auth,managerPermission("invoices"),async(req,res,next)=>{try{if(!resendKey||!invoiceFromEmail)return res.status(503).json({error:'Email is not configured. Add RESEND_API_KEY and INVOICE_FROM_EMAIL in Railway.'});const x=await getInvoiceBundle(requireDb(),req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const i=x.invoice,to=String(req.body?.email||i.customer_email||'').trim();if(!to)return res.status(400).json({error:'Customer email is required.'});const pay=i.payment_url?`<p><a href="${String(i.payment_url).replace(/"/g,'')}" style="display:inline-block;background:#155eef;color:white;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:700">Pay Invoice Securely</a></p>`:'';const html=`<div style="font-family:Arial,sans-serif;max-width:640px"><h2>Iron Team Truck & Trailer Repair</h2><p>Invoice <b>${i.invoice_number}</b> for Unit <b>${i.unit_number||'—'}</b> is ready.</p><p>Total: <b>$${Number(i.total||0).toFixed(2)}</b><br>Balance due: <b>$${Number(i.balance_due||0).toFixed(2)}</b></p>${pay}<p>Please contact the shop with any questions.</p></div>`;const rr=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${resendKey}`,'Content-Type':'application/json'},body:JSON.stringify({from:invoiceFromEmail,to:[to],subject:`Invoice ${i.invoice_number} — Iron Team Truck & Trailer Repair`,html})});const d=await rr.json();if(!rr.ok)throw new Error(d?.message||'Email could not be sent.');await requireDb().query('UPDATE customer_invoices SET customer_email=$2,email_sent_at=now(),updated_at=now() WHERE id=$1::bigint',[i.id,to]);await audit(req.user.username,'invoice_emailed',{invoiceId:i.id,to});res.json({ok:true,id:d.id})}catch(e){next(e)}});
+app.post('/api/invoices/:id/email',auth,managerPermission("invoices"),async(req,res,next)=>{try{if(!resendKey||!invoiceFromEmail)return res.status(503).json({error:'Email is not configured. Add RESEND_API_KEY and INVOICE_FROM_EMAIL in Railway.'});const x=await getInvoiceBundle(requireDb(),req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const i=x.invoice,to=String(req.body?.email||i.customer_email||'').trim();if(!to)return res.status(400).json({error:'Customer email is required.'});const pay=i.payment_url?`<p><a href="${String(i.payment_url).replace(/"/g,'')}" style="display:inline-block;background:#155eef;color:white;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:700">Pay Invoice Securely</a></p>`:'';const html=`<div style="font-family:Arial,sans-serif;max-width:640px"><h2>Iron Team Truck & Trailer Repair</h2><p>Invoice <b>${i.invoice_number}</b> for Unit <b>${i.unit_number||'—'}</b> is ready.</p><p>Total: <b>$${Number(i.total||0).toFixed(2)}</b><br>Balance due: <b>$${Number(i.balance_due||0).toFixed(2)}</b></p>${pay}<p>Please contact the shop with any questions.</p><hr><p style="font-size:12px"><b>Parts Warranty:</b> We are responsible for handling eligible warranty claims on parts supplied and installed by Iron Team Truck & Trailer Repair, subject to the applicable manufacturer warranty and shop terms.</p><p style="font-size:12px"><b>Tire / Wheel Safety:</b> After tire or wheel service, wheel fasteners / lug nuts must be checked and re-torqued after approximately 50 miles of driving. Please return to our shop for this safety check.</p></div>`;const rr=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${resendKey}`,'Content-Type':'application/json'},body:JSON.stringify({from:invoiceFromEmail,to:[to],subject:`Invoice ${i.invoice_number} — Iron Team Truck & Trailer Repair`,html})});const d=await rr.json();if(!rr.ok)throw new Error(d?.message||'Email could not be sent.');await requireDb().query('UPDATE customer_invoices SET customer_email=$2,email_sent_at=now(),updated_at=now() WHERE id=$1::bigint',[i.id,to]);await audit(req.user.username,'invoice_emailed',{invoiceId:i.id,to});res.json({ok:true,id:d.id})}catch(e){next(e)}});
 const memoryCache=new Map();
 function aiErrorResponse(res,err,fallback){
  console.error("AI ERROR:",err?.status,err?.code,err?.message);
@@ -2428,19 +2453,71 @@ app.get('/api/manuals',auth,async(req,res,next)=>{try{const q=await requireDb().
 app.post('/api/manuals',auth,adminOnly,upload.single('manual'),async(req,res,next)=>{try{const title=String(req.body?.title||'').trim(),make=String(req.body?.make||'').trim(),model=String(req.body?.model||'').trim(),engine=String(req.body?.engine||'').trim(),category=String(req.body?.category||'service_manual').trim(),sourceName=String(req.body?.sourceName||'').trim(),sourceUrl=String(req.body?.sourceUrl||'').trim(),yearFrom=Number(req.body?.yearFrom||0)||null,yearTo=Number(req.body?.yearTo||0)||null;if(!title)return res.status(400).json({error:'Manual title is required.'});let key=null,name=null,mime=null,size=0;if(req.file){if(req.file.mimetype!=='application/pdf')return res.status(415).json({error:'Workshop manual upload must be a PDF.'});key=`manuals/${Date.now()}-${crypto.randomUUID()}.pdf`;await requireR2().send(new PutObjectCommand({Bucket:r2Bucket,Key:key,Body:req.file.buffer,ContentType:'application/pdf',CacheControl:'private, max-age=3600'}));name=req.file.originalname||'manual.pdf';mime='application/pdf';size=req.file.size||req.file.buffer.length}const q=await requireDb().query(`INSERT INTO workshop_manuals(title,make,model,year_from,year_to,engine,category,source_name,source_url,r2_key,original_name,mime_type,size_bytes,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,[title,make||null,model||null,yearFrom,yearTo,engine||null,category,sourceName||null,sourceUrl||null,key,name,mime,size,req.user.username]);await audit(req.user.username,'workshop_manual_added',{id:q.rows[0].id,title});res.json({item:q.rows[0]})}catch(e){next(e)}});
 app.get('/api/manuals/:id/open',auth,async(req,res,next)=>{try{const q=await requireDb().query('SELECT * FROM workshop_manuals WHERE id=$1::bigint AND active=true',[req.params.id]);if(!q.rowCount)return res.status(404).json({error:'Manual not found.'});const m=q.rows[0];if(m.r2_key){const url=await getSignedUrl(requireR2(),new GetObjectCommand({Bucket:r2Bucket,Key:m.r2_key}),{expiresIn:900});return res.json({url,title:m.title})}if(m.source_url)return res.json({url:m.source_url,title:m.title});res.status(404).json({error:'This manual has no document or source link.'})}catch(e){next(e)}});
 app.delete('/api/manuals/:id',auth,ownerOnly,async(req,res,next)=>{try{const q=await requireDb().query('DELETE FROM workshop_manuals WHERE id=$1::bigint RETURNING id,title,r2_key',[req.params.id]);if(!q.rowCount)return res.status(404).json({error:'Manual not found.'});if(q.rows[0].r2_key){try{await requireR2().send(new DeleteObjectCommand({Bucket:r2Bucket,Key:q.rows[0].r2_key}))}catch{}}await audit(req.user.username,'workshop_manual_deleted',{id:q.rows[0].id,title:q.rows[0].title});res.json({ok:true})}catch(e){next(e)}});
+function pmServiceIntent(q){
+ return /\b(pm(?:\s+service)?|preventive\s+maintenance|oil(?:\s+change|\s+service)?|engine\s+oil|lube|lubrication|grease|filter(?:s)?)\b/i.test(String(q||''));
+}
+function compactInvoiceHistory(rows){
+ const byId=new Map();
+ for(const row of Array.isArray(rows)?rows:[]){
+  const key=String(row.id||row.invoice_number||'');
+  if(!key)continue;
+  if(!byId.has(key))byId.set(key,{id:row.id,invoiceNumber:row.invoice_number,date:row.invoice_date,mileage:row.mileage,status:row.status,lines:[]});
+  const g=byId.get(key);
+  const desc=String(row.description||row.job_name||'').trim();
+  if(desc)g.lines.push({type:row.line_type||'',description:desc,partNumber:row.part_number||'',quantity:row.quantity});
+ }
+ return [...byId.values()];
+}
+function pmFactText(x){
+ const parts=[];
+ if(x.date)parts.push(String(x.date).slice(0,10));
+ if(x.mileage!==null&&x.mileage!==undefined&&x.mileage!=='')parts.push(`${Number(x.mileage).toLocaleString('en-US')} miles`);
+ if(x.invoiceNumber)parts.push(`Invoice ${x.invoiceNumber}`);
+ if(x.status)parts.push(`status ${x.status}`);
+ const labor=(x.lines||[]).filter(l=>l.type==='labor').map(l=>l.description).filter(Boolean);
+ if(labor.length)parts.push(labor.slice(0,3).join('; '));
+ return parts.join(' · ');
+}
 app.post("/api/ai/shop-chat",auth,async(req,res)=>{try{
  const question=String(req.body?.message||'').trim();if(!question)return res.status(400).json({error:'message required'});if(question.length>3000)return res.status(400).json({error:'Message is too long.'});
  const db=requireDb(),explicit=String(req.body?.unit||'').trim();
  const unitMatch=explicit?[null,explicit]:(question.match(/\b([A-HJ-NPR-Z0-9]{17})\b/i)||question.match(/(?:unit|truck|тра[кк]|машин|тягач|номер)\s*#?\s*([A-Za-z0-9-]{2,20})/i)||question.match(/\b(\d{2,8})\b/));
  let unit=null,history=[],invoices=[],workorders=[],manuals=[];
  if(unitMatch){const token=unitMatch[1];const uq=await db.query(`SELECT * FROM customer_units WHERE lower(coalesce(unit_number,''))=lower($1) OR lower(coalesce(vin,''))=lower($1) ORDER BY updated_at DESC LIMIT 1`,[token]);unit=uq.rows[0]||null;}
- if(unit){const hr=await db.query(`SELECT service_order,invoice_number,actual_correction,complaint,action_completed_at,hours,unit_miles,component,system,tech FROM fullbay_service_history WHERE lower(coalesce(unit_number,''))=lower($1) OR lower(coalesce(vin,''))=lower($2) ORDER BY action_completed_at DESC NULLS LAST LIMIT 180`,[unit.unit_number||'',unit.vin||'']);history=hr.rows;const ir=await db.query(`SELECT i.id,i.invoice_number,i.invoice_date,i.mileage,i.status,l.line_type,l.job_name,l.description,l.part_number,l.quantity FROM customer_invoices i LEFT JOIN customer_invoice_lines l ON l.invoice_id=i.id WHERE i.unit_id=$1 OR lower(coalesce(i.unit_number,''))=lower($2) OR lower(coalesce(i.vin,''))=lower($3) ORDER BY i.invoice_date DESC,l.sort_order,l.id LIMIT 220`,[unit.id,unit.unit_number||'',unit.vin||'']);invoices=ir.rows;manuals=await findWorkshopManuals(db,unit,question);const st=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");const sf=st.rows[0]?.payload||{};workorders=(Array.isArray(sf.workorders)?sf.workorders:[]).filter(w=>String(w.unit||'').toLowerCase()===String(unit.unit_number||'').toLowerCase()||String(w.vin||'').toLowerCase()===String(unit.vin||'').toLowerCase()).slice(-40).map(w=>({id:w.id,unit:w.unit,status:w.status,date:w.date,completedAt:w.completedAt,tasks:(w.tasks||[]).map(t=>({name:t.t,outcome:t.taskOutcome||'',note:t.outcomeNote||'',elapsedMs:t.elapsedMs||0}))}));}
+ if(unit){
+  const hr=await db.query(`SELECT service_order,invoice_number,actual_correction,complaint,action_completed_at,hours,unit_miles,component,system,tech FROM fullbay_service_history WHERE lower(coalesce(unit_number,''))=lower($1) OR lower(coalesce(vin,''))=lower($2) ORDER BY action_completed_at DESC NULLS LAST LIMIT 180`,[unit.unit_number||'',unit.vin||'']);
+  history=hr.rows;
+  const ir=await db.query(`SELECT i.id,i.invoice_number,i.invoice_date,i.mileage,i.status,i.updated_at,l.line_type,l.job_name,l.description,l.part_number,l.quantity FROM customer_invoices i LEFT JOIN customer_invoice_lines l ON l.invoice_id=i.id WHERE i.unit_id=$1 OR lower(coalesce(i.unit_number,''))=lower($2) OR lower(coalesce(i.vin,''))=lower($3) ORDER BY i.invoice_date DESC,i.updated_at DESC,l.sort_order,l.id LIMIT 220`,[unit.id,unit.unit_number||'',unit.vin||'']);
+  invoices=ir.rows;
+  manuals=await findWorkshopManuals(db,unit,question);
+  const st=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");
+  const sf=st.rows[0]?.payload||{};
+  workorders=(Array.isArray(sf.workorders)?sf.workorders:[]).filter(w=>String(w.unit||'').toLowerCase()===String(unit.unit_number||'').toLowerCase()||String(w.vin||'').toLowerCase()===String(unit.vin||'').toLowerCase()).slice(-60).map(w=>({id:w.id,unit:w.unit,status:w.status,date:w.date,completedAt:w.completedAt,mileage:w.mileage,tasks:(w.tasks||[]).map(t=>({name:t.t,outcome:t.taskOutcome||'',note:t.outcomeNote||'',elapsedMs:t.elapsedMs||0}))}));
+ }
  const financialAllowed=req.user.role==='admin'||(req.user.role==='manager'&&req.user.permissions?.financials!==false);
- const context={unit:unit?{unitNumber:unit.unit_number,vin:unit.vin,year:unit.year,make:unit.make,model:unit.model,mileage:unit.mileage,engine:unit.engine,transmission:unit.transmission}:null,fullbayHistory:history,ittrInvoiceHistory:invoices.map(x=>financialAllowed?x:{...x,status:undefined}),ittrWorkOrders:workorders,manualSources:manuals.map(m=>({id:m.id,title:m.title,category:m.category,sourceName:m.source_name,sourceUrl:m.source_url,vehicle:[m.year_from,m.year_to,m.make,m.model,m.engine].filter(Boolean).join(' ')}))};
- const system=`You are ITTR Workshop Copilot for a professional heavy-duty truck and trailer repair shop. Answer in the same language as the user. Use the supplied shop database as the authority for unit history. Never invent a repair, date, mileage, part number, torque specification, wiring detail, diagnostic result or price. Distinguish SHOP HISTORY from MANUAL / REFERENCE information. For history questions, prefer completed matching jobs and include date, mileage, service order/invoice when available. For oil-service questions search semantically across PM service, oil/filter change, lubrication and engine oil. For technical procedures/specs, only give exact torque/spec values when they are present in the supplied licensed manual; otherwise say a verified manual/source is required. Keep answers concise and mechanic-friendly, with bullets when useful.`;
+ const recentIttrServices=compactInvoiceHistory(invoices);
+ const pmInvoiceMatches=recentIttrServices.filter(x=>pmServiceIntent((x.lines||[]).map(l=>`${l.description} ${l.partNumber||''}`).join(' ')));
+ const pmWorkorderMatches=workorders.filter(w=>pmServiceIntent((w.tasks||[]).map(t=>`${t.name||''} ${t.outcome||''} ${t.note||''}`).join(' ')));
+ const pmFullbayMatches=history.filter(h=>pmServiceIntent(`${h.complaint||''} ${h.actual_correction||''} ${h.component||''} ${h.system||''}`));
+ const context={
+  unit:unit?{unitNumber:unit.unit_number,vin:unit.vin,year:unit.year,make:unit.make,model:unit.model,mileage:unit.mileage,engine:unit.engine,transmission:unit.transmission}:null,
+  recentIttrServices:recentIttrServices.map(x=>financialAllowed?x:{...x,status:undefined}),
+  fullbayHistory:history,
+  ittrWorkOrders:workorders,
+  pmMatches:{ittrInvoices:pmInvoiceMatches.slice(0,12),ittrWorkOrders:pmWorkorderMatches.slice(-12).reverse(),fullbay:pmFullbayMatches.slice(0,20)},
+  manualSources:manuals.map(m=>({id:m.id,title:m.title,category:m.category,sourceName:m.source_name,sourceUrl:m.source_url,vehicle:[m.year_from,m.year_to,m.make,m.model,m.engine].filter(Boolean).join(' ')}))
+ };
+ const system=`You are ITTR Workshop Copilot for a professional heavy-duty truck and trailer repair shop. Answer in the same language as the user. Use the supplied shop database as the authority for unit history. Never invent a repair, date, mileage, part number, torque specification, wiring detail, diagnostic result or price. Distinguish SHOP HISTORY from MANUAL / REFERENCE information. For history questions, use BOTH current ITTR invoices/jobs and imported Fullbay history. Current ITTR records are valid history even when their invoice status is draft, sent, partial, or paid; clearly state the status instead of ignoring the record. Always prioritize the newest matching ITTR record before older Fullbay records. For PM/oil-service questions, inspect pmMatches and recentIttrServices and search semantically across PM service, preventive maintenance, oil/filter change, lubrication, grease, engine oil and filters. If pmMatches.ittrInvoices contains a newer matching record, you MUST mention it in the answer with its date, mileage when available, invoice number and status. For technical procedures/specs, only give exact torque/spec values when they are present in the supplied licensed manual; otherwise say a verified manual/source is required. Keep answers concise and mechanic-friendly, with bullets when useful.`;
  let result='';let usedManual=null;
  if(manualIntent(question)&&manuals[0]?.r2_key&&openRouterClient&&r2Configured){usedManual=manuals[0];try{result=await manualPdfAsk(usedManual,system,`Question: ${question}\n\nSHOP DATABASE CONTEXT:\n${JSON.stringify(context)}`)}catch(e){console.warn('manual AI fallback',e?.message)}}
  if(!result)result=await textAI(system,`Question: ${question}\n\nSHOP DATABASE CONTEXT:\n${JSON.stringify(context)}`);
+ if(pmServiceIntent(question)&&pmInvoiceMatches.length){
+  const newest=pmInvoiceMatches[0],inv=String(newest.invoiceNumber||'');
+  if(inv && !String(result||'').includes(inv)){
+   const lead=`Most recent ITTR PM/service record: ${pmFactText(newest)}.`;
+   result=`${lead}\n\n${String(result||'').trim()}`.trim();
+  }
+ }
  const sources=[];if(unit){if(history.length)sources.push({type:'history',label:`Fullbay history · Unit ${unit.unit_number}`});if(invoices.length)sources.push({type:'invoice',label:'ITTR invoices / jobs'});if(workorders.length)sources.push({type:'workorder',label:'ITTR work orders'});}if(usedManual)sources.unshift({type:'manual',label:usedManual.title,manualId:usedManual.id});else if(manuals.length&&manualIntent(question))sources.push({type:'manual_available',label:`${manuals.length} workshop manual source${manuals.length===1?'':'s'} available`});
  res.json({result,matchedUnit:unit?unit.unit_number:null,unit:context.unit,sources,manuals:manuals.slice(0,5).map(m=>({id:m.id,title:m.title,category:m.category,sourceName:m.source_name}))});
 }catch(e){return aiErrorResponse(res,e,'Shop AI failed')}});
@@ -2475,5 +2552,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v24.16.0 Online running on port ${port}`))})
+  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v24.17.5 Online running on port ${port}`))})
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

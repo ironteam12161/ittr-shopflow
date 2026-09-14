@@ -10,10 +10,11 @@ const pub = read('public/index.html');
 const server = read('server.js');
 const pkg = JSON.parse(read('package.json'));
 const modulesInvoicesHtml = read('modules/invoices.html');
+const modulesInvoicesJs = read('modules/invoices.js');
 
-check('release package version is 24.17.3', pkg.version === '24.17.3', pkg.version);
-check('frontend release is 24.17.3', html.includes("const FRONTEND_VERSION='24.17.3';") || html.includes('const FRONTEND_VERSION="24.17.3";'));
-check('backend release is 24.17.3', server.includes('frontendExpected:"24.17.3",backend:"24.17.3"'));
+check('release package version is 24.17.5', pkg.version === '24.17.5', pkg.version);
+check('frontend release is 24.17.5', html.includes("const FRONTEND_VERSION='24.17.5';") || html.includes('const FRONTEND_VERSION="24.17.5"'));
+check('backend release is 24.17.5', server.includes('frontendExpected:"24.17.5",backend:"24.17.5"'));
 check('static web root restricted to public directory', server.includes('app.use(express.static(publicDir') && !server.includes('app.use(express.static(webRoot'));
 check('parts search is read-only (no per-result barcode write loop)', !server.includes('for(const x of r.rows)if(!x.internal_barcode)x.internal_barcode=await ensurePartBarcode'));
 check('production 500 responses hide internal error detail', server.includes('isProd?"An unexpected server error occurred.":safe'));
@@ -194,7 +195,7 @@ check('server PDF is labor-first and ignores old job headings',
   server.includes("internal legacy job/service names are never printed") &&
   !server.includes("text(currentJob,L,y)"));
 check('server PDF nests parts beneath labor',
-  server.includes("PARTS USED FOR THIS LABOR") &&
+  server.includes("PARTS & CHARGES FOR THIS LABOR") &&
   server.includes("String(c.parent_line_id||'')===String(labor.id)"));
 check('server PDF footer stays inside printable area',
   server.includes("doc.page.height-doc.page.margins.bottom-9"));
@@ -218,6 +219,41 @@ check('invoice line save preserves sibling unsaved rows', html.includes('async f
 check('invoice delete preserves sibling unsaved rows', html.includes("deleteInvoiceLine(lineId)") && html.includes("persistInvoiceDraftBeforeStructureChange('Preserving your invoice')"));
 check('invoice visible draft state indicator', html.includes('id="invoiceDraftState"') && modulesInvoicesHtml.includes('.invoiceDraftState'));
 check('parts autocomplete remains wired after draft fix', html.includes('scheduleInvoicePartLookup') && html.includes('/api/parts?q=${encodeURIComponent(q)}&limit=12'));
+
+check('invoice summary shows other charges separately',
+  html.includes('id="invPreviewOtherCharges"') &&
+  modulesInvoicesJs.includes("otherRows=rows.filter(x=>!['labor','part'].includes(x.type))"));
+check('invoice summary shows additional fees separately',
+  html.includes('id="invPreviewAdditionalFees"') &&
+  modulesInvoicesJs.includes("fees=numberValue('invShopSupplies')+numberValue('invEnvFee')"));
+check('additional fees autosave while editing',
+  html.includes('id="invShopSupplies" type="number" min="0" step="0.01" oninput="scheduleInvoiceHeaderAutosave()"') &&
+  html.includes('id="invEnvFee" type="number" min="0" step="0.01" oninput="scheduleInvoiceHeaderAutosave()"'));
+check('PDF item summary exposes shop and environmental fees',
+  server.includes("row('Shop Supplies',money(shopSupplies))") &&
+  server.includes("row('Environmental / Other',money(environmentalFee))"));
+check('standard parts warranty appears on invoice and PDF',
+  html.includes('PARTS WARRANTY') &&
+  server.includes('We are responsible for handling eligible warranty claims on parts supplied and installed'));
+check('50-mile tire wheel re-torque notice appears on invoice and PDF',
+  html.includes('after approximately 50 miles of driving') &&
+  server.includes('checked and re-torqued after approximately 50 miles of driving'));
+check('invoice email includes warranty and tire notice',
+  server.includes('<b>Parts Warranty:</b>') &&
+  server.includes('<b>Tire / Wheel Safety:</b>'));
+
+check('Workshop AI groups current ITTR invoice history before prompting',
+  server.includes('function compactInvoiceHistory(rows)') &&
+  server.includes('recentIttrServices=compactInvoiceHistory(invoices)'));
+check('Workshop AI explicitly includes draft/sent/paid ITTR records in history',
+  server.includes('Current ITTR records are valid history even when their invoice status is draft, sent, partial, or paid'));
+check('Workshop AI detects PM/oil/lube/filter history semantically',
+  server.includes('function pmServiceIntent(q)') &&
+  server.includes('pmMatches:{ittrInvoices:pmInvoiceMatches.slice(0,12)'));
+check('Workshop AI guarantees newest matching ITTR PM invoice is surfaced',
+  server.includes("if(pmServiceIntent(question)&&pmInvoiceMatches.length)") &&
+  server.includes("Most recent ITTR PM/service record:"));
+
 const failed = checks.filter(x=>!x.ok);
 for (const x of checks) console.log(`${x.ok?'PASS':'FAIL'}  ${x.name}${x.detail?` — ${x.detail}`:''}`);
 console.log(`\n${checks.length-failed.length}/${checks.length} checks passed.`);

@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.17.3</title>
+<title>ITTR ShopFlow v24.17.5</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -723,7 +723,7 @@ body.modalOpen{overflow:hidden}
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.17.3 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.17.5 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1267,7 +1267,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.17.3';
+const FRONTEND_VERSION='24.17.5';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -4959,7 +4959,7 @@ async function addInvoiceService(){const input=document.getElementById('invoiceN
 async function addInvoiceLine(type='labor',jobName='Service',parentLineId=null,override={}){const i=activeInvoice?.invoice;if(!i)return;if(!(await persistInvoiceDraftBeforeStructureChange('Preserving your invoice')))return;const typ=['labor','part','sublet','fee','other'].includes(type)?type:'labor';const defaults={labor:{description:'Labor',quantity:1,unitPrice:invoiceDefaultLaborRate(),taxable:false},part:{description:'',quantity:1,unitPrice:0,taxable:true},sublet:{description:'Sublet',quantity:1,unitPrice:0,taxable:false},fee:{description:'Fee',quantity:1,unitPrice:0,taxable:false},other:{description:'',quantity:1,unitPrice:0,taxable:false}}[typ],vals={...defaults,...override};try{const r=await fetch(`/api/invoices/${i.id}/lines`,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({lineType:typ,description:vals.description,quantity:vals.quantity,unitPrice:vals.unitPrice,taxable:vals.taxable,jobName:jobName||'Service',parentLineId,discountType:'fixed',discountValue:0})}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to add line');await openInvoice(i.id);setTimeout(()=>{const row=document.querySelector(`[data-invoice-line="${d.id}"]`);row?.querySelector('.ilDesc')?.focus();row?.scrollIntoView({behavior:'smooth',block:'center'})},40)}catch(e){showToast?.(e.message,'error')||alert(e.message)}}
 function invoiceLinePayload(id){const el=document.querySelector(`[data-invoice-line="${id}"]`);if(!el)return null;const old=activeInvoice.lines.find(x=>String(x.id)===String(id))||{},lineType=el.querySelector('.ilType')?.value||old.line_type||'other',parentLineId=Number(el.querySelector('.ilParent')?.value||0)||null;return {lineType,description:el.querySelector('.ilDesc')?.value||'',partNumber:lineType==='part'?(el.querySelector('.ilPart')?.value||''):'',quantity:Number(el.querySelector('.ilQty')?.value||0),unitPrice:Number(el.querySelector('.ilPrice')?.value||0),unitCost:Number(el.querySelector('.ilCost')?.value||old.unit_cost||0),taxable:Boolean(el.querySelector('.ilTax')?.checked),discountType:el.querySelector('.ilDiscountType')?.value||'fixed',discountValue:Number(el.querySelector('.ilDiscountValue')?.value||0),jobName:String(el.querySelector('.ilJob')?.value||old.job_name||'Service').trim()||'Service',jobUid:String(old.job_uid||''),parentLineId}}
 function renderInvoiceEditor(){
- const {invoice:i,lines,payments}=activeInvoice,locked=['paid','void'].includes(i.status),labor=invoiceCategorySummary(lines,'labor'),parts=invoiceCategorySummary(lines,'part');
+ const {invoice:i,lines,payments}=activeInvoice,locked=['paid','void'].includes(i.status),labor=invoiceCategorySummary(lines,'labor'),parts=invoiceCategorySummary(lines,'part'),charges=invoiceCategorySummary(lines,'other'),additionalFees=Number(i.shop_supplies||0)+Number(i.environmental_fee||0);
  const terms=['Due on Receipt','Net 15','Net 30','Net 60'];
  const currentTerms=terms.includes(i.terms)?i.terms:'Due on Receipt';
  const discountType=String(i.discount_type||'fixed');
@@ -5010,10 +5010,12 @@ function renderInvoiceEditor(){
      <div class="invoiceSummaryRow"><span>Labor Hours</span><b id="invPreviewLaborHours">${labor.hours.toFixed(2)}</b></div>
      <div class="invoiceSummaryRow"><span>Labor Subtotal</span><b id="invPreviewLabor">${invMoney(labor.total)}</b></div>
      <div class="invoiceSummaryRow"><span>Parts Subtotal</span><b id="invPreviewParts">${invMoney(parts.total)}</b></div>
+     <div class="invoiceSummaryRow"><span>Other Charges</span><b id="invPreviewOtherCharges">${invMoney(charges.total)}</b></div>
+     <div class="invoiceSummaryRow"><span>Additional Fees</span><b id="invPreviewAdditionalFees">${invMoney(additionalFees)}</b></div>
      <hr>
-     <div class="field invoiceAppOnly"><label>Sales Tax %</label><input id="invTaxRate" type="number" min="0" step="0.001" value="${Number(i.tax_rate||0)}" ${locked?'disabled':''}></div>
-     <div class="invoiceGlobalDiscount invoiceAppOnly"><div class="field"><label>Global Discount</label><select id="invDiscountType" ${locked?'disabled':''}><option value="fixed" ${discountType==='fixed'?'selected':''}>$ Fixed</option><option value="percent" ${discountType==='percent'?'selected':''}>% Percent</option></select></div><div class="field"><label>Value</label><input id="invDiscountValue" type="number" min="0" step="0.01" value="${discountValue}" ${locked?'disabled':''}></div></div>
-     <div class="invoiceAdvancedFees invoiceAppOnly"><details><summary>Additional fees</summary><div class="field"><label>Shop Supplies</label><input id="invShopSupplies" type="number" min="0" step="0.01" value="${Number(i.shop_supplies||0)}" ${locked?'disabled':''}></div><div class="field"><label>Environmental / Other Fee</label><input id="invEnvFee" type="number" min="0" step="0.01" value="${Number(i.environmental_fee||0)}" ${locked?'disabled':''}></div></details></div>
+     <div class="field invoiceAppOnly"><label>Sales Tax %</label><input id="invTaxRate" type="number" min="0" step="0.001" oninput="scheduleInvoiceHeaderAutosave()" onblur="flushInvoiceHeaderAutosave()" value="${Number(i.tax_rate||0)}" ${locked?'disabled':''}></div>
+     <div class="invoiceGlobalDiscount invoiceAppOnly"><div class="field"><label>Global Discount</label><select id="invDiscountType" onchange="scheduleInvoiceHeaderAutosave()" ${locked?'disabled':''}><option value="fixed" ${discountType==='fixed'?'selected':''}>$ Fixed</option><option value="percent" ${discountType==='percent'?'selected':''}>% Percent</option></select></div><div class="field"><label>Value</label><input id="invDiscountValue" type="number" min="0" step="0.01" oninput="scheduleInvoiceHeaderAutosave()" onblur="flushInvoiceHeaderAutosave()" value="${discountValue}" ${locked?'disabled':''}></div></div>
+     <div class="invoiceAdvancedFees invoiceAppOnly"><details><summary>Additional fees</summary><div class="field"><label>Shop Supplies</label><input id="invShopSupplies" type="number" min="0" step="0.01" oninput="scheduleInvoiceHeaderAutosave()" onblur="flushInvoiceHeaderAutosave()" value="${Number(i.shop_supplies||0)}" ${locked?'disabled':''}></div><div class="field"><label>Environmental / Other Fee</label><input id="invEnvFee" type="number" min="0" step="0.01" oninput="scheduleInvoiceHeaderAutosave()" onblur="flushInvoiceHeaderAutosave()" value="${Number(i.environmental_fee||0)}" ${locked?'disabled':''}></div></details></div>
      <hr>
      <div class="invoiceSummaryRow"><span>Subtotal</span><b id="invPreviewSubtotal">${invMoney(i.subtotal)}</b></div>
      <div class="invoiceSummaryRow"><span>Discount</span><b id="invPreviewDiscount">${invMoney(i.discount||0)}</b></div>
@@ -5024,7 +5026,11 @@ function renderInvoiceEditor(){
      <div class="actions invoiceAppOnly invoiceSummaryActions">${locked?'':`<button onclick="saveInvoiceHeader()">Save Changes</button>`}<button class="secondary" onclick="downloadInvoicePDF(${i.id})">PDF</button><button class="secondary" onclick="window.print()">Print</button>${i.status==='draft'?`<button class="success" onclick="finalizeInvoice(${i.id})">Finalize / Mark Sent</button>`:''}${['sent','partial'].includes(i.status)?`<button class="success" onclick="recordInvoicePayment(${i.id},${Number(i.balance_due||0)})">Record Payment</button>`:''}${i.status!=='void'&&Number(i.amount_paid||0)===0?`<button class="danger" onclick="voidInvoice(${i.id})">Void</button>`:''}${i.status!=='void'?`<button class="secondary" onclick="createInvoicePaymentLink(${i.id})">Payment Link</button><button class="secondary" onclick="emailInvoice(${i.id})">Email Invoice</button>`:''}${session?.role==='admin'?`<button class="danger" onclick="permanentlyDeleteInvoice(${i.id},'${esc(i.invoice_number)}')">Delete Permanently</button>`:''}</div>
      <h3>Payments</h3>${payments.map(p=>`<div class="historyitem"><b>${invMoney(p.amount)}</b> · ${esc(p.method||'Other')}<div class="muted">${esc(String(p.paid_at||'').slice(0,19).replace('T',' '))} ${p.reference?`· ${esc(p.reference)}`:''}</div></div>`).join('')||'<div class="muted">No payments recorded.</div>'}
    </div>
- </aside></div>`;
+ </aside></div>
+ <section class="invoiceWarrantyNotice">
+   <div><b>PARTS WARRANTY</b><span>We are responsible for handling eligible warranty claims on parts supplied and installed by Iron Team Truck & Trailer Repair, subject to the applicable manufacturer warranty and shop terms.</span></div>
+   <div><b>TIRE / WHEEL SAFETY</b><span>After tire or wheel service, wheel fasteners / lug nuts must be checked and re-torqued after approximately 50 miles of driving. Please return to our shop for this safety check. Stop driving and have the vehicle inspected if looseness, vibration, noise, or any abnormal condition is noticed.</span></div>
+ </section>`;
  window.InvoiceUX?.attachEditor?.(activeInvoice);
 }
 async function persistInvoiceLine(id){const i=activeInvoice.invoice,b=invoiceLinePayload(id);if(!b)return {ok:true};const r=await fetch(`/api/invoices/${i.id}/lines/${id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(b)}),d=await r.json();if(!r.ok)throw new Error(d.error||'Line save failed');return d}
