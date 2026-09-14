@@ -126,10 +126,3 @@ CREATE INDEX IF NOT EXISTS idx_fullbay_service_customer ON fullbay_service_histo
 CREATE INDEX IF NOT EXISTS idx_fullbay_service_unit ON fullbay_service_history(lower(unit_number),action_completed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_fullbay_service_vin ON fullbay_service_history(lower(vin));
 CREATE INDEX IF NOT EXISTS idx_fullbay_service_so ON fullbay_service_history(service_order);
-
-ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS tax_exempt BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS tax_exempt_reason TEXT;
-ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS tax_exempt_certificate TEXT;
-ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS reopened_at TIMESTAMPTZ;
-ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS reopened_by TEXT;
-ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS reopen_reason TEXT;

@@ -1,0 +1,23 @@
+ITTR v24.6.5 Vehicle History / Invoice Search Audit
+
+FIXED
+- Vehicle Profile API now includes ITTR customer invoices in unit history.
+- Invoice history includes every invoice line (labor descriptions, job names, part descriptions/numbers) for search.
+- Vehicle History search now searches invoice line content, not only invoice header/number.
+- Added ITTR Invoices history-source filter.
+- Invoice history rows show actual Work Performed summary from invoice lines.
+- Invoice rows Open directly in the ITTR invoice editor using the existing /api/invoices/:id route.
+- Fullbay rows still open Fullbay service-order detail.
+- ITTR WO rows still open work-order detail.
+- Changed empty state from service orders to service history.
+
+WHY THE BUG EXISTED
+The Vehicle History client filter only searched top-level fields plus vehicleHistorySummary(). ITTR invoice records were not being returned by /api/customer-units/:id/profile in v24.6.4, so invoice labor/part descriptions could not be searched. A row could be displayed by later frontend work but without searchable line detail / correct open routing, causing the observed behavior and endpoint mismatch.
+
+VALIDATION
+- server.js node --check PASS
+- extracted frontend JS node --check PASS
+- root index.html == public/index.html PASS
+- no destructive database reset
+- uses existing customer_invoices/customer_invoice_lines tables
+- invoice open uses existing authenticated GET /api/invoices/:id

@@ -163,10 +163,3 @@ CREATE TABLE IF NOT EXISTS inventory_count_sessions(
 CREATE TABLE IF NOT EXISTS inventory_count_lines(
  id BIGSERIAL PRIMARY KEY, session_id BIGINT NOT NULL REFERENCES inventory_count_sessions(id) ON DELETE CASCADE, part_id BIGINT NOT NULL REFERENCES fullbay_import_parts(id) ON DELETE RESTRICT, system_qty NUMERIC NOT NULL DEFAULT 0, counted_qty NUMERIC NOT NULL DEFAULT 0, last_barcode TEXT, counted_by TEXT, first_counted_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(), UNIQUE(session_id,part_id)
 );
-
-ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS tax_exempt BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS tax_exempt_reason TEXT;
-ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS tax_exempt_certificate TEXT;
-ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS reopened_at TIMESTAMPTZ;
-ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS reopened_by TEXT;
-ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS reopen_reason TEXT;
