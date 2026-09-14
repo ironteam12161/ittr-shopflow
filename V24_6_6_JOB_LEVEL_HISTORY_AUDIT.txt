@@ -1,0 +1,28 @@
+ITTR v24.6.6 — Job-Level Vehicle History Audit
+Date: 2026-09-14
+
+GOAL
+Vehicle History is now a job ledger, not a visit/invoice summary.
+
+BEHAVIOR
+- Fullbay: each imported action/job is one visible history row.
+- ITTR invoices: each LABOR line is one visible history row; PART rows are intentionally excluded from the compact history.
+- ITTR work orders: each task/job is one visible history row.
+- When an ITTR work order has been invoiced, the invoice is authoritative in compact history and the matching WO is suppressed to avoid duplicate customer-facing jobs.
+- Opening a row still opens the complete source record where labor, parts, notes, totals and other detail remain together.
+- Search operates against each individual job description plus SO/invoice/WO identifiers and technician.
+- Vehicle header/tab count now reports job-level history count.
+
+FULLBAY IMPORT DATA
+Fullbay action payload now carries technician and per-action labor/parts/total values so job-level history can display meaningful job metadata without exposing parts in the compact list.
+
+AUDIT
+- server.js syntax: PASS
+- frontend JS syntax: PASS
+- root/public index identical: PASS
+- duplicate Express method/path routes: 0
+- PostgreSQL numbered-placeholder gaps: 0
+- destructive DB migration/reset: NONE
+
+DEPLOYMENT
+Deploy over the same Railway project/database. Do not reset PostgreSQL or re-import Fullbay solely for this UI change; existing fullbay_service_history rows already contain action-level data.
