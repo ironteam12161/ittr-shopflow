@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.17.7</title>
+<title>ITTR ShopFlow v24.17.9</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -723,7 +723,7 @@ body.modalOpen{overflow:hidden}
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.17.7 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.17.9 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1267,7 +1267,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.17.7';
+const FRONTEND_VERSION='24.17.9';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -4889,6 +4889,10 @@ document.addEventListener("DOMContentLoaded",async()=>{
  startAITranslationObserver();
  const aiToggle=document.getElementById("aiTranslateEnabled");if(aiToggle)aiToggle.checked=aiTranslationEnabled;
  bindNavigation();updateOnlineState();
+ setupInvoiceAuthChannel();
+ if(new URLSearchParams(location.search).get('invoiceWorkspace')&&(!session||!cloudToken)){
+   await inheritInvoiceWorkspaceSession();
+ }
  if(session&&cloudToken){const ok=await restoreCloudSession();if(!ok)session=null;}
  showLogin();
  if(session){applyRole();render();}else{applyTranslations();}
@@ -4927,12 +4931,77 @@ async function selectInvoiceUnit(id){try{const r=await fetch(`/api/customer-unit
 async function selectInvoiceCustomer(id,name){document.getElementById('invoiceLookupQ').value=decodeURIComponent(name);await runInvoiceLookup(decodeURIComponent(name))}
 async function createInvoiceForSelectedVehicle(){const b=invoiceLookupSelection;if(!b)return;try{const r=await fetch('/api/invoices',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(b)}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to create invoice');closeModal('invoiceCreateModal');openInvoiceWorkspace(d.id);await loadInvoices()}catch(e){alert(e.message)}}
 
+const INVOICE_AUTH_CHANNEL='ittr_invoice_auth_v1';
+let invoiceAuthChannel=null;
+function setupInvoiceAuthChannel(){
+  if(!('BroadcastChannel' in window)||invoiceAuthChannel)return;
+  try{
+    invoiceAuthChannel=new BroadcastChannel(INVOICE_AUTH_CHANNEL);
+    invoiceAuthChannel.onmessage=(event)=>{
+      const msg=event?.data||{};
+      if(msg.type!=='request'||!msg.requestId||!cloudToken||!session)return;
+      invoiceAuthChannel.postMessage({
+        type:'response',requestId:msg.requestId,
+        token:cloudToken,
+        session:{username:session.username,role:session.role,display:session.display}
+      });
+    };
+  }catch(_){invoiceAuthChannel=null}
+}
+async function inheritInvoiceWorkspaceSession(){
+  const invoiceId=Number(new URLSearchParams(location.search).get('invoiceWorkspace')||0);
+  if(!invoiceId||(cloudToken&&session))return true;
+
+  // Same-origin opener fallback for browsers that preserve window.opener.
+  try{
+    if(window.opener&&window.opener.location?.origin===location.origin){
+      const token=window.opener.sessionStorage?.getItem('ittr_cloud_token')||'';
+      const rawSession=window.opener.sessionStorage?.getItem('ittr_session')||'';
+      if(token&&rawSession){
+        const inherited=JSON.parse(rawSession);
+        if(inherited?.username&&inherited?.role){
+          cloudToken=token;session=inherited;
+          sessionStorage.setItem('ittr_cloud_token',token);
+          sessionStorage.setItem('ittr_session',JSON.stringify(inherited));
+          return true;
+        }
+      }
+    }
+  }catch(_){ }
+
+  // Robust same-origin handoff also works when invoice tab was opened with noopener.
+  if(!('BroadcastChannel' in window))return false;
+  setupInvoiceAuthChannel();
+  if(!invoiceAuthChannel)return false;
+  const requestId=`invoice-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return await new Promise(resolve=>{
+    let settled=false;
+    const finish=(ok)=>{if(settled)return;settled=true;clearTimeout(timer);resolve(ok)};
+    const prior=invoiceAuthChannel.onmessage;
+    invoiceAuthChannel.onmessage=(event)=>{
+      const msg=event?.data||{};
+      // Keep responder behavior in this tab too.
+      if(msg.type==='request'&&msg.requestId&&cloudToken&&session){
+        invoiceAuthChannel.postMessage({type:'response',requestId:msg.requestId,token:cloudToken,session:{username:session.username,role:session.role,display:session.display}});
+      }
+      if(msg.type==='response'&&msg.requestId===requestId&&msg.token&&msg.session?.username){
+        cloudToken=String(msg.token);session=msg.session;
+        sessionStorage.setItem('ittr_cloud_token',cloudToken);
+        sessionStorage.setItem('ittr_session',JSON.stringify(session));
+        finish(true);
+      }
+      if(typeof prior==='function'&&prior!==invoiceAuthChannel.onmessage){try{prior.call(invoiceAuthChannel,event)}catch(_){}}
+    };
+    const timer=setTimeout(()=>finish(false),1500);
+    invoiceAuthChannel.postMessage({type:'request',requestId});
+  });
+}
 let invoiceWorkspaceActivated=false;
 function invoiceWorkspaceUrl(id){const u=new URL(location.href);u.searchParams.set('invoiceWorkspace',String(id));u.hash='';return u.toString()}
 function openInvoiceWorkspace(id){
   const url=invoiceWorkspaceUrl(id);
-  // Use an explicit noopener link. Do not inspect window.open()'s return value:
-  // browsers may return null for noopener even when the new tab opened successfully.
+  // Open as a normal isolated browser tab; authentication is handed off
+  // over a same-origin BroadcastChannel, so no credentials are placed in the URL.
   const link=document.createElement('a');
   link.href=url;
   link.target='_blank';
@@ -4993,17 +5062,21 @@ async function runInvoicePartLookup(lineId,q){
     box.classList.add('open');
   }catch(e){box.innerHTML=`<div class="invoicePartSuggestState is-error">${esc(e.message||'Inventory search failed.')}</div>`;box.classList.add('open')}
 }
+function invoiceMarkupFromCostPrice(cost,price){cost=Math.max(0,Number(cost||0));price=Math.max(0,Number(price||0));return cost>0?Math.max(-100,((price-cost)/cost)*100):0}
+function invoiceApplyPartMarkup(lineId){const row=document.querySelector(`[data-invoice-line="${lineId}"]`);if(!row)return;const cost=Math.max(0,Number(row.querySelector('.ilCost')?.value||0)),markup=Number(row.querySelector('.ilMarkup')?.value||0),price=row.querySelector('.ilPrice');if(price){price.value=(cost*(1+markup/100)).toFixed(2)}invoiceLinePreview(lineId)}
+function invoicePartCostChanged(lineId){const row=document.querySelector(`[data-invoice-line="${lineId}"]`);if(!row)return;const markup=Number(row.querySelector('.ilMarkup')?.value||0);if(Number.isFinite(markup))invoiceApplyPartMarkup(lineId)}
+function invoicePartPriceChanged(lineId){const row=document.querySelector(`[data-invoice-line="${lineId}"]`);if(!row)return;const cost=Math.max(0,Number(row.querySelector('.ilCost')?.value||0)),price=Math.max(0,Number(row.querySelector('.ilPrice')?.value||0)),markup=row.querySelector('.ilMarkup');if(markup)markup.value=cost>0?invoiceMarkupFromCostPrice(cost,price).toFixed(1):'0.0';invoiceLinePreview(lineId)}
 function selectInvoicePartSuggestion(lineId,index){
   const item=(invoicePartLookupResults.get(String(lineId))||[])[Number(index)],row=document.querySelector(`[data-invoice-line="${lineId}"]`);if(!item||!row)return;
   const set=(sel,val)=>{const el=row.querySelector(sel);if(el)el.value=val??''};
-  set('.ilPart',cleanPartField(item.part_number,''));set('.ilDesc',cleanPartField(item.description,''));set('.ilCost',Number(item.cost||0).toFixed(2));set('.ilPrice',Number(item.price||0).toFixed(2));
+  set('.ilPart',cleanPartField(item.part_number,''));set('.ilDesc',cleanPartField(item.description,''));const invCost=Number(item.cost||0),invPrice=Number(item.price||0);set('.ilCost',invCost.toFixed(2));set('.ilPrice',invPrice.toFixed(2));set('.ilMarkup',invoiceMarkupFromCostPrice(invCost,invPrice).toFixed(1));
   const tax=row.querySelector('.ilTax');if(tax)tax.checked=item.sell_taxable!==false;
   row.dataset.inventoryPartId=String(item.id||'');
   const box=document.getElementById(`invoicePartSuggest-${lineId}`);if(box)box.classList.remove('open');
   invoiceLinePreview(lineId);
   showToast?.(`${cleanPartField(item.part_number,'Part')} selected from inventory.`,'success',1800);
 }
-function invoicePartRowHtml(l,locked){const dtype=String(l.discount_type||'fixed'),dvalue=Number(l.discount_value??l.discount??0),part=l.line_type==='part';return `<div class="invoiceServicePartRow" data-invoice-line="${l.id}"><div class="invoiceGridItemLabel is-part">${part?'Part':invoiceLineTypeLabel(l.line_type)}</div><div class="invoicePartDescription"><div class="invoicePartLookupWrap"><input class="ilPart" value="${esc(l.part_number||'')}" placeholder="${part?'Part # or search':'Type'}" ${part?'oninput="scheduleInvoicePartLookup('+l.id+',this.value)" onfocus="scheduleInvoicePartLookup('+l.id+',this.value)" onblur="closeInvoicePartLookup('+l.id+')"':''} ${part?'': 'style="display:none"'} ${locked?'disabled':''}><input class="ilDesc" value="${esc(l.description||'')}" placeholder="${part?'Description / search inventory':'Charge description'}" ${part?'oninput="scheduleInvoicePartLookup('+l.id+',this.value)" onfocus="scheduleInvoicePartLookup('+l.id+',this.value)" onblur="closeInvoicePartLookup('+l.id+')"':''} ${locked?'disabled':''}><div id="invoicePartSuggest-${l.id}" class="invoicePartSuggest" role="listbox"></div></div></div><div class="invoiceQtyUnit"><input class="ilQty" type="number" min="0" step="0.01" value="${Number(l.quantity||0)}" oninput="invoiceLinePreview(${l.id})" ${locked?'disabled':''}><span>Qty</span></div><div class="invoiceCostCell"><input class="ilCost" type="number" min="0" step="0.01" value="${Number(l.unit_cost||0)}" placeholder="0.00" ${locked?'disabled':''}></div><div class="invoicePriceCell"><input class="ilPrice" type="number" min="0" step="0.01" value="${Number(l.unit_price||0)}" oninput="invoiceLinePreview(${l.id})" ${locked?'disabled':''}></div><label class="invoiceTaxCell" title="Taxable"><input class="ilTax" type="checkbox" ${l.taxable?'checked':''} ${locked?'disabled':''}> Taxable</label><div class="invoiceDiscountControl"><select class="ilDiscountType" onchange="invoiceLinePreview(${l.id})" ${locked?'disabled':''}><option value="fixed" ${dtype==='fixed'?'selected':''}>$</option><option value="percent" ${dtype==='percent'?'selected':''}>%</option></select><input class="ilDiscountValue" type="number" min="0" step="0.01" value="${dvalue}" oninput="invoiceLinePreview(${l.id})" ${locked?'disabled':''}></div><div class="invoiceLineNet"><b class="ilAmount">${invMoney(invoiceLineNet(l))}</b></div><div class="invoiceRowActions">${locked?'':`<button class="invoiceRowSave secondary" onclick="saveInvoiceLine(${l.id})">Save</button><button class="invoiceRowDelete secondary" onclick="deleteInvoiceLine(${l.id})" title="Remove line">•••</button>`}</div><input type="hidden" class="ilType" value="${esc(l.line_type)}"><input type="hidden" class="ilJob" value="${esc(invoiceGroupName(l))}"><input type="hidden" class="ilParent" value="${l.parent_line_id||''}"></div>`}
+function invoicePartRowHtml(l,locked){const dtype=String(l.discount_type||'fixed'),dvalue=Number(l.discount_value??l.discount??0),part=l.line_type==='part',markup=invoiceMarkupFromCostPrice(l.unit_cost,l.unit_price);return `<div class="invoiceServicePartRow" data-invoice-line="${l.id}"><div class="invoiceGridItemLabel is-part">${part?'Part':invoiceLineTypeLabel(l.line_type)}</div><div class="invoicePartDescription"><div class="invoicePartLookupWrap"><input class="ilPart" value="${esc(l.part_number||'')}" placeholder="${part?'Part # or search':'Type'}" ${part?'oninput="scheduleInvoicePartLookup('+l.id+',this.value)" onfocus="scheduleInvoicePartLookup('+l.id+',this.value)" onblur="closeInvoicePartLookup('+l.id+')"':''} ${part?'': 'style="display:none"'} ${locked?'disabled':''}><input class="ilDesc" value="${esc(l.description||'')}" placeholder="${part?'Description / search inventory':'Charge description'}" ${part?'oninput="scheduleInvoicePartLookup('+l.id+',this.value)" onfocus="scheduleInvoicePartLookup('+l.id+',this.value)" onblur="closeInvoicePartLookup('+l.id+')"':''} ${locked?'disabled':''}><div id="invoicePartSuggest-${l.id}" class="invoicePartSuggest" role="listbox"></div></div></div><div class="invoiceQtyUnit"><input class="ilQty" type="number" min="0" step="0.01" value="${Number(l.quantity||0)}" oninput="invoiceLinePreview(${l.id})" ${locked?'disabled':''}><span>Qty</span></div><div class="invoiceCostCell"><input class="ilCost" type="number" min="0" step="0.01" value="${Number(l.unit_cost||0)}" placeholder="0.00" oninput="invoicePartCostChanged(${l.id})" ${locked?'disabled':''}></div><div class="invoiceMarkupCell"><input class="ilMarkup" type="number" step="0.1" value="${markup.toFixed(1)}" oninput="invoiceApplyPartMarkup(${l.id})" ${locked?'disabled':''}><span>%</span></div><div class="invoicePriceCell"><input class="ilPrice" type="number" min="0" step="0.01" value="${Number(l.unit_price||0)}" oninput="invoicePartPriceChanged(${l.id})" ${locked?'disabled':''}></div><label class="invoiceTaxCell" title="Taxable"><input class="ilTax" type="checkbox" ${l.taxable?'checked':''} ${locked?'disabled':''}> Taxable</label><div class="invoiceDiscountControl"><select class="ilDiscountType" onchange="invoiceLinePreview(${l.id})" ${locked?'disabled':''}><option value="fixed" ${dtype==='fixed'?'selected':''}>$</option><option value="percent" ${dtype==='percent'?'selected':''}>%</option></select><input class="ilDiscountValue" type="number" min="0" step="0.01" value="${dvalue}" oninput="invoiceLinePreview(${l.id})" ${locked?'disabled':''}></div><div class="invoiceLineNet"><b class="ilAmount">${invMoney(invoiceLineNet(l))}</b></div><div class="invoiceRowActions">${locked?'':`<button class="invoiceRowSave secondary" onclick="saveInvoiceLine(${l.id})">Save</button><button class="invoiceRowDelete secondary" onclick="deleteInvoiceLine(${l.id})" title="Remove line">•••</button>`}</div><input type="hidden" class="ilType" value="${esc(l.line_type)}"><input type="hidden" class="ilJob" value="${esc(invoiceGroupName(l))}"><input type="hidden" class="ilParent" value="${l.parent_line_id||''}"></div>`}
 function invoiceLaborRowHtml(l,locked){const preset=invoiceRatePresetValue(l.unit_price),dtype=String(l.discount_type||'fixed'),dvalue=Number(l.discount_value??l.discount??0);return `<div class="invoiceServiceLaborRow" data-invoice-line="${l.id}"><div class="invoiceGridItemLabel is-labor">Labor</div><div class="invoiceLaborDescription"><input class="ilDesc" value="${esc(l.description||'')}" placeholder="Labor / service performed" ${locked?'disabled':''}></div><div class="invoiceQtyUnit"><input class="ilQty" type="number" min="0" step="0.01" value="${Number(l.quantity||0)}" oninput="invoiceLinePreview(${l.id})" ${locked?'disabled':''}><span>Hrs</span></div><div class="invoiceLaborRateField"><div class="invoiceRateWrap"><select class="ilRatePreset" onchange="invoiceApplyLaborRate(${l.id},this.value)" ${locked?'disabled':''}><option value="115" ${preset==='115'?'selected':''}>New Client — $115/hr</option><option value="110" ${preset==='110'?'selected':''}>Our Client — $110/hr</option><option value="100" ${preset==='100'?'selected':''}>Old Client — $100/hr</option><option value="60" ${preset==='60'?'selected':''}>Owner — $60/hr</option><option value="custom" ${preset==='custom'?'selected':''}>Custom Rate</option></select><input class="ilPrice" type="number" min="0" step="0.01" value="${Number(l.unit_price||0)}" oninput="invoiceLaborRateTyped(${l.id});invoiceLinePreview(${l.id})" ${locked?'disabled':''}></div></div><label class="invoiceTaxCell" title="Taxable"><input class="ilTax" type="checkbox" ${l.taxable?'checked':''} ${locked?'disabled':''}> Taxable</label><div class="invoiceDiscountControl"><select class="ilDiscountType" onchange="invoiceLinePreview(${l.id})" ${locked?'disabled':''}><option value="fixed" ${dtype==='fixed'?'selected':''}>$</option><option value="percent" ${dtype==='percent'?'selected':''}>%</option></select><input class="ilDiscountValue" type="number" min="0" step="0.01" value="${dvalue}" oninput="invoiceLinePreview(${l.id})" ${locked?'disabled':''}></div><div class="invoiceLineNet"><b class="ilAmount">${invMoney(invoiceLineNet(l))}</b></div><div class="invoiceRowActions">${locked?'':`<button class="invoiceRowSave secondary" onclick="saveInvoiceLine(${l.id})">Save</button><button class="invoiceRowDelete secondary" onclick="deleteInvoiceLine(${l.id})" title="Remove labor">•••</button>`}</div><input type="hidden" class="ilType" value="labor"><input type="hidden" class="ilPart" value=""><input type="hidden" class="ilJob" value="${esc(invoiceGroupName(l))}"><input type="hidden" class="ilCost" value="${Number(l.unit_cost||0)}"><input type="hidden" class="ilParent" value=""></div>`}
 function invoiceRenameService(anchorId,value){const card=document.querySelector(`[data-service-anchor="${anchorId}"]`);if(!card)return;card.querySelectorAll('.ilJob').forEach(x=>x.value=String(value||'').trim()||'Service')}
 function invoiceLaborPartsFor(lines,labor,allLabors){
@@ -5039,7 +5112,7 @@ function invoiceCategorizedLinesHtml(lines,locked){
  const labors=lines.filter(x=>x.line_type==='labor').sort((a,b)=>Number(a.sort_order||a.id)-Number(b.sort_order||b.id));
  if(!labors.length)return `<div class="invoiceServiceEmpty invoiceServiceStart"><b>No labor added yet.</b><span>Add labor to start the invoice. Parts will appear underneath the labor they belong to.</span></div>`;
  const blocks=labors.map(labor=>({anchor:labor,parts:invoiceLaborPartsFor(lines,labor,labors)}));
- return `<div class="invoiceGridHeader"><span>Type</span><span>Description</span><span>Qty / Hrs</span><span>Cost</span><span>Price / Rate</span><span>Tax</span><span>Discount</span><span>Line Total</span><span>Actions</span></div><div class="invoiceServiceStack">${blocks.map((g,i)=>invoiceServiceCardHtml(g,locked,i)).join('')}</div>`;
+ return `<div class="invoiceGridHeader"><span>Type</span><span>Description</span><span>Qty / Hrs</span><span>Cost</span><span>Markup</span><span>Price / Rate</span><span>Tax</span><span>Discount</span><span>Line Total</span><span>Actions</span></div><div class="invoiceServiceStack">${blocks.map((g,i)=>invoiceServiceCardHtml(g,locked,i)).join('')}</div>`;
 }
 function addLaborToLastInvoiceService(){const groups=invoiceServiceGroups(activeInvoice?.lines||[]);if(!groups.length){toggleInvoiceAddMenu();document.getElementById('invoiceNewServiceName')?.focus();return}const g=groups[groups.length-1],anchor=g.lines.find(x=>x.line_type==='labor');addInvoiceLaborToService(String(anchor?.id||''),encodeURIComponent(g.name))}
 function addMiscToLastInvoiceService(){const groups=invoiceServiceGroups(activeInvoice?.lines||[]);if(!groups.length){toggleInvoiceAddMenu();document.getElementById('invoiceNewServiceName')?.focus();return}const g=groups[groups.length-1],anchor=g.lines.find(x=>x.line_type==='labor');addInvoiceLine('fee',g.name,anchor?.id||null,{description:'Misc charge',quantity:1,unitPrice:0,taxable:false})}

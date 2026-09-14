@@ -599,3 +599,13 @@ body.invoiceWorkspaceMode .invoiceLineItemsCard{min-width:0}
 </style>
 
 <style>.invoiceLaborBlock .invoiceServiceTotal:before{content:'Labor';}</style>
+
+<style>
+/* v24.17.9 part pricing / markup */
+.invoiceGridHeader,.invoiceServicePartRow{grid-template-columns:95px minmax(220px,1.6fr) 78px 92px 86px 112px 76px 112px 105px 52px!important}
+.invoiceMarkupCell{display:grid;grid-template-columns:1fr 22px;align-items:center;border:1px solid #d0d5dd;border-radius:8px;background:#fff;overflow:hidden}
+.invoiceMarkupCell input{border:0!important;border-radius:0!important;text-align:right!important;min-width:0}.invoiceMarkupCell span{font-size:12px;font-weight:800;color:#667085;text-align:center}
+@media(max-width:1180px){.invoiceGridHeader{display:none!important}.invoiceServicePartRow{grid-template-columns:95px minmax(180px,1fr) 72px 86px 80px 100px 70px 100px 90px 44px!important}}
+@media(max-width:900px){.invoiceServicePartRow{grid-template-columns:1fr 1fr!important}.invoicePartDescription{grid-column:1/-1!important}.invoiceMarkupCell{grid-column:auto!important}}
+@media print{.invoiceMarkupCell{display:none!important}}
+</style>
