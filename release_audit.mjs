@@ -11,7 +11,7 @@ const server = read('server.js');
 const pkg = JSON.parse(read('package.json'));
 const modulesInvoicesHtml = read('modules/invoices.html');
 
-check('release package version is 24.16.1', pkg.version === '24.16.1', pkg.version);
+check('release package version is 24.16.4', pkg.version === '24.16.4', pkg.version);
 check('frontend release is 24.16.1', html.includes("const FRONTEND_VERSION='24.16.1';") || html.includes('const FRONTEND_VERSION="24.16.1";'));
 check('backend release is 24.16.1', server.includes('frontendExpected:"24.16.1",backend:"24.16.1"'));
 check('static web root restricted to public directory', server.includes('app.use(express.static(publicDir') && !server.includes('app.use(express.static(webRoot'));
@@ -152,9 +152,9 @@ check('invoice labor shown before attached parts', html.includes("labors.slice(0
 for(const rate of ['115','110','100','60']) check(`legacy labor rate preset ${rate}`, html.includes(`value=\"${rate}\"`) || html.includes(`value="${rate}"`));
 check('legacy labor rate labels restored', html.includes('New Client — $115/hr') && html.includes('Our Client — $110/hr') && html.includes('Old Client — $100/hr') && html.includes('Owner — $60/hr'));
 check('customer default labor rate supported', read('public/modules/invoices.js').includes('default_labor_rate') && read('public/modules/invoices.js').includes('preferredLaborRate'));
-check('service supports direct part add', html.includes('+ Add Part') && html.includes('addInvoiceChildLine'));
-check('service supports additional labor', html.includes('+ Add Labor') && html.includes('addInvoiceLaborToService'));
-check('new service workflow', html.includes('+ New Service') && html.includes('addInvoiceService()'));
+check('service supports direct part add', html.includes('>Add Part</button>') && html.includes('addInvoiceChildLine'));
+check('service supports additional labor', html.includes('>Add Labor</button>') && html.includes('addInvoiceLaborToService'));
+check('new service workflow', html.includes('+ Add Service') && html.includes('addInvoiceService()'));
 
 
 // v24.14.0 compact Fullbay-inspired service-grid invoice guards.
@@ -165,7 +165,7 @@ check('invoice part cost remains editable', html.includes('class="ilCost" type="
 check('invoice bottom Add Labor Line', html.includes('Add Labor Line'));
 check('invoice bottom Add a Service', html.includes('Add a Service'));
 check('invoice bottom Add Misc Charge', html.includes('Add Misc Charge'));
-check('invoice service quick Add Part', html.includes('title="Add part to this service"'));
+check('invoice service quick Add Part', html.includes('title="Add a part to this service"'));
 check('invoice service subtotal row', modulesInvoicesHtml.includes('invoiceServiceSubtotal'));
 check('invoice old rate presets all preserved', ['115','110','100','60'].every(v=>html.includes(`value="${v}"`)));
 
