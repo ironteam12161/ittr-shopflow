@@ -1055,7 +1055,7 @@ app.get("/api/smart-search",auth,adminOnly,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"24.17.1",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"24.17.2",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -1088,7 +1088,7 @@ async function reconcileDuplicateImportedCustomers(){
  return {merged};
 }
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.17.1",backend:"24.17.1",build:"ITTR-24.17.1-FULL-FUNCTION-AUDIT-INVOICE-TAB-FIX-20260914"}));
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.17.2",backend:"24.17.2",build:"ITTR-24.17.2-LABOR-PDF-RENDERER-FIX-20260914"}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.8.0",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
@@ -2090,7 +2090,293 @@ app.post('/api/invoices/:id/finalize',auth,managerPermission("invoices"),async(r
 app.post('/api/invoices/:id/payments',auth,managerPermission("invoices"),async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const id=req.params.id,amount=invoiceMoney(req.body?.amount);if(amount<=0){await db.query('ROLLBACK');return res.status(400).json({error:'Payment amount must be greater than zero.'})}const inv=(await db.query('SELECT * FROM customer_invoices WHERE id=$1::bigint FOR UPDATE',[id])).rows[0];if(!inv||inv.status==='void'){await db.query('ROLLBACK');return res.status(409).json({error:'Invoice is missing or void.'})}if(amount>invoiceMoney(inv.balance_due)+.01){await db.query('ROLLBACK');return res.status(409).json({error:'Payment cannot exceed the balance due.'})}await db.query(`INSERT INTO customer_invoice_payments(invoice_id,amount,method,reference,note,paid_at,received_by) VALUES($1::bigint,$2::numeric,$3,$4,$5,coalesce($6::timestamptz,now()),$7)`,[id,amount,String(req.body?.method||'Other'),String(req.body?.reference||''),String(req.body?.note||''),req.body?.paidAt||null,req.user.username]);await db.query('UPDATE customer_invoices SET amount_paid=amount_paid+$2::numeric,updated_at=now() WHERE id=$1::bigint',[id,amount]);await recalcInvoice(db,id);await db.query('COMMIT');await audit(req.user.username,'invoice_payment',{invoiceId:id,amount,method:req.body?.method});res.json({ok:true})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
 app.post('/api/invoices/:id/void',auth,managerPermission("invoices"),async(req,res,next)=>{try{const q=await requireDb().query("UPDATE customer_invoices SET status='void',updated_at=now() WHERE id=$1::bigint AND amount_paid=0 RETURNING id",[req.params.id]);if(!q.rowCount)return res.status(409).json({error:'Paid invoices cannot be voided until payments are reconciled.'});res.json({ok:true})}catch(e){next(e)}});
 app.delete('/api/invoices/:id',auth,ownerOnly,async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const inv=(await db.query('SELECT * FROM customer_invoices WHERE id=$1::bigint FOR UPDATE',[req.params.id])).rows[0];if(!inv){await db.query('ROLLBACK');return res.status(404).json({error:'Invoice not found.'})}if(String(req.body?.confirmInvoiceNumber||'')!==String(inv.invoice_number)){await db.query('ROLLBACK');return res.status(400).json({error:'Type the exact invoice number to permanently delete it.'})}const snapshot=await getInvoiceBundle(db,req.params.id);await db.query('DELETE FROM customer_invoice_payments WHERE invoice_id=$1::bigint',[req.params.id]);await db.query('DELETE FROM customer_invoice_lines WHERE invoice_id=$1::bigint',[req.params.id]);await db.query('DELETE FROM customer_invoices WHERE id=$1::bigint',[req.params.id]);await db.query('COMMIT');await audit(req.user.username,'invoice_permanently_deleted',{invoiceNumber:inv.invoice_number,customer:inv.customer_name,total:inv.total,status:inv.status,hadPayments:(snapshot?.payments||[]).length});res.json({ok:true})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
-app.get('/api/invoices/:id/pdf',auth,managerPermission("invoices"),async(req,res,next)=>{try{const db=requireDb(),x=await getInvoiceBundle(db,req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const i=x.invoice;res.setHeader('Content-Type','application/pdf');res.setHeader('Content-Disposition',`attachment; filename="${String(i.invoice_number).replace(/[^A-Za-z0-9_-]/g,'_')}.pdf"`);res.setHeader('Cache-Control','private, no-store');const doc=new PDFDocument({size:'LETTER',margin:42,bufferPages:true,info:{Title:`Invoice ${i.invoice_number}`}});doc.pipe(res);const money=n=>`$${invoiceMoney(n).toFixed(2)}`,L=42,W=528;doc.font('Helvetica-Bold').fontSize(19).text('IRON TEAM TRUCK & TRAILER REPAIR',L,42,{width:W});doc.font('Helvetica').fontSize(9).fillColor('#555').text('Professional Heavy-Duty Truck & Trailer Service',L,66);doc.fillColor('#111').font('Helvetica-Bold').fontSize(22).text('INVOICE',390,42,{width:180,align:'right'});doc.fontSize(10).text(i.invoice_number,390,69,{width:180,align:'right'});let y=102;doc.font('Helvetica-Bold').fontSize(9).text('BILL TO',L,y);doc.font('Helvetica').fontSize(10).text(i.customer_name,L,y+15,{width:250});const bill=[i.billing_address||i.customer_billing_address||i.customer_address,[i.billing_city||i.customer_billing_city||i.customer_city,i.billing_state||i.customer_billing_state||i.customer_state,i.billing_postal_code||i.customer_billing_postal_code||i.customer_postal_code].filter(Boolean).join(' ')].filter(Boolean).join('\n');if(bill)doc.fontSize(8).fillColor('#555').text(bill,L,y+29,{width:250});doc.fillColor('#111');doc.font('Helvetica-Bold').fontSize(8).text('INVOICE DATE',330,y);doc.font('Helvetica').text(String(i.invoice_date||'').slice(0,10),420,y);doc.font('Helvetica-Bold').text('DUE DATE',330,y+18);doc.font('Helvetica').text(String(i.due_date||'').slice(0,10),420,y+18);doc.font('Helvetica-Bold').text('TERMS',330,y+36);doc.font('Helvetica').text(i.terms||'—',420,y+36);y+=72;doc.rect(L,y,W,48).stroke('#ccd2da');doc.font('Helvetica-Bold').fontSize(8).text('UNIT',L+8,y+7);doc.font('Helvetica').fontSize(9).text(i.unit_number||'—',L+8,y+20);doc.font('Helvetica-Bold').fontSize(8).text('VIN',150,y+7);doc.font('Helvetica').fontSize(8).text(i.vin||'—',150,y+20,{width:210});doc.font('Helvetica-Bold').text('MILEAGE',365,y+7);doc.font('Helvetica').fontSize(9).text(i.mileage?Number(i.mileage).toLocaleString()+' mi':'—',365,y+20);doc.font('Helvetica-Bold').text('DOT / PO',445,y+7);doc.font('Helvetica').fontSize(7.5).text([i.dot_number||i.customer_dot_number,i.po_number].filter(Boolean).join(' / ')||'—',445,y+20,{width:83});y+=62;const labors=x.lines.filter(l=>l.line_type==='labor'),children=x.lines.filter(l=>l.line_type!=='labor'),used=new Set();let currentJob='';for(const labor of labors){if(labor.job_name&&labor.job_name!==currentJob){currentJob=labor.job_name;if(y>690){doc.addPage();y=48}doc.fillColor('#1f2937').font('Helvetica-Bold').fontSize(10).text(currentJob,L,y);y+=16}const bundle=[labor,...children.filter(c=>String(c.parent_line_id||'')===String(labor.id))];for(const l of bundle){used.add(l.id);if(y>710){doc.addPage();y=48}const child=l.line_type!=='labor',x0=child?L+14:L;doc.font(child?'Helvetica':'Helvetica-Bold').fontSize(8.5).fillColor('#111').text(`${String(l.line_type).toUpperCase()}${l.part_number?` · ${l.part_number}`:''}`,x0,y,{width:child?106:120});doc.text(l.description,L+125,y,{width:220});doc.text(String(Number(l.quantity||0)),L+350,y,{width:40,align:'right'});doc.text(money(l.unit_price),L+395,y,{width:60,align:'right'});doc.text(money(l.line_total),L+460,y,{width:68,align:'right'});y+=22;doc.moveTo(L,y-5).lineTo(L+W,y-5).strokeColor('#e5e7eb').stroke()}}for(const l of children.filter(c=>!used.has(c.id))){if(y>710){doc.addPage();y=48}doc.font('Helvetica').fontSize(8.5).fillColor('#111').text(`${String(l.line_type).toUpperCase()}${l.part_number?` · ${l.part_number}`:''}`,L+14,y,{width:106});doc.text(l.description,L+125,y,{width:220});doc.text(String(Number(l.quantity||0)),L+350,y,{width:40,align:'right'});doc.text(money(l.unit_price),L+395,y,{width:60,align:'right'});doc.text(money(l.line_total),L+460,y,{width:68,align:'right'});y+=22}y+=8;const right=390;doc.font('Helvetica').fontSize(9).text('Subtotal',right,y);doc.text(money(Number(i.subtotal||0)+Number(i.discount||0)),470,y,{width:100,align:'right'});y+=17;if(Number(i.discount||0)>0){doc.text('Discount',right,y);doc.text('-'+money(i.discount),470,y,{width:100,align:'right'});y+=17}doc.text(`Tax (${Number(i.tax_rate||0).toFixed(3)}%)`,right,y);doc.text(money(i.tax),470,y,{width:100,align:'right'});y+=20;doc.font('Helvetica-Bold').fontSize(12).text('TOTAL',right,y);doc.text(money(i.total),470,y,{width:100,align:'right'});y+=20;doc.font('Helvetica').fontSize(9).text('Paid',right,y);doc.text(money(i.amount_paid),470,y,{width:100,align:'right'});y+=18;doc.font('Helvetica-Bold').fontSize(12).text('BALANCE DUE',right,y);doc.text(money(i.balance_due),470,y,{width:100,align:'right'});if(i.customer_note){y+=40;doc.font('Helvetica-Bold').fontSize(9).text('NOTES',L,y);doc.font('Helvetica').fontSize(9).text(i.customer_note,L,y+14,{width:320})}const pages=doc.bufferedPageRange();for(let n=0;n<pages.count;n++){doc.switchToPage(n);doc.font('Helvetica').fontSize(7).fillColor('#777').text(`${i.invoice_number} · Page ${n+1} of ${pages.count}`,L,758,{width:W,align:'center'})}doc.end()}catch(e){next(e)}});
+app.get('/api/invoices/:id/pdf',auth,managerPermission("invoices"),async(req,res,next)=>{
+ try{
+  const db=requireDb(),x=await getInvoiceBundle(db,req.params.id);
+  if(!x)return res.status(404).json({error:'Invoice not found.'});
+  const i=x.invoice,lines=Array.isArray(x.lines)?x.lines:[];
+  res.setHeader('Content-Type','application/pdf');
+  res.setHeader('Content-Disposition',`attachment; filename="${String(i.invoice_number).replace(/[^A-Za-z0-9_-]/g,'_')}.pdf"`);
+  res.setHeader('Cache-Control','private, no-store');
+
+  const doc=new PDFDocument({
+   size:'LETTER',
+   margins:{top:34,right:36,bottom:42,left:36},
+   bufferPages:true,
+   info:{Title:`Invoice ${i.invoice_number}`}
+  });
+  doc.pipe(res);
+
+  const money=n=>`$${invoiceMoney(n).toFixed(2)}`;
+  const PAGE_W=612,L=36,R=576,W=540,NAVY='#243447',INK='#111827',MUTED='#64748b',LINE='#cbd5e1',PALE='#f1f5f9',SOFT='#f8fafc';
+  const safeText=v=>String(v??'').trim();
+  const drawText=(text,x,y,opt={})=>doc.text(safeText(text),x,y,opt);
+  const hline=(y,color=LINE)=>doc.moveTo(L,y).lineTo(R,y).strokeColor(color).lineWidth(.6).stroke();
+  const rect=(x,y,w,h,fill=null,stroke=LINE)=>{
+   if(fill){doc.save().rect(x,y,w,h).fill(fill).restore()}
+   if(stroke){doc.save().rect(x,y,w,h).strokeColor(stroke).lineWidth(.6).stroke().restore()}
+  };
+  const pageBottom=()=>doc.page.height-doc.page.margins.bottom-4;
+  let y=34;
+
+  function addPage(){
+   doc.addPage();
+   y=36;
+  }
+  function ensureSpace(height){
+   if(y+height>pageBottom())addPage();
+  }
+
+  // Header
+  doc.fillColor(INK).font('Helvetica-Bold').fontSize(18);
+  drawText('IRON TEAM TRUCK & TRAILER REPAIR',L,y,{width:350});
+  doc.fillColor(MUTED).font('Helvetica').fontSize(8);
+  drawText('Professional Heavy-Duty Truck & Trailer Service',L,y+23,{width:350});
+
+  rect(408,y-4,168,62,PALE,null);
+  doc.fillColor(INK).font('Helvetica-Bold').fontSize(22);
+  drawText('INVOICE',420,y+3,{width:144,align:'right'});
+  doc.fontSize(10);
+  drawText(i.invoice_number,420,y+31,{width:144,align:'right'});
+  y+=78;
+
+  // Bill-to + invoice metadata panels
+  const panelY=y,panelH=78,leftW=300,gap=12,rightX=L+leftW+gap,rightW=W-leftW-gap;
+  rect(L,panelY,leftW,panelH,'#ffffff',LINE);
+  doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(7.5);
+  drawText('BILL TO',L+10,panelY+9,{width:leftW-20});
+  doc.fillColor(INK).font('Helvetica-Bold').fontSize(10.5);
+  drawText(i.customer_name||'—',L+10,panelY+24,{width:leftW-20});
+  const addr1=i.billing_address||i.customer_billing_address||i.customer_address||'';
+  const cityLine=[
+   i.billing_city||i.customer_billing_city||i.customer_city,
+   i.billing_state||i.customer_billing_state||i.customer_state,
+   i.billing_postal_code||i.customer_billing_postal_code||i.customer_postal_code
+  ].filter(Boolean).join(' ');
+  doc.fillColor('#334155').font('Helvetica').fontSize(8.2);
+  drawText([addr1,cityLine].filter(Boolean).join('\n'),L+10,panelY+40,{width:leftW-20,lineGap:1});
+
+  rect(rightX,panelY,rightW,panelH,'#ffffff',LINE);
+  const meta=[
+   ['INVOICE DATE',String(i.invoice_date||'').slice(0,10)||'—'],
+   ['DUE DATE',String(i.due_date||'').slice(0,10)||'—'],
+   ['TERMS',i.terms||'Due on Receipt'],
+   ['STATUS',String(i.status||'open').toUpperCase()]
+  ];
+  meta.forEach((row,idx)=>{
+   const yy=panelY+9+idx*16;
+   doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(7.2);
+   drawText(row[0],rightX+10,yy,{width:88});
+   doc.fillColor(INK).font('Helvetica').fontSize(8.2);
+   drawText(row[1],rightX+100,yy,{width:rightW-110,align:'right'});
+  });
+  y+=panelH+12;
+
+  // Vehicle strip
+  const col=[72,210,105,153],labels=['UNIT #','VIN','MILEAGE','DOT / PO'];
+  const vals=[
+   i.unit_number||'—',
+   i.vin||'—',
+   i.mileage?`${Number(i.mileage).toLocaleString()} mi`:'—',
+   [i.dot_number||i.customer_dot_number,i.po_number].filter(Boolean).join(' / ')||'—'
+  ];
+  rect(L,y,W,45,'#ffffff',LINE);
+  let vx=L;
+  for(let n=0;n<4;n++){
+   if(n)doc.moveTo(vx,y).lineTo(vx,y+45).strokeColor('#e2e8f0').lineWidth(.5).stroke();
+   doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(7);
+   drawText(labels[n],vx+8,y+7,{width:col[n]-16});
+   doc.fillColor(INK).font('Helvetica').fontSize(n===1?7.7:8.2);
+   drawText(vals[n],vx+8,y+21,{width:col[n]-16,ellipsis:true});
+   vx+=col[n];
+  }
+  y+=57;
+
+  // Table header
+  function drawColumnHeader(){
+   rect(L,y,W,22,PALE,LINE);
+   const cols=[
+    {x:L+8,w:52,t:'#'},
+    {x:L+58,w:278,t:'DESCRIPTION'},
+    {x:L+338,w:58,t:'QTY / HRS',a:'right'},
+    {x:L+399,w:76,t:'RATE / PRICE',a:'right'},
+    {x:L+478,w:90,t:'AMOUNT',a:'right'}
+   ];
+   doc.fillColor('#334155').font('Helvetica-Bold').fontSize(7);
+   cols.forEach(c=>drawText(c.t,c.x,y+7,{width:c.w,align:c.a||'left'}));
+   y+=22;
+  }
+  drawColumnHeader();
+
+  const labors=lines
+   .filter(l=>l.line_type==='labor')
+   .sort((a,b)=>Number(a.sort_order||a.id)-Number(b.sort_order||b.id));
+  const nonLabor=lines
+   .filter(l=>l.line_type!=='labor')
+   .sort((a,b)=>Number(a.sort_order||a.id)-Number(b.sort_order||b.id));
+  const used=new Set();
+
+  function partsForLabor(labor,index){
+   let items=nonLabor.filter(c=>String(c.parent_line_id||'')===String(labor.id));
+   if(items.length)return items;
+   // Backward compatibility for old invoices that predate parent_line_id.
+   items=nonLabor.filter(c=>!c.parent_line_id && (
+    (c.job_uid&&labor.job_uid&&String(c.job_uid)===String(labor.job_uid)) ||
+    (c.job_name&&labor.job_name&&String(c.job_name).toLowerCase()===String(labor.job_name).toLowerCase())
+   ));
+   // Only the first matching labor receives ambiguous legacy children.
+   if(items.length){
+    const earlier=labors.slice(0,index).some(prev=>
+     (prev.job_uid&&labor.job_uid&&String(prev.job_uid)===String(labor.job_uid)) ||
+     (prev.job_name&&labor.job_name&&String(prev.job_name).toLowerCase()===String(labor.job_name).toLowerCase())
+    );
+    if(earlier)return [];
+   }
+   return items;
+  }
+
+  function drawLaborBlock(labor,index){
+   const parts=partsForLabor(labor,index);
+   const blockHeight=34+(parts.length?18:0)+(parts.length*26)+25;
+   ensureSpace(Math.min(blockHeight,180));
+   if(y<45)drawColumnHeader();
+
+   const laborAmount=Number(labor.line_total||0);
+   const laborDesc=safeText(labor.description)||'Labor';
+
+   // Labor row: description is the only visible work heading. job_name is intentionally not printed.
+   rect(L,y,W,34,NAVY,null);
+   rect(L+9,y+5,24,24,'#ffffff',null);
+   doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(9);
+   drawText(String(index+1),L+9,y+12,{width:24,align:'center'});
+   doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(8);
+   drawText('LABOR:',L+43,y+11,{width:42});
+   doc.fontSize(9);
+   drawText(laborDesc,L+84,y+10,{width:252,ellipsis:true});
+   doc.font('Helvetica').fontSize(8.2);
+   drawText(Number(labor.quantity||0).toFixed(2),L+338,y+11,{width:58,align:'right'});
+   drawText(money(labor.unit_price),L+399,y+11,{width:76,align:'right'});
+   doc.font('Helvetica-Bold');
+   drawText(money(laborAmount),L+478,y+11,{width:90,align:'right'});
+   y+=34;
+
+   if(parts.length){
+    doc.fillColor('#475569').font('Helvetica-Bold').fontSize(7);
+    rect(L,y,W,18,'#eef2f6',null);
+    drawText('Parts used for this labor',L+44,y+6,{width:260});
+    y+=18;
+   }
+
+   let partsTotal=0;
+   for(const part of parts){
+    used.add(part.id);
+    ensureSpace(30);
+    const amount=Number(part.line_total||0);
+    partsTotal+=amount;
+    const type=part.line_type==='part'?'PART':String(part.line_type||'OTHER').toUpperCase();
+    const leftLabel=part.part_number?`${type} · ${part.part_number}`:type;
+    doc.fillColor('#334155').font('Helvetica').fontSize(7.6);
+    drawText(leftLabel,L+10,y+8,{width:118,ellipsis:true});
+    doc.fillColor(INK).fontSize(8);
+    drawText(part.description||part.part_number||'Part',L+132,y+8,{width:204,ellipsis:true});
+    drawText(String(Number(part.quantity||0)),L+338,y+8,{width:58,align:'right'});
+    drawText(money(part.unit_price),L+399,y+8,{width:76,align:'right'});
+    drawText(money(amount),L+478,y+8,{width:90,align:'right'});
+    y+=26;
+    hline(y,'#e2e8f0');
+   }
+
+   const blockTotal=laborAmount+partsTotal;
+   rect(L,y,W,25,SOFT,null);
+   doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(7.4);
+   drawText(`${Number(labor.quantity||0).toFixed(2)} labor hr · ${parts.length} part${parts.length===1?'':'s'}`,L+230,y+8,{width:238,align:'right'});
+   doc.fillColor(INK).fontSize(8.7);
+   drawText(money(blockTotal),L+478,y+7,{width:90,align:'right'});
+   y+=31;
+  }
+
+  if(labors.length){
+   labors.forEach((labor,index)=>drawLaborBlock(labor,index));
+  }else{
+   // No labor: render standalone parts/charges without inventing a service or job heading.
+   for(const l of nonLabor){
+    used.add(l.id);
+    ensureSpace(30);
+    doc.fillColor('#334155').font('Helvetica').fontSize(7.6);
+    drawText(`${String(l.line_type||'ITEM').toUpperCase()}${l.part_number?` · ${l.part_number}`:''}`,L+10,y+8,{width:118,ellipsis:true});
+    doc.fillColor(INK).fontSize(8);
+    drawText(l.description||l.part_number||'Item',L+132,y+8,{width:204,ellipsis:true});
+    drawText(String(Number(l.quantity||0)),L+338,y+8,{width:58,align:'right'});
+    drawText(money(l.unit_price),L+399,y+8,{width:76,align:'right'});
+    drawText(money(l.line_total),L+478,y+8,{width:90,align:'right'});
+    y+=26;hline(y,'#e2e8f0');
+   }
+  }
+
+  // Any legacy unattached charges not matched to a labor.
+  const orphaned=nonLabor.filter(l=>!used.has(l.id));
+  if(orphaned.length){
+   ensureSpace(24+orphaned.length*26);
+   rect(L,y,W,20,PALE,null);
+   doc.fillColor('#475569').font('Helvetica-Bold').fontSize(7.5);
+   drawText('OTHER ITEMS',L+10,y+7,{width:200});
+   y+=20;
+   for(const l of orphaned){
+    ensureSpace(30);
+    doc.fillColor('#334155').font('Helvetica').fontSize(7.6);
+    drawText(`${String(l.line_type||'ITEM').toUpperCase()}${l.part_number?` · ${l.part_number}`:''}`,L+10,y+8,{width:118,ellipsis:true});
+    doc.fillColor(INK).fontSize(8);
+    drawText(l.description||l.part_number||'Item',L+132,y+8,{width:204,ellipsis:true});
+    drawText(String(Number(l.quantity||0)),L+338,y+8,{width:58,align:'right'});
+    drawText(money(l.unit_price),L+399,y+8,{width:76,align:'right'});
+    drawText(money(l.line_total),L+478,y+8,{width:90,align:'right'});
+    y+=26;hline(y,'#e2e8f0');
+   }
+  }
+
+  y+=8;
+  ensureSpace(150);
+
+  // Notes + totals side by side.
+  const summaryTop=y,notesW=292,summaryX=350,summaryW=226;
+  rect(L,summaryTop,notesW,134,'#ffffff',LINE);
+  doc.fillColor(INK).font('Helvetica-Bold').fontSize(8.5);
+  drawText('CUSTOMER NOTES',L+10,summaryTop+9,{width:notesW-20});
+  doc.fillColor('#334155').font('Helvetica').fontSize(8);
+  drawText(i.customer_note||'Thank you for your business!',L+10,summaryTop+27,{width:notesW-20,height:96,lineGap:2});
+
+  rect(summaryX,summaryTop,summaryW,134,'#ffffff',LINE);
+  let sy=summaryTop+9;
+  const summaryRow=(label,value,bold=false,size=8.3,fill=null)=>{
+   if(fill)rect(summaryX+1,sy-4,summaryW-2,22,fill,null);
+   doc.fillColor(INK).font(bold?'Helvetica-Bold':'Helvetica').fontSize(size);
+   drawText(label,summaryX+10,sy,{width:105});
+   drawText(value,summaryX+118,sy,{width:98,align:'right'});
+   sy+=19;
+  };
+  const rawSubtotal=Number(i.subtotal||0)+Number(i.discount||0);
+  summaryRow('Subtotal',money(rawSubtotal));
+  if(Number(i.discount||0)>0)summaryRow('Discount',`-${money(i.discount)}`);
+  summaryRow(`Tax (${Number(i.tax_rate||0).toFixed(3)}%)`,money(i.tax));
+  summaryRow('TOTAL',money(i.total),true,11,'#e8f3ff');
+  summaryRow('Paid',money(i.amount_paid));
+  summaryRow('BALANCE DUE',money(i.balance_due),true,10.5,PALE);
+
+  y=summaryTop+146;
+
+  // Footer safely inside printable area. Never write at/under page bottom.
+  const range=doc.bufferedPageRange();
+  for(let n=0;n<range.count;n++){
+   doc.switchToPage(range.start+n);
+   const footerY=doc.page.height-doc.page.margins.bottom-10;
+   doc.moveTo(L,footerY-7).lineTo(R,footerY-7).strokeColor('#cbd5e1').lineWidth(.5).stroke();
+   doc.fillColor(MUTED).font('Helvetica').fontSize(6.8);
+   drawText(`IRON TEAM TRUCK & TRAILER REPAIR  ·  ${i.invoice_number}  ·  Page ${n+1} of ${range.count}`,L,footerY,{width:W,align:'center'});
+  }
+
+  doc.end();
+ }catch(e){next(e)}
+});
 
 const stripeSecret=String(process.env.STRIPE_SECRET_KEY||'').trim();
 const resendKey=String(process.env.RESEND_API_KEY||'').trim();

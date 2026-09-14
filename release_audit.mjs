@@ -11,9 +11,9 @@ const server = read('server.js');
 const pkg = JSON.parse(read('package.json'));
 const modulesInvoicesHtml = read('modules/invoices.html');
 
-check('release package version is 24.17.1', pkg.version === '24.17.1', pkg.version);
-check('frontend release is 24.17.1', html.includes("const FRONTEND_VERSION='24.17.1';") || html.includes('const FRONTEND_VERSION="24.17.1";'));
-check('backend release is 24.17.1', server.includes('frontendExpected:"24.17.1",backend:"24.17.1"'));
+check('release package version is 24.17.2', pkg.version === '24.17.2', pkg.version);
+check('frontend release is 24.17.2', html.includes("const FRONTEND_VERSION='24.17.2';") || html.includes('const FRONTEND_VERSION="24.17.2";'));
+check('backend release is 24.17.2', server.includes('frontendExpected:"24.17.2",backend:"24.17.2"'));
 check('static web root restricted to public directory', server.includes('app.use(express.static(publicDir') && !server.includes('app.use(express.static(webRoot'));
 check('parts search is read-only (no per-result barcode write loop)', !server.includes('for(const x of r.rows)if(!x.internal_barcode)x.internal_barcode=await ensurePartBarcode'));
 check('production 500 responses hide internal error detail', server.includes('isProd?"An unexpected server error occurred.":safe'));
@@ -188,6 +188,16 @@ check('invoice opens exactly one noopener tab without same-tab fallback', html.i
 check('manager account UI function restored', html.includes('function openManagerAccount()') && html.includes("managerAccountFormEl.onsubmit"));
 check('manual library UI functions restored', html.includes('function openManualLibrary()') && html.includes('function loadManualLibrary(') && html.includes('function openManualDocument('));
 check('manual library upload handler restored', html.includes('manualLibraryFormEl.onsubmit'));
+
+check('server PDF is labor-first and ignores old job headings',
+  server.includes("const laborDesc=safeText(labor.description)||'Labor'") &&
+  server.includes("job_name is intentionally not printed") &&
+  !server.includes("text(currentJob,L,y)"));
+check('server PDF nests parts beneath labor',
+  server.includes("Parts used for this labor") &&
+  server.includes("String(c.parent_line_id||'')===String(labor.id)"));
+check('server PDF footer stays inside printable area',
+  server.includes("doc.page.height-doc.page.margins.bottom-10"));
 check('invoice structural actions preserve current draft', html.includes("persistInvoiceDraftBeforeStructureChange('Preserving your invoice')"));
 check('invoice draft preservation saves all line edits', html.includes('await saveAllInvoiceLines()') && html.includes('function invoiceHeaderPayload()'));
 check('invoice line save preserves sibling unsaved rows', html.includes('async function saveInvoiceLine(id)') && html.includes("await saveAllInvoiceLines();const r=await fetch(`/api/invoices/${i.id}`"));
