@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.17.5</title>
+<title>ITTR ShopFlow v24.17.7</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -723,7 +723,7 @@ body.modalOpen{overflow:hidden}
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.17.5 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.17.7 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1201,7 +1201,7 @@ body.modalOpen{overflow:hidden}
 </div>
 </div>
 
-<div class="modal" id="mechanicStartModal"><div class="modalbox mechanicWizardBox"><div class="modalhead"><div><h2>Start a Truck / New Work Order</h2><div class="muted">Mechanic self check-in · assigned to you automatically</div></div><button class="x" type="button" onclick="closeMechanicStartWizard()">×</button></div><div class="mechanicWizardProgress"><div id="mechStepDot1" class="mechanicWizardStepDot active">1 · DOT / VIN</div><div id="mechStepDot2" class="mechanicWizardStepDot">2 · Customer</div><div id="mechStepDot3" class="mechanicWizardStepDot">3 · Jobs</div></div><form id="mechanicStartForm" onsubmit="submitMechanicStartWizard(event)"><div id="mechWizard1" class="mechanicWizardPane active"><div class="notice">Enter the company USDOT and VIN. You can also enter the unit number if known.</div><div class="row"><div class="field"><label>Company USDOT</label><input id="mechStartDot" name="dotNumber" inputmode="numeric" autocomplete="off" placeholder="USDOT"></div><div class="field"><label>VIN *</label><input id="mechStartVin" name="vin" maxlength="17" autocomplete="off" style="text-transform:uppercase" placeholder="17-character VIN"></div></div><div class="field"><label>Unit / Truck #</label><input id="mechStartUnitSearch" autocomplete="off" placeholder="Optional unit number"></div><button type="button" class="mechanicAction mechanicPrimary" style="width:100%" onclick="mechanicWizardLookup()">Find Truck & Customer</button><div id="mechStartLookupStatus" class="muted" style="margin-top:10px"></div><div id="mechStartMatches" class="mechanicMatchList"></div></div><div id="mechWizard2" class="mechanicWizardPane"><input id="mechStartUnitId" type="hidden"><input id="mechStartCustomerId" type="hidden"><input id="mechStartYear" type="hidden"><input id="mechStartMake" type="hidden"><input id="mechStartModel" type="hidden"><input id="mechStartPlate" type="hidden"><input id="mechStartMileage" type="hidden"><div id="mechStartMatchedCard" class="vehicleMatchCard"></div><div class="row" style="margin-top:12px"><div class="field"><label>Customer *</label><input id="mechStartCustomer" required></div><div class="field"><label>Unit # *</label><input id="mechStartUnit" required></div></div><div class="notice">Confirm this is the correct customer and truck before continuing.</div></div><div id="mechWizard3" class="mechanicWizardPane"><div class="field full"><label>Jobs / Labor Requested *</label><textarea id="mechStartJobs" required rows="6" placeholder="One job per line&#10;Example: PM service&#10;Diagnose air leak"></textarea></div><div class="row"><div class="field"><label>Priority</label><select id="mechStartPriority"><option>Normal</option><option>High</option><option>Urgent</option></select></div><div class="field"><label>Parking / Bay</label><input id="mechStartParking" placeholder="Bay 2 / Yard"></div></div><div class="field full"><label>Mechanic Notes</label><textarea id="mechStartNotes" rows="3" placeholder="Customer complaint or initial notes"></textarea></div><div class="notice jobStateActive"><b>Truck Is Here</b> will be set automatically and this work order will be assigned to <b>your mechanic account</b>.</div></div><div class="mechanicWizardNav"><button id="mechWizardBackBtn" type="button" class="secondary" onclick="mechanicWizardBack()" disabled>← Back</button><button id="mechWizardNextBtn" type="button" class="mechanicPrimary" onclick="mechanicWizardNext()">Next →</button><button id="mechWizardCreateBtn" type="submit" class="success hidden">Create Job & Start →</button></div></form></div></div>
+<div class="modal" id="mechanicStartModal"><div class="modalbox mechanicWizardBox"><div class="modalhead"><div><h2>Start a Truck / New Work Order</h2><div class="muted">Mechanic self check-in · ITTR + FMCSA + NHTSA lookup</div></div><button class="x" type="button" onclick="closeMechanicStartWizard()">×</button></div><div class="mechanicWizardProgress"><div id="mechStepDot1" class="mechanicWizardStepDot active">1 · USDOT / VIN</div><div id="mechStepDot2" class="mechanicWizardStepDot">2 · Confirm</div><div id="mechStepDot3" class="mechanicWizardStepDot">3 · Jobs</div></div><form id="mechanicStartForm" onsubmit="submitMechanicStartWizard(event)"><div id="mechWizard1" class="mechanicWizardPane active"><div class="notice"><b>1.</b> Enter the customer USDOT number. <b>2.</b> Enter the 17-character VIN. ShopFlow checks your own records first, then official FMCSA/NHTSA sources when available.</div><div class="row"><div class="field"><label>Company USDOT *</label><input id="mechStartDot" name="dotNumber" inputmode="numeric" autocomplete="off" placeholder="Example: 1234567" oninput="this.value=this.value.replace(/\D/g,'').slice(0,10);scheduleMechanicLookup()" onblur="mechanicWizardLookup(true)"></div><div class="field"><label>VIN *</label><input id="mechStartVin" name="vin" maxlength="17" autocomplete="off" style="text-transform:uppercase" placeholder="17-character VIN" oninput="this.value=this.value.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g,'').slice(0,17);scheduleMechanicLookup()" onblur="mechanicWizardLookup(true)"></div></div><div class="field"><label>Unit / Truck #</label><input id="mechStartUnitSearch" autocomplete="off" placeholder="Optional if known" oninput="scheduleMechanicLookup()"></div><button type="button" class="mechanicAction mechanicPrimary" style="width:100%" onclick="mechanicWizardLookup()">Look Up Customer & Truck</button><div id="mechStartLookupStatus" class="muted" style="margin-top:10px"></div><div id="mechStartSourceSummary" class="mechanicLookupSources"></div><div id="mechStartMatches" class="mechanicMatchList"></div></div><div id="mechWizard2" class="mechanicWizardPane"><input id="mechStartUnitId" type="hidden"><input id="mechStartCustomerId" type="hidden"><input id="mechStartYear" type="hidden"><input id="mechStartMake" type="hidden"><input id="mechStartModel" type="hidden"><input id="mechStartPlate" type="hidden"><input id="mechStartMileage" type="hidden"><input id="mechStartEngine" type="hidden"><input id="mechStartTransmission" type="hidden"><div id="mechStartMatchedCard" class="vehicleMatchCard"></div><div class="row" style="margin-top:12px"><div class="field"><label>Customer *</label><input id="mechStartCustomer" required></div><div class="field"><label>Unit # *</label><input id="mechStartUnit" required placeholder="Internal unit/truck number"></div></div><div class="row"><div class="field"><label>Year</label><input id="mechStartYearDisplay" oninput="document.getElementById('mechStartYear').value=this.value"></div><div class="field"><label>Make</label><input id="mechStartMakeDisplay" oninput="document.getElementById('mechStartMake').value=this.value"></div><div class="field"><label>Model</label><input id="mechStartModelDisplay" oninput="document.getElementById('mechStartModel').value=this.value"></div><div class="field"><label>Mileage</label><input id="mechStartMileageDisplay" inputmode="numeric" oninput="document.getElementById('mechStartMileage').value=this.value.replace(/\D/g,'')"></div></div><div class="notice">Verify the customer and vehicle before continuing. Existing database records are reused; new customer/unit records are created only after you submit the work order.</div></div><div id="mechWizard3" class="mechanicWizardPane"><div class="field full"><label>Jobs / Labor Requested *</label><textarea id="mechStartJobs" required rows="6" placeholder="One job per line&#10;Example: PM service&#10;Diagnose air leak"></textarea></div><div class="row"><div class="field"><label>Priority</label><select id="mechStartPriority"><option>Normal</option><option>High</option><option>Urgent</option></select></div><div class="field"><label>Parking / Bay</label><input id="mechStartParking" placeholder="Bay 2 / Yard"></div></div><div class="field full"><label>Mechanic Notes</label><textarea id="mechStartNotes" rows="3" placeholder="Customer complaint or initial notes"></textarea></div><div class="notice jobStateActive"><b>Truck Is Here</b> will be set automatically and this work order will be assigned to <b>your mechanic account</b>.</div></div><div class="mechanicWizardNav"><button id="mechWizardBackBtn" type="button" class="secondary" onclick="mechanicWizardBack()" disabled>← Back</button><button id="mechWizardNextBtn" type="button" class="mechanicPrimary" onclick="mechanicWizardNext()">Next →</button><button id="mechWizardCreateBtn" type="submit" class="success hidden">Create Work Order →</button></div></form></div></div>
 <div class="modal" id="taskPauseModal">
 <div class="modalbox" style="max-width:560px">
 <div class="modalhead">
@@ -1267,7 +1267,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.17.5';
+const FRONTEND_VERSION='24.17.7';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1286,15 +1286,109 @@ async function refreshCloudStateSilently(){if(!cloudReady||!cloudToken||cloudRef
 function showToast(message,type="info",timeout=5000){const region=document.getElementById("toastRegion");if(!region){console[type==="error"?"error":"log"](message);return}const toast=document.createElement("div");toast.className=`appToast ${type}`;toast.setAttribute("role",type==="error"?"alert":"status");toast.textContent=String(message||"Something went wrong.");region.appendChild(toast);const remove=()=>toast.remove();toast.onclick=remove;setTimeout(remove,timeout)}
 function showSyncError(msg){showToast(`Cloud sync: ${msg}`,"warning",7000)}
 function saveUsers(){localStorage.setItem("ittr_users_v1",JSON.stringify(USERS));queueCloudState("users",USERS)}
-let mechanicWizardStep=1,mechanicWizardMatches=[],mechanicWizardSelected=-1;
-function openMechanicStartWizard(){if(session?.role!=="mechanic")return showToast("Mechanic account required.","warning");mechanicWizardStep=1;mechanicWizardMatches=[];mechanicWizardSelected=-1;document.getElementById("mechanicStartForm")?.reset();document.getElementById("mechStartMatches").innerHTML="";document.getElementById("mechStartMatchedCard").innerHTML="";setMechanicWizardStep(1);document.getElementById("mechanicStartModal")?.classList.add("open");syncModalState();updateMobileBackButton()}
-function closeMechanicStartWizard(){document.getElementById("mechanicStartModal")?.classList.remove("open");syncModalState();updateMobileBackButton()}
+let mechanicWizardStep=1,mechanicWizardMatches=[],mechanicWizardSelected=-1,mechanicWizardReady=false,mechanicLookupData=null,mechanicLookupTimer=null,mechanicLookupBusy=false;
+function openMechanicStartWizard(){
+ if(session?.role!=="mechanic")return showToast("Mechanic account required.","warning");
+ mechanicWizardStep=1;mechanicWizardMatches=[];mechanicWizardSelected=-1;mechanicWizardReady=false;mechanicLookupData=null;
+ document.getElementById("mechanicStartForm")?.reset();
+ for(const id of ["mechStartMatches","mechStartMatchedCard","mechStartSourceSummary"])document.getElementById(id)&&(document.getElementById(id).innerHTML="");
+ const st=document.getElementById("mechStartLookupStatus");if(st)st.textContent="";
+ ["mechStartUnitId","mechStartCustomerId","mechStartYear","mechStartMake","mechStartModel","mechStartPlate","mechStartMileage","mechStartEngine","mechStartTransmission"].forEach(id=>{const el=document.getElementById(id);if(el)el.value=""});
+ setMechanicWizardStep(1);document.getElementById("mechanicStartModal")?.classList.add("open");syncModalState();updateMobileBackButton()
+}
+function closeMechanicStartWizard(){clearTimeout(mechanicLookupTimer);document.getElementById("mechanicStartModal")?.classList.remove("open");syncModalState();updateMobileBackButton()}
 function setMechanicWizardStep(step){mechanicWizardStep=Math.max(1,Math.min(3,Number(step)||1));for(let i=1;i<=3;i++){document.getElementById(`mechWizard${i}`)?.classList.toggle("active",i===mechanicWizardStep);const dot=document.getElementById(`mechStepDot${i}`);dot?.classList.toggle("active",i===mechanicWizardStep);dot?.classList.toggle("done",i<mechanicWizardStep)}const back=document.getElementById("mechWizardBackBtn"),next=document.getElementById("mechWizardNextBtn"),create=document.getElementById("mechWizardCreateBtn");if(back)back.disabled=mechanicWizardStep===1;next?.classList.toggle("hidden",mechanicWizardStep===3);create?.classList.toggle("hidden",mechanicWizardStep!==3)}
 function mechanicWizardBack(){setMechanicWizardStep(mechanicWizardStep-1)}
-function mechanicWizardNext(){if(mechanicWizardStep===1){if(mechanicWizardSelected<0)return showToast("Find and select the truck first.","warning");setMechanicWizardStep(2);return}if(mechanicWizardStep===2){if(!document.getElementById("mechStartCustomer")?.value.trim()||!document.getElementById("mechStartUnit")?.value.trim())return showToast("Confirm customer and unit.","warning");setMechanicWizardStep(3)}}
-async function mechanicWizardLookup(){const dot=document.getElementById("mechStartDot")?.value.trim(),vin=document.getElementById("mechStartVin")?.value.trim().toUpperCase(),unit=document.getElementById("mechStartUnitSearch")?.value.trim(),queries=[vin,dot,unit].filter(Boolean);if(!queries.length)return showToast("Enter USDOT, VIN, or unit number.","warning");const status=document.getElementById("mechStartLookupStatus"),box=document.getElementById("mechStartMatches");status.textContent="Searching customer and vehicle directory…";box.innerHTML="";try{let all=[];for(const q of queries){const d=await apiJSON(`/api/customer-units/suggest?q=${encodeURIComponent(q)}`);all.push(...(d.items||[]))}const seen=new Set();mechanicWizardMatches=all.filter(x=>{const k=String(x.id||`${x.customer_id}|${x.unit_number}|${x.vin}`);if(seen.has(k))return false;seen.add(k);return true}).filter(x=>(!vin||String(x.vin||"").toUpperCase().includes(vin))&&(!dot||String(x.dot_number||"").includes(dot)));status.textContent=mechanicWizardMatches.length?`${mechanicWizardMatches.length} matching vehicle(s) found.`:"No exact match. Try VIN, DOT, or unit number again.";box.innerHTML=mechanicWizardMatches.map((x,i)=>`<button type="button" class="mechanicMatchCard ${i===mechanicWizardSelected?'selected':''}" onclick="selectMechanicWizardMatch(${i})"><b>${esc(x.unit_number||'Unit')}</b> · ${esc(x.customer_name||'Customer')}<div class="muted">${esc([x.vin?`VIN ${x.vin}`:'',x.dot_number?`DOT ${x.dot_number}`:'',[x.year,x.make,x.model].filter(Boolean).join(' ')].filter(Boolean).join(' · '))}</div></button>`).join("")}catch(e){status.textContent="";showToast(e.message||"Vehicle lookup failed.","error")}}
-function selectMechanicWizardMatch(i){const x=mechanicWizardMatches[i];if(!x)return;mechanicWizardSelected=i;document.getElementById("mechStartUnitId").value=x.id||"";document.getElementById("mechStartCustomerId").value=x.customer_id||"";document.getElementById("mechStartCustomer").value=x.customer_name||"";document.getElementById("mechStartUnit").value=x.unit_number||"";document.getElementById("mechStartVin").value=x.vin||document.getElementById("mechStartVin").value;document.getElementById("mechStartDot").value=x.dot_number||document.getElementById("mechStartDot").value;for(const k of ["Year","Make","Model","Plate","Mileage"]){document.getElementById(`mechStart${k}`).value=x[k.toLowerCase()]||""}document.getElementById("mechStartMatchedCard").innerHTML=`<b>${esc(x.customer_name||'Customer')} · Unit ${esc(x.unit_number||'')}</b><div class="muted">${esc([x.vin?`VIN ${x.vin}`:'',x.dot_number?`DOT ${x.dot_number}`:'',[x.year,x.make,x.model].filter(Boolean).join(' ')].filter(Boolean).join(' · '))}</div>`;document.querySelectorAll(".mechanicMatchCard").forEach((el,n)=>el.classList.toggle("selected",n===i));showToast("Truck selected. Continue to customer confirmation.","success",2500)}
-async function submitMechanicStartWizard(e){e?.preventDefault();if(mechanicWizardStep!==3)return mechanicWizardNext();const jobs=document.getElementById("mechStartJobs")?.value.split(/\n+/).map(x=>x.trim()).filter(Boolean)||[];if(!jobs.length)return showToast("Add at least one job.","warning");const payload={unitRecordId:document.getElementById("mechStartUnitId").value,customerId:document.getElementById("mechStartCustomerId").value,customer:document.getElementById("mechStartCustomer").value.trim(),unit:document.getElementById("mechStartUnit").value.trim(),vin:document.getElementById("mechStartVin").value.trim().toUpperCase(),dotNumber:document.getElementById("mechStartDot").value.trim(),year:document.getElementById("mechStartYear").value,make:document.getElementById("mechStartMake").value,model:document.getElementById("mechStartModel").value,plate:document.getElementById("mechStartPlate").value,mileage:document.getElementById("mechStartMileage").value,priority:document.getElementById("mechStartPriority").value,parking:document.getElementById("mechStartParking").value.trim(),notes:document.getElementById("mechStartNotes").value.trim(),jobs};const btn=document.getElementById("mechWizardCreateBtn");if(btn){btn.disabled=true;btn.textContent="Creating…"}try{const d=await apiJSON("/api/work-orders/self-start",{method:"POST",body:JSON.stringify(payload)});if(d?.shopflow){state=d.shopflow;localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state))}if(d?.version!=null)cloudVersions.shopflow=Number(d.version);removePersistedState("shopflow");closeMechanicStartWizard();render();showToast(`Work Order #${d.workOrder?.id||''} created and assigned to you.`,"success",5000);if(d.workOrder?.id)openDetail(d.workOrder.id)}catch(err){showToast(err.message||"Unable to create work order.","error",7000)}finally{if(btn){btn.disabled=false;btn.textContent="Create Job & Start →"}}}
+function mechanicWizardNext(){
+ if(mechanicWizardStep===1){if(!mechanicWizardReady)return showToast("Look up and confirm the customer/truck first.","warning");setMechanicWizardStep(2);return}
+ if(mechanicWizardStep===2){if(!document.getElementById("mechStartCustomer")?.value.trim()||!document.getElementById("mechStartUnit")?.value.trim())return showToast("Confirm customer and unit number.","warning");setMechanicWizardStep(3)}
+}
+function scheduleMechanicLookup(){
+ clearTimeout(mechanicLookupTimer);
+ const dot=document.getElementById("mechStartDot")?.value.trim()||"",vin=document.getElementById("mechStartVin")?.value.trim().toUpperCase()||"";
+ if(vin.length===17 || dot.length>=5)mechanicLookupTimer=setTimeout(()=>mechanicWizardLookup(true),650);
+}
+function setMechanicWizardFields(x={}){
+ const vehicle=x.vehicle||{},carrier=x.carrier||{},match=x.match||{};
+ const customer=match.customer_name||carrier.legalName||carrier.dbaName||"";
+ const unit=match.unit_number||vehicle.unitNumber||document.getElementById("mechStartUnitSearch")?.value.trim()||(vehicle.vin?vehicle.vin.slice(-6):"");
+ const vals={
+   mechStartUnitId:match.id||vehicle.existingUnitId||"",
+   mechStartCustomerId:match.customer_id||carrier.existingCustomerId||vehicle.existingCustomerId||"",
+   mechStartCustomer:customer,
+   mechStartUnit:unit,
+   mechStartYear:match.year||vehicle.year||"",
+   mechStartMake:match.make||vehicle.make||"",
+   mechStartModel:match.model||vehicle.model||"",
+   mechStartPlate:match.plate||vehicle.plate||"",
+   mechStartMileage:match.mileage||vehicle.mileage||"",
+   mechStartEngine:match.engine||vehicle.engine||"",
+   mechStartTransmission:match.transmission||vehicle.transmission||""
+ };
+ for(const [id,v] of Object.entries(vals)){const el=document.getElementById(id);if(el)el.value=v??""}
+ for(const [display,hidden] of [["mechStartYearDisplay","mechStartYear"],["mechStartMakeDisplay","mechStartMake"],["mechStartModelDisplay","mechStartModel"],["mechStartMileageDisplay","mechStartMileage"]]){const el=document.getElementById(display),src=document.getElementById(hidden);if(el)el.value=src?.value||""}
+ const vin=document.getElementById("mechStartVin")?.value||vehicle.vin||match.vin||"",dot=document.getElementById("mechStartDot")?.value||carrier.dotNumber||match.dot_number||"";
+ const src=[x.carrierSource,x.vehicleSource].filter(Boolean).join(" · ");
+ document.getElementById("mechStartMatchedCard").innerHTML=`<b>${esc(customer||"New customer")} · Unit ${esc(unit||"New unit")}</b><div class="muted">${esc([vin?`VIN ${vin}`:"",dot?`USDOT ${dot}`:"",[vals.mechStartYear,vals.mechStartMake,vals.mechStartModel].filter(Boolean).join(" "),src].filter(Boolean).join(" · "))}</div>`;
+ mechanicWizardReady=Boolean(customer && unit && (vin||dot));
+}
+async function mechanicWizardLookup(silent=false){
+ if(mechanicLookupBusy)return;
+ const dot=document.getElementById("mechStartDot")?.value.trim()||"",vin=document.getElementById("mechStartVin")?.value.trim().toUpperCase()||"",unit=document.getElementById("mechStartUnitSearch")?.value.trim()||"";
+ if(!dot&&!vin&&!unit){if(!silent)showToast("Enter USDOT, VIN, or unit number.","warning");return}
+ if(vin && vin.length!==17){if(!silent)showToast("VIN must be 17 characters.","warning");return}
+ mechanicLookupBusy=true;mechanicWizardReady=false;mechanicWizardSelected=-1;
+ const status=document.getElementById("mechStartLookupStatus"),box=document.getElementById("mechStartMatches"),sources=document.getElementById("mechStartSourceSummary");
+ if(status)status.textContent="Checking ITTR records and official sources…";if(box)box.innerHTML="";if(sources)sources.innerHTML="";
+ try{
+   const p=new URLSearchParams();if(dot)p.set("dotNumber",dot);if(vin)p.set("vin",vin);if(unit)p.set("unit",unit);
+   const d=await apiJSON(`/api/work-orders/self-start/lookup?${p.toString()}`);mechanicLookupData=d;mechanicWizardMatches=d.matches||[];
+   const warnings=(d.warnings||[]).map(w=>`<div class="notice" style="margin-top:6px">${esc(w)}</div>`).join("");
+   if(sources)sources.innerHTML=`<div class="muted"><b>Customer source:</b> ${esc(d.sources?.carrier||"ITTR/manual")} &nbsp; <b>Vehicle source:</b> ${esc(d.sources?.vehicle||"ITTR/manual")}</div>${warnings}`;
+   if(mechanicWizardMatches.length){
+     if(status)status.textContent=`${mechanicWizardMatches.length} existing vehicle match${mechanicWizardMatches.length===1?"":"es"} found.`;
+     box.innerHTML=mechanicWizardMatches.map((x,i)=>`<button type="button" class="mechanicMatchCard" onclick="selectMechanicWizardMatch(${i})"><b>${esc(x.unit_number||"Unit")}</b> · ${esc(x.customer_name||"Customer")}<div class="muted">${esc([x.vin?`VIN ${x.vin}`:"",x.dot_number?`USDOT ${x.dot_number}`:"",[x.year,x.make,x.model].filter(Boolean).join(" ")].filter(Boolean).join(" · "))}</div></button>`).join("");
+     const exact=mechanicWizardMatches.findIndex(x=>(vin&&String(x.vin||"").toUpperCase()===vin)||(dot&&String(x.dot_number||"").replace(/\D/g,"")===dot&&(!unit||String(x.unit_number||"").toLowerCase()===unit.toLowerCase())));
+     if(exact>=0)selectMechanicWizardMatch(exact,true);
+   }else{
+     if(status)status.textContent=(d.carrier||d.vehicle)?"No existing unit found. A new customer/unit can be created after confirmation.":"No matching record or external result found.";
+     if(d.carrier||d.vehicle){mechanicWizardSelected=-2;setMechanicWizardFields({carrier:d.carrier||{},vehicle:d.vehicle||{},carrierSource:d.sources?.carrier||"",vehicleSource:d.sources?.vehicle||""});if(mechanicWizardReady&&box)box.innerHTML='<div class="notice jobStateActive"><b>New record ready.</b> Review the customer and decoded vehicle on the next step before saving.</div>'}
+   }
+ }catch(e){if(status)status.textContent="";if(!silent||vin.length===17)showToast(e.message||"Vehicle lookup failed.","error",7000)}
+ finally{mechanicLookupBusy=false}
+}
+function selectMechanicWizardMatch(i,silent=false){
+ const x=mechanicWizardMatches[i];if(!x)return;mechanicWizardSelected=i;
+ const d=mechanicLookupData||{};setMechanicWizardFields({match:x,carrier:d.carrier||{},vehicle:d.vehicle||{},carrierSource:d.sources?.carrier||"ITTR database",vehicleSource:d.sources?.vehicle||"ITTR database"});
+ document.querySelectorAll(".mechanicMatchCard").forEach((el,n)=>el.classList.toggle("selected",n===i));
+ if(!silent)showToast("Existing truck selected. Review and continue.","success",2200)
+}
+async function submitMechanicStartWizard(e){
+ e?.preventDefault();if(mechanicWizardStep!==3)return mechanicWizardNext();
+ const jobs=document.getElementById("mechStartJobs")?.value.split(/\n+/).map(x=>x.trim()).filter(Boolean)||[];if(!jobs.length)return showToast("Add at least one job.","warning");
+ const d=mechanicLookupData||{};
+ const payload={
+   unitRecordId:document.getElementById("mechStartUnitId").value,customerId:document.getElementById("mechStartCustomerId").value,
+   customer:document.getElementById("mechStartCustomer").value.trim(),unit:document.getElementById("mechStartUnit").value.trim(),
+   vin:document.getElementById("mechStartVin").value.trim().toUpperCase(),dotNumber:document.getElementById("mechStartDot").value.trim(),
+   year:document.getElementById("mechStartYear").value,make:document.getElementById("mechStartMake").value,model:document.getElementById("mechStartModel").value,
+   plate:document.getElementById("mechStartPlate").value,mileage:document.getElementById("mechStartMileage").value,
+   engine:document.getElementById("mechStartEngine").value,transmission:document.getElementById("mechStartTransmission").value,
+   priority:document.getElementById("mechStartPriority").value,parking:document.getElementById("mechStartParking").value.trim(),
+   notes:document.getElementById("mechStartNotes").value.trim(),jobs,
+   carrier:d.carrier||{},vehicle:d.vehicle||{},carrierSource:d.sources?.carrier||"",vehicleSource:d.sources?.vehicle||""
+ };
+ const btn=document.getElementById("mechWizardCreateBtn");if(btn){btn.disabled=true;btn.textContent="Creating…"}
+ try{
+   const r=await apiJSON("/api/work-orders/self-start",{method:"POST",body:JSON.stringify(payload)});
+   if(r?.shopflow){state=r.shopflow;localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state))}
+   if(r?.version!=null)cloudVersions.shopflow=Number(r.version);removePersistedState("shopflow");closeMechanicStartWizard();render();
+   const created=[r.customer?.created?"new customer":"",r.unit?.created?"new unit":""].filter(Boolean).join(" + ");
+   showToast(`Work Order #${r.workOrder?.id||""} created${created?` with ${created}`:""} and assigned to you.`,"success",6000);
+   if(r.workOrder?.id)openDetail(r.workOrder.id)
+ }catch(err){showToast(err.message||"Unable to create work order.","error",8000)}
+ finally{if(btn){btn.disabled=false;btn.textContent="Create Work Order →"}}
+}
 function mechanicActivityLabel(code,customText=""){
  const map={cleaning:"Cleaning Work Area",yard:"In the Yard",moving_unit:"Moving Truck / Trailer",parts:"Getting Parts",waiting_parts:"Waiting for Parts",helping:"Helping Another Mechanic",inspection:"General Inspection",break:"Break",custom:customText||"Custom Activity"};
  return map[code]||"Available";
