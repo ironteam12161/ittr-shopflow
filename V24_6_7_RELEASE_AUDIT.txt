@@ -1,0 +1,28 @@
+ITTR ShopFlow v24.6.7 — Release Consistency + Invoice Workspace Audit
+Build: ITTR-24.6.7-RELEASE-CONSISTENCY-AUDIT-20260914
+
+Production issue verified
+- v24.6.6 HTML/meta/title/banner and backend all reported 24.6.6.
+- The executable frontend constant was still FRONTEND_VERSION="24.6.5".
+- verifyReleaseCompatibility() compares FRONTEND_VERSION to /api/build backend version, so this guaranteed the red VERSION MISMATCH banner even when index.html and server.js were from the same v24.6.6 ZIP.
+- v24.6.7 makes every executable and displayed release identifier consistent.
+
+Preserved invoice behavior audited
+- Labor rate presets: New Client 115, Our Client 110, Old Client 100, Owner 60, Custom.
+- Preset selector and numeric labor rate remain a single combined control.
+- New labor inherits Labor 1 current rate.
+- Overrides on Labor 2/3/etc remain local and do not become the default for later labor.
+- Invoice part lookup searches existing inventory from either Part # or Description.
+- Part selection fills part number, description, sell price, internal cost and taxable state.
+- Add Part/New Labor preserves visible unsaved invoice lines and header before creating a new line.
+- Illinois Department of Revenue tax lookup remains server-side and manual tax changes update live totals.
+- Shop supplies/environmental fees have explicit taxable switches.
+- Server remains authoritative for saved invoice totals.
+- Paid/void invoices remain locked; draft/open invoices remain editable under existing rules.
+- Permanent invoice delete remains limited to invoices without recorded payments.
+
+Deployment/cache safety
+- /api/build is fetched with cache:"no-store".
+- Service worker registration remains disabled.
+- root index.html and public/index.html are identical.
+- No destructive database reset or Fullbay re-import is required.
