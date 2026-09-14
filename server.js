@@ -1055,7 +1055,7 @@ app.get("/api/smart-search",auth,adminOnly,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"24.17.5",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"24.17.7",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -1088,8 +1088,8 @@ async function reconcileDuplicateImportedCustomers(){
  return {merged};
 }
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.17.5",backend:"24.17.5",build:"ITTR-24.17.5-FEES-WARRANTY-TIRE-NOTICE-20260914"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.17.5",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.17.7",backend:"24.17.7",build:"ITTR-24.17.7-MECHANIC-USDOT-VIN-SELF-START-20260914"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.17.7",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -1167,25 +1167,273 @@ async function closeOpenTaskSession(db,workOrderId,taskUid,mechanic,endReason,pa
 }
 
 
+
+function selfStartLookupAllowed(req){
+ return req.user?.role==="mechanic"||req.user?.role==="admin"||req.user?.role==="manager";
+}
+async function localSelfStartMatches(db,{dotNumber="",vin="",unit=""}={}){
+ const usdot=cleanUsdot(dotNumber),cleanedVin=cleanVin(vin),unitQ=String(unit||"").trim();
+ const where=[],params=[];
+ const add=(sql,value)=>{params.push(value);where.push(sql.replace(/\$(\d+)/g,()=>`$${params.length}`))};
+ if(cleanedVin){params.push(cleanedVin);where.push(`upper(coalesce(u.vin,''))=upper($${params.length})`)}
+ if(unitQ){params.push(unitQ);where.push(`lower(coalesce(u.unit_number,''))=lower($${params.length})`)}
+ if(usdot){params.push(usdot);where.push(`regexp_replace(coalesce(c.dot_number,''),'\\D','','g')=$${params.length}`)}
+ if(!where.length)return [];
+ const r=await db.query(`
+   SELECT u.id,u.customer_id::text AS customer_id,coalesce(c.customer_name,u.customer_name) AS customer_name,
+          c.dot_number,c.phone AS customer_phone,c.email AS customer_email,c.address,c.city,c.state,c.postal_code,
+          u.unit_number,u.vin,u.year,u.make,u.model,u.plate,u.mileage,u.engine,u.transmission,u.source
+   FROM customer_units u
+   LEFT JOIN fullbay_import_customers c ON c.id::text=u.customer_id::text
+   WHERE ${where.join(" OR ")}
+   ORDER BY
+     CASE WHEN $${params.length+1}<>'' AND upper(coalesce(u.vin,''))=upper($${params.length+1}) THEN 0
+          WHEN $${params.length+2}<>'' AND regexp_replace(coalesce(c.dot_number,''),'\\D','','g')=$${params.length+2} THEN 1
+          WHEN $${params.length+3}<>'' AND lower(coalesce(u.unit_number,''))=lower($${params.length+3}) THEN 2 ELSE 3 END,
+     u.updated_at DESC NULLS LAST,u.id DESC
+   LIMIT 25`,
+   [...params,cleanedVin,usdot,unitQ]
+ );
+ return r.rows;
+}
+app.get("/api/work-orders/self-start/lookup",auth,async(req,res)=>{
+ if(!selfStartLookupAllowed(req))return res.status(403).json({error:"Shop account required."});
+ const dotNumber=cleanUsdot(req.query.dotNumber||req.query.dot||"");
+ const vin=cleanVin(req.query.vin||"");
+ const unit=String(req.query.unit||"").trim().slice(0,80);
+ if(!dotNumber&&!vin&&!unit)return res.status(400).json({error:"Enter USDOT, VIN, or unit number."});
+ if(vin && !vinCoreValid(vin))return res.status(400).json({error:"VIN must be 17 characters and cannot contain I, O, or Q.",code:"VIN_INVALID"});
+ try{
+   const db=requireDb();
+   const matches=await localSelfStartMatches(db,{dotNumber,vin,unit});
+   let carrier=null,vehicle=null;
+   const warnings=[];
+   let carrierSource="",vehicleSource="";
+   const existingByVin=vin?matches.find(x=>cleanVin(x.vin)===vin):null;
+   const existingByDot=dotNumber?matches.find(x=>cleanUsdot(x.dot_number)===dotNumber):null;
+
+   if(dotNumber){
+     if(existingByDot){
+       carrier={
+         dotNumber,
+         legalName:existingByDot.customer_name||"",
+         address:existingByDot.address||"",
+         city:existingByDot.city||"",
+         state:existingByDot.state||"",
+         zip:existingByDot.postal_code||"",
+         phone:existingByDot.customer_phone||"",
+         existingCustomerId:existingByDot.customer_id||""
+       };
+       carrierSource="ITTR database";
+     }
+     try{
+       const live=await lookupFmcsaCarrier(dotNumber);
+       carrier={...(carrier||{}),...live,existingCustomerId:carrier?.existingCustomerId||""};
+       carrierSource="FMCSA QCMobile API";
+     }catch(e){
+       if(e?.code==="FMCSA_NOT_CONFIGURED")warnings.push("FMCSA live lookup is not configured yet. Add FMCSA_WEBKEY in Railway Variables.");
+       else warnings.push(e?.message||"FMCSA carrier lookup was unavailable.");
+     }
+   }
+
+   if(vin){
+     if(existingByVin){
+       vehicle={
+         vin,
+         year:existingByVin.year||"",
+         make:existingByVin.make||"",
+         model:existingByVin.model||"",
+         engine:existingByVin.engine||"",
+         transmission:existingByVin.transmission||"",
+         unitNumber:existingByVin.unit_number||"",
+         mileage:existingByVin.mileage||"",
+         plate:existingByVin.plate||"",
+         existingUnitId:String(existingByVin.id||""),
+         existingCustomerId:String(existingByVin.customer_id||"")
+       };
+       vehicleSource="ITTR database";
+     }
+     try{
+       const decoded=await lookupNhtsaVin(vin);
+       vehicle={...(vehicle||{}),...decoded,unitNumber:vehicle?.unitNumber||"",mileage:vehicle?.mileage||"",plate:vehicle?.plate||"",existingUnitId:vehicle?.existingUnitId||"",existingCustomerId:vehicle?.existingCustomerId||""};
+       vehicleSource=vehicle?.existingUnitId?"ITTR database + NHTSA vPIC":"NHTSA vPIC";
+     }catch(e){warnings.push(e?.message||"NHTSA VIN lookup was unavailable.")}
+   }
+
+   res.json({
+     ok:true,
+     query:{dotNumber,vin,unit},
+     matches,
+     carrier,
+     vehicle,
+     sources:{carrier:carrierSource,vehicle:vehicleSource},
+     fmcsaConfigured:Boolean(FMCSA_WEBKEY),
+     warnings,
+     checkedAt:new Date().toISOString()
+   });
+ }catch(e){
+   console.error("Mechanic self-start lookup failed:",e);
+   res.status(500).json({error:"Unable to look up this customer/unit right now."});
+ }
+});
+
+async function resolveSelfStartCustomer(db,b,user){
+ const requestedId=String(b.customerId||"").trim();
+ const dotNumber=cleanUsdot(b.dotNumber||"");
+ const customerName=String(b.customer||"").trim().slice(0,220);
+ if(requestedId){
+   const q=await db.query("SELECT * FROM fullbay_import_customers WHERE id::text=$1 LIMIT 1",[requestedId]);
+   if(q.rowCount)return {row:q.rows[0],created:false};
+ }
+ if(dotNumber){
+   const q=await db.query("SELECT * FROM fullbay_import_customers WHERE regexp_replace(coalesce(dot_number,''),'\\D','','g')=$1 ORDER BY id LIMIT 1",[dotNumber]);
+   if(q.rowCount)return {row:q.rows[0],created:false};
+ }
+ if(customerName){
+   const q=await db.query("SELECT * FROM fullbay_import_customers WHERE lower(customer_name)=lower($1) ORDER BY id LIMIT 1",[customerName]);
+   if(q.rowCount)return {row:q.rows[0],created:false};
+ }
+ if(!customerName)return {row:null,created:false};
+ const carrier=(b.carrier&&typeof b.carrier==="object")?b.carrier:{};
+ const sourceKey=dotNumber?`mechanic_usdot_${dotNumber}`:`mechanic_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+ const raw={createdVia:"mechanic_self_start",createdBy:user?.username||"",carrierSource:String(b.carrierSource||""),carrier};
+ const q=await db.query(`
+   INSERT INTO fullbay_import_customers(
+     source_key,customer_name,phone,address,city,state,postal_code,dot_number,active,
+     fmcsa_dba_name,fmcsa_mc_number,fmcsa_allowed_to_operate,fmcsa_out_of_service,
+     fmcsa_power_units,fmcsa_drivers,fmcsa_snapshot,fmcsa_last_checked,raw,source_file,updated_at
+   ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10,$11,$12,$13,$14,$15::jsonb,CASE WHEN $16 THEN now() ELSE NULL END,$17::jsonb,'mechanic-self-start',now())
+   ON CONFLICT(source_key) DO UPDATE SET
+     customer_name=coalesce(nullif(EXCLUDED.customer_name,''),fullbay_import_customers.customer_name),
+     phone=coalesce(nullif(EXCLUDED.phone,''),fullbay_import_customers.phone),
+     address=coalesce(nullif(EXCLUDED.address,''),fullbay_import_customers.address),
+     city=coalesce(nullif(EXCLUDED.city,''),fullbay_import_customers.city),
+     state=coalesce(nullif(EXCLUDED.state,''),fullbay_import_customers.state),
+     postal_code=coalesce(nullif(EXCLUDED.postal_code,''),fullbay_import_customers.postal_code),
+     dot_number=coalesce(nullif(EXCLUDED.dot_number,''),fullbay_import_customers.dot_number),
+     fmcsa_dba_name=coalesce(nullif(EXCLUDED.fmcsa_dba_name,''),fullbay_import_customers.fmcsa_dba_name),
+     fmcsa_mc_number=coalesce(nullif(EXCLUDED.fmcsa_mc_number,''),fullbay_import_customers.fmcsa_mc_number),
+     fmcsa_snapshot=CASE WHEN EXCLUDED.fmcsa_snapshot<>'{}'::jsonb THEN EXCLUDED.fmcsa_snapshot ELSE fullbay_import_customers.fmcsa_snapshot END,
+     fmcsa_last_checked=coalesce(EXCLUDED.fmcsa_last_checked,fullbay_import_customers.fmcsa_last_checked),
+     updated_at=now()
+   RETURNING *`,
+   [
+     sourceKey,customerName,String(carrier.phone||"").slice(0,80),String(carrier.address||"").slice(0,260),
+     String(carrier.city||"").slice(0,120),String(carrier.state||"").slice(0,40),String(carrier.zip||"").slice(0,40),dotNumber,
+     String(carrier.dbaName||"").slice(0,220),String(carrier.mcNumber||"").slice(0,80),String(carrier.allowedToOperate||"").slice(0,40),
+     String(carrier.outOfService||"").slice(0,40),Number.isFinite(Number(carrier.powerUnits))?Number(carrier.powerUnits):null,
+     Number.isFinite(Number(carrier.drivers))?Number(carrier.drivers):null,JSON.stringify(carrier),
+     Boolean(b.carrierSource&&String(b.carrierSource).includes("FMCSA")),JSON.stringify(raw)
+   ]
+ );
+ return {row:q.rows[0],created:true};
+}
+async function resolveSelfStartUnit(db,b,customerRow){
+ const requestedId=String(b.unitRecordId||"").trim(),vin=cleanVin(b.vin||""),unitNumber=String(b.unit||"").trim().slice(0,120);
+ if(requestedId){
+   const q=await db.query("SELECT * FROM customer_units WHERE id::text=$1 LIMIT 1",[requestedId]);
+   if(q.rowCount){
+     const row=q.rows[0];
+     if(customerRow?.id && row.customer_id && String(row.customer_id)!==String(customerRow.id)){
+       throw Object.assign(new Error("This unit belongs to a different customer in ITTR. Ask a manager to review the unit before creating a work order."),{status:409,code:"UNIT_CUSTOMER_CONFLICT"});
+     }
+     if(customerRow?.id && !row.customer_id){
+       const u=await db.query("UPDATE customer_units SET customer_id=$1,customer_name=$2,updated_at=now() WHERE id=$3 RETURNING *",[customerRow.id,customerRow.customer_name,row.id]);
+       return {row:u.rows[0],created:false};
+     }
+     return {row,created:false};
+   }
+ }
+ if(vin){
+   const q=await db.query("SELECT * FROM customer_units WHERE upper(coalesce(vin,''))=upper($1) ORDER BY id LIMIT 1",[vin]);
+   if(q.rowCount){
+     const row=q.rows[0];
+     if(customerRow?.id && row.customer_id && String(row.customer_id)!==String(customerRow.id)){
+       throw Object.assign(new Error("This VIN already belongs to a different customer in ITTR. Ask a manager to review the unit before creating a work order."),{status:409,code:"VIN_CUSTOMER_CONFLICT"});
+     }
+     if(customerRow?.id && !row.customer_id){
+       const u=await db.query("UPDATE customer_units SET customer_id=$1,customer_name=$2,updated_at=now() WHERE id=$3 RETURNING *",[customerRow.id,customerRow.customer_name,row.id]);
+       return {row:u.rows[0],created:false};
+     }
+     return {row,created:false};
+   }
+ }
+ if(!unitNumber)throw Object.assign(new Error("Unit number is required."),{status:400});
+ const same=await db.query("SELECT * FROM customer_units WHERE lower(unit_number)=lower($1) AND ($2::bigint IS NULL OR customer_id=$2::bigint) ORDER BY id LIMIT 1",[unitNumber,customerRow?.id||null]);
+ if(same.rowCount)return {row:same.rows[0],created:false};
+ const vehicle=(b.vehicle&&typeof b.vehicle==="object")?b.vehicle:{};
+ const q=await db.query(`
+   INSERT INTO customer_units(customer_id,customer_name,unit_number,vin,year,make,model,plate,mileage,engine,transmission,notes,source,updated_at)
+   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'mechanic_self_start',now())
+   RETURNING *`,
+   [
+     customerRow?.id||null,customerRow?.customer_name||String(b.customer||"").trim(),unitNumber,vin||null,
+     String(b.year||vehicle.year||"").slice(0,20),String(b.make||vehicle.make||"").slice(0,120),String(b.model||vehicle.model||"").slice(0,160),
+     String(b.plate||"").slice(0,80),Number(b.mileage||0)||null,String(b.engine||vehicle.engine||"").slice(0,240),
+     String(b.transmission||vehicle.transmission||"").slice(0,240),
+     JSON.stringify({createdVia:"mechanic_self_start",vehicleSource:String(b.vehicleSource||""),decodedVehicle:vehicle}).slice(0,4000)
+   ]
+ );
+ return {row:q.rows[0],created:true};
+}
+
 app.post("/api/work-orders/self-start",auth,async(req,res,next)=>{
  if(req.user?.role!=="mechanic")return res.status(403).json({error:"Mechanic account required."});
  const db=await requireDb().connect();
  try{
-  const b=req.body||{},customer=String(b.customer||"").trim(),unit=String(b.unit||"").trim(),vin=String(b.vin||"").trim().toUpperCase(),dotNumber=String(b.dotNumber||"").trim(),jobs=Array.isArray(b.jobs)?b.jobs.map(x=>String(x||"").trim()).filter(Boolean):[];
-  if(!customer||!unit||!jobs.length||(!vin&&!dotNumber)){return res.status(400).json({error:"Customer, unit, at least one job, and VIN or USDOT are required."});}
+  const b=req.body||{},customer=String(b.customer||"").trim(),unit=String(b.unit||"").trim(),vin=cleanVin(b.vin||""),dotNumber=cleanUsdot(b.dotNumber||""),jobs=Array.isArray(b.jobs)?b.jobs.map(x=>String(x||"").trim()).filter(Boolean):[];
+  if(!customer||!unit||!jobs.length||(!vin&&!dotNumber))return res.status(400).json({error:"Customer, unit, at least one job, and VIN or USDOT are required."});
+  if(vin&&!vinCoreValid(vin))return res.status(400).json({error:"VIN must be 17 characters and cannot contain I, O, or Q.",code:"VIN_INVALID"});
   await db.query("BEGIN");
+
+  const customerResolved=await resolveSelfStartCustomer(db,b,req.user);
+  if(!customerResolved.row)throw Object.assign(new Error("Customer could not be resolved."),{status:400});
+  const unitResolved=await resolveSelfStartUnit(db,b,customerResolved.row);
+  if(!unitResolved.row)throw Object.assign(new Error("Unit could not be resolved."),{status:400});
+
+  const customerRow=customerResolved.row,unitRow=unitResolved.row;
   const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
   if(!q.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Shop data not found."});}
   const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
   const numericIds=sf.workorders.map(x=>Number(x?.id)).filter(Number.isFinite);const id=(numericIds.length?Math.max(...numericIds):1000)+1;const now=new Date();
-  const w={id,unit,customer,customerId:String(b.customerId||""),unitRecordId:String(b.unitRecordId||""),vin,dotNumber,year:String(b.year||""),make:String(b.make||""),model:String(b.model||""),plate:String(b.plate||""),mileage:Number(b.mileage||0)||"",date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),mechanic:req.user.username,helpers:[],priority:String(b.priority||"Normal"),parking:String(b.parking||""),unitType:"customer",truckHere:true,status:"Open",notes:String(b.notes||""),arrivedAt:now.toISOString(),arrivedBy:req.user.username,createdAt:now.toISOString(),createdBy:req.user.username,createdVia:"mechanic_self_start",outcomeWorkflowVersion:1,history:[{type:"mechanic_self_start",at:now.toISOString(),by:req.user.username,byDisplay:req.user.display_name||req.user.username}],tasks:jobs.map((text,i)=>({uid:`wo-${id}-task-${i}-${crypto.randomBytes(4).toString("hex")}`,t:text,done:false,startedAt:"",stoppedAt:"",runningBy:"",elapsedMs:0,completedAt:"",taskOutcome:"",outcomeNote:"",outcomeAt:"",outcomeBy:"",paused:false,pausedAt:"",pauseReason:"",pauseNote:""}))};
+  const w={
+    id,
+    unit:unitRow.unit_number||unit,
+    customer:customerRow.customer_name||customer,
+    customerId:String(customerRow.id||""),
+    unitRecordId:String(unitRow.id||""),
+    vin:unitRow.vin||vin,
+    dotNumber:customerRow.dot_number||dotNumber,
+    year:unitRow.year||String(b.year||""),
+    make:unitRow.make||String(b.make||""),
+    model:unitRow.model||String(b.model||""),
+    plate:unitRow.plate||String(b.plate||""),
+    mileage:Number(b.mileage||unitRow.mileage||0)||"",
+    date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),
+    mechanic:req.user.username,helpers:[],priority:String(b.priority||"Normal"),parking:String(b.parking||""),
+    unitType:"customer",truckHere:true,status:"Open",notes:String(b.notes||""),
+    arrivedAt:now.toISOString(),arrivedBy:req.user.username,createdAt:now.toISOString(),createdBy:req.user.username,
+    createdVia:"mechanic_self_start",outcomeWorkflowVersion:1,
+    history:[{
+      type:"mechanic_self_start",at:now.toISOString(),by:req.user.username,byDisplay:req.user.display_name||req.user.username,
+      customerCreated:Boolean(customerResolved.created),unitCreated:Boolean(unitResolved.created),
+      carrierSource:String(b.carrierSource||""),vehicleSource:String(b.vehicleSource||"")
+    }],
+    tasks:jobs.map((text,i)=>({uid:`wo-${id}-task-${i}-${crypto.randomBytes(4).toString("hex")}`,t:text,done:false,startedAt:"",stoppedAt:"",runningBy:"",elapsedMs:0,completedAt:"",taskOutcome:"",outcomeNote:"",outcomeAt:"",outcomeBy:"",paused:false,pausedAt:"",pauseReason:"",pauseNote:""}))
+  };
   sf.workorders.push(w);
   const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
-  await db.query("COMMIT");await audit(req.user.username,"mechanic_work_order_self_created",{workOrderId:id,unit,vin,dotNumber,jobs:jobs.length});broadcastShopStatus("work_order_created",{workOrderId:id,by:req.user.username,version:Number(u.rows[0].version)});
-  res.status(201).json({ok:true,workOrder:w,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
- }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
+  await db.query("COMMIT");
+  lastCustomerUnitDirectorySync=0;
+  await audit(req.user.username,"mechanic_work_order_self_created",{workOrderId:id,unit:w.unit,vin:w.vin,dotNumber:w.dotNumber,jobs:jobs.length,customerId:w.customerId,unitRecordId:w.unitRecordId,customerCreated:Boolean(customerResolved.created),unitCreated:Boolean(unitResolved.created),carrierSource:String(b.carrierSource||""),vehicleSource:String(b.vehicleSource||"")});
+  broadcastShopStatus("work_order_created",{workOrderId:id,by:req.user.username,version:Number(u.rows[0].version)});
+  res.status(201).json({ok:true,workOrder:w,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at,customer:{id:customerRow.id,name:customerRow.customer_name,created:Boolean(customerResolved.created)},unit:{id:unitRow.id,unitNumber:unitRow.unit_number,created:Boolean(unitResolved.created)}});
+ }catch(e){
+  try{await db.query("ROLLBACK")}catch(_){}
+  if(e?.status)return res.status(e.status).json({error:e.message,code:e.code||"SELF_START"});
+  next(e)
+ }finally{db.release()}
 });
-
 app.post("/api/work-orders/:id/helpers",auth,async(req,res,next)=>{
  const db=await requireDb().connect();
  try{
@@ -2552,5 +2800,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v24.17.5 Online running on port ${port}`))})
+  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v24.17.7 Online running on port ${port}`))})
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

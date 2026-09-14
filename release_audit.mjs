@@ -12,9 +12,9 @@ const pkg = JSON.parse(read('package.json'));
 const modulesInvoicesHtml = read('modules/invoices.html');
 const modulesInvoicesJs = read('modules/invoices.js');
 
-check('release package version is 24.17.5', pkg.version === '24.17.5', pkg.version);
-check('frontend release is 24.17.5', html.includes("const FRONTEND_VERSION='24.17.5';") || html.includes('const FRONTEND_VERSION="24.17.5"'));
-check('backend release is 24.17.5', server.includes('frontendExpected:"24.17.5",backend:"24.17.5"'));
+check('release package version is 24.17.7', pkg.version === '24.17.7', pkg.version);
+check('frontend release is 24.17.7', html.includes("const FRONTEND_VERSION='24.17.7';") || html.includes('const FRONTEND_VERSION="24.17.7"'));
+check('backend release is 24.17.7', server.includes('frontendExpected:"24.17.7",backend:"24.17.7"'));
 check('static web root restricted to public directory', server.includes('app.use(express.static(publicDir') && !server.includes('app.use(express.static(webRoot'));
 check('parts search is read-only (no per-result barcode write loop)', !server.includes('for(const x of r.rows)if(!x.internal_barcode)x.internal_barcode=await ensurePartBarcode'));
 check('production 500 responses hide internal error detail', server.includes('isProd?"An unexpected server error occurred.":safe'));
@@ -253,6 +253,35 @@ check('Workshop AI detects PM/oil/lube/filter history semantically',
 check('Workshop AI guarantees newest matching ITTR PM invoice is surfaced',
   server.includes("if(pmServiceIntent(question)&&pmInvoiceMatches.length)") &&
   server.includes("Most recent ITTR PM/service record:"));
+
+
+check('mechanic self-start lookup endpoint combines local DB and external sources',
+  server.includes('app.get("/api/work-orders/self-start/lookup"') &&
+  server.includes('localSelfStartMatches') &&
+  server.includes('lookupFmcsaCarrier(dotNumber)') &&
+  server.includes('lookupNhtsaVin(vin)'));
+check('mechanic self-start can create missing customer and unit records',
+  server.includes('async function resolveSelfStartCustomer') &&
+  server.includes('async function resolveSelfStartUnit') &&
+  server.includes("'mechanic_self_start'"));
+check('mechanic self-start prevents duplicate VIN ownership conflicts',
+  server.includes('VIN_CUSTOMER_CONFLICT') &&
+  server.includes('This VIN already belongs to a different customer in ITTR'));
+check('mechanic self-start validates existing unit ownership',
+  server.includes('code:"UNIT_CUSTOMER_CONFLICT"') &&
+  server.includes('String(row.customer_id)!==String(customerRow.id)'));
+check('mechanic wizard automatically looks up USDOT and VIN',
+  html.includes('scheduleMechanicLookup()') &&
+  html.includes('/api/work-orders/self-start/lookup?') &&
+  html.includes('FMCSA + NHTSA lookup'));
+check('mechanic wizard captures decoded vehicle fields',
+  html.includes('id="mechStartEngine"') &&
+  html.includes('id="mechStartTransmission"') &&
+  html.includes('carrierSource:d.sources?.carrier') &&
+  html.includes('vehicleSource:d.sources?.vehicle'));
+check('FMCSA key remains server-side only',
+  server.includes('const FMCSA_WEBKEY=String(process.env.FMCSA_WEBKEY||"").trim()') &&
+  !html.includes('FMCSA_WEBKEY'));
 
 const failed = checks.filter(x=>!x.ok);
 for (const x of checks) console.log(`${x.ok?'PASS':'FAIL'}  ${x.name}${x.detail?` — ${x.detail}`:''}`);
