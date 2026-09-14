@@ -1,0 +1,25 @@
+ITTR v24.8.2 AI BUTTON VISIBILITY AUDIT
+
+Root cause confirmed in v24.8.1:
+- #shopAiFab existed in the DOM.
+- Workshop AI backend and chat panel existed.
+- The FAB CSS had display:flex but NO position:fixed, right, bottom, or z-index.
+- Therefore the button rendered as ordinary document content near the bottom of <main> and was not persistently visible.
+
+Fix:
+- position: fixed
+- desktop right: 20px; bottom: 22px
+- z-index: 660
+- visible/opacity enforced
+- professional pill styling and shadow
+- mobile positioned above bottom navigation
+- existing full-screen mobile AI panel preserved
+- AI shop-chat backend, multilingual unit history, manuals, RBAC/payment/email work preserved
+
+Audit:
+- server.js syntax PASS
+- frontend inline JS syntax PASS
+- duplicate AI FAB IDs: 0
+- duplicate AI panel IDs: 0
+- root/public index identical PASS
+- no database reset or destructive migration

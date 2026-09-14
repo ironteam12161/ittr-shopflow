@@ -1,0 +1,56 @@
+ITTR ShopFlow v24.9.0 — PROFESSIONAL SYSTEM AUDIT
+Date: 2026-09-14
+Base: ITTR v24.8.2 AI Button Visibility Fix package
+
+EXECUTIVE SUMMARY
+The newest prior package still contained the major business features, but several risks could make features appear missing or behave inconsistently: release version drift, frontend manager navigation that did not fully honor saved permissions, backend employee/Fullbay actions using broad manager access, no visible sync queue count, AI voice tied only to EN/UA, and Smart Receiving without the requested source-document side-by-side review.
+
+CONFIRMED CRITICAL FUNCTIONS RETAINED
+- Owner/admin manager create/edit/delete API and Add Manager UI.
+- Owner/admin permanent invoice deletion with typed invoice-number confirmation and server audit log.
+- Invoice void, line CRUD, payments, PDF, payment-link/email hooks.
+- Customer & Vehicle CRM and job-level service history.
+- Work orders, findings, completion/reactivation, mechanic activity and self-service shop workflows.
+- Parts/inventory, barcode scanning, physical count and Smart Vendor Receiving.
+- Fullbay customer, parts and service-history imports.
+- Workshop AI, unit history, multilingual questions and manual library.
+- PWA/offline banner and cloud state synchronization.
+
+HIGH-SEVERITY FINDINGS CORRECTED
+A. RELEASE IDENTITY DRIFT
+- v24.8.2 backend reported 24.8.2 while index.html/package.json still reported 24.8.1.
+- Corrected all release identities to 24.9.0.
+
+B. MANAGER RBAC UI/API MISALIGNMENT
+- The UI treated every manager as having all admin views even when permission flags were disabled.
+- Employee-management APIs were using broad adminOnly access for managers.
+- Fullbay imports also used broad manager access.
+- v24.9.0 maps manager views to permission flags and adds backend managerPermission gates for employee management and Fullbay imports.
+
+C. OFFLINE MUTATION VISIBILITY
+- cloudPending existed but shop users had no clear queue indicator.
+- v24.9.0 adds a header Sync badge showing syncing/offline/pending state.
+
+D. AI VOICE LANGUAGE COVERAGE
+- Workshop AI advertised English/Ukrainian/Polish/Spanish/Russian, but voice recognition selected only Ukrainian or English.
+- v24.9.0 adds an explicit five-language speech-recognition selector.
+
+E. SMART RECEIVING REVIEW SPEED
+- Parsed lines were editable, but the uploaded source document was not visually pinned next to the extracted data.
+- v24.9.0 adds a desktop dual-pane PDF/image review and a stacked mobile review, plus pre-post validation highlighting.
+
+DATA-SAFETY / REGRESSION REQUIREMENTS
+- No database reset added.
+- Existing schema startup behavior retained.
+- v23.7.1 Fullbay inventory import fix is guarded by release_audit.mjs: inventory import INSERT must max at SQL parameter $22 and must not reference $23.
+- Existing inventory receiving transaction flow retained.
+- Invoice permanent deletion remains owner/admin only and audited.
+
+ARCHITECTURE DECISION
+A full React route-based code-splitting rewrite was intentionally NOT mixed into this production release. The current application is a large vanilla JS/Express PWA. A safe professional migration should first stabilize v24.9.0, then move domains (Operations, Finance, Inventory, Management/AI) incrementally on a separate branch while API contracts and database behavior remain unchanged.
+
+VALIDATION COMMAND
+npm run check
+
+LIVE POST-DEPLOY LIMIT
+Static/source audit cannot prove live Railway environment variables, PostgreSQL content, R2/OpenRouter connectivity, browser microphone permission, email/payment provider state, or production network behavior. Those must be verified with the post-deploy smoke test in README_V24_9_0_FIRST.txt.

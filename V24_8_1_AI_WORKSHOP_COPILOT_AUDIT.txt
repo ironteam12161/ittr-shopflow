@@ -1,0 +1,26 @@
+ITTR v24.8.1 AI WORKSHOP COPILOT AUDIT
+
+Scope
+- Built from v24.8.0 AI/RBAC/Payments/Email release.
+- Redesigned AI assistant as a large workshop copilot drawer.
+- Added explicit unit context, quick shop-history actions, multilingual voice input, source chips and manual links.
+- Added private workshop manual library using existing R2 storage.
+- AI can use a matching licensed PDF manual for torque/spec/procedure questions through the configured OpenRouter PDF parser.
+- AI never fabricates torque/spec/wiring details when no licensed source establishes them.
+- Added shop-history context from Fullbay, ITTR invoices, ITTR work orders and customer unit records.
+- Mechanics can ask in English, Ukrainian, Polish, Spanish or Russian.
+
+Safety / licensing
+- No copyrighted OEM/Mitchell/Noregon manuals are bundled or scraped.
+- Shop must upload documents it owns/is licensed to use or save a licensed source URL.
+- Safety-critical specs should be verified against the cited manual.
+
+Static audit
+- duplicate literal DOM ids: 0 []
+- duplicate Express method/path routes: 0 []
+- CommonJS require() calls: 0
+- obvious PostgreSQL placeholder gaps: 0
+- root/public index identical: True
+- workshop manual schema present in server/schema files: PASS
+- v23.7.1 inventory import SQL not intentionally modified
+- existing invoice/email/payment/RBAC functionality preserved

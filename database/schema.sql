@@ -126,3 +126,11 @@ CREATE INDEX IF NOT EXISTS idx_fullbay_service_customer ON fullbay_service_histo
 CREATE INDEX IF NOT EXISTS idx_fullbay_service_unit ON fullbay_service_history(lower(unit_number),action_completed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_fullbay_service_vin ON fullbay_service_history(lower(vin));
 CREATE INDEX IF NOT EXISTS idx_fullbay_service_so ON fullbay_service_history(service_order);
+
+-- v24.8.1 Workshop Copilot manual library
+CREATE TABLE IF NOT EXISTS workshop_manuals(
+  id BIGSERIAL PRIMARY KEY, title TEXT NOT NULL, make TEXT, model TEXT, year_from INTEGER, year_to INTEGER, engine TEXT,
+  category TEXT DEFAULT 'service_manual', source_name TEXT, source_url TEXT, r2_key TEXT, original_name TEXT, mime_type TEXT,
+  size_bytes BIGINT DEFAULT 0, active BOOLEAN DEFAULT TRUE, created_by TEXT, created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_workshop_manuals_vehicle ON workshop_manuals(lower(coalesce(make,'')),lower(coalesce(model,'')),year_from,year_to);

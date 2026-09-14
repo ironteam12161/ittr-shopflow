@@ -163,3 +163,11 @@ CREATE TABLE IF NOT EXISTS inventory_count_sessions(
 CREATE TABLE IF NOT EXISTS inventory_count_lines(
  id BIGSERIAL PRIMARY KEY, session_id BIGINT NOT NULL REFERENCES inventory_count_sessions(id) ON DELETE CASCADE, part_id BIGINT NOT NULL REFERENCES fullbay_import_parts(id) ON DELETE RESTRICT, system_qty NUMERIC NOT NULL DEFAULT 0, counted_qty NUMERIC NOT NULL DEFAULT 0, last_barcode TEXT, counted_by TEXT, first_counted_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(), UNIQUE(session_id,part_id)
 );
+
+-- v24.8.1 Workshop Copilot manual library
+CREATE TABLE IF NOT EXISTS workshop_manuals(
+  id BIGSERIAL PRIMARY KEY, title TEXT NOT NULL, make TEXT, model TEXT, year_from INTEGER, year_to INTEGER, engine TEXT,
+  category TEXT DEFAULT 'service_manual', source_name TEXT, source_url TEXT, r2_key TEXT, original_name TEXT, mime_type TEXT,
+  size_bytes BIGINT DEFAULT 0, active BOOLEAN DEFAULT TRUE, created_by TEXT, created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_workshop_manuals_vehicle ON workshop_manuals(lower(coalesce(make,'')),lower(coalesce(model,'')),year_from,year_to);

@@ -1,0 +1,41 @@
+
+> ittr-shopflow-online@24.9.0 check
+> node --check server.js && node release_audit.mjs
+
+PASS  release package version is 24.9.0 — 24.9.0
+PASS  frontend release is 24.9.0
+PASS  backend release is 24.9.0
+PASS  root/public frontend byte-identical — a16bb253f51f
+PASS  no duplicate DOM IDs
+PASS  frontend inline JavaScript syntax
+PASS  no duplicate Express method/path routes
+PASS  manager create backend
+PASS  manager delete backend
+PASS  manager add UI
+PASS  permanent invoice delete backend
+PASS  permanent invoice delete UI
+PASS  invoice void workflow
+PASS  AI floating button
+PASS  AI shop chat endpoint
+PASS  multilingual AI voice selector
+PASS  mechanic Truck Is Here
+PASS  complete work order flow
+PASS  Fullbay customers import
+PASS  Fullbay parts import
+PASS  Fullbay service history import
+PASS  barcode scanner
+PASS  smart receiving
+PASS  side-by-side receiving preview
+PASS  offline banner
+PASS  offline sync queue badge
+PASS  manager permission middleware
+PASS  Fullbay inventory INSERT max SQL parameter remains $22 — max=$22
+PASS  Fullbay inventory INSERT does not reference $23
+PASS  manager employee management gated by employees permission
+PASS  Fullbay parts import gated by inventory permission
+PASS  Fullbay customer import gated by customer permission
+PASS  invoice APIs gated by invoices permission
+PASS  customer APIs gated by customers permission
+PASS  inventory APIs gated by inventory permission
+
+35/35 checks passed.
