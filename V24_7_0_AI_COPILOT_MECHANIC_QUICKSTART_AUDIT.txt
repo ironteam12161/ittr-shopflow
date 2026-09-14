@@ -1,0 +1,27 @@
+ITTR v24.7.0 - AI Copilot + Mechanic Quick Start
+
+Built from v24.6.4 labor-centric invoice release.
+
+Added:
+- Persistent floating AI Shop Assistant visible to admins and mechanics.
+- Multilingual questions; assistant is instructed to answer in the user's language.
+- Unit-history grounding from ITTR work orders + imported Fullbay service history.
+- Mechanic financial privacy: chat context does not include invoice totals, costs, margins, credit terms or payment data.
+- Mechanic Quick Start form: Company, USDOT, VIN, Unit, mileage, priority, first labor.
+- Server-side customer matching by USDOT and vehicle matching by VIN.
+- New work order automatically assigned to logged-in mechanic and marked Truck Here.
+- Optional first labor starts its time session immediately.
+- Mechanics can add another labor operation to an assigned active work order and start it.
+- Server verifies mechanic assignment before allowing labor addition.
+- Completed WOs cannot be changed by mechanic through the new endpoint.
+- Audit log entries for AI chat, mechanic-created WOs, and mechanic-added labor.
+
+Preserved:
+- v24.6.4 labor-centric invoice hierarchy.
+- Existing Parts/Inventory/Receiving/Fullbay/Vehicle History/PDF functionality.
+- Existing Railway/PostgreSQL architecture; no destructive reset.
+
+Deployment:
+Use the SAME Railway project, PostgreSQL database, and existing environment variables.
+AI Shop Assistant uses existing OPENROUTER_API_KEY or OPENAI_API_KEY server-side.
+No new AI API key is required if the existing AI features are already working.

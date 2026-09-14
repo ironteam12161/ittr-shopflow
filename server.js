@@ -955,7 +955,7 @@ app.get("/api/smart-search",auth,adminOnly,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"24.6.5",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"24.7.0",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -988,8 +988,8 @@ async function reconcileDuplicateImportedCustomers(){
  return {merged};
 }
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.6.5",backend:"24.6.5",build:"ITTR-24.6.5-FULLBAY-STYLE-INVOICE-LINES-20260912"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.6.5",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.7.0",backend:"24.7.0",build:"ITTR-24.7.0-AI-COPILOT-MECHANIC-QUICKSTART-20260914"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.7.0",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -1065,52 +1065,6 @@ async function closeOpenTaskSession(db,workOrderId,taskUid,mechanic,endReason,pa
   );
 }
 
-
-
-// v24.6.5 Mechanic self check-in: DOT + VIN -> assigned work order.
-app.post("/api/mechanic/work-orders",auth,async(req,res,next)=>{
- if(req.user?.role!=="mechanic"&&req.user?.role!=="admin")return res.status(403).json({error:"Mechanic access required."});
- const db=await requireDb().connect();
- try{
-  const dot=String(req.body?.dot||"").replace(/\D/g,"").slice(0,12),vin=String(req.body?.vin||"").trim().toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g,"").slice(0,17),mileage=req.body?.mileage===""||req.body?.mileage==null?null:Math.max(0,Math.round(Number(req.body.mileage)||0));
-  const complaint=String(req.body?.complaint||"").trim().slice(0,1000),requestedUnit=String(req.body?.unit||"").trim().slice(0,80);
-  if(!dot)return res.status(400).json({error:"Company USDOT is required."});
-  if(vin.length!==17)return res.status(400).json({error:"Enter a valid 17-character VIN."});
-  await db.query("BEGIN");
-  const cq=await db.query("SELECT id,customer_name,dot_number FROM fullbay_import_customers WHERE regexp_replace(coalesce(dot_number,''),'[^0-9]','','g')=$1 ORDER BY id LIMIT 2",[dot]);
-  if(cq.rowCount!==1){await db.query("ROLLBACK");return res.status(cq.rowCount?409:404).json({error:cq.rowCount?"More than one customer has this USDOT. Manager must correct the customer records first.":"USDOT was not found in Customers. Ask a manager to add/verify this company before starting work."});}
-  const customer=cq.rows[0];
-  let uq=await db.query("SELECT * FROM customer_units WHERE upper(coalesce(vin,''))=$1 ORDER BY id LIMIT 2",[vin]);
-  if(uq.rowCount>1){await db.query("ROLLBACK");return res.status(409).json({error:"VIN exists on more than one vehicle record. Manager must reconcile the duplicate before work starts."});}
-  let unit;
-  if(uq.rowCount===1){unit=uq.rows[0];if(unit.customer_id&&String(unit.customer_id)!==String(customer.id)){await db.query("ROLLBACK");return res.status(409).json({error:"This VIN belongs to a different customer in the vehicle directory. Manager review is required."});}}
-  else{
-   const unitNumber=requestedUnit||`VIN-${vin.slice(-6)}`;
-   const ins=await db.query(`INSERT INTO customer_units(customer_id,customer_name,unit_number,vin,mileage,source,created_at,updated_at) VALUES($1,$2,$3,$4,$5,'mechanic_checkin',now(),now()) RETURNING *`,[customer.id,customer.customer_name,unitNumber,vin,mileage]);unit=ins.rows[0];
-  }
-  if(mileage!=null&&(!unit.mileage||mileage>=Number(unit.mileage||0))){await db.query("UPDATE customer_units SET mileage=$2,updated_at=now() WHERE id=$1",[unit.id,mileage]);unit.mileage=mileage;}
-  const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
-  const sf=q.rows[0]?.payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
-  const duplicate=sf.workorders.find(w=>w&&w.status!=="Completed"&&String(w.vin||"").toUpperCase()===vin);
-  if(duplicate){await db.query("ROLLBACK");return res.status(409).json({error:`An active work order already exists for Unit ${duplicate.unit||unit.unit_number}. Open that work order instead.`,workOrderId:duplicate.id});}
-  const maxId=sf.workorders.reduce((m,w)=>Math.max(m,Number(w?.id)||0),0),id=maxId+1,now=new Date().toISOString();
-  const taskText=complaint||"Initial diagnosis / customer concern";
-  const task={uid:`wo-${id}-task-0-${crypto.randomBytes(4).toString("hex")}`,t:taskText,done:false,outcome:"",outcomeNote:"",parts:[],createdBy:req.user.username,createdAt:now,runningBy:""};
-  const w={id,unit:unit.unit_number,customer:customer.customer_name,customerId:Number(customer.id),unitRecordId:Number(unit.id),vin,year:unit.year||"",make:unit.make||"",model:unit.model||"",plate:unit.plate||"",mileage:mileage??unit.mileage??null,dot,mechanic:req.user.username,helpers:[],tasks:[task],status:"Open",priority:"Normal",date:now.slice(0,10),time:new Date().toTimeString().slice(0,5),truckHere:true,unitType:"customer",createdBy:req.user.username,createdAt:now,mechanicSelfStarted:true,history:[{type:"mechanic_self_checkin",at:now,by:req.user.username,dot,vin}]};
-  sf.workorders.push(w);const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
-  await db.query("COMMIT");await audit(req.user.username,"mechanic_work_order_created",{workOrderId:id,customerId:customer.id,unitId:unit.id,dot,vin});res.json({ok:true,workOrder:w,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
- }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
-});
-
-app.post("/api/work-orders/:id/tasks",auth,async(req,res,next)=>{
- const db=await requireDb().connect();try{
-  const workOrderId=String(req.params.id),name=String(req.body?.name||"").trim().slice(0,1000);if(!name)return res.status(400).json({error:"Labor / job description is required."});
-  await db.query("BEGIN");const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");const sf=q.rows[0]?.payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];const w=sf.workorders.find(x=>String(x?.id)===workOrderId);
-  if(!w){await db.query("ROLLBACK");return res.status(404).json({error:"Work order not found."})}if(!mechanicOwnsWorkOrder(req.user,w)){await db.query("ROLLBACK");return res.status(403).json({error:"You do not have access to this work order."})}if(w.status==="Completed"){await db.query("ROLLBACK");return res.status(409).json({error:"Completed work orders are locked."})}
-  w.tasks=Array.isArray(w.tasks)?w.tasks:[];const now=new Date().toISOString(),task={uid:`wo-${workOrderId}-task-${w.tasks.length}-${crypto.randomBytes(4).toString("hex")}`,t:name,done:false,outcome:"",outcomeNote:"",parts:[],createdBy:req.user.username,createdAt:now,runningBy:""};w.tasks.push(task);w.history=Array.isArray(w.history)?w.history:[];w.history.push({type:"task_added",at:now,by:req.user.username,task:name,taskUid:task.uid});
-  const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);await db.query("COMMIT");await audit(req.user.username,"work_order_task_added",{workOrderId,taskUid:task.uid});res.json({ok:true,task,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
- }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
-});
 
 app.post("/api/work-orders/:id/helpers",auth,async(req,res,next)=>{
  const db=await requireDb().connect();
@@ -2034,6 +1988,46 @@ async function textAI(system,user){
  const e=new Error("No AI provider is configured. Add OPENROUTER_API_KEY or OPENAI_API_KEY in Railway.");e.code="AI_NOT_CONFIGURED";throw e;
 }
 function selectedAIProvider(){if(aiProvider==="openrouter")return openRouterClient?"openrouter":"none";if(aiProvider==="openai")return client?"openai":"none";return openRouterClient?"openrouter":client?"openai":"none"}
+
+function aiHistoryText(rows){return rows.map(r=>`DATE: ${r.service_date||"unknown"} | UNIT: ${r.unit||""} | SOURCE: ${r.source||""} | JOB: ${r.job||""} | CORRECTION: ${r.correction||""} | MILEAGE: ${r.mileage||""} | TECH: ${r.tech||""}`).join("\n")}
+app.post("/api/ai/shop-chat",auth,async(req,res)=>{try{
+ const message=String(req.body?.message||"").trim();if(!message)return res.status(400).json({error:"message required"});if(message.length>3000)return res.status(400).json({error:"message is too long"});
+ const db=requireDb(),tokens=(message.match(/[A-Za-z0-9-]{3,}/g)||[]).slice(0,12);let history=[];
+ // Find relevant Fullbay history by unit/VIN/customer/job text. This is read-only and never exposes invoice prices to mechanics.
+ const likeTokens=tokens.map(x=>`%${x}%`);
+ if(likeTokens.length){
+   const q=await db.query(`SELECT action_completed_at AS service_date,unit_number AS unit,'Fullbay' AS source,coalesce(nullif(complaint,''),nullif(component,''),nullif(system,''),'Service') AS job,coalesce(actual_correction,'') AS correction,unit_miles AS mileage,coalesce(tech,lead_tech,'') AS tech FROM fullbay_service_history WHERE ${likeTokens.map((_,i)=>`(coalesce(unit_number,'') ILIKE $${i+1} OR coalesce(vin,'') ILIKE $${i+1} OR coalesce(customer_name,'') ILIKE $${i+1} OR coalesce(complaint,'') ILIKE $${i+1} OR coalesce(actual_correction,'') ILIKE $${i+1} OR coalesce(component,'') ILIKE $${i+1} OR coalesce(system,'') ILIKE $${i+1})`).join(' OR ')} ORDER BY action_completed_at DESC NULLS LAST LIMIT 60`,likeTokens);history.push(...q.rows);
+ }
+ const sq=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");const sf=sq.rows[0]?.payload||{};
+ for(const w of (Array.isArray(sf.workorders)?sf.workorders:[])){
+   const hay=[w.unit,w.vin,w.customer,w.dotNumber,...(Array.isArray(w.tasks)?w.tasks.map(x=>x.t):[])].join(' ').toLowerCase();if(tokens.length&&!tokens.some(x=>hay.includes(x.toLowerCase())))continue;
+   for(const task of (Array.isArray(w.tasks)?w.tasks:[]))history.push({service_date:task.completedAt||w.completedAt||w.date,unit:w.unit,source:'ITTR Work Order',job:task.t,correction:task.outcomeNote||task.note||'',mileage:w.mileage||'',tech:task.outcomeBy||task.runningBy||w.mechanic||''});
+ }
+ history=history.sort((a,b)=>new Date(b.service_date||0)-new Date(a.service_date||0)).slice(0,80);
+ const role=req.user?.role||'mechanic';const context=aiHistoryText(history);
+ const system=`You are ITTR Shop Assistant for a professional heavy-duty truck and trailer repair shop. Reply in the same language as the user's question unless they request another language. You may answer questions about truck/unit service history ONLY from the supplied ITTR/Fullbay records. Never invent a repair, date, mileage, diagnosis, part, or service. If records do not prove the answer, say that clearly and suggest what to search next. When asked when something was done, give the exact most recent matching date and mileage if present, then briefly mention older matching records if useful. Distinguish complaint from actual correction: a complaint alone does not prove the work was performed. The current user role is ${role}. For mechanic users, never reveal invoice totals, customer credit terms, internal costs, profit, or other financial data. For general repair questions, you can provide safe diagnostic guidance but label unverified possibilities. Keep answers concise and shop-practical.`;
+ const user=`QUESTION:\n${message}\n\nMATCHED SHOP HISTORY (${history.length} records; may include irrelevant keyword matches):\n${context||'No matching service records were found.'}`;
+ const answer=await textAI(system,user);await audit(req.user.username,'ai_shop_chat',{role,historyRecords:history.length});res.json({answer,historyRecords:history.length});
+ }catch(e){return aiErrorResponse(res,e,"AI shop chat failed")}});
+
+app.post("/api/mechanic/work-orders/:id/labor",auth,async(req,res,next)=>{if(req.user?.role!=="mechanic")return res.status(403).json({error:"Mechanic access required."});const db=await requireDb().connect();try{await db.query('BEGIN');const description=String(req.body?.description||'').trim();if(!description){await db.query('ROLLBACK');return res.status(400).json({error:'Labor description is required.'})}const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE"),sf=q.rows[0]?.payload||{workorders:[]};sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];const w=sf.workorders.find(x=>String(x?.id)===String(req.params.id));if(!w){await db.query('ROLLBACK');return res.status(404).json({error:'Work order not found.'})}const allowed=w.mechanic===req.user.username||(Array.isArray(w.helpers)&&w.helpers.includes(req.user.username));if(!allowed){await db.query('ROLLBACK');return res.status(403).json({error:'This work order is not assigned to you.'})}if(w.status==='Completed'){await db.query('ROLLBACK');return res.status(409).json({error:'Completed work orders cannot be changed by a mechanic.'})}w.tasks=Array.isArray(w.tasks)?w.tasks:[];const uid=`task-${crypto.randomUUID()}`,startNow=req.body?.startNow!==false,task={uid,t:description,done:false,startedAt:startNow?new Date().toISOString():'',stoppedAt:'',runningBy:startNow?req.user.username:'',elapsedMs:0,completedAt:'',taskOutcome:'',outcomeNote:'',outcomeAt:'',outcomeBy:'',paused:false,pausedAt:'',pauseReason:'',pauseNote:'',parts:[],source:'mechanic_added'};w.tasks.push(task);await db.query("UPDATE app_state SET payload=$2::jsonb,version=version+1,updated_at=now(),updated_by=$3 WHERE state_key=$1",['shopflow',JSON.stringify(sf),req.user.username]);if(startNow)await db.query(`INSERT INTO task_time_sessions(work_order_id,task_index,task_uid,task_name,mechanic_username,started_at) VALUES($1,$2,$3,$4,$5,now())`,[String(w.id),w.tasks.length-1,uid,description,req.user.username]);await db.query('COMMIT');await audit(req.user.username,'mechanic_labor_added',{workOrderId:w.id,taskUid:uid,description});res.json({ok:true,task})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
+
+app.post("/api/mechanic/work-orders",auth,async(req,res,next)=>{if(req.user?.role!=="mechanic")return res.status(403).json({error:"Mechanic access required."});const db=await requireDb().connect();try{
+ await db.query('BEGIN');const b=req.body||{},vin=String(b.vin||'').trim().toUpperCase(),dot=String(b.dotNumber||'').replace(/\D/g,''),unitInput=String(b.unit||'').trim();if(vin.length<6){await db.query('ROLLBACK');return res.status(400).json({error:'Enter a valid VIN.'})}
+ let customer=null;if(dot)customer=(await db.query(`SELECT * FROM fullbay_import_customers WHERE regexp_replace(coalesce(dot_number,''),'\\D','','g')=$1 LIMIT 1`,[dot])).rows[0]||null;
+ let unit=(await db.query(`SELECT * FROM customer_units WHERE upper(coalesce(vin,''))=upper($1) ORDER BY updated_at DESC LIMIT 1`,[vin])).rows[0]||null;
+ if(!customer&&unit?.customer_id)customer=(await db.query('SELECT * FROM fullbay_import_customers WHERE id=$1',[unit.customer_id])).rows[0]||null;
+ const customerName=String(customer?.customer_name||b.customer||unit?.customer_name||'Walk-In Customer').trim(),unitNumber=String(unit?.unit_number||unitInput||vin.slice(-6)).trim();
+ const q=await db.query("SELECT payload,version FROM app_state WHERE state_key='shopflow' FOR UPDATE"),sf=q.rows[0]?.payload&&typeof q.rows[0].payload==='object'?q.rows[0].payload:{workorders:[],issues:[]};sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
+ const ids=sf.workorders.map(x=>Number(x?.id)||0),id=Math.max(1000,...ids)+1,now=new Date(),labor=String(b.labor||'').trim();
+ const task=labor?{uid:`task-${crypto.randomUUID()}`,t:labor,done:false,startedAt:now.toISOString(),stoppedAt:'',runningBy:req.user.username,elapsedMs:0,completedAt:'',taskOutcome:'',outcomeNote:'',outcomeAt:'',outcomeBy:'',paused:false,pausedAt:'',pauseReason:'',pauseNote:'',parts:[]}:null;
+ const wo={id,unit:unitNumber,customer:customerName,customerId:customer?.id?String(customer.id):'',unitRecordId:unit?.id?String(unit.id):'',vin,year:unit?.year||'',make:unit?.make||'',model:unit?.model||'',plate:unit?.plate||'',mileage:Number(b.mileage||unit?.mileage||0)||0,dotNumber:dot||customer?.dot_number||'',date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),mechanic:req.user.username,helpers:[],priority:String(b.priority||'Normal'),parking:'',unitType:'customer',truckHere:true,fleetAuto:false,status:'Open',completedAt:'',tasks:task?[task]:[],notes:'Created by mechanic from Quick Start'};
+ sf.workorders.unshift(wo);await db.query("UPDATE app_state SET payload=$2::jsonb,version=version+1,updated_at=now(),updated_by=$3 WHERE state_key=$1",['shopflow',JSON.stringify(sf),req.user.username]);
+ if(unit?.id&&Number(b.mileage||0)>Number(unit.mileage||0))await db.query('UPDATE customer_units SET mileage=$2,updated_at=now() WHERE id=$1',[unit.id,Number(b.mileage)]);
+ if(task)await db.query(`INSERT INTO task_time_sessions(work_order_id,task_index,task_uid,task_name,mechanic_username,started_at) VALUES($1,0,$2,$3,$4,now())`,[String(id),task.uid,task.t,req.user.username]);
+ await db.query('COMMIT');await audit(req.user.username,'mechanic_work_order_created',{workOrderId:id,unit:unitNumber,vin,dot,matchedCustomer:Boolean(customer),matchedUnit:Boolean(unit)});res.json({ok:true,workOrder:wo});
+ }catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
+
 app.get("/api/ai/status",auth,(req,res)=>res.json({server:true,aiConfigured:Boolean(openRouterClient||client),provider:selectedAIProvider(),openRouterConfigured:Boolean(openRouterClient),openAIConfigured:Boolean(client),model:selectedAIProvider()==="openrouter"?openRouterModel:String(process.env.OPENAI_TEXT_MODEL||"gpt-5.6-luna"),message:openRouterClient?`OpenRouter paid-credit AI ready (${openRouterModel}).`:client?"AI ready via OpenAI.":"No AI key is configured."}));
 app.post("/api/translate",auth,async(req,res)=>{try{const {text,sourceLanguage="English",targetLanguage="Ukrainian",domain="semi-truck and trailer repair shop software"}=req.body||{};if(typeof text!=="string"||!text.trim())return res.status(400).json({error:"text is required"});if(text.length>5000)return res.status(400).json({error:"text is too long"});const key=cacheKey(text,targetLanguage);if(memoryCache.has(key))return res.json({translation:memoryCache.get(key),cached:true});const translation=await textAI(`You are the professional translator for a US semi-truck and trailer repair shop management application. Translate ${sourceLanguage} into ${targetLanguage}. Preserve truck/unit numbers, part numbers, VINs, usernames, company names, abbreviations, measurements, timestamps, and proper nouns. Use natural terminology used by diesel mechanics. Return only the translated text.`,`Domain: ${domain}\n\nText:\n${text}`);memoryCache.set(key,translation);res.json({translation,cached:false})}catch(e){return aiErrorResponse(res,e,"translation_failed")}});
 const NOTE_MODES={
@@ -2076,5 +2070,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}app.listen(port,()=>console.log(`ITTR v24.6.5 Online running on port ${port}`))})
+  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}app.listen(port,()=>console.log(`ITTR v24.7.0 Online running on port ${port}`))})
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});
