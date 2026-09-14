@@ -185,9 +185,171 @@ body.invoiceWorkspaceMode .invoiceLineItemsCard{min-width:0}
 @media print{body.invoiceWorkspaceMode #invoiceModal .x{display:none!important}}
 </style>
 
+<style>
 /* v24.16 invoice workspace polish */
 .invoiceWorkspaceTopbar{position:sticky;top:0;z-index:40;margin:-2px -2px 14px;padding:12px 14px;background:rgba(245,247,251,.96);backdrop-filter:blur(10px);border-bottom:1px solid #dde4ee}
 .invoiceWorkspaceTopbarRight{display:flex;align-items:center;gap:10px}.invoiceDraftState{font-size:12px;font-weight:800;color:#475467;padding:6px 9px;border-radius:999px;background:#eef2f6}.invoiceDraftState[data-state="saving"]{background:#eff8ff;color:#175cd3}.invoiceDraftState[data-state="saved"]{background:#ecfdf3;color:#027a48}.invoiceDraftState[data-state="error"]{background:#fef3f2;color:#b42318}.invoiceDraftState[data-state="dirty"]{background:#fff7e8;color:#b54708}
 .invoiceServiceCard{border-radius:12px!important;box-shadow:0 1px 3px rgba(16,24,40,.06)!important}.invoiceServiceHead{padding:11px 12px!important}.invoiceServiceRows{gap:0!important}.invoiceServicePartRow,.invoiceServiceLaborRow{border-radius:0!important;border-left:0!important;border-right:0!important;border-bottom:0!important;padding:9px 10px!important}.invoiceServiceFooterActions{padding:10px 12px!important;background:#fafbfc!important}.invoiceServiceSubtotal{padding:10px 12px!important}.invoiceGridHeader{position:sticky;top:70px;z-index:20;background:#f8fafc!important;border:1px solid #e4e7ec;border-radius:9px 9px 0 0}
 .invoicePartSuggestItem{cursor:pointer}.invoicePartSuggestItem:active{transform:none!important}.invoicePartLookupWrap input:focus{box-shadow:0 0 0 3px rgba(21,94,239,.12)!important;border-color:#84adff!important}
 @media(max-width:900px){.invoiceWorkspaceTopbar{position:static}.invoiceGridHeader{position:static}.invoiceWorkspaceTopbarRight{flex-wrap:wrap;justify-content:flex-end}}
+</style>
+
+
+<style>
+/* v24.16.3 invoice grid layout repair */
+.invoiceGridHeader{
+  display:grid!important;
+  grid-template-columns:105px minmax(260px,1.7fr) 78px 105px 125px 78px 105px 110px 58px!important;
+  gap:8px!important;align-items:center!important;padding:9px 12px!important;
+}
+.invoiceServicePartRow,.invoiceServiceLaborRow{
+  display:grid!important;
+  grid-template-columns:105px minmax(260px,1.7fr) 78px 105px 125px 78px 105px 110px 58px!important;
+  gap:8px!important;align-items:center!important;padding:9px 12px!important;
+}
+.invoiceServicePartRow input,.invoiceServiceLaborRow input,
+.invoiceServicePartRow select,.invoiceServiceLaborRow select{
+  box-sizing:border-box!important;max-width:100%!important;min-width:0!important;
+}
+.invoicePartDescription{min-width:0!important}
+.invoicePartDescription input,.invoiceLaborDescription{width:100%!important;min-width:0!important}
+.invoiceQtyUnit,.invoiceCostCell,.invoicePriceCell,.invoiceTaxCell,
+.invoiceDiscountControl,.invoiceLineNet,.invoiceRowActions{min-width:0!important}
+.invoiceRowActions{display:flex!important;align-items:center!important;justify-content:flex-end!important;gap:4px!important}
+.invoiceServiceSubtotal{padding:10px 12px!important}
+@media(max-width:1180px){
+  .invoiceGridHeader{display:none!important}
+  .invoiceServicePartRow,.invoiceServiceLaborRow{
+    grid-template-columns:95px minmax(200px,1fr) 80px 105px 115px 65px 110px 100px 44px!important;
+  }
+}
+@media(max-width:820px){
+  .invoiceServicePartRow,.invoiceServiceLaborRow{grid-template-columns:86px 1fr 1fr!important}
+}
+@media(max-width:560px){
+  .invoiceServicePartRow,.invoiceServiceLaborRow{grid-template-columns:1fr 1fr!important}
+}
+</style>
+
+
+<style>
+/* v24.16.4 simplified invoice UX */
+.invoiceLineItemsCard{padding:18px!important}
+.invoiceServiceBuilderBar{
+  position:sticky!important;top:0!important;z-index:35!important;
+  display:flex!important;align-items:center!important;justify-content:space-between!important;
+  gap:18px!important;padding:12px 14px!important;margin:-4px -4px 16px!important;
+  background:rgba(255,255,255,.97)!important;border:1px solid #e4e7ec!important;
+  border-radius:12px!important;box-shadow:0 3px 12px rgba(16,24,40,.05)!important;
+}
+.invoiceServiceBuilderBar h2{font-size:20px!important}
+.invoiceServiceBuilderBar .muted{max-width:720px!important;line-height:1.45!important;margin-top:3px!important}
+.invoiceServiceBuilderBar>button{min-height:42px!important;padding:9px 16px!important;font-weight:800!important}
+
+.invoiceNewServiceBox{
+  border:2px solid #b2ccff!important;background:#f5f8ff!important;
+  padding:16px!important;border-radius:12px!important;margin-bottom:18px!important;
+}
+.invoiceNewServiceBox label{font-size:13px!important;font-weight:800!important;color:#344054!important}
+.invoiceNewServiceBox input{min-height:42px!important;font-size:15px!important}
+.invoiceNewServiceBox button{min-height:42px!important}
+
+.invoiceGridHeader{
+  font-size:11px!important;text-transform:uppercase!important;letter-spacing:.035em!important;
+  color:#667085!important;background:#f2f4f7!important;border-color:#d0d5dd!important;
+}
+.invoiceGridHeader span{white-space:normal!important;line-height:1.15!important}
+
+.invoiceServiceStack{gap:18px!important}
+.invoiceServiceCard{
+  border:1px solid #d0d5dd!important;border-radius:14px!important;
+  box-shadow:0 2px 8px rgba(16,24,40,.05)!important;overflow:hidden!important;
+}
+.invoiceServiceHead{
+  min-height:64px!important;padding:12px 14px!important;
+  background:#f8fafc!important;border-bottom:1px solid #e4e7ec!important;
+}
+.invoiceServiceIndex{
+  width:34px!important;height:34px!important;border-radius:9px!important;
+  font-size:15px!important;
+}
+.invoiceServiceTitle input{
+  width:100%!important;min-height:38px!important;font-size:17px!important;
+  color:#101828!important;font-weight:850!important;
+}
+.invoiceServiceTotal b{font-size:18px!important}
+.invoiceServiceTotal:before{
+  content:"Service total";display:block;font-size:10px;line-height:1.1;
+  text-transform:uppercase;letter-spacing:.04em;color:#667085;font-weight:800;
+}
+.invoiceServiceQuickAdd{display:none!important}
+
+.invoiceServicePartRow,.invoiceServiceLaborRow{
+  min-height:62px!important;background:#fff!important;
+}
+.invoiceServicePartRow:hover,.invoiceServiceLaborRow:hover{background:#f9fafb!important}
+.invoiceGridItemLabel{
+  font-weight:800!important;color:#344054!important;text-transform:capitalize!important;
+}
+.invoiceServicePartRow input,.invoiceServiceLaborRow input,
+.invoiceServicePartRow select,.invoiceServiceLaborRow select{
+  min-height:38px!important;border:1px solid #d0d5dd!important;border-radius:8px!important;
+  background:#fff!important;padding:7px 9px!important;
+}
+.invoiceServicePartRow input:focus,.invoiceServiceLaborRow input:focus,
+.invoiceServicePartRow select:focus,.invoiceServiceLaborRow select:focus{
+  border-color:#84adff!important;box-shadow:0 0 0 3px rgba(21,94,239,.10)!important;
+  outline:none!important;
+}
+.invoiceLineNet{font-weight:850!important;color:#101828!important}
+.invoiceTaxCell label{font-size:11px!important;font-weight:700!important}
+.invoiceRowActions button{min-width:42px!important;min-height:38px!important}
+
+.invoiceServiceSubtotal{
+  display:flex!important;justify-content:space-between!important;align-items:center!important;
+  gap:16px!important;background:#f9fafb!important;border-top:1px solid #eaecf0!important;
+  color:#475467!important;
+}
+.invoiceServiceSubtotalValue{font-size:16px!important;font-weight:900!important;color:#101828!important}
+
+.invoiceServiceFooterActions{
+  display:flex!important;align-items:center!important;gap:8px!important;flex-wrap:wrap!important;
+  padding:10px 12px!important;background:#fff!important;border-top:1px solid #f2f4f7!important;
+}
+.invoiceServiceFooterActions:before{
+  content:"Add to this service:";font-size:12px;font-weight:800;color:#667085;margin-right:2px;
+}
+.invoiceServiceFooterActions button{
+  min-height:36px!important;padding:7px 12px!important;border-radius:8px!important;
+  font-weight:750!important;
+}
+.invoiceBottomActions{display:none!important}
+
+.invoiceNotesCard{padding:18px!important}
+.invoiceNotesIntro{margin-bottom:14px!important}
+.invoiceNotesIntro h2{margin:0 0 4px!important}
+.invoiceNotesGrid{display:grid!important;grid-template-columns:1fr 1fr!important;gap:16px!important}
+.invoiceNotesGrid .field{margin:0!important}
+.invoiceNotesGrid label{display:flex!important;align-items:center!important;gap:8px!important;font-weight:850!important}
+.invoiceNoteHint{
+  display:inline-flex;padding:3px 7px;border-radius:999px;background:#f2f4f7;
+  color:#667085;font-size:10px;font-weight:750;
+}
+.invoiceNotesGrid textarea{width:100%!important;min-height:100px!important;resize:vertical!important}
+
+.invoiceTotals{
+  border:1px solid #d0d5dd!important;border-radius:14px!important;
+  box-shadow:0 4px 14px rgba(16,24,40,.06)!important;
+}
+.invoiceTotals h2{font-size:19px!important}
+.invoiceSummaryRow{padding:7px 0!important}
+.invoiceSummaryRow span{color:#475467!important}
+.invoiceSummaryRow b{color:#101828!important}
+
+@media(max-width:900px){
+  .invoiceServiceBuilderBar{position:static!important;align-items:flex-start!important;flex-direction:column!important}
+  .invoiceServiceBuilderBar>button{width:100%!important}
+  .invoiceNotesGrid{grid-template-columns:1fr!important}
+  .invoiceServiceFooterActions:before{width:100%!important}
+}
+</style>
