@@ -1055,7 +1055,7 @@ app.get("/api/smart-search",auth,adminOnly,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"24.18.0",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"24.18.2",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -1088,8 +1088,8 @@ async function reconcileDuplicateImportedCustomers(){
  return {merged};
 }
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.18.0",backend:"24.18.0",build:"ITTR-24.18.0-PRINT-LEGAL-PART-LOOKUP-20260914"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.18.0",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.18.2",backend:"24.18.2",build:"ITTR-24.18.2-PRINT-LEGAL-PART-LOOKUP-20260914"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.18.2",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -2342,7 +2342,7 @@ app.get('/api/invoices/:id/pdf',auth,managerPermission("invoices"),async(req,res
  try{
   const db=requireDb(),x=await getInvoiceBundle(db,req.params.id);
   if(!x)return res.status(404).json({error:'Invoice not found.'});
-  const i=x.invoice,lines=Array.isArray(x.lines)?x.lines:[];
+  const i=x.invoice,rawLines=Array.isArray(x.lines)?x.lines:[],lines=rawLines.filter(l=>l.line_type==='labor'||String(l.part_number||'').trim()||String(l.description||'').trim()||Number(l.unit_price||0)!==0||Number(l.quantity||0)!==1);
   res.setHeader('Content-Type','application/pdf');
   res.setHeader('Content-Disposition',`attachment; filename="${String(i.invoice_number).replace(/[^A-Za-z0-9_-]/g,'_')}.pdf"`);
   res.setHeader('Cache-Control','private, no-store');
@@ -2818,5 +2818,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v24.18.0 Online running on port ${port}`))})
+  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v24.18.2 Online running on port ${port}`))})
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

@@ -12,9 +12,9 @@ const pkg = JSON.parse(read('package.json'));
 const modulesInvoicesHtml = read('modules/invoices.html');
 const modulesInvoicesJs = read('modules/invoices.js');
 
-check('release package version is 24.18.0', pkg.version === '24.18.0', pkg.version);
-check('frontend release is 24.18.0', html.includes("const FRONTEND_VERSION='24.18.0';") || html.includes('const FRONTEND_VERSION="24.18.0"'));
-check('backend release is 24.18.0', server.includes('frontendExpected:"24.18.0",backend:"24.18.0"'));
+check('release package version is 24.18.2', pkg.version === '24.18.2', pkg.version);
+check('frontend release is 24.18.2', html.includes("const FRONTEND_VERSION='24.18.2';") || html.includes('const FRONTEND_VERSION="24.18.2"'));
+check('backend release is 24.18.2', server.includes('frontendExpected:"24.18.2",backend:"24.18.2"'));
 check('static web root restricted to public directory', server.includes('app.use(express.static(publicDir') && !server.includes('app.use(express.static(webRoot'));
 check('parts search is read-only (no per-result barcode write loop)', !server.includes('for(const x of r.rows)if(!x.internal_barcode)x.internal_barcode=await ensurePartBarcode'));
 check('production 500 responses hide internal error detail', server.includes('isProd?"An unexpected server error occurred.":safe'));
@@ -314,6 +314,33 @@ check('print invoice legal block is customer-ready and page-safe',
   modulesInvoicesHtml.includes('.invoiceLegalBlock{display:block!important;break-inside:avoid!important') &&
   server.includes('const noticeH=Math.max(150,legalH+tireH+82)') &&
   server.includes('ensure(noticeH+8)'));
+
+
+check('desktop invoice editor uses a ten-column aligned accounting grid',
+  modulesInvoicesHtml.includes('grid-template-columns:72px minmax(300px,1fr) 64px 78px 72px 84px 52px 92px 78px 38px!important'));
+check('labor rate control spans cost markup and price columns',
+  modulesInvoicesHtml.includes('.invoiceServiceLaborRow .invoiceLaborRateField{grid-column:4 / span 3!important'));
+check('invoice editor uses compact 32px controls and smaller desktop typography',
+  modulesInvoicesHtml.includes('min-height:32px!important') &&
+  modulesInvoicesHtml.includes('font-size:12px!important'));
+check('invoice markup percent stays inline instead of wrapping below input',
+  modulesInvoicesHtml.includes('.invoiceMarkupCell{') &&
+  modulesInvoicesHtml.includes('grid-template-columns:minmax(0,1fr) auto!important'));
+
+
+check('print uses dedicated customer-only five-column header',
+  html.includes('invoicePrintOnly invoicePrintLineHeader') &&
+  modulesInvoicesHtml.includes('.invoiceGridHeader{display:none!important}') &&
+  modulesInvoicesHtml.includes('grid-template-columns:48px minmax(0,1fr) 58px 82px 82px!important'));
+check('print labor row aligns to same five customer columns',
+  modulesInvoicesHtml.includes('.invoiceLaborBlockHead{') &&
+  modulesInvoicesHtml.includes(".invoiceServiceIndex::after{content:'Labor'"));
+check('print hides empty draft part placeholders',
+  html.includes('invoicePrintEmptyLine') && modulesInvoicesHtml.includes('.invoiceServicePartRow.invoicePrintEmptyLine{display:none!important}'));
+check('print collapses empty customer notes',
+  html.includes('invoicePrintEmptyNotes') && modulesInvoicesHtml.includes('.invoiceNotesCard.invoicePrintEmptyNotes{display:none!important}'));
+check('server PDF filters empty placeholder invoice lines',
+  server.includes('rawLines=Array.isArray(x.lines)?x.lines:[]') && server.includes("l.line_type==='labor'||String(l.part_number||'').trim()"));
 
 const failed = checks.filter(x=>!x.ok);
 for (const x of checks) console.log(`${x.ok?'PASS':'FAIL'}  ${x.name}${x.detail?` — ${x.detail}`:''}`);
