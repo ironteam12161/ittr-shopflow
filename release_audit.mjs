@@ -12,9 +12,9 @@ const pkg = JSON.parse(read('package.json'));
 const modulesInvoicesHtml = read('modules/invoices.html');
 const modulesInvoicesJs = read('modules/invoices.js');
 
-check('release package version is 24.17.7', pkg.version === '24.17.7', pkg.version);
-check('frontend release is 24.17.7', html.includes("const FRONTEND_VERSION='24.17.7';") || html.includes('const FRONTEND_VERSION="24.17.7"'));
-check('backend release is 24.17.7', server.includes('frontendExpected:"24.17.7",backend:"24.17.7"'));
+check('release package version is 24.17.9', pkg.version === '24.17.9', pkg.version);
+check('frontend release is 24.17.9', html.includes("const FRONTEND_VERSION='24.17.9';") || html.includes('const FRONTEND_VERSION="24.17.9"'));
+check('backend release is 24.17.9', server.includes('frontendExpected:"24.17.9",backend:"24.17.9"'));
 check('static web root restricted to public directory', server.includes('app.use(express.static(publicDir') && !server.includes('app.use(express.static(webRoot'));
 check('parts search is read-only (no per-result barcode write loop)', !server.includes('for(const x of r.rows)if(!x.internal_barcode)x.internal_barcode=await ensurePartBarcode'));
 check('production 500 responses hide internal error detail', server.includes('isProd?"An unexpected server error occurred.":safe'));
@@ -178,14 +178,17 @@ check('invoice workspace uses full viewport class', modulesInvoicesHtml.includes
 check('part rows query live inventory', html.includes('/api/parts?q=${encodeURIComponent(q)}&limit=12'));
 check('part inventory lookup fills part number', html.includes("set('.ilPart',cleanPartField(item.part_number,''))"));
 check('part inventory lookup fills description', html.includes("set('.ilDesc',cleanPartField(item.description,''))"));
-check('part inventory lookup fills cost', html.includes("set('.ilCost',Number(item.cost||0).toFixed(2))"));
-check('part inventory lookup fills selling price', html.includes("set('.ilPrice',Number(item.price||0).toFixed(2))"));
+check('part inventory lookup fills cost', html.includes("set('.ilCost',invCost.toFixed(2))"));
+check('part inventory lookup fills selling price', html.includes("set('.ilPrice',invPrice.toFixed(2))"));
 check('part inventory suggestions show availability', html.includes('Avail ${Number(x.available||0).toLocaleString()}'));
 
 
 // v24.16.1 invoice tab / draft-preservation / runtime regression guards.
 check('mechanic account renderer restored', html.includes('function renderMechanicAccounts()') && html.includes('mechanicAccountsTable'));
 check('invoice opens exactly one noopener tab without same-tab fallback', html.includes("link.target='_blank'") && html.includes("link.rel='noopener noreferrer'") && !html.includes("Opening it here instead") && !html.includes("if(!tab){"));
+check('invoice workspace same-origin auth handoff channel', html.includes("INVOICE_AUTH_CHANNEL='ittr_invoice_auth_v1'") && html.includes('new BroadcastChannel(INVOICE_AUTH_CHANNEL)'));
+check('invoice workspace requests inherited session before login screen', html.includes('await inheritInvoiceWorkspaceSession()') && html.includes("sessionStorage.setItem('ittr_cloud_token',cloudToken)"));
+check('invoice auth token is not added to workspace URL', !html.includes("searchParams.set('token'") && !html.includes("searchParams.set('auth'"));
 check('manager account UI function restored', html.includes('function openManagerAccount()') && html.includes("managerAccountFormEl.onsubmit"));
 check('manual library UI functions restored', html.includes('function openManualLibrary()') && html.includes('function loadManualLibrary(') && html.includes('function openManualDocument('));
 check('manual library upload handler restored', html.includes('manualLibraryFormEl.onsubmit'));
@@ -282,6 +285,12 @@ check('mechanic wizard captures decoded vehicle fields',
 check('FMCSA key remains server-side only',
   server.includes('const FMCSA_WEBKEY=String(process.env.FMCSA_WEBKEY||"").trim()') &&
   !html.includes('FMCSA_WEBKEY'));
+
+
+check('inventory part selection autofills stored selling price', html.includes("set('.ilPrice',invPrice.toFixed(2))") && html.includes('Number(item.price||0)'));
+check('invoice part rows expose markup percent control', html.includes('class=\"ilMarkup\"') && html.includes('invoiceApplyPartMarkup'));
+check('manual selling price recalculates effective markup', html.includes('function invoicePartPriceChanged') && html.includes('invoiceMarkupFromCostPrice'));
+check('cost plus markup recalculates selling price', html.includes('function invoicePartCostChanged') && html.includes('cost*(1+markup/100)'));
 
 const failed = checks.filter(x=>!x.ok);
 for (const x of checks) console.log(`${x.ok?'PASS':'FAIL'}  ${x.name}${x.detail?` — ${x.detail}`:''}`);
