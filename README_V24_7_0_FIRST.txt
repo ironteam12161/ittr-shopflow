@@ -1,0 +1,1 @@
+Deploy over the SAME Railway project/database. Do not reset PostgreSQL. Verify frontend/backend 24.7.0. Hard refresh. Test invoice history Open, part autocomplete, add part without data loss, labor-rate inheritance, shop supplies, tax exemption, PDF, reopen/edit, delete draft.

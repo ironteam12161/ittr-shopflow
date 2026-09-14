@@ -1,0 +1,17 @@
+ITTR v24.7.0 PROFESSIONAL INVOICE SYSTEM AUDIT
+
+Major fixes:
+- Vehicle History invoice Open routing: invoice records open /api/invoices/:id instead of being treated as work orders. Fixes API endpoint not found from invoice history.
+- Labor UI removes duplicate Service/Job field. One labor operation has one customer-facing service description.
+- Part number and description autocomplete against live ITTR inventory.
+- Adding Part/New Labor saves current unsaved lines before refresh, preventing typed data loss.
+- Labor rate presets: New Client 115, Our Client 110, Old Client 100, Owner 60, Custom. New labor inherits FIRST labor rate only. Later labor custom changes do not change inheritance.
+- Tax exemption fields and server-authoritative zero tax.
+- Shop Supplies and Environmental Fee included in subtotal and taxable base when invoice is not exempt.
+- Sent/partial/paid invoices can be reopened with required audit reason. Draft/void invoices without payments can be permanently deleted. Paid invoices protected from destructive deletion.
+- Unit and customer history now include ITTR invoices as a separate source.
+- PDF redesigned with logo, grouped labor/parts, explicit fees, tax exemption, parts warranty and 50-mile tire/wheel re-torque notice.
+- PDF footer moved inside printable area to prevent blank trailing page.
+- No destructive database reset. Columns added with IF NOT EXISTS.
+
+Tax note: Illinois exact combined rate depends on location and can change Jan 1 / Jul 1. System keeps the rate editable and displays official IDOR guidance rather than pretending one statewide combined rate fits every location.
