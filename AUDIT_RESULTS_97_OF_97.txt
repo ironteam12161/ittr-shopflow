@@ -1,0 +1,103 @@
+
+> ittr-shopflow-online@24.11.0 check
+> node --check server.js && node --check frontend_check.js && node --check modules/invoices.js && node --check modules/trucksearch.js && node --check modules/parts.js && node --check modules/customers.js && node --check modules/procenter.js && node release_audit.mjs
+
+PASS  release package version is 24.11.0 — 24.11.0
+PASS  frontend release is 24.11.0
+PASS  backend release is 24.11.0
+PASS  root/public frontend byte-identical — 178a8a4155ba
+PASS  no duplicate DOM IDs
+PASS  frontend inline JavaScript syntax
+PASS  no duplicate Express method/path routes
+PASS  manager create backend
+PASS  manager delete backend
+PASS  manager add UI
+PASS  permanent invoice delete backend
+PASS  permanent invoice delete UI
+PASS  invoice void workflow
+PASS  AI floating button
+PASS  AI shop chat endpoint
+PASS  multilingual AI voice selector
+PASS  mechanic Truck Is Here
+PASS  complete work order flow
+PASS  Fullbay customers import
+PASS  Fullbay parts import
+PASS  Fullbay service history import
+PASS  barcode scanner
+PASS  smart receiving
+PASS  side-by-side receiving preview
+PASS  offline banner
+PASS  offline sync queue badge
+PASS  manager permission middleware
+PASS  Fullbay inventory INSERT max SQL parameter remains $22 — max=$22
+PASS  Fullbay inventory INSERT does not reference $23
+PASS  manager employee management gated by employees permission
+PASS  Fullbay parts import gated by inventory permission
+PASS  Fullbay customer import gated by customer permission
+PASS  invoice APIs gated by invoices permission
+PASS  customer APIs gated by customers permission
+PASS  inventory APIs gated by inventory permission
+PASS  lazy host present: invoices
+PASS  module HTML present: invoices
+PASS  module JS present: invoices
+PASS  lazy host present: trucksearch
+PASS  module HTML present: trucksearch
+PASS  module JS present: trucksearch
+PASS  lazy host present: parts
+PASS  module HTML present: parts
+PASS  module JS present: parts
+PASS  lazy host present: customers
+PASS  module HTML present: customers
+PASS  module JS present: customers
+PASS  lazy host present: procenter
+PASS  module HTML present: procenter
+PASS  module JS present: procenter
+PASS  route loader uses dynamic import
+PASS  route unmount aborts module listeners
+PASS  heavy view DOM not embedded at startup
+PASS  mechanic self-start wizard UI
+PASS  mechanic self-start mobile entry
+PASS  mechanic self-start backend endpoint
+PASS  self-start restricted to mechanic role
+PASS  self-start forces current mechanic assignment
+PASS  self-start marks truck here
+PASS  DOT included in mechanic unit lookup
+PASS  touch-first mechanic target 52px
+PASS  job state color tokens
+PASS  AI FAB hidden while chat open
+PASS  AI mobile full screen 100dvh
+PASS  AI voice Web Speech API
+PASS  AI voice language en-US
+PASS  AI voice language uk-UA
+PASS  AI voice language pl-PL
+PASS  AI voice language es-ES
+PASS  AI voice language ru-RU
+PASS  persistent offline mutation queue
+PASS  sync badge exact requested id
+PASS  online restores queued POST sync
+PASS  receiving 50/50 dual pane
+PASS  receiving viewer zoom and rotate
+PASS  receiving supports price warning over 5 percent
+PASS  receiving missing part validation
+PASS  receiving unlinked vendor validation
+PASS  receiving Save Draft
+PASS  receiving Commit to Stock Inventory
+PASS  global toast region
+PASS  runtime errors use toast
+PASS  WebSocket server status feed
+PASS  WebSocket auth uses session token hash
+PASS  WebSocket client reconnect wrapper
+PASS  WebSocket reconnect max 30 seconds
+PASS  ws package dependency
+PASS  invoice categorized labor section
+PASS  invoice categorized parts section
+PASS  invoice per-line discount type
+PASS  invoice per-line taxable control
+PASS  invoice print stylesheet
+PASS  old paid/void invoice permanent delete visible to admin
+PASS  shop AI send implementation restored
+PASS  AI writing live speech recognition
+PASS  AI processing state
+PASS  AI part verification banner
+
+97/97 checks passed.

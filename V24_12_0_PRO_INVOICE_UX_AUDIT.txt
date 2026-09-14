@@ -1,0 +1,23 @@
+ITTR ShopFlow v24.12.0 Targeted Invoice Refactor
+
+Implemented on top of v24.11.0 to preserve prior fixes.
+
+DATA / API
+- Added additive customer_invoices fields: dot_number, discount_type, discount_value, billing address snapshot fields.
+- Existing invoice discount values are backfilled as fixed-dollar discounts.
+- Invoice PUT now persists customer_id, unit_id, VIN, DOT, mileage, payment terms and global discount mode/value.
+- Server calculation taxes only invoice lines marked taxable.
+- Global discount supports fixed USD or percent and reduces the taxable basis proportionally.
+
+UI
+- Customer/vehicle billing header with Customer and Unit dropdowns.
+- Selecting a customer loads its fleet; selecting a unit fills VIN and mileage; customer fills USDOT.
+- Controlled payment terms automatically calculate due date.
+- Separate Labor & Services and Parts & Materials tables with dedicated subtotals.
+- Live subtotal, discount, tax, grand total and balance preview.
+- Print stylesheet hides application controls and renders customer-facing billing layout.
+
+COMPATIBILITY
+- Existing historical invoices remain readable.
+- Paid and void invoice delete visibility fix from v24.11 remains preserved for owner/admin.
+- Fullbay v23.7.1 inventory SQL parameter regression guard remains preserved.

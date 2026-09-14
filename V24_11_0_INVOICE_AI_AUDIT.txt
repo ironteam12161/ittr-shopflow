@@ -1,0 +1,23 @@
+ITTR ShopFlow v24.11.0 — TARGETED INVOICE + AI AUDIT
+
+AUDIT FINDINGS FIXED
+1. Workshop AI chat UI called sendShopAI(), but v24.10.0 contained no sendShopAI function. The /api/ai/shop-chat backend was intact. Restored the frontend send workflow with busy state, errors, unit context, source badges and quick prompts.
+2. Permanent invoice deletion backend supported owner/admin deletion for any invoice, but the UI nested Delete Permanently inside a condition that hid it whenever the invoice was void or had payments. Owner/Admin deletion is now visible for old, paid and void invoices, with exact invoice-number confirmation and audit logging retained.
+3. Invoice creation/editor was too deeply organized around labor operations with attached children. v24.11.0 presents customer billing as two primary categories: Labor & Services and Parts & Materials. Labor, part/material, and fee/sublet rows can be added directly.
+4. Existing line discount stored only a fixed monetary amount. v24.11.0 adds additive database fields discount_type and discount_value while preserving legacy discount amount calculations. Both fixed USD and percentage discounts are supported per line.
+5. Line tax control is explicit per item and recalculation continues to tax only taxable post-discount amounts.
+6. Customer-facing browser print is optimized with @media print; navigation, app buttons, system controls and internal notes are removed.
+7. AI Writing Assistant dictation previously relied on MediaRecorder/server transcription. The Operations AI panel now provides live Web Speech streaming with English, Ukrainian, Polish, Spanish, Russian and Auto/App Language mode.
+8. AI action controls now disable during requests and show visible analyzing spinners.
+9. Part cross-reference output includes a permanent fitment verification warning.
+
+DATABASE
+- Additive columns only:
+  customer_invoice_lines.discount_type TEXT DEFAULT 'fixed'
+  customer_invoice_lines.discount_value NUMERIC DEFAULT 0
+- Legacy discount values are backfilled safely.
+- No database reset required.
+
+REGRESSION STATUS
+97/97 checks passed.
+Fullbay v23.7.1 import protection remains: max SQL parameter $22 and no $23 regression.

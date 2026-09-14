@@ -10,9 +10,9 @@ const pub = read('public/index.html');
 const server = read('server.js');
 const pkg = JSON.parse(read('package.json'));
 
-check('release package version is 24.10.0', pkg.version === '24.10.0', pkg.version);
-check('frontend release is 24.10.0', html.includes('const FRONTEND_VERSION="24.10.0";'));
-check('backend release is 24.10.0', server.includes('frontendExpected:"24.10.0",backend:"24.10.0"'));
+check('release package version is 24.12.0', pkg.version === '24.12.0', pkg.version);
+check('frontend release is 24.12.0', html.includes("const FRONTEND_VERSION='24.12.0';") || html.includes('const FRONTEND_VERSION="24.12.0";'));
+check('backend release is 24.12.0', server.includes('frontendExpected:"24.12.0",backend:"24.12.0"'));
 check('root/public frontend byte-identical', html === pub, crypto.createHash('sha256').update(html).digest('hex').slice(0,12));
 
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
@@ -84,7 +84,7 @@ check('route loader uses dynamic import', html.includes('import(cfg.js)'));
 check('route unmount aborts module listeners', html.includes('instance.scope.cleanup()'));
 check('heavy view DOM not embedded at startup', !html.includes('<div id="invoiceKpis"') && !html.includes('<div id="partsStats"') && !html.includes('<div id="vehicleProfileResults"'));
 
-// v24.10.0 mechanic/mobile/AI/receiving/resilience regression guards.
+// v24.12.0 mechanic/mobile/AI/receiving/resilience regression guards.
 check('mechanic self-start wizard UI', html.includes('id="mechanicStartModal"') && html.includes('openMechanicStartWizard()'));
 check('mechanic self-start mobile entry', html.includes('Start Job') && html.includes('onclick="openMechanicStartWizard()"'));
 check('mechanic self-start backend endpoint', server.includes('app.post("/api/work-orders/self-start",auth'));
@@ -116,7 +116,32 @@ check('WebSocket client reconnect wrapper', html.includes('function connectLiveS
 check('WebSocket reconnect max 30 seconds', html.includes('Math.min(30000'));
 check('ws package dependency', pkg.dependencies?.ws === '8.18.3');
 
+check('invoice categorized labor section', html.includes('Labor & Services'));
+check('invoice categorized parts section', html.includes('Parts & Materials'));
+check('invoice per-line discount type', html.includes('ilDiscountType'));
+check('invoice per-line taxable control', html.includes('Taxable'));
+check('invoice print stylesheet', read('public/modules/invoices.html').includes('@media print'));
+check('old paid/void invoice permanent delete visible to admin', html.includes("session?.role==='admin'?`<button class=\"danger\" onclick=\"permanentlyDeleteInvoice"));
+check('shop AI send implementation restored', html.includes('async function sendShopAI()'));
+check('AI writing live speech recognition', read('public/modules/procenter.js').includes('webkitSpeechRecognition'));
+check('AI processing state', read('public/modules/procenter.html').includes('AI Analyzing Fault Codes'));
+check('AI part verification banner', read('public/modules/procenter.html').includes('AI suggestion only. Verify fitment in OEM catalog before ordering.'));
+
+check('invoice customer selector', html.includes('id="invCustomerSelect"'));
+check('invoice unit selector', html.includes('id="invUnitSelect"'));
+check('invoice VIN autofill field', html.includes('id="invVin"'));
+check('invoice USDOT autofill field', html.includes('id="invDot"'));
+check('invoice payment terms controlled options', html.includes('Net 15') && html.includes('Net 30') && html.includes('Net 60'));
+check('invoice global discount percent/fixed', html.includes('id="invDiscountType"') && html.includes('id="invDiscountValue"'));
+check('invoice due-date live module logic', read('public/modules/invoices.js').includes('syncDueDate') && read('public/modules/invoices.js').includes('termsDays'));
+check('invoice live total preview', read('public/modules/invoices.js').includes('previewTotals') && read('public/modules/invoices.js').includes('taxable'));
+check('invoice tax only taxable lines', server.includes('CASE WHEN taxable THEN') && server.includes('taxableAfterDiscount'));
+check('invoice snapshot USDOT schema', server.includes('ADD COLUMN IF NOT EXISTS dot_number TEXT'));
+check('invoice global discount schema', server.includes('ADD COLUMN IF NOT EXISTS discount_type TEXT') && server.includes('ADD COLUMN IF NOT EXISTS discount_value NUMERIC'));
+check('invoice professional print branding', html.includes('IRON TEAM TRUCK &amp; TRAILER REPAIR'));
+
 const failed = checks.filter(x=>!x.ok);
 for (const x of checks) console.log(`${x.ok?'PASS':'FAIL'}  ${x.name}${x.detail?` — ${x.detail}`:''}`);
 console.log(`\n${checks.length-failed.length}/${checks.length} checks passed.`);
 if (failed.length) process.exit(1);
+

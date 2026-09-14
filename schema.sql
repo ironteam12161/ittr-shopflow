@@ -171,3 +171,16 @@ CREATE TABLE IF NOT EXISTS workshop_manuals(
   size_bytes BIGINT DEFAULT 0, active BOOLEAN DEFAULT TRUE, created_by TEXT, created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_workshop_manuals_vehicle ON workshop_manuals(lower(coalesce(make,'')),lower(coalesce(model,'')),year_from,year_to);
+
+ALTER TABLE customer_invoice_lines ADD COLUMN IF NOT EXISTS discount_type TEXT DEFAULT 'fixed';
+ALTER TABLE customer_invoice_lines ADD COLUMN IF NOT EXISTS discount_value NUMERIC DEFAULT 0;
+
+-- v24.12.0 professional invoice UX
+ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS dot_number TEXT;
+ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS discount_type TEXT DEFAULT 'fixed';
+ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS discount_value NUMERIC DEFAULT 0;
+ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS billing_address TEXT;
+ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS billing_city TEXT;
+ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS billing_state TEXT;
+ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS billing_postal_code TEXT;
+UPDATE customer_invoices SET discount_type='fixed',discount_value=coalesce(discount,0) WHERE discount_value IS NULL OR (discount_value=0 AND coalesce(discount,0)<>0);
