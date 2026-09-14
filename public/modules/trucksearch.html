@@ -1,0 +1,29 @@
+<div class="toolbar">
+    <div>
+      <h1>Truck Search / Unit History</h1>
+      <div class="muted">Find a truck by unit number, customer, work performed, mechanic notes, future notes, findings, or recommendations.</div>
+    </div>
+  </div>
+
+  <div class="card truckSearchControls">
+    <div class="field full">
+      <label>Search truck history</label>
+      <input id="truckGlobalSearch" type="search" placeholder="Example: 123, air leak, brakes, PM service, future repair..." oninput="renderTruckSearch()">
+    </div>
+    <div class="truckSearchFilters">
+      <select id="truckSearchStatus" onchange="renderTruckSearch()">
+        <option value="all">All work orders</option>
+        <option value="active">Active / Open</option>
+        <option value="completed">Completed</option>
+        <option value="future">Future / Waiting</option>
+      </select>
+      <select id="truckSearchScope" onchange="renderTruckSearch()">
+        <option value="all">Search everything</option>
+        <option value="notes">Notes only</option>
+        <option value="jobs">Jobs / repairs only</option>
+        <option value="findings">Findings only</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="truckSearchResults"></div>

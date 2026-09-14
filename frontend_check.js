@@ -1,6 +1,3 @@
-
-
-
 (async function ITTRRemoveOldServiceWorkers(){
  try{
   if("serviceWorker" in navigator){
@@ -35,7 +32,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION="24.6.6";
+const FRONTEND_VERSION="24.9.1";
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
@@ -45,16 +42,24 @@ async function apiJSON(url,options={}){
  if(r.status===401 && !url.includes("/api/auth/login")){cloudToken="";sessionStorage.removeItem("ittr_cloud_token");session=null;sessionStorage.removeItem("ittr_session");showLogin();throw new Error(d.error||"Session expired.")}
  if(!r.ok)throw new Error(d.error||`Server error ${r.status}`);return d;
 }
+function updateSyncQueueBadge(){
+ const badge=document.getElementById("syncQueueBadge"),text=document.getElementById("syncQueueText");
+ if(!badge||!text)return;
+ const pending=cloudPending.size,offline=!navigator.onLine;
+ badge.classList.toggle("is-visible",pending>0||offline);
+ badge.classList.toggle("is-offline",offline);
+ text.textContent=offline?(pending?`Offline · ${pending} pending`:`Offline`):(pending?`${pending} syncing…`:`Synced`);
+}
 function queueCloudState(key,payload){
  if(!cloudReady||!cloudToken)return;
  clearTimeout(cloudSaving[key]);
- cloudPending.add(key);
+ cloudPending.add(key);updateSyncQueueBadge();
  cloudSaving[key]=setTimeout(async()=>{
    try{
      const d=await apiJSON(`/api/state/${key}`,{method:"PUT",body:JSON.stringify({payload,expectedVersion:Number(cloudVersions[key]||0)})});
      if(d?.version!=null)cloudVersions[key]=Number(d.version);
    }catch(e){showSyncError(e.message)}
-   finally{cloudPending.delete(key);cloudSaving[key]=null;}
+   finally{cloudPending.delete(key);cloudSaving[key]=null;updateSyncQueueBadge();}
  },180);
 }
 async function refreshCloudStateSilently(){
@@ -177,19 +182,87 @@ function mechanicDisplay(username){
 let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
+
+const ROUTE_MODULES={
+ invoices:{html:"/modules/invoices.html",js:"/modules/invoices.js"},
+ trucksearch:{html:"/modules/trucksearch.html",js:"/modules/trucksearch.js"},
+ parts:{html:"/modules/parts.html",js:"/modules/parts.js"},
+ customers:{html:"/modules/customers.html",js:"/modules/customers.js"},
+ procenter:{html:"/modules/procenter.html",js:"/modules/procenter.js"}
+};
+const routeModuleAssets=new Map();
+const routeModuleInstances=new Map();
+let routeTransitionToken=0;
+
+function routeModuleHost(view){return document.getElementById(view)}
+function isLazyRouteModule(view){return !!ROUTE_MODULES[view]}
+async function loadRouteModuleAssets(view){
+ if(routeModuleAssets.has(view))return routeModuleAssets.get(view);
+ const cfg=ROUTE_MODULES[view];if(!cfg)return null;
+ const promise=Promise.all([
+  fetch(cfg.html,{cache:"no-cache"}).then(r=>{if(!r.ok)throw new Error(`Unable to load ${view} (${r.status})`);return r.text()}),
+  import(cfg.js)
+ ]).then(([html,module])=>({html,module}));
+ routeModuleAssets.set(view,promise);
+ try{return await promise}catch(e){routeModuleAssets.delete(view);throw e}
+}
+function createRouteModuleScope(view,host){
+ const controller=new AbortController();
+ return {
+  view,host,signal:controller.signal,
+  on(target,type,handler,options={}){if(!target?.addEventListener)return;target.addEventListener(type,handler,{...options,signal:controller.signal})},
+  cleanup(){controller.abort()}
+ };
+}
+async function mountRouteModule(view){
+ if(!isLazyRouteModule(view))return routeModuleHost(view);
+ const host=routeModuleHost(view);if(!host)throw new Error(`Missing route host: ${view}`);
+ if(routeModuleInstances.has(view))return host;
+ host.classList.remove("routeModuleError");host.classList.add("routeModuleLoading");host.setAttribute("aria-busy","true");
+ try{
+  const {html,module}=await loadRouteModuleAssets(view);
+  host.innerHTML=html;
+  const scope=createRouteModuleScope(view,host);
+  routeModuleInstances.set(view,{module,scope});
+  if(typeof module.mount==="function")await module.mount(scope);
+  applyTranslations?.();
+  return host;
+ }catch(e){
+  host.replaceChildren();host.classList.add("routeModuleError");
+  console.error(`ITTR route module failed: ${view}`,e);
+  throw e;
+ }finally{host.classList.remove("routeModuleLoading");host.setAttribute("aria-busy","false")}
+}
+async function unmountRouteModule(view){
+ if(!isLazyRouteModule(view))return;
+ const host=routeModuleHost(view),instance=routeModuleInstances.get(view);
+ if(instance){
+  try{if(typeof instance.module.unmount==="function")await instance.module.unmount(instance.scope)}catch(e){console.warn(`ITTR route cleanup failed: ${view}`,e)}
+  instance.scope.cleanup();routeModuleInstances.delete(view);
+ }
+ if(host){host.replaceChildren();host.classList.remove("routeModuleError","routeModuleLoading");host.setAttribute("aria-busy","false")}
+}
+
 const APP_VIEWS=["dashboard","workorders","invoices","trucksearch","customers","parts","procenter","activityhistory","mechanic","completed","approvals","accounts","inspection","mycompleted"];
 let currentView=null;
 let viewHistory=[];
 
+function managerCan(permission){return session?.role!=="manager" || session?.permissions?.[permission]!==false}
+function managerViewAllowed(view){
+ const map={invoices:"invoices",customers:"customers",trucksearch:"customers",parts:"inventory",activityhistory:"reports",accounts:"employees"};
+ const key=map[view];return !key||managerCan(key);
+}
 function allowedViewForRole(view){
  if(!session)return false;
  const adminViews=["dashboard","workorders","invoices","trucksearch","customers","parts","procenter","activityhistory","completed","approvals","accounts"];
  const mechanicViews=["mechanic","inspection","mycompleted"];
- return session.role==="admin" ? adminViews.includes(view) : mechanicViews.includes(view);
+ if(session.role==="admin")return adminViews.includes(view);
+ if(session.role==="manager")return adminViews.includes(view)&&managerViewAllowed(view);
+ return mechanicViews.includes(view);
 }
 
 function defaultViewForRole(){
- return session?.role==="admin" ? "dashboard" : "mechanic";
+ return ["admin","manager"].includes(session?.role) ? "dashboard" : "mechanic";
 }
 
 function syncMobileChrome(){
@@ -222,40 +295,37 @@ function updateMobileBackButton(){
  syncModalState();
 }
 
-function showView(view,{push=true,replace=false}={}){
+async function showView(view,{push=true,replace=false}={}){
  if(!allowedViewForRole(view))view=defaultViewForRole();
  if(!view)return;
+ const token=++routeTransitionToken;
+ const previous=currentView;
 
- if(currentView && currentView!==view && push){
-   viewHistory.push(currentView);
+ try{await mountRouteModule(view)}catch(e){
+  if(token!==routeTransitionToken)return;
+  const msg=`Unable to open ${view}. ${e.message||e}`;
+  if(typeof showToast==="function")showToast(msg,"error");else console.error(msg);
+  return;
  }
+ if(token!==routeTransitionToken)return;
 
- APP_VIEWS.forEach(v=>{
-   const el=document.getElementById(v);
-   if(el)el.classList.toggle("hidden",v!==view);
- });
+ if(previous && previous!==view && push)viewHistory.push(previous);
 
- document.querySelectorAll(".navbtn[data-view]").forEach(b=>{
-   b.classList.toggle("active",b.dataset.view===view);
- });
- document.querySelectorAll(".mobileNavBtn[data-mobile-view]").forEach(b=>{
-   b.classList.toggle("active",b.dataset.mobileView===view);
- });
+ APP_VIEWS.forEach(v=>{const el=document.getElementById(v);if(el)el.classList.toggle("hidden",v!==view)});
+ document.querySelectorAll(".navbtn[data-view]").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
+ document.querySelectorAll(".mobileNavBtn[data-mobile-view]").forEach(b=>b.classList.toggle("active",b.dataset.mobileView===view));
  const moreBtn=document.querySelector(".mobileMoreBtn");if(moreBtn)moreBtn.classList.toggle("active",["invoices","approvals","procenter","activityhistory","accounts","completed"].includes(view));
 
  currentView=view;
- if(view==="customers")renderCustomerDirectory();
- if(view==="parts")loadPartsCenter();
- if(view==="invoices")loadInvoices();
+ const instance=routeModuleInstances.get(view);
+ if(instance&&typeof instance.module.afterShow==="function")await instance.module.afterShow(instance.scope);
 
  const state={ittr:true,view};
- try{
-   if(replace)history.replaceState(state,"",location.href);
-   else if(push)history.pushState(state,"",location.href);
- }catch(e){}
+ try{if(replace)history.replaceState(state,"",location.href);else if(push)history.pushState(state,"",location.href)}catch(e){}
+ window.scrollTo(0,0);updateMobileBackButton();
 
- window.scrollTo(0,0);
- updateMobileBackButton();
+ // Heavy route DOM is removed after navigation. Module-level listeners are aborted first.
+ if(previous&&previous!==view&&isLazyRouteModule(previous))await unmountRouteModule(previous);
 }
 
 function mobileGoBack(){
@@ -307,6 +377,7 @@ function bindNavigation(){
 function updateOnlineState(){
  const b=document.getElementById("offlineBanner");
  if(b)b.style.display=navigator.onLine?"none":"block";
+ updateSyncQueueBadge();
 }
 window.addEventListener("online",updateOnlineState);
 let lastAppError="";
@@ -341,9 +412,12 @@ function applyRole(){
  if(session?.username && USERS?.[session.username]?.language){
    currentLanguage=USERS[session.username].language;
  }
-  const isAdmin=session?.role==="admin", isMechanic=session?.role==="mechanic";
+  const isAdmin=["admin","manager"].includes(session?.role), isMechanic=session?.role==="mechanic";
   document.querySelectorAll(".adminOnly").forEach(el=>el.classList.toggle("hiddenRole",!isAdmin));
   document.querySelectorAll(".mechanicOnly").forEach(el=>el.classList.toggle("hiddenRole",!isMechanic));
+  document.querySelectorAll(".ownerOnlyUi").forEach(el=>el.classList.toggle("hiddenRole",session?.role!=="admin"));
+  document.querySelectorAll("[data-view]").forEach(el=>{const v=el.dataset.view;if(session?.role==="manager"&&v)el.classList.toggle("hiddenRole",!managerViewAllowed(v));});
+  document.querySelectorAll("[data-mobile-view]").forEach(el=>{const v=el.dataset.mobileView;if(session?.role==="manager"&&v)el.classList.toggle("hiddenRole",!managerViewAllowed(v));});
   document.getElementById("currentUser").textContent=session?(session.display||session.username):"";
   document.getElementById("currentRole").textContent=session?session.role.toUpperCase():"";
   if(!session) return;
@@ -375,7 +449,7 @@ async function logout(){
   document.getElementById("loginUser").value="";document.getElementById("loginPass").value="";document.getElementById("loginScreen").style.display="flex";
 }
 function requireAdmin(){
-  if(session?.role!=="admin"){alert(tr("Admin access required."));return false}
+  if(!["admin","manager"].includes(session?.role)){alert(tr("Manager access required."));return false}
   return true;
 }
 function requireMechanic(){
@@ -1223,7 +1297,7 @@ function refreshMechanicSelects(selectedEdit=""){
 function openAddHelper(workOrderId){
  const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
  if(!w)return alert(tr("Work order not found."));
- if(session?.role!=="admin" && !mechanicAssignedToWorkOrder(w,session?.username))return alert(tr("You are not assigned to this work order."));
+ if(!["admin","manager"].includes(session?.role) && !mechanicAssignedToWorkOrder(w,session?.username))return alert(tr("You are not assigned to this work order."));
  const assigned=new Set(assignedMechanicUsernames(w));
  const available=mechanicAccounts().filter(m=>!assigned.has(String(m.username||"").toLowerCase()));
  if(!available.length)return alert(tr("Every mechanic is already assigned to this work order."));
@@ -1294,7 +1368,7 @@ function setActivityHistoryToday(){const e=document.getElementById("activityHist
 function setActivityHistoryYesterday(){const d=new Date();d.setDate(d.getDate()-1);const e=document.getElementById("activityHistoryDateFilter");if(e)e.value=activityHistoryDateKey(d.toISOString());renderMechanicActivityHistory()}
 function clearActivityHistoryDate(){const e=document.getElementById("activityHistoryDateFilter");if(e)e.value="";renderMechanicActivityHistory()}
 function renderMechanicActivityHistory(){
- if(session?.role!=="admin")return;
+ if(!["admin","manager"].includes(session?.role))return;
  const box=document.getElementById("activityHistoryResults"),sum=document.getElementById("activityHistorySummary");if(!box||!sum)return;
  refreshActivityHistoryMechanicFilter();
  const users=USERS,mf=document.getElementById("activityHistoryMechanicFilter")?.value||"all",df=document.getElementById("activityHistoryDateFilter")?.value||"";
@@ -1315,6 +1389,22 @@ function renderMechanicActivityHistory(){
  applyTranslations();if(currentLanguage==="uk"&&typeof scheduleAITranslation==="function")scheduleAITranslation();
 }
 
+let shopAiVoiceRecognition=null;
+function toggleShopAI(force){const p=document.getElementById('shopAiPanel');if(!p)return;const show=force===undefined?p.classList.contains('hidden'):force;p.classList.toggle('hidden',!show);if(show){setTimeout(()=>document.getElementById('shopAiInput')?.focus(),30);loadManualLibrary(false)}}
+function clearShopAI(){const b=document.getElementById('shopAiMessages');if(b)b.innerHTML='<div class="aiWelcome"><b>New conversation</b><div class="muted" style="margin-top:5px">Choose a unit above or include the unit number in your question.</div></div>';document.getElementById('shopAiInput')?.focus()}
+function shopAiAskQuick(text){const i=document.getElementById('shopAiInput');if(!i)return;i.value=text;sendShopAI()}
+function aiSourceHtml(s){if(!s)return'';const cls=s.type==='manual'?' manual':'';const click=s.manualId?` onclick="openWorkshopManual(${Number(s.manualId)})"`:'';return `<span class="aiSourceChip${cls}"${click}>${s.type==='manual'?'📘':s.type==='history'?'🕘':s.type==='invoice'?'🧾':s.type==='workorder'?'🔧':'📚'} ${esc(s.label||'Source')}</span>`}
+async function sendShopAI(){const inp=document.getElementById('shopAiInput'),box=document.getElementById('shopAiMessages'),q=String(inp?.value||'').trim(),unit=String(document.getElementById('shopAiUnit')?.value||'').trim();if(!q)return;inp.value='';box.insertAdjacentHTML('beforeend',`<div class="aiMsg user"><div class="aiMsgHead">You${unit?` · Unit ${esc(unit)}`:''}</div><div>${esc(q)}</div></div><div id="aiThinking" class="aiThinking"><span class="aiDot"></span><span class="aiDot"></span><span class="aiDot"></span><span>Checking shop records${/torque|diagram|wiring|manual|spec|момент|схем/i.test(q)?' and workshop manuals':''}…</span></div>`);box.scrollTop=box.scrollHeight;try{const d=await apiJSON('/api/ai/shop-chat',{method:'POST',body:JSON.stringify({message:q,unit})});document.getElementById('aiThinking')?.remove();if(d.matchedUnit&&!unit)document.getElementById('shopAiUnit').value=d.matchedUnit;const src=(d.sources||[]).map(aiSourceHtml).join('');box.insertAdjacentHTML('beforeend',`<div class="aiMsg assistant"><div class="aiMsgHead">ITTR Workshop Copilot${d.matchedUnit?` · Unit ${esc(d.matchedUnit)}`:''}</div><div style="white-space:pre-wrap">${esc(d.result||'')}</div>${src?`<div class="aiSources">${src}</div>`:''}</div>`)}catch(e){document.getElementById('aiThinking')?.remove();box.insertAdjacentHTML('beforeend',`<div class="aiMsg assistant" style="border-color:#fda29b"><b>Unable to answer</b><div>${esc(e.message||'AI request failed')}</div></div>`)}box.scrollTop=box.scrollHeight}
+function toggleShopAiVoice(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition,status=document.getElementById('shopAiVoiceStatus');if(!SR){if(status)status.textContent='Voice input is not supported by this browser.';return}if(shopAiVoiceRecognition){shopAiVoiceRecognition.stop();shopAiVoiceRecognition=null;return}const r=new SR();shopAiVoiceRecognition=r;r.continuous=false;r.interimResults=true;r.lang=document.getElementById('shopAiVoiceLanguage')?.value||(currentLanguage==='uk'?'uk-UA':'en-US');const input=document.getElementById('shopAiInput'),mic=document.getElementById('shopAiMic');if(status)status.textContent='Listening…';if(mic)mic.setAttribute('aria-pressed','true');r.onresult=e=>{let t='';for(let i=e.resultIndex;i<e.results.length;i++)t+=e.results[i][0].transcript;if(input)input.value=t};r.onerror=e=>{if(status)status.textContent=e.error==='not-allowed'?'Microphone permission denied.':'Voice stopped.'};r.onend=()=>{shopAiVoiceRecognition=null;if(status)status.textContent='';if(mic)mic.setAttribute('aria-pressed','false')};r.start()}
+async function openManualLibrary(){document.getElementById('manualLibraryModal').classList.add('open');await loadManualLibrary(true)}
+async function loadManualLibrary(render=true){try{const d=await apiJSON('/api/manuals');if(!render)return d.items||[];const b=document.getElementById('manualLibraryList');if(!b)return d.items||[];b.innerHTML=(d.items||[]).map(m=>`<div class="manualListCard"><div><b>${esc(m.title)}</b><div class="manualMeta">${esc([m.year_from&&m.year_to?`${m.year_from}-${m.year_to}`:m.year_from||m.year_to,m.make,m.model,m.engine,m.category].filter(Boolean).join(' · '))}</div><div class="manualMeta">${esc(m.source_name||m.original_name||'Shop reference')}</div></div><div class="actions"><button class="secondary" onclick="openWorkshopManual(${Number(m.id)})">Open</button>${session?.role==='admin'?`<button class="danger" onclick="deleteWorkshopManual(${Number(m.id)})">Delete</button>`:''}</div></div>`).join('')||'<div class="notice">No workshop manuals have been added yet.</div>';return d.items||[]}catch(e){if(render){const b=document.getElementById('manualLibraryList');if(b)b.textContent=e.message}return[]}}
+async function openWorkshopManual(id){try{const d=await apiJSON(`/api/manuals/${id}/open`);if(d.url)window.open(d.url,'_blank','noopener')}catch(e){alert(e.message)}}
+async function deleteWorkshopManual(id){if(!confirm('Delete this workshop manual from ITTR?'))return;try{await apiJSON(`/api/manuals/${id}`,{method:'DELETE'});await loadManualLibrary(true)}catch(e){alert(e.message)}}
+document.getElementById('manualLibraryForm').onsubmit=async e=>{e.preventDefault();const fd=new FormData(e.target);try{const r=await fetch('/api/manuals',{method:'POST',headers:authHeaders(),body:fd});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||`Upload failed (${r.status})`);e.target.reset();await loadManualLibrary(true)}catch(ex){alert(ex.message)}};
+function openManagerAccount(){if(session?.role!=='admin')return alert('Only the owner/admin can create managers.');document.getElementById('managerAccountForm').reset();document.getElementById('managerAccountModal').classList.add('open')}
+document.getElementById('managerAccountForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),permissions={invoices:f.has('invoices'),financials:f.has('financials'),inventory:f.has('inventory'),customers:f.has('customers'),reports:f.has('reports'),employees:f.has('employees')};try{await apiJSON('/api/admin/managers',{method:'POST',body:JSON.stringify({username:f.get('username'),display:f.get('display'),email:f.get('email'),password:f.get('password'),permissions})});closeModal('managerAccountModal');await loadStaffAccounts()}catch(ex){alert(ex.message)}};
+async function loadStaffAccounts(){if(!["admin","manager"].includes(session?.role))return;try{const d=await apiJSON('/api/admin/staff');const managers=(d.items||[]).filter(x=>x.role==='manager'),box=document.getElementById('managerAccountsTable');if(box)box.innerHTML=managers.map(m=>`<tr><td>${esc(m.display)}</td><td>${esc(m.username)}</td><td>Manager</td><td>${session?.role==='admin'?`<button class="danger" onclick="deleteManagerAccount('${encodeURIComponent(m.username)}')">Delete Manager</button>`:'<span class="muted">Managed by owner</span>'}</td></tr>`).join('')}catch(e){console.warn('staff accounts',e.message)}}
+async function deleteManagerAccount(u){if(session?.role!=='admin')return;if(!confirm('Delete this manager account?'))return;try{await apiJSON('/api/admin/managers/'+decodeURIComponent(u),{method:'DELETE'});await loadStaffAccounts()}catch(e){alert(e.message)}}
 function renderMechanicAccounts(){
  const box=document.getElementById("mechanicAccountsTable");
  if(!box)return;
@@ -1327,7 +1417,7 @@ function renderMechanicAccounts(){
      ${m.username==="mechanic"?'<span class="muted"> Default account</span>':`<button class="danger" data-username="${encodeURIComponent(m.username)}" onclick="deleteMechanicAccount(decodeURIComponent(this.dataset.username))">Delete</button>`}
    </td>
  </tr>`).join("");
- box.innerHTML=rows||'<tr><td colspan="4" class="muted">No mechanic accounts created.</td></tr>';
+ box.innerHTML=rows||'<tr><td colspan="4" class="muted">No mechanic accounts created.</td></tr>';loadStaffAccounts();
 }
 
 
@@ -1565,7 +1655,7 @@ function calendarJobCard(w){
  </div>`;
 }
 function renderCalendar(){
- if(session?.role!=="admin")return;
+ if(!["admin","manager"].includes(session?.role))return;
  const box=document.getElementById("shopCalendar");
  const title=document.getElementById("calendarTitle");
  if(!box||!title)return;
@@ -1655,7 +1745,7 @@ function mechanicCurrentWork(username){
  return inProgress?{w:inProgress,task:null}:null;
 }
 function renderMechanicLiveStatus(){
- if(session?.role!=="admin")return;
+ if(!["admin","manager"].includes(session?.role))return;
  const box=document.getElementById("mechanicLiveStatus");
  if(!box)return;
  const mechanics=mechanicAccounts();
@@ -1757,7 +1847,7 @@ function unitSearchKey(w,i=null){
  return String(w?.unit||i?.unitSnapshot||"Unknown Unit").trim()||"Unknown Unit";
 }
 function renderTruckSearch(){
- if(session?.role!=="admin")return;
+ if(!["admin","manager"].includes(session?.role))return;
  const box=document.getElementById("truckSearchResults");
  if(!box)return;
 
@@ -1890,9 +1980,9 @@ async function runGlobalSmartSearch(q){
   box.innerHTML=rows.length?rows.slice(0,12).join(""):`<div class="smartResultMeta" style="padding:12px">No matches.</div>`;box.classList.remove("hidden");
  }catch(e){box.innerHTML=`<div class="smartResultMeta" style="padding:12px">Search unavailable: ${esc(e.message||"")}</div>`;box.classList.remove("hidden")}
 }
-function smartOpenCustomer(id){hideGlobalSmartSearch();showView("customers");setTimeout(()=>openCustomerProfile(id),0)}
-function smartOpenUnit(unitId){hideGlobalSmartSearch();showView("customers");setTimeout(()=>openVehicleProfile(unitId),0)}
-function smartOpenService(source,customerId,id,encodedUnit=""){hideGlobalSmartSearch();if(source==="fullbay"){showView("customers");return setTimeout(()=>openFullbayServiceOrder(id,customerId,encodedUnit),0)}const n=Number(decodeURIComponent(id||""));if(Number.isFinite(n))openDetail(n)}
+async function smartOpenCustomer(id){hideGlobalSmartSearch();await showView("customers");openCustomerProfile(id)}
+async function smartOpenUnit(unitId){hideGlobalSmartSearch();await showView("customers");openVehicleProfile(unitId)}
+async function smartOpenService(source,customerId,id,encodedUnit=""){hideGlobalSmartSearch();if(source==="fullbay"){await showView("customers");return openFullbayServiceOrder(id,customerId,encodedUnit)}const n=Number(decodeURIComponent(id||""));if(Number.isFinite(n))openDetail(n)}
 document.addEventListener("click",e=>{if(!e.target.closest(".smartHeaderSearch"))hideGlobalSmartSearch()});document.addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="k"){e.preventDefault();document.getElementById("globalSmartSearch")?.focus()}});
 function debouncedSmartDirectory(){clearTimeout(smartDirectoryTimer);smartDirectoryTimer=setTimeout(renderSmartDirectory,180)}
 async function renderSmartDirectory(){
@@ -1980,7 +2070,7 @@ Object.assign(UI_TRANSLATIONS,{"Dashboard":"Панель","Work Orders":"Нар�
 let customerDirectoryTimer=null,customerDirectoryCache=[],customerProfileCache=null,unitLookupTimer=null,unitSuggestionCache=[];
 function debouncedCustomerDirectory(){clearTimeout(customerDirectoryTimer);customerDirectoryTimer=setTimeout(renderCustomerDirectory,220)}
 async function renderCustomerDirectory(){
- if(session?.role!=="admin")return;const tbody=document.getElementById("customerDirectoryTable");if(!tbody)return;const rawQ=document.getElementById("customerDirectorySearch")?.value?.trim()||"";if(rawQ.length>=2&&document.getElementById("smartDirectoryResults")&&!document.getElementById("smartDirectoryResults").classList.contains("hidden"))return;const q="";tbody.innerHTML='<tr><td colspan="6">Loading customers…</td></tr>';
+ if(!["admin","manager"].includes(session?.role))return;const tbody=document.getElementById("customerDirectoryTable");if(!tbody)return;const rawQ=document.getElementById("customerDirectorySearch")?.value?.trim()||"";if(rawQ.length>=2&&document.getElementById("smartDirectoryResults")&&!document.getElementById("smartDirectoryResults").classList.contains("hidden"))return;const q="";tbody.innerHTML='<tr><td colspan="6">Loading customers…</td></tr>';
  try{const d=await apiJSON(`/api/customers?q=${encodeURIComponent(q)}`);customerDirectoryCache=d.items||[];if(Array.isArray(d.warnings)&&d.warnings.length)console.warn("Customer CRM warnings:",d.warnings);const total=customerDirectoryCache.length,units=customerDirectoryCache.reduce((a,x)=>a+Number(x.unit_count||0),0),services=customerDirectoryCache.reduce((a,x)=>a+Number(x.service_count||0),0),active=customerDirectoryCache.filter(x=>x.active!==false).length;const stats=document.getElementById("customerDirectoryStats");if(stats)stats.innerHTML=`<div class="customerStat"><span class="muted">Customers</span><b>${total}</b></div><div class="customerStat"><span class="muted">Active</span><b>${active}</b></div><div class="customerStat"><span class="muted">Known Units</span><b>${units}</b></div><div class="customerStat"><span class="muted">Service Records</span><b>${services}</b></div>`;
  tbody.innerHTML=customerDirectoryCache.length?customerDirectoryCache.map(c=>`<tr><td><button class="customerNameLink" onclick="openCustomerProfile(${c.id})">${esc(cleanImportedDisplayText(c.customer_name)||"")}</button><div class="muted">${c.fullbay_id?`Fullbay ${esc(cleanVehicleMeta(c.fullbay_id))} · `:""}${c.active===false?"Inactive":"Active"}</div></td><td>${esc(cleanImportedDisplayText(c.contact_name)||"—")}<div class="muted">${esc(cleanImportedDisplayText(c.phone)||"—")}${c.email?` · ${esc(cleanImportedDisplayText(c.email))}`:""}</div></td><td>DOT ${esc(cleanVehicleMeta(c.dot_number)||"—")}<div class="muted">${esc(uniqueImportedParts([c.city,c.state,c.postal_code]).join(", ")||"—")}</div></td><td><b>${Number(c.unit_count||0)}</b></td><td><b>${Number(c.service_count||0)}</b></td><td><button class="secondary" onclick="openCustomerProfile(${c.id})">Open</button></td></tr>`).join(""):'<tr><td colspan="6" class="empty">No customers found.</td></tr>';applyTranslations();}
  catch(e){tbody.innerHTML=`<tr><td colspan="6" class="error">${esc(e.message||"Unable to load customers.")}</td></tr>`}
@@ -2005,7 +2095,7 @@ function openCustomerEditor(id=null){if(!requireAdmin())return;const c=id?(custo
 async function runCustomerCrmDiagnostics(){if(!requireAdmin())return;const box=document.getElementById("customerCrmDiagnosticBox");if(box){box.classList.remove("hidden");box.textContent="Running CRM diagnostics…"}try{const d=await apiJSON("/api/admin/customer-crm-diagnostics");const tables=Object.entries(d.tables||{}).map(([k,v])=>`${k}: ${v?"OK":"MISSING"}`).join(" · ");const sync=d.sync||{};const errors=Array.isArray(sync.errors)?sync.errors:[];const detail=errors.slice(0,5).map(x=>`<div class="muted">• ${esc(x.source||"record")} ${esc(x.unit||"")} — ${esc(x.error||"")}</div>`).join("");const samples=Array.isArray(d.unitSamples)?d.unitSamples:[];const sampleHtml=samples.length?`<div style="margin-top:6px"><b>Newest unit records:</b> ${samples.slice(0,5).map(x=>`Unit ${esc(cleanVehicleMeta(x.unit_number)||"?")} (${esc(cleanImportedDisplayText(x.customer_name)||"unlinked")})`).join(" · ")}</div>`:"";const state=d.stateCounts||{};const unlinked=Array.isArray(d.unlinkedUnits)?d.unlinkedUnits:[];const sources=Array.isArray(d.unitSourceCounts)?d.unitSourceCounts:[];const extra=`<div style="margin-top:6px"><b>Cloud state:</b> Vehicle Profiles ${Number(state.vehicleProfiles||0)} · Work Orders ${Number(state.workOrders||0)}</div>${sources.length?`<div><b>DB unit sources:</b> ${sources.map(x=>`${esc(x.source)} ${Number(x.count||0)}`).join(" · ")}</div>`:""}${unlinked.length?`<div><b>Unlinked units:</b> ${unlinked.slice(0,8).map(x=>`Unit ${esc(cleanVehicleMeta(x.unit_number)||"?")} (${esc(cleanImportedDisplayText(x.customer_name)||"no customer")})`).join(" · ")}</div>`:""}`;if(box)box.innerHTML=`<b>CRM Diagnostics v${esc(d.version||"")}</b><br>${esc(tables)}<br>Customers: ${Number(d.counts?.customers||0)} · Units: ${Number(d.counts?.units||0)}<br>Sync: ${sync.ok===false?"warnings":"OK"}${errors.length?` · ${errors.length} skipped record(s)`:""}${detail}${sampleHtml}${extra}${d.error?`<br>${esc(d.error)}`:""}`;await renderCustomerDirectory();}catch(e){if(box)box.innerHTML=`<b>Diagnostics failed:</b> ${esc(e.message||"Unknown error")}`}}
 async function openCustomerProfile(id){if(!requireAdmin())return;const box=document.getElementById("customerProfileBody");document.getElementById("customerModal").classList.add("open");updateMobileBackButton();box.innerHTML='<div class="productivityLoading">Loading customer profile…</div>';try{const d=await apiJSON(`/api/customers/${id}/profile`);customerProfileCache=d;renderCustomerProfile()}catch(e){box.innerHTML=`<div class="error">${esc(e.message||"Unable to load customer profile.")}</div>`}}
 function renderCustomerProfile(){
- const d=customerProfileCache;if(!d)return;const c=d.customer||{},units=d.units||[],history=d.history||[];
+ const d=customerProfileCache;if(!d)return;const c=d.customer||{},units=d.units||[],history=d.history||[],jobHistoryCount=history.reduce((n,w)=>n+(Array.isArray(w?.tasks)?w.tasks.filter(t=>w?.source!=="invoice"||String(t?.lineType||"").toLowerCase()==="labor").length:0),0);
  const customerName=cleanImportedDisplayText(c.customer_name)||"Customer Profile";document.getElementById("customerModalTitle").textContent=customerName;
  const box=document.getElementById("customerProfileBody"),fullbayCount=history.filter(x=>x.source==="fullbay").length,ittrCount=history.length-fullbayCount;
  box.innerHTML=`<div class="customerProfileHeader"><div><h2 style="margin:0">${esc(customerName)}</h2><div class="customerProfileMeta"><span class="badge">DOT ${esc(cleanVehicleMeta(c.dot_number)||"—")}</span><span class="badge">${units.length} vehicles</span><span class="badge">${history.length} service orders</span>${c.fullbay_id?`<span class="badge">Fullbay ${esc(cleanVehicleMeta(c.fullbay_id))}</span>`:""}</div></div><div><button class="secondary" onclick="openCustomerEditor(${c.id})">Edit Customer</button> <button onclick="openCustomerUnitEditor(${c.id})">+ Add Unit</button></div></div>
@@ -2068,7 +2158,7 @@ async function loadCloudStateAfterLogin(){
  const remoteUsers=d.users?.payload||{},remoteShop=d.shopflow?.payload||{workorders:[],issues:[]},remotePro=d.pro?.payload||{};
  const remoteEmpty=Object.keys(remoteUsers).length===0 && (!remoteShop.workorders||remoteShop.workorders.length===0) && Object.keys(remotePro).length===0;
  const localHasData=Object.keys(localUsers||{}).length>0 || (localShop?.workorders||[]).length>0 || Object.keys(localPro||{}).length>0;
- if(remoteEmpty && localHasData && session?.role==="admin"){
+ if(remoteEmpty && localHasData && ["admin","manager"].includes(session?.role)){
    const useLocal=confirm("The online database is empty, but this browser has existing ITTR data. Upload this browser's current users/work orders/operations data to the cloud now?\n\nChoose OK to migrate it, or Cancel to start with an empty online database.");
    if(useLocal){await apiJSON("/api/state/import-local",{method:"POST",body:JSON.stringify({users:localUsers,shopflow:localShop,pro:localPro})});}
  }
@@ -2182,8 +2272,8 @@ function loadVehicleProfile(encoded){
  Object.entries(map).forEach(([id,k])=>{const e=document.getElementById(id);if(e)e.value=v[k]??""});
  window.scrollTo({top:0,behavior:"smooth"});
 }
-function openUnitInTruckSearch(encoded){
- const unit=decodeURIComponent(encoded);showView("trucksearch");setTimeout(()=>{const e=document.getElementById("truckGlobalSearch");if(e){e.value=unit;renderTruckSearch()}},0);
+async function openUnitInTruckSearch(encoded){
+ const unit=decodeURIComponent(encoded);await showView("trucksearch");const e=document.getElementById("truckGlobalSearch");if(e){e.value=unit;renderTruckSearch()}
 }
 async function decodeVehicleVIN(manual=true){
  const vin=normalizedVinInput(document.getElementById("vpVin")?.value);if(!validVin17(vin)){if(manual)alert(tr("Enter a valid 17-character VIN."));return}
@@ -2335,7 +2425,7 @@ function render(){
  const issues=state.issues||[];
  const completed=wo.filter(w=>w.status==="Completed");
 
- if(session?.role==="admin"){
+ if(["admin","manager"].includes(session?.role)){
    renderAdminTable();
 
    const completedTable=document.getElementById("completedTable");
@@ -2385,13 +2475,13 @@ function render(){
  const notify=document.getElementById("approvalNotify");
  if(notify){
    notify.textContent=pendingApprovals.length;
-   notify.style.display=(session?.role==="admin" && pendingApprovals.length)?"inline-block":"none";
+   notify.style.display=(["admin","manager"].includes(session?.role) && pendingApprovals.length)?"inline-block":"none";
  }
 
  const mobileNotify=document.getElementById("mobileApprovalNotify");
  if(mobileNotify){
    mobileNotify.textContent=pendingApprovals.length;
-   mobileNotify.style.display=(session?.role==="admin" && pendingApprovals.length)?"inline-block":"none";
+   mobileNotify.style.display=(["admin","manager"].includes(session?.role) && pendingApprovals.length)?"inline-block":"none";
  }
 
  updateMobileBackButton();
@@ -2400,7 +2490,7 @@ function render(){
 }
 function renderAdminTable(){
  const table=document.getElementById("workTable");
- if(!table || session?.role!=="admin")return;
+ if(!table || !["admin","manager"].includes(session?.role))return;
 
  let wo=(state.workorders||[]).filter(w=>w.status!=="Completed");
  if(adminFilter==="future")wo=wo.filter(w=>!readyForMechanic(w));
@@ -2578,7 +2668,7 @@ function findingRecordCard(i,w){
  </div>`;
 }
 function renderFindingsCenter(){
- if(session?.role!=="admin")return;
+ if(!["admin","manager"].includes(session?.role))return;
  const box=document.getElementById("approvalIssues"); if(!box)return;
  const all=Array.isArray(state.issues)?state.issues.slice():[],waiting=all.filter(findingNeedsAction).length,today=all.filter(isFindingToday).length,yesterday=all.filter(isFindingYesterday).length,resolved=all.length-waiting;
  const summary=document.getElementById("findingSummary");
@@ -3009,11 +3099,12 @@ async function addPartBarcodeAlias(id,codeOverride=''){const input=document.getE
 async function removePartBarcodeAlias(index){if(!session||session.role!=='admin'||currentPartDetail.id==null)return;const aliases=currentPartDetail.aliases.filter((_,i)=>i!==Number(index));try{await apiJSON(`/api/parts/${currentPartDetail.id}`,{method:'PATCH',body:JSON.stringify({barcodeAliases:aliases})});currentPartDetail.aliases=aliases;const list=document.getElementById('partAliasList');if(list)list.innerHTML=renderPartAliasChips(aliases)}catch(e){alert(e.message||'Unable to remove barcode.')}}
 async function copyPartBarcode(code){try{await navigator.clipboard.writeText(String(code||''))}catch{const t=document.createElement('textarea');t.value=String(code||'');document.body.appendChild(t);t.select();document.execCommand('copy');t.remove()}}
 async function printPartLabel(id,pn,desc,loc){let svg='';try{const r=await fetch(`/api/parts/${encodeURIComponent(id)}/barcode.svg`,{headers:authHeaders({Accept:'image/svg+xml'})});if(!r.ok)throw new Error(`Barcode request failed (${r.status})`);svg=await r.text()}catch(e){return alert('Unable to load barcode for printing: '+(e.message||e))}const partNo=cleanImportedDisplayText(decodeURIComponent(pn))||'',description=cleanImportedDisplayText(decodeURIComponent(desc))||'',location=cleanImportedDisplayText(decodeURIComponent(loc))||'',code=currentPartDetail.id===Number(id)?(document.querySelector('.barcodeCode')?.textContent||''):'';const w=window.open('','_blank','width=640,height=520');if(!w)return alert('Allow pop-ups to print labels.');w.document.write(`<html><head><title>${esc(partNo||'ITTR Part Label')}</title><style>@page{size:3.5in 2in;margin:0}*{box-sizing:border-box}html,body{margin:0;padding:0;width:3.5in;height:2in;font-family:Arial,Helvetica,sans-serif;color:#111}.label{width:3.5in;height:2in;padding:.11in .14in;display:grid;grid-template-rows:auto 1fr auto;align-items:center;text-align:center;overflow:hidden}.brand{font-size:10pt;font-weight:900;letter-spacing:.08em}.pn{font-size:13pt;font-weight:900;line-height:1.05;margin-top:2px;overflow-wrap:anywhere}.desc{font-size:8.5pt;line-height:1.1;max-height:.33in;overflow:hidden;margin-top:2px}.barcode{height:.82in;display:flex;align-items:center;justify-content:center;overflow:hidden}.barcode svg{max-width:100%;width:100%;height:.78in}.footer{display:flex;justify-content:space-between;align-items:end;gap:8px;font-size:7.5pt;font-weight:700}.code{font-family:monospace;letter-spacing:.04em;white-space:nowrap}.location{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}@media print{html,body{width:3.5in;height:2in}.label{page-break-after:avoid}}</style></head><body><div class="label"><div><div class="brand">IRON TEAM · PARTS</div><div class="pn">${esc(partNo)}</div><div class="desc">${esc(description)}</div></div><div class="barcode">${svg}</div><div class="footer"><span class="code">${esc(code)}</span><span class="location">${esc(location||'General')}</span></div></div><script>window.onload=()=>setTimeout(()=>window.print(),150)<\/script></body></html>`);w.document.close()}
-let smartReceivingData=null;
+let smartReceivingData=null,smartReceivingPreviewUrl='';
 function openSmartReceiving(){const m=document.getElementById('smartReceivingModal');m?.classList.add('open');resetSmartReceiving();refreshVendorList();syncModalState();updateMobileBackButton()}
-function closeSmartReceiving(){document.getElementById('smartReceivingModal')?.classList.remove('open');smartReceivingData=null;syncModalState();updateMobileBackButton()}
-function resetSmartReceiving(){smartReceivingData=null;const b=document.getElementById('smartReceivingBody');if(b)b.innerHTML=`<div class="receivingStart"><div class="receivingDrop"><div class="receivingIcon">📄</div><h3>Scan a vendor invoice</h3><p class="muted">Take a clear photo or upload JPG, PNG, WEBP or PDF. ITTR extracts vendor, invoice number, quantities and current buy prices.</p><input id="vendorInvoiceFile" type="file" accept="image/*,application/pdf" capture="environment" class="hidden" onchange="scanVendorInvoice(this.files?.[0])"><div class="actions" style="justify-content:center"><button onclick="document.getElementById('vendorInvoiceFile').click()">📷 Scan / Upload Invoice</button></div><div class="muted" style="margin-top:10px">Nothing changes inventory until you review and press Receive.</div></div></div>`}
-async function scanVendorInvoice(file){if(!file)return;const b=document.getElementById('smartReceivingBody');b.innerHTML='<div class="receivingProgress"><div class="receivingProgressIcon">⌁</div><h3>Reading invoice…</h3><div class="muted">Finding vendor, invoice number, parts, quantities and buy prices. Keep this screen open while the invoice is analyzed.</div></div>';try{const fd=new FormData();fd.append('invoice',file);const r=await fetch('/api/parts/receiving/scan-invoice',{method:'POST',headers:authHeaders(),body:fd});const d=await r.json();if(!r.ok)throw new Error(d.error||'Invoice scan failed.');smartReceivingData={...d,filename:file.name};renderSmartReceivingReview()}catch(e){b.innerHTML=`<div class="error">${esc(e.message||'Invoice scan failed.')}</div><div class="actions"><button class="secondary" onclick="resetSmartReceiving()">Try Again</button></div>`}}
+function releaseSmartReceivingPreview(){if(smartReceivingPreviewUrl){URL.revokeObjectURL(smartReceivingPreviewUrl);smartReceivingPreviewUrl=''}}
+function closeSmartReceiving(){document.getElementById('smartReceivingModal')?.classList.remove('open');releaseSmartReceivingPreview();smartReceivingData=null;syncModalState();updateMobileBackButton()}
+function resetSmartReceiving(){releaseSmartReceivingPreview();smartReceivingData=null;const b=document.getElementById('smartReceivingBody');if(b)b.innerHTML=`<div class="receivingStart"><div class="receivingDrop"><div class="receivingIcon">📄</div><h3>Scan a vendor invoice</h3><p class="muted">Take a clear photo or upload JPG, PNG, WEBP or PDF. ITTR extracts vendor, invoice number, quantities and current buy prices.</p><input id="vendorInvoiceFile" type="file" accept="image/*,application/pdf" capture="environment" class="hidden" onchange="scanVendorInvoice(this.files?.[0])"><div class="actions" style="justify-content:center"><button onclick="document.getElementById('vendorInvoiceFile').click()">📷 Scan / Upload Invoice</button></div><div class="muted" style="margin-top:10px">Nothing changes inventory until you review and press Receive.</div></div></div>`}
+async function scanVendorInvoice(file){if(!file)return;const b=document.getElementById('smartReceivingBody');b.innerHTML='<div class="receivingProgress"><div class="receivingProgressIcon">⌁</div><h3>Reading invoice…</h3><div class="muted">Finding vendor, invoice number, parts, quantities and buy prices. Keep this screen open while the invoice is analyzed.</div></div>';try{const fd=new FormData();fd.append('invoice',file);const r=await fetch('/api/parts/receiving/scan-invoice',{method:'POST',headers:authHeaders(),body:fd});const d=await r.json();if(!r.ok)throw new Error(d.error||'Invoice scan failed.');releaseSmartReceivingPreview();smartReceivingPreviewUrl=URL.createObjectURL(file);smartReceivingData={...d,filename:file.name,previewMime:file.type||'',previewName:file.name};renderSmartReceivingReview()}catch(e){b.innerHTML=`<div class="error">${esc(e.message||'Invoice scan failed.')}</div><div class="actions"><button class="secondary" onclick="resetSmartReceiving()">Try Again</button></div>`}}
 function receiveLineMatchOptions(line,i){const matches=Array.isArray(line.matches)?line.matches:[];let h=matches.map(x=>`<option value="${Number(x.id)}" ${Number(line.matchedPartId)===Number(x.id)?'selected':''}>${esc(cleanPartField(x.part_number))} — ${esc(cleanPartField(x.description)).slice(0,55)}</option>`).join('');return `<select id="recvMatch${i}" onchange="updateReceiveMatch(${i})"><option value="">${line.matchStatus==='new'?'Create new part':'Choose match'}</option>${h}</select>`}
 function captureSmartReceivingForm(){
  const d=smartReceivingData?.extract;if(!d)return;
@@ -3049,7 +3140,9 @@ function addReceivingLine(){
  renderSmartReceivingReview();
  const idx=d.lines.length-1;setTimeout(()=>document.getElementById(`recvPN${idx}`)?.focus(),0);
 }
-function renderSmartReceivingReview(){const d=smartReceivingData?.extract||{},lines=d.lines||[],b=document.getElementById('smartReceivingBody');const total=Number(d.total||0);b.innerHTML=`<div class="receiveHeaderGrid"><div class="partInfoItem"><span>Vendor</span><input id="recvVendor" list="partsVendorList" value="${esc(d.vendor||'')}" onblur="normalizeReceivingVendor()"><div id="recvVendorHint" class="vendorHint">Website/domain names are normalized to your saved vendor.</div></div><div class="partInfoItem"><span>Invoice #</span><input id="recvInvoice" value="${esc(d.invoiceNumber||'')}"></div><div class="partInfoItem"><span>Invoice Date</span><input id="recvDate" type="date" value="${esc(d.invoiceDate||'')}"></div><div class="partInfoItem"><span>PO #</span><input id="recvPO" value="${esc(d.poNumber||'')}"></div></div><div class="receiveInvoiceFinancials"><div class="field"><label>Subtotal</label><input id="recvSubtotal" type="number" step="0.01" value="${Number(d.subtotal||0)}"></div><div class="field"><label>Purchase Tax</label><input id="recvTax" type="number" step="0.01" value="${Number(d.tax||0)}"></div><div class="field"><label>Freight / Fees</label><input id="recvFreight" type="number" step="0.01" value="${Number(d.freight||0)}"></div><div class="field"><label>Invoice Total</label><input id="recvTotal" type="number" step="0.01" value="${total}"></div></div><div class="receiveTaxRow"><label class="receiveCreateCheck"><input id="recvTaxIncludedCost" type="checkbox" ${d.taxIncludedInCost?'checked':''}><span>Include purchase tax in inventory landed cost</span></label><div class="field"><label>Invoice Tax Rate % (optional)</label><input id="recvTaxRate" type="number" min="0" step="0.001" value="${Number(d.taxRate||0)}"></div></div><div class="notice"><b>Review before receiving.</b> You can edit AI results, remove lines you did not receive, or add a missing invoice line. Nothing changes inventory until you confirm.</div><div class="receiveReviewToolbar"><div class="muted"><b>${lines.length}</b> invoice line${lines.length===1?'':'s'} currently included.</div><button type="button" class="secondary receiveAddLine" onclick="addReceivingLine()">＋ Add Missing Line</button></div><div class="partPanel"><div class="receiveLine receiveLineHead"><div>Part #</div><div>Description</div><div>Qty</div><div>Buy Price</div><div>Core</div><div>ITTR Match</div></div>${lines.map((l,i)=>{const old=Number(l.matches?.[0]?.cost||0),nc=Number(l.unitCost||0),rise=old&&nc>old?((nc-old)/old*100):0;return `<div class="receiveLine ${l.manual?'manualLine':''}"><div class="receiveCell" data-label="Part number"><input id="recvPN${i}" value="${esc(l.partNumber||'')}"><div class="${l.matchStatus==='matched'?'matchGood':'matchNew'}">${l.manual?'Manual line':l.matchStatus==='matched'?'✓ Matched':l.matchStatus==='possible'?'Review match':'+ New / unmatched'}</div></div><div class="receiveCell" data-label="Description"><input id="recvDesc${i}" value="${esc(l.description||'')}">${l.manufacturer?`<div class="muted" style="margin-top:4px">${esc(l.manufacturer||'')}</div>`:''}</div><div class="receiveCompactGrid"><div class="receiveCell" data-label="Qty"><input id="recvQty${i}" type="number" min="0" step="1" inputmode="numeric" value="${Number(l.quantity||0)}"></div><div class="receiveCell" data-label="Buy price"><input id="recvCost${i}" type="number" min="0" step="0.01" inputmode="decimal" value="${Number(l.unitCost||0)}">${rise>=3?`<div class="costRise">▲ ${rise.toFixed(1)}%</div>`:old?`<div class="muted" style="margin-top:4px">Old ${money(old)}</div>`:''}</div><div class="receiveCell" data-label="Core"><input id="recvCore${i}" type="number" min="0" step="0.01" inputmode="decimal" value="${Number(l.coreCost||0)}"></div></div><div class="receiveCell" data-label="ITTR inventory match">${receiveLineMatchOptions(l,i)}<label class="receiveCreateCheck"><input id="recvNew${i}" type="checkbox" ${l.createNew!==false&&!l.matchedPartId?'checked':''}><span>Create new inventory part if unmatched</span></label><label class="receiveCreateCheck"><input id="recvTaxable${i}" type="checkbox" ${l.taxable===false?'':'checked'}><span>Purchase line taxable</span></label></div><div class="receiveLineTools"><button type="button" class="secondary receiveLineRemove" onclick="removeReceivingLine(${i})">Remove Line</button></div></div>`}).join('')}</div><div class="receiveSummary"><div class="receiveTotals"><span>Invoice Lines<b>${lines.length}</b></span><span>Invoice Total<b>${money(total)}</b></span><span>Tax<b>${money(d.tax||0)}</b></span><span>Freight<b>${money(d.freight||0)}</b></span></div><div class="actions"><button class="secondary" onclick="resetSmartReceiving()">Start Over</button><button id="receiveInventoryBtn" onclick="receiveSmartInvoice()">✓ Receive Inventory</button></div></div>`;normalizeReceivingVendor()}
+function receivingDocumentPreviewHtml(){if(!smartReceivingPreviewUrl)return '<div class="receiveDocumentFallback">Document preview unavailable. Parsed data remains editable.</div>';const mime=String(smartReceivingData?.previewMime||'');if(mime==='application/pdf'||/\.pdf$/i.test(smartReceivingData?.previewName||''))return `<iframe title="Vendor invoice preview" src="${smartReceivingPreviewUrl}#toolbar=1&navpanes=0"></iframe>`;return `<img alt="Vendor invoice preview" src="${smartReceivingPreviewUrl}">`}
+function validateReceivingReview(){let bad=0;document.querySelectorAll('#smartReceivingBody input').forEach(x=>x.classList.remove('receiveValidationError','receiveValidationWarn'));const vendor=document.getElementById('recvVendor'),num=document.getElementById('recvInvoice');if(!vendor?.value.trim()){vendor?.classList.add('receiveValidationError');bad++}if(!num?.value.trim())num?.classList.add('receiveValidationWarn');for(let i=0;i<(smartReceivingData?.extract?.lines||[]).length;i++){const pn=document.getElementById(`recvPN${i}`),qty=document.getElementById(`recvQty${i}`),cost=document.getElementById(`recvCost${i}`);if(!pn?.value.trim()){pn?.classList.add('receiveValidationError');bad++}if(Number(qty?.value||0)<=0){qty?.classList.add('receiveValidationError');bad++}if(Number(cost?.value||0)<0){cost?.classList.add('receiveValidationError');bad++}}return bad===0}
+function renderSmartReceivingReview(){const d=smartReceivingData?.extract||{},lines=d.lines||[],b=document.getElementById('smartReceivingBody');const total=Number(d.total||0);b.innerHTML=`<div class="receiveVerifyShell"><aside class="receiveDocumentPane">${receivingDocumentPreviewHtml()}</aside><section class="receiveDataPane"><div class="receiveHeaderGrid"><div class="partInfoItem"><span>Vendor</span><input id="recvVendor" list="partsVendorList" value="${esc(d.vendor||'')}" onblur="normalizeReceivingVendor()"><div id="recvVendorHint" class="vendorHint">Website/domain names are normalized to your saved vendor.</div></div><div class="partInfoItem"><span>Invoice #</span><input id="recvInvoice" value="${esc(d.invoiceNumber||'')}"></div><div class="partInfoItem"><span>Invoice Date</span><input id="recvDate" type="date" value="${esc(d.invoiceDate||'')}"></div><div class="partInfoItem"><span>PO #</span><input id="recvPO" value="${esc(d.poNumber||'')}"></div></div><div class="receiveInvoiceFinancials"><div class="field"><label>Subtotal</label><input id="recvSubtotal" type="number" step="0.01" value="${Number(d.subtotal||0)}"></div><div class="field"><label>Purchase Tax</label><input id="recvTax" type="number" step="0.01" value="${Number(d.tax||0)}"></div><div class="field"><label>Freight / Fees</label><input id="recvFreight" type="number" step="0.01" value="${Number(d.freight||0)}"></div><div class="field"><label>Invoice Total</label><input id="recvTotal" type="number" step="0.01" value="${total}"></div></div><div class="receiveTaxRow"><label class="receiveCreateCheck"><input id="recvTaxIncludedCost" type="checkbox" ${d.taxIncludedInCost?'checked':''}><span>Include purchase tax in inventory landed cost</span></label><div class="field"><label>Invoice Tax Rate % (optional)</label><input id="recvTaxRate" type="number" min="0" step="0.001" value="${Number(d.taxRate||0)}"></div></div><div class="notice"><b>Review before receiving.</b> You can edit AI results, remove lines you did not receive, or add a missing invoice line. Nothing changes inventory until you confirm.</div><div class="receiveReviewToolbar"><div class="muted"><b>${lines.length}</b> invoice line${lines.length===1?'':'s'} currently included.</div><button type="button" class="secondary receiveAddLine" onclick="addReceivingLine()">＋ Add Missing Line</button></div><div class="partPanel"><div class="receiveLine receiveLineHead"><div>Part #</div><div>Description</div><div>Qty</div><div>Buy Price</div><div>Core</div><div>ITTR Match</div></div>${lines.map((l,i)=>{const old=Number(l.matches?.[0]?.cost||0),nc=Number(l.unitCost||0),rise=old&&nc>old?((nc-old)/old*100):0;return `<div class="receiveLine ${l.manual?'manualLine':''}"><div class="receiveCell" data-label="Part number"><input id="recvPN${i}" value="${esc(l.partNumber||'')}"><div class="${l.matchStatus==='matched'?'matchGood':'matchNew'}">${l.manual?'Manual line':l.matchStatus==='matched'?'✓ Matched':l.matchStatus==='possible'?'Review match':'+ New / unmatched'}</div></div><div class="receiveCell" data-label="Description"><input id="recvDesc${i}" value="${esc(l.description||'')}">${l.manufacturer?`<div class="muted" style="margin-top:4px">${esc(l.manufacturer||'')}</div>`:''}</div><div class="receiveCompactGrid"><div class="receiveCell" data-label="Qty"><input id="recvQty${i}" type="number" min="0" step="1" inputmode="numeric" value="${Number(l.quantity||0)}"></div><div class="receiveCell" data-label="Buy price"><input id="recvCost${i}" type="number" min="0" step="0.01" inputmode="decimal" value="${Number(l.unitCost||0)}">${rise>=3?`<div class="costRise">▲ ${rise.toFixed(1)}%</div>`:old?`<div class="muted" style="margin-top:4px">Old ${money(old)}</div>`:''}</div><div class="receiveCell" data-label="Core"><input id="recvCore${i}" type="number" min="0" step="0.01" inputmode="decimal" value="${Number(l.coreCost||0)}"></div></div><div class="receiveCell" data-label="ITTR inventory match">${receiveLineMatchOptions(l,i)}<label class="receiveCreateCheck"><input id="recvNew${i}" type="checkbox" ${l.createNew!==false&&!l.matchedPartId?'checked':''}><span>Create new inventory part if unmatched</span></label><label class="receiveCreateCheck"><input id="recvTaxable${i}" type="checkbox" ${l.taxable===false?'':'checked'}><span>Purchase line taxable</span></label></div><div class="receiveLineTools"><button type="button" class="secondary receiveLineRemove" onclick="removeReceivingLine(${i})">Remove Line</button></div></div>`}).join('')}</div><div class="receiveSummary"><div class="receiveTotals"><span>Invoice Lines<b>${lines.length}</b></span><span>Invoice Total<b>${money(total)}</b></span><span>Tax<b>${money(d.tax||0)}</b></span><span>Freight<b>${money(d.freight||0)}</b></span></div><div class="actions"><button class="secondary" onclick="resetSmartReceiving()">Start Over</button><button id="receiveInventoryBtn" onclick="receiveSmartInvoice()">✓ Receive Inventory</button></div></div></section></div>`;normalizeReceivingVendor();setTimeout(validateReceivingReview,0)}
 
 async function normalizeReceivingVendor(){
  const input=document.getElementById('recvVendor'),hint=document.getElementById('recvVendorHint');
@@ -3073,7 +3166,7 @@ function closePartsScanner(){stopPartsCamera();document.getElementById('partsSca
 async function lookupScannedPart(codeOverride=''){const inp=document.getElementById('partsScanInput'),out=document.getElementById('partsScanResult'),code=String(codeOverride||inp?.value||'').trim();if(!code)return;if(out)out.innerHTML='<div class="muted">Processing barcode…</div>';
  if(partsScannerContext.mode==='alias'){const id=Number(partsScannerContext.partId||currentPartDetail.id);if(!id){if(out)out.innerHTML='<div class="error">Part is no longer open.</div>';return}stopPartsCamera();const ok=await addPartBarcodeAlias(id,code);if(ok&&out)out.innerHTML=`<div class="scanSuccess"><b>✓ Manufacturer barcode saved</b><div class="barcodeCode" style="margin-top:6px">${esc(code)}</div><div class="actions"><button onclick="closePartsScanner()">Done</button><button class="secondary" onclick="document.getElementById('partsScanInput').value='';document.getElementById('partsScanResult').innerHTML='';startPartsCamera()">Scan Another</button></div></div>`;return}
  if(partsScannerContext.mode==='count'){const sid=Number(partsScannerContext.sessionId||0);if(!sid){if(out)out.innerHTML='<div class="error">No active inventory count.</div>';return}try{const d=await apiJSON(`/api/parts/inventory-count/${sid}/scan`,{method:'POST',body:JSON.stringify({code})});stopPartsCamera();const x=d.part,l=d.line,variance=Number(l.counted_qty||0)-Number(l.system_qty||0);if(out)out.innerHTML=`<div class="scanSuccess"><b>✓ ${esc(cleanPartField(x.part_number))}</b><div>${esc(cleanPartField(x.description))}</div><div class="muted">${esc(cleanPartField(x.location,'No location'))}</div><div class="row" style="margin-top:10px"><div class="field"><label>System Qty</label><input value="${Number(l.system_qty||0)}" disabled></div><div class="field"><label>Physical Qty</label><input id="countScanQty" type="number" min="0" step="1" inputmode="numeric" value="${Number(l.counted_qty||0)}"></div></div><div class="${variance===0?'varianceGood':'varianceBad'}">Variance: ${variance>0?'+':''}${variance}</div><div class="actions"><button onclick="saveScannedCountQty(${Number(x.id)})">Save Qty</button><button class="secondary" onclick="document.getElementById('partsScanInput').value='';document.getElementById('partsScanResult').innerHTML='';startPartsCamera()">Scan Next</button></div></div>`;await refreshInventoryCountBody(false);return}catch(e){stopPartsCamera();if(e.code==='UNKNOWN_BARCODE'||String(e.message||'').includes('not assigned')){if(out)out.innerHTML=`<div class="countUnknown"><b>Barcode not recognized</b><div class="barcodeCode" style="margin:7px 0">${esc(code)}</div><div class="muted">Assign this manufacturer barcode to an existing part, then scan it again.</div><div class="field" style="margin-top:10px"><label>Find inventory part</label><input id="unknownBarcodePartSearch" placeholder="Part number or description" oninput="searchUnknownBarcodePart('${encodeURIComponent(code).replaceAll("'","%27")}')"></div><div id="unknownBarcodeMatches"></div></div>`;return}if(out)out.innerHTML=`<div class="error">${esc(e.message||'Unable to count barcode.')}</div>`;return}}
- try{const d=await apiJSON(`/api/parts/scan/${encodeURIComponent(code)}`),x=d.item;if(out)out.innerHTML=`<div class="card"><b>${esc(cleanPartField(x.part_number))}</b><div>${esc(cleanPartField(x.description))}</div><div class="${partStockClass(x)}">Available: ${Number(x.available||0).toLocaleString()} ${esc(cleanImportedDisplayText(x.uom)||'')}</div><div class="muted">${esc(cleanPartField(x.location,'No location'))} · ${esc(x.internal_barcode||'')}</div><div class="actions">${partsScannerContext.mode==='workorder'?`<div class="row" style="margin-top:10px"><div class="field"><label>Quantity</label><input id="partsScanQty" type="number" min="1" step="1" value="1" inputmode="numeric"></div><div class="field" style="align-self:end"><button style="width:100%" onclick="confirmScannedPart(${Number(x.id)},'${encodeURIComponent(cleanPartField(x.part_number,''))}','${encodeURIComponent(cleanPartField(x.description,''))}')">Add to This Job</button></div></div>`:`<button onclick="closePartsScanner();showView('parts');setTimeout(()=>openPartDetail(${Number(x.id)}),0)">Open Part</button>`}</div></div>`;stopPartsCamera()}catch(e){if(out)out.innerHTML=`<div class="error">${esc(e.message||'Barcode not found.')}</div>`}}
+ try{const d=await apiJSON(`/api/parts/scan/${encodeURIComponent(code)}`),x=d.item;if(out)out.innerHTML=`<div class="card"><b>${esc(cleanPartField(x.part_number))}</b><div>${esc(cleanPartField(x.description))}</div><div class="${partStockClass(x)}">Available: ${Number(x.available||0).toLocaleString()} ${esc(cleanImportedDisplayText(x.uom)||'')}</div><div class="muted">${esc(cleanPartField(x.location,'No location'))} · ${esc(x.internal_barcode||'')}</div><div class="actions">${partsScannerContext.mode==='workorder'?`<div class="row" style="margin-top:10px"><div class="field"><label>Quantity</label><input id="partsScanQty" type="number" min="1" step="1" value="1" inputmode="numeric"></div><div class="field" style="align-self:end"><button style="width:100%" onclick="confirmScannedPart(${Number(x.id)},'${encodeURIComponent(cleanPartField(x.part_number,''))}','${encodeURIComponent(cleanPartField(x.description,''))}')">Add to This Job</button></div></div>`:`<button onclick="closePartsScanner();showView('parts').then(()=>openPartDetail(${Number(x.id)}))">Open Part</button>`}</div></div>`;stopPartsCamera()}catch(e){if(out)out.innerHTML=`<div class="error">${esc(e.message||'Barcode not found.')}</div>`}}
 async function confirmScannedPart(id,pn,desc){const {workOrderId,taskIndex}=partsScannerContext,w=state.workorders.find(x=>String(x.id)===String(workOrderId)),t=w?.tasks?.[taskIndex];if(!t?.uid)return alert('Task not found.');const qty=Number(document.getElementById('partsScanQty')?.value||1);if(!qty||qty<=0)return alert('Enter a valid quantity.');try{const d=await apiJSON(`/api/work-orders/${encodeURIComponent(workOrderId)}/tasks/by-uid/${encodeURIComponent(t.uid)}/parts`,{method:'POST',body:JSON.stringify({inventoryPartId:id,partNumber:decodeURIComponent(pn),description:decodeURIComponent(desc),qty,method:'barcode_scan'})});if(d?.shopflow){state=d.shopflow;localStorage.setItem('ittr_shopflow_v2',JSON.stringify(state))}if(d?.version!=null)cloudVersions.shopflow=Number(d.version);closePartsScanner();render();openDetail(workOrderId)}catch(e){alert(e.message||'Unable to add scanned part.')}}
 async function startPartsCamera(){stopPartsCamera();const view=document.getElementById('scannerViewport'),video=document.getElementById('partsScannerVideo');if(!navigator.mediaDevices?.getUserMedia)return alert('Camera scanning is not available in this browser. Use a USB/Bluetooth scanner or type the barcode.');try{if('BarcodeDetector' in window){const formats=await BarcodeDetector.getSupportedFormats(),wanted=['code_128','ean_13','ean_8','upc_a','upc_e','code_39','qr_code'].filter(x=>formats.includes(x)),det=new BarcodeDetector(wanted.length?{formats:wanted}:undefined);partsScannerStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}});video.srcObject=partsScannerStream;await video.play();view.classList.remove('hidden');let busy=false;partsScannerTimer=setInterval(async()=>{if(busy||video.readyState<2)return;busy=true;try{const found=await det.detect(video);if(found?.[0]?.rawValue){document.getElementById('partsScanInput').value=found[0].rawValue;await lookupScannedPart(found[0].rawValue)}}catch{}finally{busy=false}},350);return}if(window.Html5Qrcode){view.classList.remove('hidden');video.style.display='none';let mount=document.getElementById('html5PartsReader');if(!mount){mount=document.createElement('div');mount.id='html5PartsReader';view.appendChild(mount)}partsHtml5Scanner=new Html5Qrcode('html5PartsReader');await partsHtml5Scanner.start({facingMode:'environment'},{fps:10,qrbox:{width:280,height:140}},async decoded=>{document.getElementById('partsScanInput').value=decoded;await lookupScannedPart(decoded)});return}alert('Live camera scanning is unavailable. Use a USB/Bluetooth scanner or type the barcode.')}catch(e){stopPartsCamera();alert('Unable to start camera: '+(e.message||e))}}
 function stopPartsCamera(){if(partsScannerTimer){clearInterval(partsScannerTimer);partsScannerTimer=null}if(partsScannerStream){partsScannerStream.getTracks().forEach(t=>t.stop());partsScannerStream=null}if(partsHtml5Scanner){const x=partsHtml5Scanner;partsHtml5Scanner=null;Promise.resolve(x.stop()).catch(()=>{}).finally(()=>{try{x.clear()}catch{}})}const v=document.getElementById('partsScannerVideo');if(v){v.srcObject=null;v.style.display=''}const mount=document.getElementById('html5PartsReader');if(mount)mount.remove();document.getElementById('scannerViewport')?.classList.add('hidden')}
@@ -3097,9 +3190,9 @@ function taskPartsHTML(w,t,i){
    <div><b>${esc(p.partNumber||"—")}</b></div>
    <div class="partDesc">${esc(p.description||"—")}<div class="muted">${p.addedBy?`Added by ${esc(mechanicDisplay(p.addedBy)||p.addedBy)}${p.addedAt?` · ${fmtDateTime(p.addedAt)}`:""}`:""}</div></div>
    <div>Qty ${esc(String(p.qty||1))}</div>
-   ${(session?.role==="admin"||String(p.addedBy||"").toLowerCase()===String(session?.username||"").toLowerCase())&&w.status!=="Completed"?`<button type="button" class="danger" onclick="removeTaskPart(${w.id},'${esc(String(t.uid||""))}','${esc(String(p.id||""))}')">×</button>`:""}
+   ${(["admin","manager"].includes(session?.role)||String(p.addedBy||"").toLowerCase()===String(session?.username||"").toLowerCase())&&w.status!=="Completed"?`<button type="button" class="danger" onclick="removeTaskPart(${w.id},'${esc(String(t.uid||""))}','${esc(String(p.id||""))}')">×</button>`:""}
  </div>`).join(""):`<div class="muted">No parts recorded for this job.</div>`;
- const add=((session?.role==="mechanic"&&visibleToCurrentMechanic(w))||session?.role==="admin")&&w.status!=="Completed"?`<div class="partAddGrid">
+ const add=((session?.role==="mechanic"&&visibleToCurrentMechanic(w))||["admin","manager"].includes(session?.role))&&w.status!=="Completed"?`<div class="partAddGrid">
    <input id="partNo_${w.id}_${i}" list="fullbayPartNumberList" placeholder="Part Number" oninput="fullbayPartSuggest(this,${w.id},${i},'number')">
    <input class="partDescInput" id="partDesc_${w.id}_${i}" list="fullbayPartDescriptionList" placeholder="Part Description" oninput="fullbayPartSuggest(this,${w.id},${i},'description')">
    <input id="partQty_${w.id}_${i}" type="number" min="0.01" step="0.01" value="1" placeholder="Qty">
@@ -3292,12 +3385,12 @@ function openDetail(id){
  if(!visibleToCurrentMechanic(w) && !ownCompleted && !ownUpcoming) return alert(tr("You do not have access to this work order."));
 }
  document.getElementById("detailTitle").textContent=session?.role==="mechanic"?`Unit ${w.unit}`:`Work Order #${w.id} — ${w.unit}`;
- const adminControls=(session?.role==="admin" && w.status!=="Completed")?`
+ const adminControls=(["admin","manager"].includes(session?.role) && w.status!=="Completed")?`
    <h2 style="margin-top:16px">Admin Controls</h2>
    <div class="field"><label>Parking spot #</label><input id="parkingEdit" value="${esc(w.parking||"")}" placeholder="P-12"></div>
    <button class="secondary" onclick="saveParking(${w.id})">Save Parking Spot</button> <button class="secondary" onclick="closeModal('detailModal');openEdit(${w.id})">Edit Full Work Order</button> <button class="danger" onclick="deleteWorkOrder(${w.id})">Delete Work Order</button>
    ${w.unitType==="customer"?(w.truckHere?`<button class="purple" onclick="markTruckNotHere(${w.id})">Move Back to Future / Not Here</button>`:`<button class="success" onclick="markTruckHere(${w.id});openDetail(${w.id})">✓ Mark Truck Is Here</button>`):`<span class="badge b-here">Fleet unit auto-release: ${w.fleetAuto!==false?"ON":"OFF"}</span>`}
- `:(session?.role==="admin"?`
+ `:(["admin","manager"].includes(session?.role)?`
    <h2 style="margin-top:16px">Admin Controls</h2>
    <button class="danger" onclick="deleteWorkOrder(${w.id})">Delete Work Order</button>
  `:"");
@@ -3314,7 +3407,7 @@ function openDetail(id){
  document.getElementById("detailBody").innerHTML=`
   <div class="muted">${esc(w.customer)} · ${esc(w.date)} ${esc(w.time)} · Parking: ${esc(w.parking||"—")}</div>${(w.vin||w.make||w.model||w.plate||w.dotNumber)?`<div class="vehicleMatchCard" style="margin-top:8px"><b>${esc([w.year,w.make,w.model].filter(Boolean).join(" ")||`Unit ${w.unit}`)}</b><div class="muted">${esc([w.vin?`VIN ${w.vin}`:"",w.plate?`Plate ${w.plate}`:"",w.dotNumber?`DOT ${w.dotNumber}`:"",w.mileage?`${Number(w.mileage).toLocaleString()} mi`:""].filter(Boolean).join(" · "))}</div></div>`:""}
   <div class="assignmentStrip">${assignmentChips(w)}</div>
-  ${(session?.role==="admin" || (session?.role==="mechanic"&&visibleToCurrentMechanic(w)))&&w.status!=="Completed"?`<div class="helperActions"><button type="button" class="secondary" onclick="openAddHelper(${w.id})">+ Add Helper Mechanic</button>${session?.role==="admin"?(w.helpers||[]).map(u=>`<button type="button" class="danger" data-helper="${encodeURIComponent(u)}" onclick="removeHelperMechanic(${w.id},decodeURIComponent(this.dataset.helper))">Remove ${esc(mechanicDisplay(u))}</button>`).join(""):""}</div>`:""}
+  ${(["admin","manager"].includes(session?.role) || (session?.role==="mechanic"&&visibleToCurrentMechanic(w)))&&w.status!=="Completed"?`<div class="helperActions"><button type="button" class="secondary" onclick="openAddHelper(${w.id})">+ Add Helper Mechanic</button>${["admin","manager"].includes(session?.role)?(w.helpers||[]).map(u=>`<button type="button" class="danger" data-helper="${encodeURIComponent(u)}" onclick="removeHelperMechanic(${w.id},decodeURIComponent(this.dataset.helper))">Remove ${esc(mechanicDisplay(u))}</button>`).join(""):""}</div>`:""}
   <p><b>Priority:</b> ${esc(w.priority)} &nbsp; <b>Status:</b> ${esc(w.status)} &nbsp; ${availabilityBadge(w)} ${w.isReactivated?'<span class="badge b-wait">Reactivated</span>':""}</p>
   ${w.notes?`<div class="card" style="background:#fafafa"><b>Notes</b><div>${esc(w.notes)}</div></div>`:""}
   <h2 style="margin-top:16px">Assigned Jobs</h2>
@@ -3494,7 +3587,7 @@ document.addEventListener("DOMContentLoaded",async()=>{
  if(session&&cloudToken){const ok=await restoreCloudSession();if(!ok)session=null;}
  showLogin();
  if(session){applyRole();render();}else{applyTranslations();}
- setInterval(()=>{if(session?.role==="admin"&&currentView==="dashboard"&&!document.hidden)renderMechanicLiveStatus()},2000);
+ setInterval(()=>{if(["admin","manager"].includes(session?.role)&&currentView==="dashboard"&&!document.hidden)renderMechanicLiveStatus()},2000);
 // Pull newer cloud snapshots so admin approvals and mechanic updates appear across devices.
 setInterval(()=>{if(session&&cloudReady&&!document.hidden)refreshCloudStateSilently()},4000);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&session&&cloudReady)refreshCloudStateSilently()});
@@ -3519,8 +3612,8 @@ async function createServiceOrderFromWO(id){try{const r=await fetch(`/api/servic
 async function openServiceOrder(id){try{const r=await fetch(`/api/service-orders/${id}`,{headers:authHeaders(),cache:'no-store'}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to load service order');activeServiceOrder=d;const st=document.getElementById('serviceOrderTitle');if(st)st.textContent='Service Order Review';renderServiceOrder();document.getElementById('serviceOrderModal').classList.add('open');syncModalState()}catch(e){alert(e.message)}}
 function renderServiceOrder(){const d=activeServiceOrder,so=d.serviceOrder,w=d.workOrder,s=d.sessions||[];const tasks=Array.isArray(w.tasks)?w.tasks:[];document.getElementById('serviceOrderBody').innerHTML=`<div class="soReviewHead"><div><span class="eyebrow">SERVICE ORDER REVIEW</span><h1>${esc(so.service_order_number)}</h1><div class="muted">Created automatically from completed WO #${esc(so.work_order_id)}</div></div><div class="soReviewVehicle"><b>Unit ${esc(so.unit_number||'—')}</b><span>${esc(so.customer_name||'')}</span><small>${so.mileage?Number(so.mileage).toLocaleString()+' mi':'Mileage not recorded'} · ${esc(so.vin||'VIN not recorded')}</small></div></div><div class="notice">Clocked technician time is preserved for audit. If the completed job needs a correction, enter the corrected time and a reason. The invoice uses the adjusted time without deleting the original record.</div><div class="soJobList">${tasks.map(t=>{const rows=s.filter(x=>String(x.task_uid)===String(t.uid));return `<div class="soJobCard"><div class="soJobTitle"><div><b>${esc(t.t||'Repair')}</b><small>${esc(t.outcome||'Completed')}</small></div><span>${rows.reduce((a,x)=>a+Number(x.adjusted_hours||0),0).toFixed(2)} hr</span></div>${rows.length?rows.map(x=>`<div class="soTechRow"><div><b>${esc(mechanicDisplay(x.mechanic_username))}</b><small>Clocked ${Number(x.original_hours||0).toFixed(2)} hr${x.adjustment?' · adjusted by '+esc(x.adjustment.adjusted_by):''}</small></div><div class="soTimeEdit"><input type="number" step="0.01" min="0" id="soh_${encodeURIComponent(String(t.uid))}_${encodeURIComponent(x.mechanic_username)}" value="${Number(x.adjusted_hours||0).toFixed(2)}"><button class="secondary" onclick="adjustServiceTime('${encodeURIComponent(String(t.uid))}','${encodeURIComponent(x.mechanic_username)}')">Adjust</button></div></div>`).join(''):'<div class="muted">No completed clock session for this job.</div>'}${(t.parts||[]).length?`<div class="soParts"><b>Parts</b>${t.parts.map(p=>`<span>${esc(p.partNumber||'')} ${esc(p.description||'')} × ${Number(p.qty||1)}</span>`).join('')}</div>`:''}</div>`}).join('')}</div><div class="soReviewFooter"><div><b>Ready for billing?</b><div class="muted">Customer, vehicle, jobs, mechanic time and scanned parts will transfer automatically.</div></div><button onclick="convertServiceOrderToInvoice(${so.id})">Convert to Invoice →</button></div>`}
 async function adjustServiceTime(taskUid,mechanic){const tu=decodeURIComponent(taskUid),m=decodeURIComponent(mechanic),el=document.getElementById(`soh_${encodeURIComponent(tu)}_${encodeURIComponent(m)}`),hours=Number(el?.value);const reason=prompt('Reason for changing completed mechanic time (required):');if(!reason)return;const r=await fetch(`/api/service-orders/${activeServiceOrder.serviceOrder.id}/time-adjustment`,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({taskUid:tu,mechanic:m,adjustedHours:hours,reason})}),d=await r.json();if(!r.ok)return alert(d.error||'Time adjustment failed');await openServiceOrder(activeServiceOrder.serviceOrder.id)}
-async function convertServiceOrderToInvoice(id){try{const r=await fetch(`/api/service-orders/${id}/to-invoice`,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:'{}'}),d=await r.json();if(!r.ok)throw new Error(d.error||'Conversion failed');closeModal('serviceOrderModal');showView('invoices');await loadInvoices();await openInvoice(d.id)}catch(e){alert(e.message)}}
-async function createInvoiceFromWO(id){try{const r=await fetch(`/api/invoices/from-work-order/${id}`,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({})}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to create invoice');showView('invoices');await loadInvoices();await openInvoice(d.id)}catch(e){alert(e.message)}}
+async function convertServiceOrderToInvoice(id){try{const r=await fetch(`/api/service-orders/${id}/to-invoice`,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:'{}'}),d=await r.json();if(!r.ok)throw new Error(d.error||'Conversion failed');closeModal('serviceOrderModal');await await showView('invoices');await loadInvoices();await openInvoice(d.id)}catch(e){alert(e.message)}}
+async function createInvoiceFromWO(id){try{const r=await fetch(`/api/invoices/from-work-order/${id}`,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({})}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to create invoice');await showView('invoices');await loadInvoices();await openInvoice(d.id)}catch(e){alert(e.message)}}
 function openManualInvoice(){invoiceLookupSelection=null;document.getElementById('invoiceCreateModal').classList.add('open');document.getElementById('invoiceLookupQ').value='';document.getElementById('invoiceLookupResults').innerHTML='<div class="invoiceLookupWelcome"><b>Find the truck first</b><span>Search Unit #, customer, VIN, plate or DOT. ITTR will pull the vehicle, customer, last mileage and service history automatically.</span></div>';document.getElementById('invoiceLookupSelected').innerHTML='';syncModalState();setTimeout(()=>document.getElementById('invoiceLookupQ')?.focus(),80)}
 let invoiceLookupSelection=null,invoiceLookupTimer=null;
 function scheduleInvoiceLookup(v){clearTimeout(invoiceLookupTimer);const q=String(v||'').trim();if(q.length<2){document.getElementById('invoiceLookupResults').innerHTML='<div class="invoiceLookupWelcome"><b>Type at least 2 characters</b><span>Example: 6600, Air Delivery, VIN or DOT.</span></div>';return}invoiceLookupTimer=setTimeout(()=>runInvoiceLookup(q),180)}
@@ -3543,7 +3636,7 @@ function addInvoiceLineFromMenu(type='labor'){const job=String(document.getEleme
 function addInvoiceChildLine(parentId,type='part'){addInvoiceLine(type,'',parentId)}
 async function addInvoiceLine(type='labor',jobName='Service',parentLineId=null){const i=activeInvoice?.invoice;if(!i)return;const typ=parentLineId?(['part','sublet','fee','other'].includes(type)?type:'part'):'labor';const defaults={labor:{description:'',quantity:1,unitPrice:0,taxable:false},part:{description:'',quantity:1,unitPrice:0,taxable:true},sublet:{description:'',quantity:1,unitPrice:0,taxable:false},fee:{description:'',quantity:1,unitPrice:0,taxable:false},other:{description:'',quantity:1,unitPrice:0,taxable:false}}[typ];try{const r=await fetch(`/api/invoices/${i.id}/lines`,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({lineType:typ,description:defaults.description,quantity:defaults.quantity,unitPrice:defaults.unitPrice,taxable:defaults.taxable,jobName:jobName||'Service',parentLineId})}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to add line');await openInvoice(i.id);setTimeout(()=>{const row=document.querySelector(`[data-invoice-line="${d.id}"]`);row?.querySelector('.ilDesc')?.focus();row?.scrollIntoView({behavior:'smooth',block:'center'})},30)}catch(e){alert(e.message)}}
 function invoiceLinePayload(id){const el=document.querySelector(`[data-invoice-line="${id}"]`);if(!el)return null;const lineType=el.querySelector('.ilType')?.value||'other',parentLineId=Number(el.querySelector('.ilParent')?.value||0)||null;return {lineType,description:el.querySelector('.ilDesc')?.value||'',partNumber:lineType==='part'?(el.querySelector('.ilPart')?.value||''):'',quantity:Number(el.querySelector('.ilQty')?.value||0),unitPrice:Number(el.querySelector('.ilPrice')?.value||0),unitCost:Number(el.querySelector('.ilCost')?.value||0),taxable:Boolean(el.querySelector('.ilTax')?.checked),jobName:String(el.querySelector('.ilJob')?.value||activeInvoice.lines.find(x=>String(x.id)===String(id))?.job_name||'Service').trim()||'Service',jobUid:String(activeInvoice.lines.find(x=>String(x.id)===String(id))?.job_uid||''),parentLineId}}
-function renderInvoiceEditor(){const {invoice:i,lines,payments}=activeInvoice,locked=['paid','void'].includes(i.status);document.getElementById('invoiceEditor').innerHTML=`<div class="toolbar"><div><h1 style="margin:0">${esc(i.invoice_number)}</h1><div class="muted">${esc(i.customer_name)} · Unit ${esc(i.unit_number||'—')} ${i.work_order_id?`· WO #${esc(i.work_order_id)}`:''}</div></div><span class="invoiceStatus is-${i.status}">${esc(i.status)}</span></div><div class="invoiceEditorGrid"><div><div class="card"><h2 style="margin-top:0">Customer & Billing</h2><div class="row"><div class="field"><label>Customer</label><input id="invCustomer" value="${esc(i.customer_name)}" ${locked?'disabled':''}></div><div class="field"><label>Unit</label><input id="invUnit" value="${esc(i.unit_number||'')}" ${locked?'disabled':''}></div></div><div class="row"><div class="field"><label>VIN</label><input id="invVin" value="${esc(i.vin||'')}" ${locked?'disabled':''}></div><div class="field"><label>Mileage</label><input id="invMileage" type="number" value="${Number(i.mileage||0)||''}" ${locked?'disabled':''}></div><div class="field"><label>Customer PO #</label><input id="invPo" value="${esc(i.po_number||'')}" ${locked?'disabled':''}></div></div><div class="row"><div class="field"><label>Invoice Date</label><input id="invDate" type="date" value="${esc(String(i.invoice_date||'').slice(0,10))}" ${locked?'disabled':''}></div><div class="field"><label>Due Date</label><input id="invDue" type="date" value="${esc(String(i.due_date||'').slice(0,10))}" ${locked?'disabled':''}></div><div class="field"><label>Terms</label><input id="invTerms" value="${esc(i.terms||'')}" ${locked?'disabled':''}></div></div></div><div class="card"><div class="toolbar"><div><h2 style="margin:0">Labor Operations & Attached Parts</h2><div class="muted">Build the invoice the same way the repair was performed: create labor first, then attach the parts, sublet or fees used for that labor.</div></div>${locked?'':`<button class="secondary" onclick="toggleInvoiceAddMenu()">+ New Labor</button>`}</div>${locked?'':`<div id="invoiceAddMenu" class="invoiceAddMenu is-hidden"><div class="hint"><b>Start a new repair operation.</b> Name the service/job and create the labor first. Parts are added from inside that labor operation.</div><div class="field"><label>Service / Job</label><input id="invoiceNewJobName" value="" placeholder="e.g. PM Service, Replace Wheel Seal, Diagnostics"></div><div><button class="invoiceAddType newLaborOnly" onclick="addInvoiceLineFromMenu('labor')">+ Create Labor Operation</button></div></div>`}${invoiceGroupedLinesHtml(lines,locked)}</div><div class="card"><h2 style="margin-top:0">Customer Note</h2><textarea id="invCustomerNote" rows="3" ${locked?'disabled':''}>${esc(i.customer_note||'')}</textarea><h3>Internal Note</h3><textarea id="invInternalNote" rows="2" ${locked?'disabled':''}>${esc(i.internal_note||'')}</textarea></div></div><div><div class="card invoiceTotals"><h2 style="margin-top:0">Invoice Summary</h2><div class="field"><label>Sales Tax %</label><input id="invTaxRate" type="number" step="0.001" value="${Number(i.tax_rate||0)}" ${locked?'disabled':''}></div><div class="field"><label>Shop Supplies</label><input id="invShopSupplies" type="number" step="0.01" value="${Number(i.shop_supplies||0)}" ${locked?'disabled':''}></div><div class="field"><label>Environmental / Other Fee</label><input id="invEnvFee" type="number" step="0.01" value="${Number(i.environmental_fee||0)}" ${locked?'disabled':''}></div><div class="field"><label>Invoice Discount</label><input id="invDiscount" type="number" step="0.01" value="${Number(i.discount||0)}" ${locked?'disabled':''}></div><hr><div class="muted">Subtotal <b style="float:right">${invMoney(i.subtotal)}</b></div><div class="muted">Tax <b style="float:right">${invMoney(i.tax)}</b></div><div style="margin-top:12px">Total <b style="float:right">${invMoney(i.total)}</b></div><div class="muted">Paid <b style="float:right">${invMoney(i.amount_paid)}</b></div><div style="margin-top:12px">Balance Due</div><div class="moneyBig">${invMoney(i.balance_due)}</div><div class="actions" style="margin-top:14px">${locked?'':`<button onclick="saveInvoiceHeader()">Save Changes</button>`}<button class="secondary" onclick="downloadInvoicePDF(${i.id})">PDF</button>${i.status==='draft'?`<button class="success" onclick="finalizeInvoice(${i.id})">Finalize / Mark Sent</button>`:''}${['sent','partial'].includes(i.status)?`<button class="success" onclick="recordInvoicePayment(${i.id},${Number(i.balance_due||0)})">Record Payment</button>`:''}${i.status!=='void'&&Number(i.amount_paid||0)===0?`<button class="danger" onclick="voidInvoice(${i.id})">Void</button>`:''}</div><h3>Payments</h3>${payments.map(p=>`<div class="historyitem"><b>${invMoney(p.amount)}</b> · ${esc(p.method||'Other')}<div class="muted">${esc(String(p.paid_at||'').slice(0,19).replace('T',' '))} ${p.reference?`· ${esc(p.reference)}`:''}</div></div>`).join('')||'<div class="muted">No payments recorded.</div>'}</div></div></div>`}
+function renderInvoiceEditor(){const {invoice:i,lines,payments}=activeInvoice,locked=['paid','void'].includes(i.status);document.getElementById('invoiceEditor').innerHTML=`<div class="toolbar"><div><h1 style="margin:0">${esc(i.invoice_number)}</h1><div class="muted">${esc(i.customer_name)} · Unit ${esc(i.unit_number||'—')} ${i.work_order_id?`· WO #${esc(i.work_order_id)}`:''}</div></div><span class="invoiceStatus is-${i.status}">${esc(i.status)}</span></div><div class="invoiceEditorGrid"><div><div class="card"><h2 style="margin-top:0">Customer & Billing</h2><div class="row"><div class="field"><label>Customer</label><input id="invCustomer" value="${esc(i.customer_name)}" ${locked?'disabled':''}></div><div class="field"><label>Unit</label><input id="invUnit" value="${esc(i.unit_number||'')}" ${locked?'disabled':''}></div></div><div class="row"><div class="field"><label>VIN</label><input id="invVin" value="${esc(i.vin||'')}" ${locked?'disabled':''}></div><div class="field"><label>Mileage</label><input id="invMileage" type="number" value="${Number(i.mileage||0)||''}" ${locked?'disabled':''}></div><div class="field"><label>Customer PO #</label><input id="invPo" value="${esc(i.po_number||'')}" ${locked?'disabled':''}></div></div><div class="row"><div class="field"><label>Invoice Date</label><input id="invDate" type="date" value="${esc(String(i.invoice_date||'').slice(0,10))}" ${locked?'disabled':''}></div><div class="field"><label>Due Date</label><input id="invDue" type="date" value="${esc(String(i.due_date||'').slice(0,10))}" ${locked?'disabled':''}></div><div class="field"><label>Terms</label><input id="invTerms" value="${esc(i.terms||'')}" ${locked?'disabled':''}></div></div></div><div class="card"><div class="toolbar"><div><h2 style="margin:0">Labor Operations & Attached Parts</h2><div class="muted">Build the invoice the same way the repair was performed: create labor first, then attach the parts, sublet or fees used for that labor.</div></div>${locked?'':`<button class="secondary" onclick="toggleInvoiceAddMenu()">+ New Labor</button>`}</div>${locked?'':`<div id="invoiceAddMenu" class="invoiceAddMenu is-hidden"><div class="hint"><b>Start a new repair operation.</b> Name the service/job and create the labor first. Parts are added from inside that labor operation.</div><div class="field"><label>Service / Job</label><input id="invoiceNewJobName" value="" placeholder="e.g. PM Service, Replace Wheel Seal, Diagnostics"></div><div><button class="invoiceAddType newLaborOnly" onclick="addInvoiceLineFromMenu('labor')">+ Create Labor Operation</button></div></div>`}${invoiceGroupedLinesHtml(lines,locked)}</div><div class="card"><h2 style="margin-top:0">Customer Note</h2><textarea id="invCustomerNote" rows="3" ${locked?'disabled':''}>${esc(i.customer_note||'')}</textarea><h3>Internal Note</h3><textarea id="invInternalNote" rows="2" ${locked?'disabled':''}>${esc(i.internal_note||'')}</textarea></div></div><div><div class="card invoiceTotals"><h2 style="margin-top:0">Invoice Summary</h2><div class="field"><label>Sales Tax %</label><input id="invTaxRate" type="number" step="0.001" value="${Number(i.tax_rate||0)}" ${locked?'disabled':''}></div><div class="field"><label>Shop Supplies</label><input id="invShopSupplies" type="number" step="0.01" value="${Number(i.shop_supplies||0)}" ${locked?'disabled':''}></div><div class="field"><label>Environmental / Other Fee</label><input id="invEnvFee" type="number" step="0.01" value="${Number(i.environmental_fee||0)}" ${locked?'disabled':''}></div><div class="field"><label>Invoice Discount</label><input id="invDiscount" type="number" step="0.01" value="${Number(i.discount||0)}" ${locked?'disabled':''}></div><hr><div class="muted">Subtotal <b style="float:right">${invMoney(i.subtotal)}</b></div><div class="muted">Tax <b style="float:right">${invMoney(i.tax)}</b></div><div style="margin-top:12px">Total <b style="float:right">${invMoney(i.total)}</b></div><div class="muted">Paid <b style="float:right">${invMoney(i.amount_paid)}</b></div><div style="margin-top:12px">Balance Due</div><div class="moneyBig">${invMoney(i.balance_due)}</div><div class="actions" style="margin-top:14px">${locked?'':`<button onclick="saveInvoiceHeader()">Save Changes</button>`}<button class="secondary" onclick="downloadInvoicePDF(${i.id})">PDF</button>${i.status==='draft'?`<button class="success" onclick="finalizeInvoice(${i.id})">Finalize / Mark Sent</button>`:''}${['sent','partial'].includes(i.status)?`<button class="success" onclick="recordInvoicePayment(${i.id},${Number(i.balance_due||0)})">Record Payment</button>`:''}${i.status!=='void'&&Number(i.amount_paid||0)===0?`<button class="danger" onclick="voidInvoice(${i.id})">Void</button>${session?.role==='admin'?`<button class="danger" onclick="permanentlyDeleteInvoice(${i.id},'${esc(i.invoice_number)}')">Delete Permanently</button>`:''}<button class="secondary" onclick="createInvoicePaymentLink(${i.id})">Payment Link</button><button class="secondary" onclick="emailInvoice(${i.id})">Email Invoice</button>`:''}</div><h3>Payments</h3>${payments.map(p=>`<div class="historyitem"><b>${invMoney(p.amount)}</b> · ${esc(p.method||'Other')}<div class="muted">${esc(String(p.paid_at||'').slice(0,19).replace('T',' '))} ${p.reference?`· ${esc(p.reference)}`:''}</div></div>`).join('')||'<div class="muted">No payments recorded.</div>'}</div></div></div>`}
 async function persistInvoiceLine(id){const i=activeInvoice.invoice,b=invoiceLinePayload(id);if(!b)return {ok:true};const r=await fetch(`/api/invoices/${i.id}/lines/${id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(b)}),d=await r.json();if(!r.ok)throw new Error(d.error||'Line save failed');return d}
 async function saveAllInvoiceLines(){for(const l of (activeInvoice?.lines||[])){if(document.querySelector(`[data-invoice-line="${l.id}"]`))await persistInvoiceLine(l.id)}}
 async function saveInvoiceHeader(){const i=activeInvoice.invoice;try{await saveAllInvoiceLines();const b={customerName:document.getElementById('invCustomer').value,unitNumber:document.getElementById('invUnit').value,vin:document.getElementById('invVin').value,poNumber:document.getElementById('invPo').value,mileage:Number(document.getElementById('invMileage')?.value||0),invoiceDate:document.getElementById('invDate').value,dueDate:document.getElementById('invDue').value,terms:document.getElementById('invTerms').value,taxRate:Number(document.getElementById('invTaxRate').value||0),shopSupplies:Number(document.getElementById('invShopSupplies').value||0),environmentalFee:Number(document.getElementById('invEnvFee').value||0),discount:Number(document.getElementById('invDiscount').value||0),customerNote:document.getElementById('invCustomerNote').value,internalNote:document.getElementById('invInternalNote').value};const r=await fetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(b)}),d=await r.json();if(!r.ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);await loadInvoices();return true}catch(e){alert(e.message);return false}}
@@ -3551,6 +3644,8 @@ async function saveInvoiceLine(id){try{const i=activeInvoice.invoice;await persi
 async function deleteInvoiceLine(lineId){if(!confirm('Remove this line? If this is a labor operation, its attached parts and charges will also be removed.'))return;const i=activeInvoice.invoice,r=await fetch(`/api/invoices/${i.id}/lines/${lineId}`,{method:'DELETE',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to remove line');await openInvoice(i.id)}
 async function finalizeInvoice(id){if(!confirm('Finalize this invoice and mark it sent/open? Review prices, tax and customer PO first.'))return;if(!(await saveInvoiceHeader()))return;const r=await fetch(`/api/invoices/${id}/finalize`,{method:'POST',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to finalize');await openInvoice(id);await loadInvoices()}
 async function recordInvoicePayment(id,balance){const amount=Number(prompt(`Payment amount (balance ${invMoney(balance)}):`,Number(balance).toFixed(2)));if(!amount)return;const method=prompt('Payment method (Check, ACH, Credit Card, Cash, Other):','Check')||'Other',reference=prompt('Check # / transaction reference (optional):','')||'';const r=await fetch(`/api/invoices/${id}/payments`,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({amount,method,reference})}),d=await r.json();if(!r.ok)return alert(d.error||'Payment failed');await openInvoice(id);await loadInvoices()}
+async function permanentlyDeleteInvoice(id,num){const typed=prompt(`Permanent deletion removes the invoice and payment records. Type ${num} to confirm:`,'');if(typed!==num)return;try{await apiJSON(`/api/invoices/${id}`,{method:'DELETE',body:JSON.stringify({confirmInvoiceNumber:typed})});closeModal('invoiceModal');await loadInvoices()}catch(e){alert(e.message)}}
+async function createInvoicePaymentLink(id){try{const d=await apiJSON(`/api/invoices/${id}/payment-link`,{method:'POST',body:'{}'});if(d.url){await navigator.clipboard?.writeText(d.url).catch(()=>{});alert('Secure payment link created and copied to clipboard.')}}catch(e){alert(e.message)}}
+async function emailInvoice(id){const email=prompt('Customer email address:','');if(!email)return;try{await apiJSON(`/api/invoices/${id}/email`,{method:'POST',body:JSON.stringify({email})});alert('Invoice email sent.')}catch(e){alert(e.message)}}
 async function voidInvoice(id){if(!confirm('Void this invoice? This keeps the audit record but removes it from accounts receivable.'))return;const r=await fetch(`/api/invoices/${id}/void`,{method:'POST',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to void');await openInvoice(id);await loadInvoices()}
 async function downloadInvoicePDF(id){try{const r=await fetch(`/api/invoices/${id}/pdf`,{headers:authHeaders(),cache:'no-store'});if(!r.ok){const d=await r.json();throw new Error(d.error||'PDF failed')}const b=await r.blob(),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=`Invoice-${id}.pdf`;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}catch(e){alert(e.message)}}
-

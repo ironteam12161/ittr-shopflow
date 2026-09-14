@@ -10,9 +10,9 @@ const pub = read('public/index.html');
 const server = read('server.js');
 const pkg = JSON.parse(read('package.json'));
 
-check('release package version is 24.9.0', pkg.version === '24.9.0', pkg.version);
-check('frontend release is 24.9.0', html.includes('const FRONTEND_VERSION="24.9.0";'));
-check('backend release is 24.9.0', server.includes('frontendExpected:"24.9.0",backend:"24.9.0"'));
+check('release package version is 24.9.1', pkg.version === '24.9.1', pkg.version);
+check('frontend release is 24.9.1', html.includes('const FRONTEND_VERSION="24.9.1";'));
+check('backend release is 24.9.1', server.includes('frontendExpected:"24.9.1",backend:"24.9.1"'));
 check('root/public frontend byte-identical', html === pub, crypto.createHash('sha256').update(html).digest('hex').slice(0,12));
 
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
@@ -71,6 +71,18 @@ check('invoice APIs gated by invoices permission', server.includes('managerPermi
 check('customer APIs gated by customers permission', server.includes('managerPermission("customers")'));
 check('inventory APIs gated by inventory permission', server.includes('managerPermission("inventory")'));
 
+
+
+// v24.9.1 dynamic-route regression guards.
+const lazyViews=['invoices','trucksearch','parts','customers','procenter'];
+for (const view of lazyViews) {
+  check(`lazy host present: ${view}`, html.includes(`id="${view}"`) && html.includes(`data-route-module="${view}"`));
+  check(`module HTML present: ${view}`, fs.existsSync(`modules/${view}.html`) && read(`modules/${view}.html`).trim().length > 0);
+  check(`module JS present: ${view}`, fs.existsSync(`modules/${view}.js`) && read(`modules/${view}.js`).includes('export async function mount'));
+}
+check('route loader uses dynamic import', html.includes('import(cfg.js)'));
+check('route unmount aborts module listeners', html.includes('instance.scope.cleanup()'));
+check('heavy view DOM not embedded at startup', !html.includes('<div id="invoiceKpis"') && !html.includes('<div id="partsStats"') && !html.includes('<div id="vehicleProfileResults"'));
 
 const failed = checks.filter(x=>!x.ok);
 for (const x of checks) console.log(`${x.ok?'PASS':'FAIL'}  ${x.name}${x.detail?` — ${x.detail}`:''}`);

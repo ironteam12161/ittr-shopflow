@@ -1,0 +1,146 @@
+<div class="toolbar"><div>
+    <h1>Shop Operations</h1>
+    <div class="muted">Maintenance, productivity, team controls, reporting, integrations and shop tools. Vehicle records now live in Customers & Vehicles.</div>
+  </div></div>
+
+  <div class="workspaceNote"><b>Unified records:</b> customer data, vehicles and history now live in <button type="button" class="secondary" onclick="showView('customers')">Customers & Vehicles</button>.</div><div class="opsQuick"><button type="button" data-view="activityhistory" onclick="showView('activityhistory')">Team Activity</button><button type="button" data-view="accounts" onclick="showView('accounts')">Mechanic Accounts</button><button type="button" data-view="completed" onclick="showView('completed')">Completed Work</button></div><div class="proTabs">
+    <button class="secondary" onclick="showProPanel('maintenance')">Maintenance</button>
+    <button class="secondary" onclick="showProPanel('productivity')">Productivity</button>
+    <button class="secondary" onclick="showProPanel('notifications')">Notifications</button>
+    <button class="secondary" onclick="showProPanel('dailyreport')">Daily Report</button>
+    <button class="secondary" onclick="showProPanel('audit')">Audit Log</button>
+    <button class="secondary" onclick="showProPanel('fullbay')">Fullbay Data</button>
+    <button class="secondary" onclick="showProPanel('aitools')">AI Tools</button>
+  </div>
+
+  <div id="proPanelVehicles" class="proPanel hidden">
+    <div class="card">
+      <h2>Vehicle / Unit Profiles</h2>
+      <div class="row">
+        <div class="field"><label>Unit #</label><input id="vpUnit"></div>
+        <div class="field"><label>VIN</label><input id="vpVin" maxlength="17" autocomplete="off" autocapitalize="characters" oninput="scheduleVehicleProfileVinDecode(this.value)"><div class="muted" style="margin-top:4px">NHTSA auto-decode when 17 characters are entered.</div></div>
+        <div class="field"><label>Customer / Fleet</label><input id="vpCustomer" list="fullbayCustomerList" oninput="fullbayCustomerSuggest(this)"></div>
+        <div class="field"><label>Mileage</label><input id="vpMileage" type="number" min="0"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Year</label><input id="vpYear"></div>
+        <div class="field"><label>Make</label><input id="vpMake"></div>
+        <div class="field"><label>Model</label><input id="vpModel"></div>
+        <div class="field"><label>Plate</label><input id="vpPlate"></div>
+      </div>
+      <div class="row">
+        <div class="field"><label>Engine</label><input id="vpEngine"></div>
+        <div class="field"><label>Transmission</label><input id="vpTransmission"></div>
+        <div class="field"><label>Parking</label><input id="vpParking"></div>
+      </div>
+      <div class="field full"><label>Permanent Vehicle Notes</label><textarea id="vpNotes" rows="3"></textarea></div>
+      <div class="actions">
+        <button onclick="saveVehicleProfile()">Save Vehicle Profile</button>
+        <button class="secondary" onclick="decodeVehicleVIN()">Decode VIN</button>
+      </div>
+    </div>
+    <div class="card"><input id="vpSearch" placeholder="Search unit, VIN, customer, make, model..." oninput="renderVehicleProfiles()"></div>
+    <div id="vehicleProfileResults"></div>
+  </div>
+
+  <div id="proPanelMaintenance" class="proPanel">
+    <div class="card">
+      <h2>Mileage Maintenance</h2>
+      <div class="row">
+        <div class="field"><label>Unit #</label><input id="maintUnit"></div>
+        <div class="field"><label>Service</label><input id="maintService" placeholder="PM service, valve adjustment..."></div>
+        <div class="field"><label>Interval Miles</label><input id="maintInterval" type="number" min="1"></div>
+        <div class="field"><label>Last Service Mileage</label><input id="maintLastMileage" type="number" min="0"></div>
+      </div>
+      <button onclick="addMaintenancePlan()">Add Maintenance Plan</button>
+    </div>
+    <div id="maintenanceResults"></div>
+  </div>
+
+  <div id="proPanelProductivity" class="proPanel hidden">
+    <div class="card">
+      <h2>Mechanic Productivity History</h2>
+      <div class="muted">Review actual recorded task-session labor for any day, week, or month. Click a mechanic row to audit the underlying task sessions.</div>
+      <div class="productivityToolbar">
+        <div class="field"><label>Period</label><select id="productivityPeriod" onchange="renderProductivity()"><option value="day">Day</option><option value="week">Week</option><option value="month">Month</option></select></div>
+        <div class="field"><label>Date</label><input id="productivityDate" type="date" onchange="renderProductivity()"></div>
+        <div class="productivityQuick"><button type="button" class="secondary" onclick="shiftProductivityDate(-1)">← Previous</button><button type="button" class="secondary" onclick="setProductivityToday()">Today</button><button type="button" class="secondary" onclick="shiftProductivityDate(1)">Next →</button></div>
+      </div>
+      <div class="row"><div class="field"><label>Mechanic</label><select id="productivityMechanic" onchange="renderProductivity()"><option value="all">All Mechanics</option></select></div></div>
+      <div class="actions"><button type="button" class="secondary" onclick="aiProductivitySummary()">AI Productivity Summary</button></div>
+      <div id="productivityAiSummary" class="aiResult"></div>
+    </div>
+    <div id="productivityResults"></div>
+  </div>
+  <div id="proPanelNotifications" class="proPanel hidden"><div id="notificationResults"></div></div>
+  <div id="proPanelDailyreport" class="proPanel hidden">
+    <div class="card"><div class="row"><div class="field"><label>Report Date</label><input id="dailyReportDate" type="date" onchange="renderDailyReport()"></div></div></div>
+    <div id="dailyReportResults"></div>
+  </div>
+  <div id="proPanelAudit" class="proPanel hidden"><div id="auditResults"></div></div>
+
+  <div id="proPanelFullbay" class="proPanel hidden">
+    <div class="card">
+      <h2>Fullbay Data Center</h2>
+      <div class="muted">Import Fullbay customers, inventory, and the <b>Details</b> export containing units and historical service actions. Imports are safe to repeat: matching records are updated instead of duplicated.</div>
+      <div class="row" style="margin-top:12px">
+        <div class="field"><label>Customers CSV</label><input id="fullbayCustomersFile" type="file" accept=".csv,text/csv"></div>
+        <div class="field"><label>Parts / Inventory CSV</label><input id="fullbayPartsFile" type="file" accept=".csv,text/csv"></div>
+        <div class="field"><label>Details / Units + Service History CSV</label><input id="fullbayServiceFile" type="file" accept=".csv,text/csv"></div>
+      </div>
+      <div class="actions"><button type="button" onclick="uploadFullbayCsv('customers')">Import / Update Customers</button><button type="button" onclick="uploadFullbayCsv('parts')">Import / Update Inventory</button><button type="button" onclick="uploadFullbayServiceHistory()">Import Units + Service History</button><button type="button" class="secondary" onclick="decodeImportedUnitVins()">Decode Missing VIN Details</button><button type="button" class="secondary" onclick="renderFullbayImportStatus()">Refresh</button></div>
+      <div class="notice" style="margin-top:10px"><b>Details import:</b> reads Customer, Unit #, VIN, SO, Invoice, Complaint, Actual Correction, labor/parts amounts, mileage, technician, component and system. It automatically creates/links units under the matching customer.</div>
+      <div id="fullbayImportStatus" class="aiResult">Loading…</div>
+    </div>
+    <div id="fullbayStats" class="fullbayGrid"></div>
+    <div class="card">
+      <h3>Customers</h3>
+      <div class="fullbaySearchRow"><div class="field"><label>Search</label><input id="fullbayCustomerBrowserSearch" placeholder="Company, phone, DOT #, city..." oninput="debouncedFullbayBrowse('customers')"></div><button class="secondary" onclick="loadFullbayCustomers(0)">Search</button></div>
+      <div id="fullbayCustomerBrowser" class="fullbayBrowser"></div>
+      <div id="fullbayCustomerPager" class="fullbayPager"></div>
+    </div>
+    <div class="card">
+      <h3>Parts / Inventory</h3>
+      <div class="fullbaySearchRow"><div class="field"><label>Search</label><input id="fullbayPartBrowserSearch" placeholder="Part #, description, manufacturer, vendor, category..." oninput="debouncedFullbayBrowse('parts')"></div><button class="secondary" onclick="loadFullbayParts(0)">Search</button></div>
+      <div id="fullbayPartBrowser" class="fullbayBrowser"></div>
+      <div id="fullbayPartPager" class="fullbayPager"></div>
+    </div>
+  </div>
+
+  <div id="proPanelAitools" class="proPanel hidden">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div><b>AI Connection</b><div id="aiConnectionStatus" class="muted">Checking server…</div></div>
+        <button type="button" class="secondary" onclick="checkAIConnection()">Check Connection</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>AI Shop Writing Assistant</h2>
+      <div class="muted">Write naturally in Ukrainian, English, Polish, Spanish, Russian, or mixed shop language. AI will preserve technical facts and produce professional American English.</div>
+      <div class="field full"><label>Mechanic Note / Rough Text</label><textarea id="aiShopText" rows="5" placeholder="Type or dictate a mechanic note in any language..."></textarea></div>
+      <div class="aiActionGrid">
+        <button onclick="aiProfessionalNote('professional')">Professional English</button>
+        <button class="secondary" onclick="aiProfessionalNote('invoice')">Short Invoice Description</button>
+        <button class="secondary" onclick="aiProfessionalNote('detailed')">Detailed Repair Description</button>
+        <button class="secondary" onclick="aiProfessionalNote('customer')">Customer-Friendly</button>
+        <button class="secondary" onclick="aiProfessionalNote('grammar')">Fix Grammar Only</button>
+        <button class="secondary" onclick="aiProfessionalNote('ukrainian')">Translate to Ukrainian</button>
+        <button class="secondary" onclick="startVoiceNote()">🎤 Dictate Note</button>
+      </div>
+      <div id="aiShopResult" class="aiResult"></div>
+      <div class="actions"><button type="button" class="secondary" onclick="copyAIResult('aiShopResult')">Copy Result</button></div>
+    </div>
+    <div class="card">
+      <h2>AI Diagnostic Assistant</h2>
+      <div class="field full"><label>Complaint / Symptoms / Fault Codes / Measurements</label><textarea id="aiDiagnosticInput" rows="6"></textarea></div>
+      <button onclick="aiDiagnosticAssistant()">Suggest Diagnostic Steps</button>
+      <div id="aiDiagnosticResult" class="aiResult"></div>
+    </div>
+    <div class="card">
+      <h2>Part Number / Cross Reference Assistant</h2>
+      <div class="row"><div class="field"><label>VIN</label><input id="aiPartVin"></div><div class="field"><label>Part # / Description</label><input id="aiPartQuery"></div></div>
+      <button onclick="aiPartAssistant()">Research Part</button>
+      <div id="aiPartResult" class="aiResult"></div><div class="aiVerify">AI cross-reference results are suggestions only. Verify the final part number and fitment in an OEM/manufacturer/vendor catalog before ordering or installing.</div>
+    </div>
+  </div>

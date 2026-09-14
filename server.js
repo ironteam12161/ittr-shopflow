@@ -1015,7 +1015,7 @@ async function reconcileDuplicateImportedCustomers(){
  return {merged};
 }
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.9.0",backend:"24.9.0",build:"ITTR-24.9.0-PRO-SYSTEM-AUDIT-20260914"}));
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.9.1",backend:"24.9.1",build:"ITTR-24.9.1-DYNAMIC-MODULES-20260914"}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.8.0",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{

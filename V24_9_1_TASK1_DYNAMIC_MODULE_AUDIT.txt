@@ -1,0 +1,39 @@
+ITTR ShopFlow v24.9.1 — TASK 1 DYNAMIC MODULE AUDIT
+Date: 2026-09-14
+
+BASELINE
+- Built from v24.9.0 Pro System Audit.
+- Backend/database contracts intentionally preserved.
+- v23.7.1 Fullbay inventory SQL regression guard preserved ($22 max; no $23).
+
+TASK 1 IMPLEMENTED
+1. Lightweight route hosts remain in index.html for heavy views.
+2. Heavy view markup moved to /modules/*.html:
+   - invoices.html
+   - parts.html
+   - customers.html
+   - trucksearch.html
+   - procenter.html (includes Fullbay Data Center / Operations)
+3. Route assets are loaded only when opened using fetch() + dynamic import().
+4. Route HTML is unmounted when navigating away.
+5. AbortController-backed lifecycle cleanup runs before DOM removal.
+6. Source HTML/modules are cached in memory for fast revisits without keeping heavy DOM mounted.
+7. Loading and error states added to route hosts.
+8. Call sites that need lazy DOM now await showView() before opening customer/unit/history/invoice details.
+9. Root and public index files remain byte-identical.
+10. 53/53 automated release checks pass.
+
+INITIAL DOM REDUCTION
+The extracted route templates contain approximately 314 HTML element tags that no longer mount during application startup. Their markup is not inserted until the route is opened.
+
+CONFIRMED TASK 2 REGRESSIONS
+A. Mechanic cannot create a work order/job himself.
+   Root cause: mechanic role only receives mechanic/inspection/mycompleted routes, while + New Work Order entry points are admin-side.
+   Required fix: mechanic Quick Start wizard using company/USDOT + VIN, duplicate/open-WO protection, mechanic ownership/release, and labor task entry.
+
+B. Mobile AI icon blocks the full-screen chat.
+   Root cause: #shopAiFab z-index is 660 while #shopAiPanel is 651, and the FAB is not hidden while the panel is open.
+   Required fix: hide/disable FAB while panel is open, full-screen safe-area layout, composer visibility above keyboard and mobile bottom nav.
+
+DO NOT DEPLOY TO A NEW DATABASE.
+Use the existing Railway project, PostgreSQL database, and environment variables.
