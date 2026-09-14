@@ -1,0 +1,56 @@
+ITTR ShopFlow v24.6.6 — Professional Invoice Rates / Parts / Illinois Tax Audit
+Build: ITTR-24.6.6-INVOICE-RATES-PARTS-ILLINOIS-TAX-20260912
+
+Scope
+- Invoice labor-rate presets and inheritance
+- Unified inventory part lookup for invoice child parts
+- Draft preservation when adding labor/parts
+- Live invoice totals / tax / fees / discount calculations
+- Official Illinois Department of Revenue rate lookup
+- Non-destructive invoice schema additions
+- Static server/frontend/database-query safety audit
+
+Labor rates
+- Presets: New client $115/hr, Our client $110/hr, Old client $100/hr, Owner $60/hr, Custom.
+- Preset and numeric amount are one combined control.
+- New labor operations copy Labor 1's current rate.
+- Changing Labor 2/3/4 does NOT change the default for later labor; Labor 1 remains authoritative.
+- If no Labor 1 exists, new labor uses the customer's stored default_labor_rate when available.
+
+Parts
+- Part # and description are one unified search area.
+- Either field searches the existing fullbay_import_parts inventory catalog.
+- Results show part number, full description, sell price and available quantity.
+- Selecting a result fills part number, description, sell price, internal cost and sell-taxable state.
+- Adding a child part first persists every visible invoice line and header so unsaved labor/rates are not discarded.
+
+Illinois tax
+- Server-side lookup reads the official IDOR current jurisdiction machine-readable sales-tax file.
+- Cached for six hours; frontend never fetches or exposes an external API key.
+- Defaults to SHOP_TAX_CITY / SHOP_TAX_COUNTY; fallback is Matteson / Cook.
+- If IDOR marks a jurisdiction for address override, the UI warns the user to verify with the official Tax Rate Finder.
+- Manual tax-rate edits update totals live.
+- Shop supplies and environmental/other fee each have explicit taxable switches.
+- Invoice discount is allocated proportionally when determining taxable base.
+- Labor remains non-taxable by default; inventory parts use their sell_taxable value.
+
+Database / route safety
+- Added columns with ADD COLUMN IF NOT EXISTS only; no destructive reset.
+- customer_invoices: shop_supplies_taxable, environmental_fee_taxable, tax_source, tax_effective_date.
+- Server recalculates authoritative subtotal/tax/total/balance on save.
+- Existing v23.7.1 inventory import SQL fix remains present.
+- Existing v24.5.5 typed inventory arithmetic fixes remain present.
+
+Static audit results
+- node --check server.js: PASS
+- extracted primary frontend script node --check: PASS
+- duplicate static DOM IDs: 0
+- duplicate Express method/path routes: 0
+- PostgreSQL numbered-placeholder gap candidates: 0
+- require('crypto') remnants: 0
+- v24.6.6 invoice CSS block count: 1
+- root index.html == public/index.html: PASS
+- v23.7.1 VALUES($1,NULL,$2...) inventory fix: PRESENT
+
+Important runtime note
+This package was statically audited in the build environment. It cannot connect to or mutate the user's live Railway PostgreSQL instance from here. Production verification should use the existing Railway project/database and confirm frontend/backend version 24.6.6 before testing one draft invoice end-to-end.
