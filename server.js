@@ -86,18 +86,23 @@ async function putFindingPhoto({buffer,findingId,workOrderId,uploader,originalNa
 
 
 app.set("trust proxy",1);
-app.use(helmet({contentSecurityPolicy:false,crossOriginEmbedderPolicy:false}));
+app.use(helmet({
+ contentSecurityPolicy:false, // Inline legacy UI handlers still require a CSP migration before strict enforcement.
+ crossOriginEmbedderPolicy:false
+}));
 app.use(express.json({limit:"3mb"}));
 
-// ITTR v22.6 authoritative frontend path:
-// Always serve the repository root index.html in production.
-// This prevents an older public/index.html from shadowing the current frontend.
+// ITTR v24.16.1 hardened frontend path:
+// Only files inside /public are web-addressable. Server source, SQL, audit files,
+// package metadata and deployment files remain outside the static web root.
 app.get("/vendor/html5-qrcode.min.js",(req,res)=>res.sendFile(path.join(__dirname,"node_modules","html5-qrcode","html5-qrcode.min.js")));
 const publicDir=path.join(__dirname,"public");
-const webRoot=__dirname;
-const authoritativeIndex=path.join(__dirname,"index.html");
-console.log("ITTR authoritative web root:",webRoot);
-app.use(express.static(webRoot,{
+const authoritativeIndex=path.join(publicDir,"index.html");
+console.log("ITTR public web root:",publicDir);
+app.use(express.static(publicDir,{
+ index:false,
+ dotfiles:"deny",
+ fallthrough:true,
  setHeaders:(res,filePath)=>{
   if(filePath.endsWith("index.html")){
    res.setHeader("Cache-Control","no-store, no-cache, must-revalidate, proxy-revalidate");
@@ -107,7 +112,16 @@ app.use(express.static(webRoot,{
  }
 }));
 
-app.use("/api/auth",rateLimit({windowMs:15*60*1000,max:100,standardHeaders:true,legacyHeaders:false}));
+const authLimiter=rateLimit({windowMs:15*60*1000,max:100,standardHeaders:true,legacyHeaders:false});
+const loginLimiter=rateLimit({
+ windowMs:15*60*1000,
+ max:10,
+ standardHeaders:true,
+ legacyHeaders:false,
+ skipSuccessfulRequests:true,
+ message:{error:"Too many login attempts. Please try again later."}
+});
+app.use("/api/auth",authLimiter);
 
 function requireDb(){if(!pool){const e=new Error("DATABASE_URL is not configured. Add PostgreSQL to the deployment and set DATABASE_URL.");e.code="DB_NOT_CONFIGURED";throw e;}return pool;}
 function hashToken(t){return crypto.createHash("sha256").update(t).digest("hex")}
@@ -545,6 +559,20 @@ function broadcastShopStatus(type,payload={}){const msg=JSON.stringify({type,at:
 liveWss.on("connection",async(ws,req)=>{try{const u=new URL(req.url,"http://localhost"),token=String(u.searchParams.get("token")||"").trim();if(!token){ws.close(1008,"Authentication required");return}const q=await requireDb().query(`SELECT u.username,u.display_name,u.role FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now() AND u.active=true`,[hashToken(token)]);if(!q.rowCount){ws.close(1008,"Session expired");return}ws.ittrUser=q.rows[0];ws.isAlive=true;ws.on("pong",()=>{ws.isAlive=true});liveClients.add(ws);ws.send(JSON.stringify({type:"connected",at:new Date().toISOString()}));ws.on("close",()=>liveClients.delete(ws))}catch(e){console.error("WebSocket auth",e.message);try{ws.close(1011,"Connection error")}catch(_){}}});
 const liveHeartbeat=setInterval(()=>{for(const ws of liveClients){if(ws.isAlive===false){liveClients.delete(ws);try{ws.terminate()}catch(_){}continue}ws.isAlive=false;try{ws.ping()}catch(_){}}},25000);liveHeartbeat.unref?.();
 
+async function ensurePartsSearchPerformance(){
+ if(!pool)return;
+ try{
+  await pool.query("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_fullbay_parts_number_trgm ON fullbay_import_parts USING gin (part_number gin_trgm_ops)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_fullbay_parts_description_trgm ON fullbay_import_parts USING gin (description gin_trgm_ops)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_fullbay_parts_manufacturer_trgm ON fullbay_import_parts USING gin (manufacturer gin_trgm_ops)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_fullbay_parts_vendor_trgm ON fullbay_import_parts USING gin (vendor gin_trgm_ops)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_fullbay_parts_location_trgm ON fullbay_import_parts USING gin (location gin_trgm_ops)");
+ }catch(e){
+  console.warn("Parts search optimization warning:",e?.message||e);
+ }
+}
+
 function adminOnly(req,res,next){if(!["admin","manager"].includes(req.user?.role))return res.status(403).json({error:"Manager access required."});next()}
 function ownerOnly(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Owner/Admin access required."});next()}
 function can(req,key){return req.user?.role==="admin" || (req.user?.role==="manager" && req.user?.permissions?.[key]!==false)}
@@ -732,7 +760,32 @@ app.get('/api/parts/vendors',auth,async(req,res,next)=>{try{const db=requireDb()
 app.post('/api/parts/vendors/resolve',auth,async(req,res,next)=>{try{const db=requireDb();const canonical=await resolveVendor(db,req.body?.vendor,true);res.json({canonical})}catch(e){next(e)}});
 app.post('/api/parts',auth,managerPermission("inventory"),async(req,res,next)=>{try{const db=requireDb(),b=req.body||{},pn=String(b.partNumber||'').trim();if(!pn)return res.status(400).json({error:'Part number is required.'});const vendor=await resolveVendor(db,b.vendor,true);const key='manual:'+crypto.createHash('sha256').update(pn.toLowerCase()+'|'+Date.now()).digest('hex').slice(0,24);const qty=Math.max(0,Number(b.quantity||0));const r=await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,quantity,cost,price,location,vendor,min_qty,max_qty,reorder_point,manufacturer,category,purchase_taxable,sell_taxable,purchase_tax_rate,source_file,raw) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'ITTR Manual',$17::jsonb) RETURNING *`,[key,pn,String(b.description||'').trim()||null,qty,Number(b.cost||0),Number(b.price||0),String(b.location||'').trim()||null,vendor||null,Number(b.minQty||0),Number(b.maxQty||0),Number(b.reorderPoint??b.minQty??0),String(b.manufacturer||'').trim()||null,String(b.category||'').trim()||null,b.purchaseTaxable!==false,b.sellTaxable!==false,Number(b.purchaseTaxRate||0),JSON.stringify({createdManually:true})]);const x=r.rows[0];x.internal_barcode=await ensurePartBarcode(db,x.id);if(qty>0)await db.query(`INSERT INTO part_inventory_transactions(part_id,transaction_type,quantity_delta,quantity_before,quantity_after,reference,reason,username) VALUES($1,'initial_stock',$2,0,$2,'Manual part creation','Initial stock', $3)`,[x.id,qty,req.user.username]);await audit(req.user.username,'part_created',{partId:x.id,partNumber:pn});res.json({ok:true,item:x})}catch(e){next(e)}});
 app.get("/api/parts/summary",auth,async(req,res,next)=>{try{const db=requireDb();const r=await db.query(`SELECT count(*)::int total,count(*) FILTER (WHERE coalesce(quantity,0)<=0)::int out_of_stock,count(*) FILTER (WHERE coalesce(quantity,0)>0 AND coalesce(quantity,0)<=coalesce(reorder_point,min_qty,0) AND coalesce(reorder_point,min_qty,0)>0)::int low_stock,coalesce(sum(coalesce(inventory_value,coalesce(quantity,0)*coalesce(cost,0))),0)::numeric inventory_value,coalesce(sum(coalesce(on_order,0)),0)::numeric on_order FROM fullbay_import_parts`);res.json(r.rows[0])}catch(e){next(e)}});
-app.get("/api/parts",auth,async(req,res,next)=>{try{const q=String(req.query.q||"").trim(),filter=String(req.query.filter||"all"),limit=Math.min(200,Math.max(1,Number(req.query.limit||100))),like=`%${q}%`;let extra="";if(filter==="low")extra=" AND (coalesce(quantity,0)<=0 OR (coalesce(quantity,0)<=coalesce(reorder_point,min_qty,0) AND coalesce(reorder_point,min_qty,0)>0))";if(filter==="out")extra=" AND coalesce(quantity,0)<=0";if(filter==="order")extra=" AND coalesce(on_order,0)>0";const db=requireDb();const r=await db.query(`SELECT id,part_number,description,status,uom,quantity,allocated,cost,price,min_qty,max_qty,reorder_point,on_order,location,vendor,category,manufacturer,notes,internal_barcode,barcode_aliases,purchase_taxable,sell_taxable,purchase_tax_rate,updated_at,(coalesce(quantity,0)-coalesce(allocated,0)) available FROM fullbay_import_parts WHERE ($1='' OR coalesce(part_number,'') ILIKE $2 OR coalesce(description,'') ILIKE $2 OR coalesce(manufacturer,'') ILIKE $2 OR coalesce(vendor,'') ILIKE $2 OR coalesce(location,'') ILIKE $2 OR coalesce(internal_barcode,'') ILIKE $2 OR barcode_aliases::text ILIKE $2) ${extra} ORDER BY CASE WHEN lower(coalesce(part_number,''))=lower($1) THEN 0 WHEN lower(coalesce(internal_barcode,''))=lower($1) THEN 0 ELSE 1 END,part_number NULLS LAST LIMIT $3`,[q,like,limit]);for(const x of r.rows)if(!x.internal_barcode)x.internal_barcode=await ensurePartBarcode(db,x.id);res.json({items:r.rows})}catch(e){next(e)}});
+app.get("/api/parts",auth,async(req,res,next)=>{try{
+ const q=String(req.query.q||"").trim(),filter=String(req.query.filter||"all"),limit=Math.min(200,Math.max(1,Number(req.query.limit||100))),like=`%${q}%`,prefix=`${q}%`;
+ let extra="";
+ if(filter==="low")extra=" AND (coalesce(quantity,0)<=0 OR (coalesce(quantity,0)<=coalesce(reorder_point,min_qty,0) AND coalesce(reorder_point,min_qty,0)>0))";
+ if(filter==="out")extra=" AND coalesce(quantity,0)<=0";
+ if(filter==="order")extra=" AND coalesce(on_order,0)>0";
+ const db=requireDb();
+ // Search is read-only: missing display barcodes are derived from the part id instead of
+ // issuing one SELECT/UPDATE per result. This removes the previous N+1 database pattern.
+ const r=await db.query(`SELECT id,part_number,description,status,uom,quantity,allocated,cost,price,min_qty,max_qty,reorder_point,on_order,location,vendor,category,manufacturer,notes,
+   coalesce(nullif(internal_barcode,''),'ITTR-P-'||lpad(id::text,6,'0')) internal_barcode,
+   barcode_aliases,purchase_taxable,sell_taxable,purchase_tax_rate,updated_at,
+   (coalesce(quantity,0)-coalesce(allocated,0)) available
+   FROM fullbay_import_parts
+   WHERE ($1='' OR coalesce(part_number,'') ILIKE $2 OR coalesce(description,'') ILIKE $2 OR coalesce(manufacturer,'') ILIKE $2 OR coalesce(vendor,'') ILIKE $2 OR coalesce(location,'') ILIKE $2 OR coalesce(internal_barcode,'') ILIKE $2 OR barcode_aliases::text ILIKE $2)
+   ${extra}
+   ORDER BY CASE
+     WHEN lower(coalesce(part_number,''))=lower($1) THEN 0
+     WHEN lower(coalesce(internal_barcode,''))=lower($1) THEN 0
+     WHEN coalesce(part_number,'') ILIKE $4 THEN 1
+     WHEN coalesce(description,'') ILIKE $4 THEN 2
+     ELSE 3 END,
+     part_number NULLS LAST
+   LIMIT $3`,[q,like,limit,prefix]);
+ res.json({items:r.rows})
+}catch(e){next(e)}});
 app.get("/api/parts/scan/:code",auth,async(req,res,next)=>{try{const code=String(req.params.code||"").trim();const db=requireDb();let r=await db.query(`SELECT *,coalesce(quantity,0)-coalesce(allocated,0) available FROM fullbay_import_parts WHERE lower(coalesce(internal_barcode,''))=lower($1) OR lower(coalesce(part_number,''))=lower($1) OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(coalesce(barcode_aliases,'[]'::jsonb)) a WHERE lower(a)=lower($1)) LIMIT 1`,[code]);if(!r.rowCount&&/^ITTR-P-0*([0-9]+)$/i.test(code)){const id=Number(code.match(/^ITTR-P-0*([0-9]+)$/i)[1]);r=await db.query(`SELECT *,coalesce(quantity,0)-coalesce(allocated,0) available FROM fullbay_import_parts WHERE id=$1`,[id])}if(!r.rowCount)return res.status(404).json({error:"Barcode is not assigned to an inventory part."});if(!r.rows[0].internal_barcode)r.rows[0].internal_barcode=await ensurePartBarcode(db,r.rows[0].id);res.json({item:r.rows[0]})}catch(e){next(e)}});
 
 app.post("/api/parts/:id/barcodes",auth,managerPermission("inventory"),async(req,res,next)=>{try{
@@ -1002,7 +1055,7 @@ app.get("/api/smart-search",auth,adminOnly,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"24.8.0",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"24.16.1",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -1035,10 +1088,10 @@ async function reconcileDuplicateImportedCustomers(){
  return {merged};
 }
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.16.0",backend:"24.16.0",build:"ITTR-24.16.0-INVOICE-TAB-AUTOSAVE-AUDIT-20260914"}));
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.16.1",backend:"24.16.1",build:"ITTR-24.16.1-INVOICE-TAB-AUTOSAVE-HARDENED-20260914"}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.8.0",photoStorageConfigured:r2Configured})});
 
-app.post("/api/auth/login",async(req,res,next)=>{try{
+app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
  const q=await requireDb().query("SELECT * FROM auth_users WHERE username=$1 AND active=true",[username]);
  if(!q.rowCount || !(await bcrypt.compare(password,q.rows[0].password_hash)))return res.status(401).json({error:"Invalid username or password."});
@@ -2136,7 +2189,7 @@ app.use((err,req,res,next)=>{
  if(err?.code==="LIMIT_FILE_SIZE")return res.status(413).json({error:"Photo is too large. Maximum original file size is 25 MB.",incident});
  if(err?.code==="PHOTO_TYPE"||err?.code==="PHOTO_PROCESSING")return res.status(415).json({error:err.message,code:err.code,incident});
  const safe=String(err?.message||"Server error").replace(/OPENROUTER_API_KEY|OPENAI_API_KEY|R2_SECRET_ACCESS_KEY/gi,'server credential');
- res.status(500).json({error:isProd?`Server error (${incident}). ${safe.slice(0,220)}`:safe,incident});
+ res.status(500).json({error:isProd?"An unexpected server error occurred.":safe,incident});
 });
 app.get("*splat",(req,res)=>{
  res.setHeader("Cache-Control","no-store, no-cache, must-revalidate, proxy-revalidate");
@@ -2146,6 +2199,7 @@ app.get("*splat",(req,res)=>{
 });
 
 initDb()
+  .then(()=>ensurePartsSearchPerformance())
   .then(()=>migrateLegacyFindingPhotosAtStartup())
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())

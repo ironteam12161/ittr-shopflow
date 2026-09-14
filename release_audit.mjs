@@ -11,9 +11,13 @@ const server = read('server.js');
 const pkg = JSON.parse(read('package.json'));
 const modulesInvoicesHtml = read('modules/invoices.html');
 
-check('release package version is 24.16.0', pkg.version === '24.16.0', pkg.version);
-check('frontend release is 24.16.0', html.includes("const FRONTEND_VERSION='24.16.0';") || html.includes('const FRONTEND_VERSION="24.16.0";'));
-check('backend release is 24.16.0', server.includes('frontendExpected:"24.16.0",backend:"24.16.0"'));
+check('release package version is 24.16.1', pkg.version === '24.16.1', pkg.version);
+check('frontend release is 24.16.1', html.includes("const FRONTEND_VERSION='24.16.1';") || html.includes('const FRONTEND_VERSION="24.16.1";'));
+check('backend release is 24.16.1', server.includes('frontendExpected:"24.16.1",backend:"24.16.1"'));
+check('static web root restricted to public directory', server.includes('app.use(express.static(publicDir') && !server.includes('app.use(express.static(webRoot'));
+check('parts search is read-only (no per-result barcode write loop)', !server.includes('for(const x of r.rows)if(!x.internal_barcode)x.internal_barcode=await ensurePartBarcode'));
+check('production 500 responses hide internal error detail', server.includes('isProd?"An unexpected server error occurred.":safe'));
+check('dedicated login failure limiter enabled', server.includes('const loginLimiter=rateLimit') && server.includes('app.post("/api/auth/login",loginLimiter'));
 check('root/public frontend byte-identical', html === pub, crypto.createHash('sha256').update(html).digest('hex').slice(0,12));
 
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
@@ -178,7 +182,7 @@ check('part inventory lookup fills selling price', html.includes("set('.ilPrice'
 check('part inventory suggestions show availability', html.includes('Avail ${Number(x.available||0).toLocaleString()}'));
 
 
-// v24.16.0 invoice tab / draft-preservation / runtime regression guards.
+// v24.16.1 invoice tab / draft-preservation / runtime regression guards.
 check('mechanic account renderer restored', html.includes('function renderMechanicAccounts()') && html.includes('mechanicAccountsTable'));
 check('invoice opens regular new tab without popup features', html.includes("window.open(url,'_blank','noopener')") && !html.includes('popup=yes,width=${ww}'));
 check('invoice structural actions preserve current draft', html.includes("persistInvoiceDraftBeforeStructureChange('Preserving your invoice')"));

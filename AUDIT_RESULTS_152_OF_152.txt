@@ -1,0 +1,18 @@
+ITTR ShopFlow v24.16.1 — Validation Results
+Date: 2026-09-14
+
+Base: ITTR v24.16.0 INVOICE_TAB_AUTOSAVE_AUDIT
+Applied: production hardening + parts search performance changes
+
+Validation:
+- npm run check: PASS
+- 152/152 release checks passed
+- server.js syntax: PASS
+- frontend_check.js syntax: PASS
+- route module syntax: PASS
+
+Hardening regression guards:
+- static web root restricted to /public: PASS
+- parts search read-only / N+1 barcode write loop removed: PASS
+- production 500 response hides internal details: PASS
+- dedicated login failure limiter enabled: PASS
