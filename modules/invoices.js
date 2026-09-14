@@ -47,6 +47,15 @@ async function customerChanged(){
  const terms=['Due on Receipt','Net 15','Net 30','Net 60'].includes(c?.credit_terms)?c.credit_terms:null;if(terms&&byId('invTerms')){byId('invTerms').value=terms;syncDueDate()}
  previewTotals();
 }
+function preferredLaborRate(){
+ const selected=customerCache.find(x=>String(x.id)===String(byId('invCustomerId')?.value||''));
+ const customerRate=Number(selected?.default_labor_rate||0);
+ const firstLabor=(window.activeInvoice?.lines||[]).find?.(x=>x.line_type==='labor'&&Number(x.unit_price)>0);
+ if(Number(firstLabor?.unit_price)>0)return Number(firstLabor.unit_price);
+ if(customerRate>0)return customerRate;
+ return 115;
+}
+
 function unitChanged(){
  const select=byId('invUnitSelect'),u=unitCache.find(x=>String(x.id)===String(select?.value));
  byId('invUnitId').value=u?.id||'';byId('invUnit').value=u?.unit_number||'';byId('invVin').value=u?.vin||'';if(u?.mileage!=null&&byId('invMileage'))byId('invMileage').value=Number(u.mileage)||'';
@@ -72,7 +81,7 @@ export function attachEditor(active){
  loadCustomers(active);previewTotals();
 }
 
-window.InvoiceUX={attachEditor,previewTotals,syncDueDate};
+window.InvoiceUX={attachEditor,previewTotals,syncDueDate,preferredLaborRate};
 export async function mount(scope){localAbort=new AbortController();scope.on(scope.host,'ittr:module-refresh',()=>window.loadInvoices?.(),{passive:true});document.body.classList.add('invoice-module-mounted');await window.loadInvoices?.()}
 export async function afterShow(){await window.loadInvoices?.()}
 export function unmount(){editorAbort?.abort();editorAbort=null;localAbort?.abort();localAbort=null;document.body.classList.remove('invoice-module-mounted')}
