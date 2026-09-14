@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.17.2</title>
+<title>ITTR ShopFlow v24.17.3</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -723,7 +723,7 @@ body.modalOpen{overflow:hidden}
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.17.2 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.17.3 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1267,7 +1267,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.17.2';
+const FRONTEND_VERSION='24.17.3';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -5003,7 +5003,7 @@ function renderInvoiceEditor(){
      <div class="toolbar invoiceAppOnly invoiceServiceBuilderBar"><div><h2 style="margin:0">Labor & Parts</h2><div class="muted">Add a labor job first, then place the parts used for that job directly underneath it.</div></div>${locked?'':`<button onclick="toggleInvoiceAddMenu()">+ Add Labor</button>`}</div>${locked?'':`<div id="invoiceAddMenu" class="invoiceAddMenu is-hidden invoiceNewServiceBox"><div class="field"><label>Labor description</label><input id="invoiceNewServiceName" placeholder="Example: Replace brakes, Change oil and filters, Diagnose no-start" onkeydown="if(event.key==='Enter'){event.preventDefault();addInvoiceService()}"></div><button onclick="addInvoiceService()">Add Labor</button></div>`}
      ${invoiceCategorizedLinesHtml(lines,locked)}
    </section>
-   <section class="card invoiceNotesCard"><div class="invoiceNotesIntro"><h2>Notes</h2><div class="muted">Customer notes appear on the invoice. Internal notes stay inside the shop.</div></div><div class="invoiceNotesGrid"><div class="field"><label>Customer Note <span class="invoiceNoteHint">Visible to customer</span></label><textarea id="invCustomerNote" rows="3" ${locked?'disabled':''}>${esc(i.customer_note||'')}</textarea></div><div class="field invoiceAppOnly"><label>Internal Note <span class="invoiceNoteHint">Shop only</span></label><textarea class="invoiceAppOnly" id="invInternalNote" rows="3" ${locked?'disabled':''}>${esc(i.internal_note||'')}</textarea></div></div></section>
+   <section class="card invoiceNotesCard"><div class="invoiceNotesIntro"><h2>Notes</h2><div class="muted">Customer notes appear on the invoice. Internal notes stay inside the shop.</div></div><div class="invoiceNotesGrid"><div class="field"><label>Customer Note <span class="invoiceNoteHint">Visible to customer</span></label><textarea id="invCustomerNote" rows="3" oninput="scheduleInvoiceHeaderAutosave()" onblur="flushInvoiceHeaderAutosave()" ${locked?'disabled':''}>${esc(i.customer_note||'')}</textarea></div><div class="field invoiceAppOnly"><label>Internal Note <span class="invoiceNoteHint">Shop only</span></label><textarea class="invoiceAppOnly" id="invInternalNote" rows="3" oninput="scheduleInvoiceHeaderAutosave()" onblur="flushInvoiceHeaderAutosave()" ${locked?'disabled':''}>${esc(i.internal_note||'')}</textarea></div></div></section>
  </div><aside>
    <div class="card invoiceTotals">
      <h2 style="margin-top:0">Invoice Summary</h2>
@@ -5033,6 +5033,38 @@ function invoiceHeaderPayload(){
  const i=activeInvoice?.invoice||{},customerSelect=document.getElementById('invCustomerSelect'),unitSelect=document.getElementById('invUnitSelect');
  return {customerId:Number(document.getElementById('invCustomerId')?.value||0)||null,customerName:document.getElementById('invCustomer')?.value||customerSelect?.selectedOptions?.[0]?.textContent||i.customer_name||'',unitId:Number(document.getElementById('invUnitId')?.value||0)||null,unitNumber:document.getElementById('invUnit')?.value||unitSelect?.selectedOptions?.[0]?.textContent||'',vin:document.getElementById('invVin')?.value||'',dotNumber:document.getElementById('invDot')?.value||'',poNumber:document.getElementById('invPo')?.value||'',mileage:Number(document.getElementById('invMileage')?.value||0),invoiceDate:document.getElementById('invDate')?.value||'',dueDate:document.getElementById('invDue')?.value||'',terms:document.getElementById('invTerms')?.value||'Due on Receipt',taxRate:Number(document.getElementById('invTaxRate')?.value||0),shopSupplies:Number(document.getElementById('invShopSupplies')?.value||0),environmentalFee:Number(document.getElementById('invEnvFee')?.value||0),discountType:document.getElementById('invDiscountType')?.value||'fixed',discountValue:Number(document.getElementById('invDiscountValue')?.value||0),customerNote:document.getElementById('invCustomerNote')?.value||'',internalNote:document.getElementById('invInternalNote')?.value||''};
 }
+let invoiceHeaderAutosaveTimer=null;
+let invoiceHeaderAutosaveBusy=false;
+function scheduleInvoiceHeaderAutosave(){
+  invoiceSetSaveState('dirty','Unsaved changes');
+  clearTimeout(invoiceHeaderAutosaveTimer);
+  invoiceHeaderAutosaveTimer=setTimeout(()=>flushInvoiceHeaderAutosave(),700);
+}
+async function flushInvoiceHeaderAutosave(){
+  clearTimeout(invoiceHeaderAutosaveTimer);invoiceHeaderAutosaveTimer=null;
+  const i=activeInvoice?.invoice;
+  if(!i||['paid','void'].includes(i.status)||invoiceHeaderAutosaveBusy)return true;
+  invoiceHeaderAutosaveBusy=true;
+  try{
+    invoiceSetSaveState('saving','Saving…');
+    const r=await fetch(`/api/invoices/${i.id}`,{
+      method:'PUT',
+      headers:authHeaders({'Content-Type':'application/json'}),
+      body:JSON.stringify(invoiceHeaderPayload())
+    });
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(d.error||'Autosave failed');
+    if(activeInvoice?.invoice)Object.assign(activeInvoice.invoice,invoiceHeaderPayload());
+    invoiceSetSaveState('saved','All changes saved');
+    return true;
+  }catch(e){
+    invoiceSetSaveState('error','Autosave failed');
+    showToast?.(e.message||'Unable to autosave invoice notes.','error',7000);
+    return false;
+  }finally{
+    invoiceHeaderAutosaveBusy=false;
+  }
+}
 let invoiceDraftSaveBusy=false;
 async function persistInvoiceDraftBeforeStructureChange(label='Saving draft'){
  if(invoiceDraftSaveBusy)return true;
@@ -5055,10 +5087,10 @@ async function deleteInvoiceLine(lineId){if(!confirm('Remove this line? If this 
 async function finalizeInvoice(id){if(!confirm('Finalize this invoice and mark it sent/open? Review prices, tax and customer PO first.'))return;if(!(await saveInvoiceHeader()))return;const r=await fetch(`/api/invoices/${id}/finalize`,{method:'POST',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to finalize');await openInvoice(id);await loadInvoices()}
 async function recordInvoicePayment(id,balance){const amount=Number(prompt(`Payment amount (balance ${invMoney(balance)}):`,Number(balance).toFixed(2)));if(!amount)return;const method=prompt('Payment method (Check, ACH, Credit Card, Cash, Other):','Check')||'Other',reference=prompt('Check # / transaction reference (optional):','')||'';const r=await fetch(`/api/invoices/${id}/payments`,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({amount,method,reference})}),d=await r.json();if(!r.ok)return alert(d.error||'Payment failed');await openInvoice(id);await loadInvoices()}
 async function permanentlyDeleteInvoice(id,num){const typed=prompt(`OWNER DELETE — this permanently removes the invoice, line items and payment records. Type ${num} exactly to confirm:`,'');if(typed!==num){if(typed)showToast?.('Invoice number did not match. Nothing was deleted.','warning');return}try{await apiJSON(`/api/invoices/${id}`,{method:'DELETE',body:JSON.stringify({confirmInvoiceNumber:typed})});if(document.body.classList.contains('invoiceWorkspaceMode')){try{window.opener?.loadInvoices?.()}catch(_){ }showToast?.(`Invoice ${num} permanently deleted.`,'success');setTimeout(()=>closeInvoiceWorkspace(),500)}else{closeModal('invoiceModal');await loadInvoices();showToast?.(`Invoice ${num} permanently deleted.`,'success')}}catch(e){showToast?.(e.message,'error',8000)||alert(e.message)}}
-async function createInvoicePaymentLink(id){try{const d=await apiJSON(`/api/invoices/${id}/payment-link`,{method:'POST',body:'{}'});if(d.url){await navigator.clipboard?.writeText(d.url).catch(()=>{});alert('Secure payment link created and copied to clipboard.')}}catch(e){alert(e.message)}}
-async function emailInvoice(id){const email=prompt('Customer email address:','');if(!email)return;try{await apiJSON(`/api/invoices/${id}/email`,{method:'POST',body:JSON.stringify({email})});alert('Invoice email sent.')}catch(e){alert(e.message)}}
+async function createInvoicePaymentLink(id){try{if(!(await persistInvoiceDraftBeforeStructureChange('Saving invoice before payment link')))return;const d=await apiJSON(`/api/invoices/${id}/payment-link`,{method:'POST',body:'{}'});if(d.url){await navigator.clipboard?.writeText(d.url).catch(()=>{});alert('Secure payment link created and copied to clipboard.')}}catch(e){alert(e.message)}}
+async function emailInvoice(id){const email=prompt('Customer email address:','');if(!email)return;try{if(!(await persistInvoiceDraftBeforeStructureChange('Saving invoice before email')))return;await apiJSON(`/api/invoices/${id}/email`,{method:'POST',body:JSON.stringify({email})});alert('Invoice email sent.')}catch(e){alert(e.message)}}
 async function voidInvoice(id){if(!confirm('Void this invoice? This keeps the audit record but removes it from accounts receivable.'))return;const r=await fetch(`/api/invoices/${id}/void`,{method:'POST',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to void');await openInvoice(id);await loadInvoices()}
-async function downloadInvoicePDF(id){try{const r=await fetch(`/api/invoices/${id}/pdf`,{headers:authHeaders(),cache:'no-store'});if(!r.ok){const d=await r.json();throw new Error(d.error||'PDF failed')}const b=await r.blob(),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=`Invoice-${id}.pdf`;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}catch(e){alert(e.message)}}
+async function downloadInvoicePDF(id){try{if(!(await persistInvoiceDraftBeforeStructureChange('Saving invoice before PDF')))return;const r=await fetch(`/api/invoices/${id}/pdf`,{headers:authHeaders(),cache:'no-store'});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||'PDF failed')}const b=await r.blob(),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=`Invoice-${activeInvoice?.invoice?.invoice_number||id}.pdf`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500)}catch(e){invoiceSetSaveState('error','PDF failed');alert(e.message)}}
 
 
 
