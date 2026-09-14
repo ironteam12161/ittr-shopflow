@@ -1055,7 +1055,7 @@ app.get("/api/smart-search",auth,adminOnly,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"24.16.1",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"24.17.1",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -1088,7 +1088,7 @@ async function reconcileDuplicateImportedCustomers(){
  return {merged};
 }
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.16.1",backend:"24.16.1",build:"ITTR-24.16.1-INVOICE-TAB-AUTOSAVE-HARDENED-20260914"}));
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.17.1",backend:"24.17.1",build:"ITTR-24.17.1-FULL-FUNCTION-AUDIT-INVOICE-TAB-FIX-20260914"}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.8.0",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{

@@ -11,9 +11,9 @@ const server = read('server.js');
 const pkg = JSON.parse(read('package.json'));
 const modulesInvoicesHtml = read('modules/invoices.html');
 
-check('release package version is 24.16.4', pkg.version === '24.16.4', pkg.version);
-check('frontend release is 24.16.1', html.includes("const FRONTEND_VERSION='24.16.1';") || html.includes('const FRONTEND_VERSION="24.16.1";'));
-check('backend release is 24.16.1', server.includes('frontendExpected:"24.16.1",backend:"24.16.1"'));
+check('release package version is 24.17.1', pkg.version === '24.17.1', pkg.version);
+check('frontend release is 24.17.1', html.includes("const FRONTEND_VERSION='24.17.1';") || html.includes('const FRONTEND_VERSION="24.17.1";'));
+check('backend release is 24.17.1', server.includes('frontendExpected:"24.17.1",backend:"24.17.1"'));
 check('static web root restricted to public directory', server.includes('app.use(express.static(publicDir') && !server.includes('app.use(express.static(webRoot'));
 check('parts search is read-only (no per-result barcode write loop)', !server.includes('for(const x of r.rows)if(!x.internal_barcode)x.internal_barcode=await ensurePartBarcode'));
 check('production 500 responses hide internal error detail', server.includes('isProd?"An unexpected server error occurred.":safe'));
@@ -148,13 +148,13 @@ check('invoice professional print branding', html.includes('IRON TEAM TRUCK &amp
 
 // v24.13.0 service-card invoice workflow regression guards.
 check('invoice service-card grouping', html.includes('invoiceServiceCard') && html.includes('invoiceServiceGroups'));
-check('invoice labor shown before attached parts', html.includes("labors.slice(0,1).map(x=>invoiceLaborRowHtml(x,locked)).join('')}${parts.map"));
+check('invoice labor shown before attached parts', html.includes('invoiceLaborPartsFor') && html.includes("${invoiceLaborRowHtml(anchor,locked)}") && html.includes("${parts.map(x=>invoicePartRowHtml(x,locked)).join('')}"));
 for(const rate of ['115','110','100','60']) check(`legacy labor rate preset ${rate}`, html.includes(`value=\"${rate}\"`) || html.includes(`value="${rate}"`));
 check('legacy labor rate labels restored', html.includes('New Client — $115/hr') && html.includes('Our Client — $110/hr') && html.includes('Old Client — $100/hr') && html.includes('Owner — $60/hr'));
 check('customer default labor rate supported', read('public/modules/invoices.js').includes('default_labor_rate') && read('public/modules/invoices.js').includes('preferredLaborRate'));
-check('service supports direct part add', html.includes('>Add Part</button>') && html.includes('addInvoiceChildLine'));
-check('service supports additional labor', html.includes('>Add Labor</button>') && html.includes('addInvoiceLaborToService'));
-check('new service workflow', html.includes('+ Add Service') && html.includes('addInvoiceService()'));
+check('service supports direct part add', html.includes('+ Add Part') && html.includes('addInvoiceChildLine'));
+check('service supports additional labor', html.includes('+ Add Labor') && html.includes('addInvoiceService()'));
+check('new service workflow', html.includes('+ Add Labor') && html.includes('addInvoiceService()'));
 
 
 // v24.14.0 compact Fullbay-inspired service-grid invoice guards.
@@ -162,10 +162,10 @@ check('invoice compact grid header', modulesInvoicesHtml.includes('invoiceGridHe
 check('invoice grid shows Cost column', html.includes('<span>Cost</span>'));
 check('invoice grid shows Selling Price column', html.includes('<span>Selling Price</span>'));
 check('invoice part cost remains editable', html.includes('class="ilCost" type="number"'));
-check('invoice bottom Add Labor Line', html.includes('Add Labor Line'));
-check('invoice bottom Add a Service', html.includes('Add a Service'));
-check('invoice bottom Add Misc Charge', html.includes('Add Misc Charge'));
-check('invoice service quick Add Part', html.includes('title="Add a part to this service"'));
+check('invoice bottom Add Labor Line', html.includes('+ Add Labor') && html.includes('addInvoiceService()'));
+check('invoice bottom Add a Service', html.includes('Labor & Parts') && !html.includes('Add a Service'));
+check('invoice bottom Add Misc Charge', html.includes('+ Other Charge'));
+check('invoice service quick Add Part', html.includes('Parts used for this labor'));
 check('invoice service subtotal row', modulesInvoicesHtml.includes('invoiceServiceSubtotal'));
 check('invoice old rate presets all preserved', ['115','110','100','60'].every(v=>html.includes(`value="${v}"`)));
 
@@ -184,7 +184,10 @@ check('part inventory suggestions show availability', html.includes('Avail ${Num
 
 // v24.16.1 invoice tab / draft-preservation / runtime regression guards.
 check('mechanic account renderer restored', html.includes('function renderMechanicAccounts()') && html.includes('mechanicAccountsTable'));
-check('invoice opens regular new tab without popup features', html.includes("window.open(url,'_blank','noopener')") && !html.includes('popup=yes,width=${ww}'));
+check('invoice opens exactly one noopener tab without same-tab fallback', html.includes("link.target='_blank'") && html.includes("link.rel='noopener noreferrer'") && !html.includes("Opening it here instead") && !html.includes("if(!tab){"));
+check('manager account UI function restored', html.includes('function openManagerAccount()') && html.includes("managerAccountFormEl.onsubmit"));
+check('manual library UI functions restored', html.includes('function openManualLibrary()') && html.includes('function loadManualLibrary(') && html.includes('function openManualDocument('));
+check('manual library upload handler restored', html.includes('manualLibraryFormEl.onsubmit'));
 check('invoice structural actions preserve current draft', html.includes("persistInvoiceDraftBeforeStructureChange('Preserving your invoice')"));
 check('invoice draft preservation saves all line edits', html.includes('await saveAllInvoiceLines()') && html.includes('function invoiceHeaderPayload()'));
 check('invoice line save preserves sibling unsaved rows', html.includes('async function saveInvoiceLine(id)') && html.includes("await saveAllInvoiceLines();const r=await fetch(`/api/invoices/${i.id}`"));
