@@ -1,0 +1,48 @@
+ITTR v24.7.1 — MAJOR SYSTEM AUDIT
+Date: 2026-09-14
+Base: v24.6.6 JOB LEVEL VEHICLE HISTORY
+
+CONFIRMED PRODUCTION BUG FIXED
+- Customer profile crashed with: jobHistoryCount is not defined.
+- Root cause: renderCustomerProfile() referenced jobHistoryCount without declaring it.
+- Fix: customer profile now calculates jobHistoryCount from history tasks, counting only labor lines for invoice history so attached parts do not inflate the job count.
+- Vehicle profile's existing job-level history logic remains unchanged.
+
+SOURCE / BUILD CONSISTENCY
+- Frontend version: 24.7.1
+- Backend version: 24.7.1
+- /api/build expected frontend/backend aligned.
+- Root index.html and public/index.html byte-identical.
+- Build meta corrected so it no longer advertises an older invoice-lines build label.
+
+STATIC CODE AUDIT
+- server.js Node syntax: PASS
+- extracted frontend JavaScript Node syntax: PASS
+- duplicate DOM IDs: 0
+- duplicate named frontend functions: 0
+- duplicate Express method/path routes: 0
+- CommonJS require() calls in ESM server: 0
+- customer invoice GET endpoint exists: GET /api/invoices/:id
+- customer invoice PDF endpoint exists: GET /api/invoices/:id/pdf
+- invoice CRUD/line/finalize/payment/void routes present.
+- customer/unit profile routes and Fullbay service-order routes retained.
+- parts, barcode, inventory-count, smart receiving, findings, work-order task/session and photo routes retained.
+
+DATABASE / DATA-SAFETY SOURCE AUDIT
+- PostgreSQL startup schema retains customer/unit/service-history tables.
+- invoice tables and parent_line_id labor->part hierarchy retained.
+- no destructive reset added.
+- v23.7.1 Fullbay inventory import fix preserved in base lineage.
+- invoice edits continue to use server recalculation.
+- invoice line parent validation remains server-side.
+- parts/inventory atomic transaction paths retained.
+
+HISTORY BEHAVIOR
+- Vehicle history is job-level: each performed labor/job gets its own searchable row.
+- Invoice parts are excluded from the compact history list; they remain visible when the invoice is opened.
+- Fullbay action/job rows remain separate.
+- Invoiced ITTR work orders are de-duplicated from compact vehicle history when the invoice is authoritative.
+- Search includes job/service description, invoice/SO/WO references and technician.
+
+IMPORTANT LIMIT
+This is a source/package audit. It cannot prove the state of the live Railway PostgreSQL database, live environment variables, R2 credentials, OpenRouter/FMCSA availability, or every browser/network interaction until this exact release is deployed. /api/health and /api/build should be checked after deployment, and production workflows should be smoke-tested with real authenticated data.

@@ -6,13 +6,13 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.6.6-FULLBAY-STYLE-INVOICE-LINES-20260912">
+<meta name="ittr-build" content="ITTR-24.7.1-MAJOR-SYSTEM-AUDIT-20260914">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.6.6</title>
+<title>ITTR ShopFlow v24.7.1</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -703,7 +703,7 @@ body.modalOpen{overflow:hidden}
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.6.6 ONLINE · SERVICE ORDER · PRO INVOICING · PARTS</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.7.1 ONLINE · FULL SYSTEM AUDIT · SERVICE HISTORY · INVOICING</div>
 <div id="appErrorBanner" style="display:none;position:fixed;left:8px;right:8px;top:66px;z-index:1000;background:#fef3f2;color:#b42318;border:1px solid #fecdca;border-radius:10px;padding:10px;font-size:13px"><b>App error:</b> <span id="appErrorText"></span> <button type="button" onclick="this.parentElement.style.display='none'" style="float:right;min-height:28px;padding:2px 8px">×</button></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1422,7 +1422,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION="24.6.6";
+const FRONTEND_VERSION="24.7.1";
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
@@ -3392,7 +3392,7 @@ function openCustomerEditor(id=null){if(!requireAdmin())return;const c=id?(custo
 async function runCustomerCrmDiagnostics(){if(!requireAdmin())return;const box=document.getElementById("customerCrmDiagnosticBox");if(box){box.classList.remove("hidden");box.textContent="Running CRM diagnostics…"}try{const d=await apiJSON("/api/admin/customer-crm-diagnostics");const tables=Object.entries(d.tables||{}).map(([k,v])=>`${k}: ${v?"OK":"MISSING"}`).join(" · ");const sync=d.sync||{};const errors=Array.isArray(sync.errors)?sync.errors:[];const detail=errors.slice(0,5).map(x=>`<div class="muted">• ${esc(x.source||"record")} ${esc(x.unit||"")} — ${esc(x.error||"")}</div>`).join("");const samples=Array.isArray(d.unitSamples)?d.unitSamples:[];const sampleHtml=samples.length?`<div style="margin-top:6px"><b>Newest unit records:</b> ${samples.slice(0,5).map(x=>`Unit ${esc(cleanVehicleMeta(x.unit_number)||"?")} (${esc(cleanImportedDisplayText(x.customer_name)||"unlinked")})`).join(" · ")}</div>`:"";const state=d.stateCounts||{};const unlinked=Array.isArray(d.unlinkedUnits)?d.unlinkedUnits:[];const sources=Array.isArray(d.unitSourceCounts)?d.unitSourceCounts:[];const extra=`<div style="margin-top:6px"><b>Cloud state:</b> Vehicle Profiles ${Number(state.vehicleProfiles||0)} · Work Orders ${Number(state.workOrders||0)}</div>${sources.length?`<div><b>DB unit sources:</b> ${sources.map(x=>`${esc(x.source)} ${Number(x.count||0)}`).join(" · ")}</div>`:""}${unlinked.length?`<div><b>Unlinked units:</b> ${unlinked.slice(0,8).map(x=>`Unit ${esc(cleanVehicleMeta(x.unit_number)||"?")} (${esc(cleanImportedDisplayText(x.customer_name)||"no customer")})`).join(" · ")}</div>`:""}`;if(box)box.innerHTML=`<b>CRM Diagnostics v${esc(d.version||"")}</b><br>${esc(tables)}<br>Customers: ${Number(d.counts?.customers||0)} · Units: ${Number(d.counts?.units||0)}<br>Sync: ${sync.ok===false?"warnings":"OK"}${errors.length?` · ${errors.length} skipped record(s)`:""}${detail}${sampleHtml}${extra}${d.error?`<br>${esc(d.error)}`:""}`;await renderCustomerDirectory();}catch(e){if(box)box.innerHTML=`<b>Diagnostics failed:</b> ${esc(e.message||"Unknown error")}`}}
 async function openCustomerProfile(id){if(!requireAdmin())return;const box=document.getElementById("customerProfileBody");document.getElementById("customerModal").classList.add("open");updateMobileBackButton();box.innerHTML='<div class="productivityLoading">Loading customer profile…</div>';try{const d=await apiJSON(`/api/customers/${id}/profile`);customerProfileCache=d;renderCustomerProfile()}catch(e){box.innerHTML=`<div class="error">${esc(e.message||"Unable to load customer profile.")}</div>`}}
 function renderCustomerProfile(){
- const d=customerProfileCache;if(!d)return;const c=d.customer||{},units=d.units||[],history=d.history||[];
+ const d=customerProfileCache;if(!d)return;const c=d.customer||{},units=d.units||[],history=d.history||[],jobHistoryCount=history.reduce((n,w)=>n+(Array.isArray(w?.tasks)?w.tasks.filter(t=>w?.source!=="invoice"||String(t?.lineType||"").toLowerCase()==="labor").length:0),0);
  const customerName=cleanImportedDisplayText(c.customer_name)||"Customer Profile";document.getElementById("customerModalTitle").textContent=customerName;
  const box=document.getElementById("customerProfileBody"),fullbayCount=history.filter(x=>x.source==="fullbay").length,ittrCount=history.length-fullbayCount;
  box.innerHTML=`<div class="customerProfileHeader"><div><h2 style="margin:0">${esc(customerName)}</h2><div class="customerProfileMeta"><span class="badge">DOT ${esc(cleanVehicleMeta(c.dot_number)||"—")}</span><span class="badge">${units.length} vehicles</span><span class="badge">${history.length} service orders</span>${c.fullbay_id?`<span class="badge">Fullbay ${esc(cleanVehicleMeta(c.fullbay_id))}</span>`:""}</div></div><div><button class="secondary" onclick="openCustomerEditor(${c.id})">Edit Customer</button> <button onclick="openCustomerUnitEditor(${c.id})">+ Add Unit</button></div></div>
