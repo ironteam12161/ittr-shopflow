@@ -1,0 +1,31 @@
+ITTR v24.6.5 PROFESSIONAL INVOICE / HISTORY / TAX AUDIT
+Date: 2026-09-14
+
+Implemented:
+- Labor-first invoice hierarchy retained: each labor operation owns its parts/sublet/fees.
+- Labor rate control is one combined control with presets:
+  New Client $115, Our Client $110, Old Client $100, Owner $60, Custom.
+- First labor operation establishes invoice default labor rate. New labor inherits that default.
+- Changing labor 2/3/4 does not change the invoice default or later new-labor default.
+- Part # and description both search live ITTR inventory; selection fills part #, description, sell price, internal cost and taxable flag.
+- Adding a part saves current invoice lines first, preventing unsaved labor text/rates from disappearing on re-render.
+- Invoice totals preview live while tax/rate/fees/discount/line values are edited.
+- Tax exemption fields added: exempt flag, E/certificate number, reason. Exempt invoice forces calculated tax to $0 server-side.
+- Illinois IDOR online jurisdiction tax lookup added using the official machine-readable current rate file. If IDOR marks the jurisdiction as address-override, ITTR refuses to guess and directs user to official MyTax Illinois address finder.
+- Paid invoice correction workflow: Reopen for Correction requires reason and is audited.
+- Permanent deletion allowed only for unpaid drafts. Finalized invoices are voided instead to preserve accounting records.
+- Unit Vehicle Profile history now includes ITTR invoices in addition to ITTR work orders and Fullbay service history.
+- Invoice PDF redesigned with Iron Team logo, labor/part hierarchy, vehicle identity, tax-exempt display, totals and professional footer policy.
+- PDF footer: manufacturer parts warranty responsibility + 50-mile wheel/tire fastener torque recheck notice.
+- Non-destructive invoice schema migration 028 added.
+
+Static audit:
+- server.js node --check: PASS
+- frontend extracted JavaScript node --check: PASS
+- duplicate literal Express method/path routes: 0
+- duplicate static DOM ids: 0
+- PostgreSQL numbered-placeholder gap scan: 0
+- root/public index.html identical: PASS
+- require('crypto') regression: 0
+- no destructive database reset added
+- v23.7.1 inventory import parameter fix not modified
