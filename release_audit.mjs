@@ -10,9 +10,9 @@ const pub = read('public/index.html');
 const server = read('server.js');
 const pkg = JSON.parse(read('package.json'));
 
-check('release package version is 24.12.0', pkg.version === '24.12.0', pkg.version);
-check('frontend release is 24.12.0', html.includes("const FRONTEND_VERSION='24.12.0';") || html.includes('const FRONTEND_VERSION="24.12.0";'));
-check('backend release is 24.12.0', server.includes('frontendExpected:"24.12.0",backend:"24.12.0"'));
+check('release package version is 24.13.0', pkg.version === '24.13.0', pkg.version);
+check('frontend release is 24.13.0', html.includes("const FRONTEND_VERSION='24.13.0';") || html.includes('const FRONTEND_VERSION="24.13.0";'));
+check('backend release is 24.13.0', server.includes('frontendExpected:"24.13.0",backend:"24.13.0"'));
 check('root/public frontend byte-identical', html === pub, crypto.createHash('sha256').update(html).digest('hex').slice(0,12));
 
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
@@ -84,7 +84,7 @@ check('route loader uses dynamic import', html.includes('import(cfg.js)'));
 check('route unmount aborts module listeners', html.includes('instance.scope.cleanup()'));
 check('heavy view DOM not embedded at startup', !html.includes('<div id="invoiceKpis"') && !html.includes('<div id="partsStats"') && !html.includes('<div id="vehicleProfileResults"'));
 
-// v24.12.0 mechanic/mobile/AI/receiving/resilience regression guards.
+// v24.13.0 mechanic/mobile/AI/receiving/resilience regression guards.
 check('mechanic self-start wizard UI', html.includes('id="mechanicStartModal"') && html.includes('openMechanicStartWizard()'));
 check('mechanic self-start mobile entry', html.includes('Start Job') && html.includes('onclick="openMechanicStartWizard()"'));
 check('mechanic self-start backend endpoint', server.includes('app.post("/api/work-orders/self-start",auth'));
@@ -139,6 +139,17 @@ check('invoice tax only taxable lines', server.includes('CASE WHEN taxable THEN'
 check('invoice snapshot USDOT schema', server.includes('ADD COLUMN IF NOT EXISTS dot_number TEXT'));
 check('invoice global discount schema', server.includes('ADD COLUMN IF NOT EXISTS discount_type TEXT') && server.includes('ADD COLUMN IF NOT EXISTS discount_value NUMERIC'));
 check('invoice professional print branding', html.includes('IRON TEAM TRUCK &amp; TRAILER REPAIR'));
+
+
+// v24.13.0 service-card invoice workflow regression guards.
+check('invoice service-card grouping', html.includes('invoiceServiceCard') && html.includes('invoiceServiceGroups'));
+check('invoice parts shown before labor in service card', html.indexOf('Parts & Materials') < html.indexOf('Labor & Services'));
+for(const rate of ['115','110','100','60']) check(`legacy labor rate preset ${rate}`, html.includes(`value=\"${rate}\"`) || html.includes(`value="${rate}"`));
+check('legacy labor rate labels restored', html.includes('New client — $115/hr') && html.includes('Our client — $110/hr') && html.includes('Old client — $100/hr') && html.includes('Owner — $60/hr'));
+check('customer default labor rate supported', read('public/modules/invoices.js').includes('default_labor_rate') && read('public/modules/invoices.js').includes('preferredLaborRate'));
+check('service supports direct part add', html.includes('+ Add Part') && html.includes('addInvoiceChildLine'));
+check('service supports additional labor', html.includes('+ Add Labor') && html.includes('addInvoiceLaborToService'));
+check('new service workflow', html.includes('+ New Service') && html.includes('addInvoiceService()'));
 
 const failed = checks.filter(x=>!x.ok);
 for (const x of checks) console.log(`${x.ok?'PASS':'FAIL'}  ${x.name}${x.detail?` — ${x.detail}`:''}`);

@@ -1,0 +1,20 @@
+ITTR ShopFlow v24.13.0 — Service-Card Invoice Workflow Audit
+
+AUDIT FINDINGS
+- v24.12.0 flattened billing into separate Labor and Parts tables. That removed the job/service relationship that existed in v24.6.4/v24.6.6.
+- The earlier rate presets were confirmed in v24.6.6 and restored exactly: New client $115/hr, Our client $110/hr, Old client $100/hr, Owner $60/hr, Custom.
+- Customer records already retain default_labor_rate; the invoice module now uses that rate when available, otherwise the first existing labor rate, otherwise $115.
+- Existing parent_line_id data model remains intact, so no destructive migration is required.
+
+NEW WORKFLOW
+1. Create Service / Repair Job.
+2. Add Parts & Materials directly under that service.
+3. Add one or more Labor rows below the parts.
+4. Pick a restored rate preset or type a custom labor rate.
+5. Per-line taxable and discount controls remain available.
+6. Existing customer/unit autofill, terms, global discount, PDF/print, payment, delete, AI, Fullbay and mobile protections remain.
+
+DATA SAFETY
+- No database reset.
+- No destructive schema migration.
+- Existing invoice lines continue to render by job_name/job_uid and parent_line_id.
