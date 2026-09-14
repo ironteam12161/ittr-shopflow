@@ -1,0 +1,193 @@
+<style>
+#invoices .invoice-module-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:16px}
+#invoices .invoice-module-head h1{margin:0 0 4px}
+#invoices .invoice-module-actions{display:flex;gap:8px;flex-wrap:wrap}
+#invoices .invoice-filter-card{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px}
+.invoiceCustomerVehicleCard,.invoiceLineItemsCard{overflow:visible}
+.invoiceSectionTitle{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:14px}
+.invoiceSectionTitle h2{margin:2px 0 0}
+.invoiceHeaderGrid{display:grid;grid-template-columns:1.4fr .8fr 1.35fr .8fr .7fr .8fr;gap:12px;align-items:end}
+.invoiceTermsGrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid #e8edf3}
+.invoiceHeaderGrid select,.invoiceTermsGrid select{width:100%;min-height:42px}
+.invoiceCategory{border:1px solid #dfe5ec;border-radius:14px;overflow:hidden;background:#fff;margin:14px 0}
+.invoiceCategoryHead{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:14px 16px;background:#f8fafc;border-bottom:1px solid #e5e7eb}
+.invoiceCategoryHead h3{margin:0}.invoiceCategoryTotals{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:#475467}.invoiceCategoryTotals b{color:#111827}
+.invoiceTableHeader{display:grid;grid-template-columns:minmax(220px,1.7fr) 130px 100px 112px 118px 110px 120px 46px;gap:9px;padding:8px 14px;background:#fcfcfd;border-bottom:1px solid #e9edf2;color:#667085;font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.035em}.invoiceTableHeader span:nth-child(n+3){text-align:right}
+.invoiceFlatRow{display:grid;grid-template-columns:minmax(220px,1.7fr) 130px 100px 112px 118px 110px 120px 46px;gap:9px;align-items:end;padding:12px 14px;border-bottom:1px solid #edf0f3}
+.invoiceFlatRow:last-child{border-bottom:0}.invoiceFlatRow .invoiceDiscountControl{display:grid;grid-template-columns:68px 1fr;gap:6px}.invoiceFlatRow .invoiceTaxCell{min-height:38px}.invoiceFlatRow .ilPartWrap{grid-column:auto}
+.invoiceSubtotalStrip{display:flex;justify-content:flex-end;gap:24px;padding:11px 14px;background:#fbfcfe;border-top:1px solid #edf0f3;font-size:13px}.invoiceSubtotalStrip strong{font-size:14px}
+.invoiceSummaryRow{display:flex;justify-content:space-between;gap:16px;padding:6px 0;color:#475467}.invoiceSummaryRow b{color:#111827}.invoiceSummaryGrand{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px 0 4px;font-size:17px;font-weight:850}.invoiceSummaryGrand b{font-size:22px}.invoiceBalanceLabel{margin-top:10px;font-size:12px;font-weight:800;color:#475467;text-transform:uppercase;letter-spacing:.04em}
+.invoiceGlobalDiscount{display:grid;grid-template-columns:1fr 1fr;gap:8px}.invoiceAdvancedFees details{border:1px solid #e4e8ee;border-radius:10px;padding:8px 10px;background:#fbfcfe}.invoiceAdvancedFees summary{cursor:pointer;font-weight:750;color:#475467}.invoiceSummaryActions{display:grid!important;grid-template-columns:1fr 1fr;gap:8px}.invoiceSummaryActions button{min-height:42px}
+.invoicePrintOnly{display:none}.invoicePrintHeader{align-items:flex-start;justify-content:space-between;border-bottom:2px solid #111;padding-bottom:14px;margin-bottom:20px}.invoicePrintHeader h1{font-size:20pt;margin:0}.invoicePrintHeader>div:first-child>div{font-size:9pt;color:#555}.invoicePrintNumber{text-align:right}.invoicePrintNumber span{display:block;font-size:9pt;letter-spacing:.18em}.invoicePrintNumber b{display:block;font-size:17pt;margin-top:4px}.invoicePrintBillGrid{grid-template-columns:1fr 220px;gap:30px;margin-bottom:18px}.invoicePrintBillGrid>div{display:grid;gap:3px}.invoicePrintBillGrid small{font-size:7.5pt;font-weight:800;color:#666;letter-spacing:.08em}.invoicePrintBillGrid span{font-size:9pt;color:#333}
+@media(max-width:1180px){.invoiceTableHeader{display:none}.invoiceHeaderGrid{grid-template-columns:1.3fr .8fr 1.2fr .8fr}.invoiceFlatRow{grid-template-columns:minmax(200px,1.6fr) 120px 90px 105px 110px 100px 112px 42px}}
+@media(max-width:900px){.invoiceHeaderGrid{grid-template-columns:1fr 1fr}.invoiceCustomerField{grid-column:1/-1}.invoiceFlatRow{grid-template-columns:1fr 1fr}.invoiceFlatRow .descField,.invoiceFlatRow .ilPartWrap{grid-column:1/-1}.invoiceFlatRow .invoiceLineActions{grid-column:1/-1}.invoiceFlatRow .invoiceDeleteCell{justify-self:end}.invoiceCategoryHead{align-items:flex-start;flex-direction:column}.invoiceTermsGrid{grid-template-columns:1fr}.invoiceSectionTitle{flex-direction:column}}
+@media(max-width:600px){#invoices .invoice-module-head{flex-direction:column}.invoiceHeaderGrid{grid-template-columns:1fr}.invoiceCustomerField{grid-column:auto}.invoiceGlobalDiscount{grid-template-columns:1fr}.invoiceSummaryActions{grid-template-columns:1fr}.invoiceFlatRow{padding:12px 10px}.invoiceCategory{margin-left:-4px;margin-right:-4px}}
+@media print{
+ @page{size:letter;margin:0.45in}
+ body *{visibility:hidden!important}
+ #invoiceModal,#invoiceModal *{visibility:visible!important}
+ #invoiceModal{position:absolute!important;inset:0!important;background:#fff!important;display:block!important;z-index:99999!important}
+ #invoiceModal .modalbox{position:static!important;max-width:none!important;width:100%!important;max-height:none!important;overflow:visible!important;box-shadow:none!important;border:0!important;padding:0!important;background:#fff!important}
+ .x,.invoiceAppOnly,.invoiceLineActions,.invoiceDeleteCell,.invoiceAddMenu,button,nav,header,#mobileBottomNav,#shopAiFab,#shopAiPanel,.invoice-module-head{display:none!important}
+ .invoicePrintOnly{display:flex!important}.invoicePrintBillGrid{display:grid!important}
+ .invoiceEditorGrid{display:block!important}.invoiceTotals{position:static!important;break-inside:avoid;margin-top:14px}.card,.invoiceCategory{box-shadow:none!important;border:0!important;break-inside:auto;padding:0!important}.invoiceCustomerVehicleCard{display:none!important}
+ .invoiceCategory{border:1px solid #cfd5dc!important;margin:12px 0!important;border-radius:0!important}.invoiceCategoryHead{background:#eef1f4!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;padding:8px 10px!important}.invoiceCategoryHead .muted{display:none!important}
+ .invoiceFlatRow{grid-template-columns:2.2fr .9fr .7fr .85fr .8fr!important;font-size:9pt;padding:7px 9px!important;gap:6px!important}.invoiceFlatRow .costField,.invoiceFlatRow .invoiceDiscountControl,.invoiceFlatRow .invoiceTaxCell,.invoiceFlatRow .invoiceDeleteCell,.invoiceFlatRow .invoiceLineActions{display:none!important}.invoiceFlatRow .ilPartWrap{display:block!important}.invoiceFlatRow .invoiceFieldMini label{font-size:6.5pt!important}.invoiceFlatRow input{font-size:8.5pt!important}
+ .invoiceFieldMini input,.invoiceFieldMini select,textarea{border:0!important;padding:0!important;background:transparent!important;color:#000!important;appearance:none!important}.invoiceAmountBox{border:0!important;background:transparent!important;padding:0!important}.invoiceSubtotalStrip{padding:7px 9px!important;background:#fafafa!important}.invoiceLineItemsCard> .toolbar{display:none!important}.invoiceLineItemsCard{margin-top:0!important}
+ .invoiceTotals h2,.invoiceTotals h3,.invoiceTotals .historyitem,.invoiceTotals .invoiceAdvancedFees{display:none!important}.invoiceTotals{width:310px!important;margin-left:auto!important;border-top:1px solid #111!important;padding-top:8px!important}.invoiceTotals .invoiceSummaryRow,.invoiceTotals .invoiceSummaryGrand,.invoiceBalanceLabel,.moneyBig{visibility:visible!important}.invoiceTotals hr{border:0;border-top:1px solid #ddd}.moneyBig{font-size:18pt!important}.invoiceGlobalDiscount{display:none!important}
+ .invoiceEditorGrid>div>.card:last-child{margin-top:16px!important;border-top:1px solid #ddd!important;padding-top:10px!important}body{background:#fff!important;color:#000!important}
+}
+</style>
+<div class="invoice-module-head"><div><h1>Invoices</h1><div class="muted">Open invoices in a dedicated full-screen billing workspace with inventory-connected parts, service labor, tax, discounts and customer-ready printing.</div></div><div class="invoice-module-actions"><button onclick="openManualInvoice()">+ New Invoice</button></div></div>
+<div id="invoiceKpis" class="statgrid"></div>
+<div class="invoice-filter-card"><button class="filterbtn active" data-invfilter="all" onclick="setInvoiceFilter('all',this)">All</button><button class="filterbtn" data-invfilter="draft" onclick="setInvoiceFilter('draft',this)">Draft</button><button class="filterbtn" data-invfilter="sent" onclick="setInvoiceFilter('sent',this)">Open</button><button class="filterbtn" data-invfilter="overdue" onclick="setInvoiceFilter('overdue',this)">Overdue</button><button class="filterbtn" data-invfilter="paid" onclick="setInvoiceFilter('paid',this)">Paid</button><button class="filterbtn" data-invfilter="void" onclick="setInvoiceFilter('void',this)">Void</button></div>
+<div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Invoice</th><th>Customer / Unit</th><th>Date / Due</th><th>Status</th><th>Total</th><th>Paid</th><th>Balance</th><th></th></tr></thead><tbody id="invoiceTable"></tbody></table></div>
+
+<style>
+/* v24.13.0 service-card invoicing */
+.invoiceServiceBuilderBar{position:sticky;top:0;z-index:8;background:#fff;padding:4px 0 12px;border-bottom:1px solid #eef1f4;margin-bottom:12px}
+.invoiceNewServiceBox{display:grid;grid-template-columns:minmax(260px,1fr) auto;gap:10px;align-items:end;background:#f7f9fc;border:1px solid #dbe3ef;border-radius:12px;padding:12px;margin:0 0 14px}.invoiceNewServiceBox.is-hidden{display:none}
+.invoiceServiceStack{display:grid;gap:16px}.invoiceServiceCard{border:1px solid #dbe2ea;border-radius:16px;overflow:hidden;background:#fff;box-shadow:0 3px 14px rgba(16,24,40,.06)}
+.invoiceServiceHead{display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:12px;align-items:center;padding:14px 16px;background:linear-gradient(180deg,#f8fafc,#f3f6fa);border-bottom:1px solid #dfe5ec}.invoiceServiceIndex{width:36px;height:36px;border-radius:10px;background:#172033;color:#fff;display:grid;place-items:center;font-weight:900}.invoiceServiceTitle label{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#667085;font-weight:850;margin-bottom:4px}.invoiceServiceTitle input{font-size:17px;font-weight:850;border:1px solid transparent;background:transparent;padding:6px 8px;margin-left:-8px}.invoiceServiceTitle input:focus{background:#fff;border-color:#9db7e5}.invoiceServiceTotal{text-align:right}.invoiceServiceTotal small{display:block;color:#667085;font-size:10px;text-transform:uppercase;font-weight:800}.invoiceServiceTotal b{font-size:18px;color:#101828}
+.invoiceServiceSection{padding:0 16px 14px}.invoiceServiceSection+.invoiceServiceSection{border-top:1px solid #edf0f3}.invoiceServiceSectionHead{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0 9px}.invoiceServiceSectionHead>div{display:flex;align-items:center;gap:8px;min-width:0}.invoiceServiceSectionHead b{font-size:13px}.invoiceServiceSectionHead small{color:#667085}.invoiceSectionIcon{width:26px;height:26px;display:grid;place-items:center;border-radius:8px;background:#edf4ff;color:#175cd3;font-weight:900}.invoicePartsSection .invoiceSectionIcon{background:#ecfdf3;color:#027a48}
+.invoiceServiceRows{display:grid;gap:8px}.invoiceServicePartRow,.invoiceServiceLaborRow{display:grid;align-items:end;gap:8px;padding:10px;border:1px solid #e4e8ee;border-radius:11px;background:#fff}.invoiceServicePartRow{grid-template-columns:125px minmax(190px,1.5fr) 70px 95px 125px 92px 95px auto auto}.invoiceServiceLaborRow{grid-template-columns:minmax(220px,1.5fr) 75px minmax(250px,1.2fr) 125px 92px 95px auto auto;background:#fbfcff;border-color:#dbe5f5}.invoiceServiceRows .invoiceFieldMini label{font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:#667085;font-weight:800}.invoiceServiceRows input,.invoiceServiceRows select{min-height:40px}.invoiceRateWrap{display:grid;grid-template-columns:minmax(155px,1fr) 86px;border:1px solid #cfd6df;border-radius:9px;overflow:hidden;background:#fff}.invoiceRateWrap select,.invoiceRateWrap input{border:0!important;border-radius:0!important}.invoiceRateWrap input{border-left:1px solid #d7dde5!important;text-align:right;font-weight:850}.invoiceDiscountControl{display:grid;grid-template-columns:66px 1fr;gap:5px}.invoiceLineNet{min-height:40px;display:flex;flex-direction:column;justify-content:center;align-items:flex-end}.invoiceLineNet small{font-size:9px;text-transform:uppercase;color:#667085}.invoiceLineNet b{font-size:14px}.invoiceRowSave,.invoiceRowDelete{min-height:40px!important;padding:8px 10px!important}.invoiceRowDelete{width:40px;padding:0!important}.invoiceTaxCell{min-height:40px;display:flex;align-items:center;gap:6px;font-size:11px;font-weight:750}.invoiceServiceEmpty{padding:13px;border:1px dashed #d7dde5;border-radius:10px;color:#667085;background:#fafbfc}.invoiceServiceStart{display:flex;flex-direction:column;gap:3px;text-align:center;padding:26px}.invoiceServiceStart b{color:#172033}
+@media(max-width:1150px){.invoiceServicePartRow{grid-template-columns:110px minmax(180px,1fr) 65px 90px 110px 90px}.invoiceServiceLaborRow{grid-template-columns:minmax(180px,1fr) 70px minmax(220px,1fr) 110px 90px}.invoiceRowSave,.invoiceRowDelete{grid-row:2}.invoiceServicePartRow .invoiceRowSave,.invoiceServiceLaborRow .invoiceRowSave{grid-column:-3}.invoiceServicePartRow .invoiceRowDelete,.invoiceServiceLaborRow .invoiceRowDelete{grid-column:-2}}
+@media(max-width:760px){.invoiceServiceBuilderBar{position:static}.invoiceNewServiceBox{grid-template-columns:1fr}.invoiceServiceHead{grid-template-columns:36px 1fr}.invoiceServiceTotal{grid-column:2;text-align:left}.invoiceServiceSection{padding:0 10px 12px}.invoiceServiceSectionHead{align-items:flex-start}.invoiceServiceSectionHead>div{align-items:flex-start;flex-wrap:wrap}.invoiceServicePartRow,.invoiceServiceLaborRow{grid-template-columns:1fr 1fr}.invoiceServicePartRow .descField,.invoiceServiceLaborRow .descField,.invoiceServiceLaborRow .invoiceLaborRateField{grid-column:1/-1}.invoiceRateWrap{grid-template-columns:minmax(0,1fr) 88px}.invoiceDiscountControl{grid-template-columns:80px 1fr}.invoiceTaxCell,.invoiceLineNet{align-items:flex-start}.invoiceRowSave{grid-column:1}.invoiceRowDelete{grid-column:2;justify-self:end}.invoiceServiceTitle input{font-size:15px}}
+@media print{.invoiceServiceBuilderBar,.invoiceNewServiceBox,.invoiceServiceSectionHead button,.invoiceRowSave,.invoiceRowDelete{display:none!important}.invoiceServiceStack{gap:10px!important}.invoiceServiceCard{box-shadow:none!important;border:1px solid #bfc7d1!important;border-radius:0!important;break-inside:avoid}.invoiceServiceHead{padding:8px!important;background:#eef1f4!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.invoiceServiceIndex{background:#111!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.invoiceServiceTitle input{border:0!important;padding:0!important;background:transparent!important}.invoiceServiceSection{padding:0 8px 8px!important}.invoiceServiceSectionHead{padding:6px 0!important}.invoiceServicePartRow,.invoiceServiceLaborRow{grid-template-columns:1.5fr 2fr .55fr .8fr .75fr!important;border:0!important;border-top:1px solid #ddd!important;border-radius:0!important;padding:5px 0!important;gap:5px!important;background:#fff!important}.invoiceServicePartRow .invoiceDiscountControl,.invoiceServicePartRow .invoiceTaxCell,.invoiceServiceLaborRow .invoiceDiscountControl,.invoiceServiceLaborRow .invoiceTaxCell,.invoiceServiceLaborRow .invoiceLaborRateField select{display:none!important}.invoiceServiceLaborRow .invoiceLaborRateField{display:block!important}.invoiceServiceLaborRow .invoiceRateWrap{border:0!important;display:block!important}.invoiceServiceLaborRow .invoiceRateWrap input{border:0!important;text-align:left!important}.invoiceLineNet{align-items:flex-end!important}.invoiceServiceEmpty{display:none!important}}
+</style>
+
+
+<style>
+/* ===== v24.14.0 COMPACT SERVICE-GRID INVOICING ===== */
+.invoiceLineItemsCard{padding:0!important;overflow:hidden!important;border:1px solid #dfe4ea!important}
+.invoiceServiceBuilderBar{position:static!important;margin:0!important;padding:14px 16px!important;border-bottom:1px solid #dfe4ea!important;background:#fff!important}
+.invoiceNewServiceBox{margin:0!important;border:0!important;border-bottom:1px solid #dfe4ea!important;border-radius:0!important;background:#f8fafc!important}
+.invoiceGridHeader{display:grid;grid-template-columns:105px minmax(240px,1.7fr) 88px 105px 125px 78px 120px 110px 54px;gap:8px;align-items:center;padding:9px 14px;background:#f8fafc;border-bottom:1px solid #d7dde5;color:#344054;font-size:11px;font-weight:850}
+.invoiceGridHeader>span:nth-child(n+3){text-align:right}
+.invoiceServiceStack{display:block!important}
+.invoiceServiceCard{margin:0!important;border:0!important;border-bottom:1px solid #cfd6df!important;border-radius:0!important;box-shadow:none!important;background:#fff!important;overflow:visible!important}
+.invoiceServiceHead{display:grid!important;grid-template-columns:105px minmax(240px,1.7fr) 88px 105px 125px 78px 120px 110px 54px!important;gap:8px!important;align-items:center!important;padding:10px 14px!important;background:#eef0f2!important;border:0!important;border-bottom:1px solid #d8dde3!important}
+.invoiceServiceIndex{width:auto!important;height:auto!important;border-radius:0!important;background:transparent!important;color:#101828!important;display:block!important;font-weight:850!important;font-size:13px!important}
+.invoiceServiceIndex::before{content:"Service ";color:#667085;font-weight:700}
+.invoiceServiceTitle{grid-column:2/6!important;display:flex!important;align-items:center!important;gap:8px!important}
+.invoiceServiceTitle label{display:none!important}
+.invoiceServiceTitle input{width:100%!important;min-height:40px!important;font-size:14px!important;font-weight:800!important;margin:0!important;padding:7px 9px!important;background:#fff!important;border:1px solid #cfd6df!important;border-radius:7px!important}
+.invoiceServiceTotal{grid-column:8!important;text-align:right!important}
+.invoiceServiceTotal small{display:none!important}
+.invoiceServiceTotal b{font-size:15px!important;color:#175cd3!important}
+.invoiceServiceQuickAdd{grid-column:9!important;display:flex!important;justify-content:flex-end!important}
+.invoiceServiceQuickAdd button{min-width:42px!important;min-height:40px!important;padding:6px 8px!important}
+.invoiceServiceSection{padding:0!important;border:0!important}
+.invoiceServiceSection+.invoiceServiceSection{border:0!important}
+.invoiceServiceSectionHead{display:none!important}
+.invoiceServiceRows{display:block!important}
+.invoiceServicePartRow,.invoiceServiceLaborRow{display:grid!important;grid-template-columns:105px minmax(240px,1.7fr) 88px 105px 125px 78px 120px 110px 54px!important;gap:8px!important;align-items:center!important;padding:9px 14px!important;border:0!important;border-bottom:1px solid #e5e8ec!important;border-radius:0!important;background:#fff!important}
+.invoiceServiceLaborRow{background:#f5f6f7!important}
+.invoiceServicePartRow:hover,.invoiceServiceLaborRow:hover{background:#f8fbff!important}
+.invoiceServiceRows .invoiceFieldMini label{display:none!important}
+.invoiceServiceRows input,.invoiceServiceRows select{min-height:38px!important;border-radius:6px!important}
+.invoiceGridItemLabel{font-size:13px;font-weight:850;color:#344054}
+.invoiceGridItemLabel.is-labor{color:#101828}
+.invoiceGridItemLabel.is-part{color:#475467;padding-left:14px;position:relative}
+.invoiceGridItemLabel.is-part::before{content:"↳";position:absolute;left:0;color:#98a2b3}
+.invoicePartDescription{display:grid!important;grid-template-columns:118px minmax(120px,1fr)!important;gap:7px!important}
+.invoicePartDescription input{min-width:0!important}
+.invoiceLaborDescription{display:block!important}
+.invoiceQtyUnit{display:grid!important;grid-template-columns:1fr auto!important;align-items:center!important;gap:4px!important}
+.invoiceQtyUnit span{font-size:10px;font-weight:800;color:#667085;text-transform:uppercase}
+.invoiceCostCell input,.invoicePriceCell input{text-align:right!important}
+.invoiceLaborRateField{grid-column:4/6!important}
+.invoiceRateWrap{display:grid!important;grid-template-columns:minmax(0,1fr) 78px!important;min-width:0!important;border:1px solid #cfd6df!important;border-radius:6px!important}
+.invoiceRateWrap select,.invoiceRateWrap input{min-height:38px!important}
+.invoiceDiscountControl{display:grid!important;grid-template-columns:54px 1fr!important;gap:4px!important}
+.invoiceTaxCell{min-height:38px!important;display:flex!important;justify-content:center!important;align-items:center!important;font-size:0!important}
+.invoiceTaxCell input{width:18px!important;height:18px!important}
+.invoiceLineNet{min-height:38px!important;justify-content:center!important;align-items:flex-end!important}
+.invoiceLineNet small{display:none!important}
+.invoiceLineNet b{font-size:14px!important;color:#175cd3!important}
+.invoiceRowActions{display:flex!important;justify-content:flex-end!important;gap:4px!important}
+.invoiceRowSave,.invoiceRowDelete{min-height:36px!important;height:36px!important;padding:5px 8px!important}
+.invoiceRowSave{display:none!important}
+.invoiceRowDelete{width:38px!important}
+.invoiceServiceSubtotal{display:grid!important;grid-template-columns:105px minmax(240px,1.7fr) 88px 105px 125px 78px 120px 110px 54px!important;gap:8px!important;padding:10px 14px!important;background:#fff!important;border-top:0!important}
+.invoiceServiceSubtotalLabel{grid-column:1/8!important;font-size:12px!important;font-weight:850!important;color:#475467!important}
+.invoiceServiceSubtotalValue{grid-column:8!important;text-align:right!important;font-size:14px!important;font-weight:900!important;color:#101828!important}
+.invoiceServiceFooterActions{display:flex!important;gap:8px!important;flex-wrap:wrap!important;padding:10px 14px 12px!important;background:#fff!important}
+.invoiceServiceFooterActions button{min-height:38px!important}
+.invoiceBottomActions{display:flex!important;gap:8px!important;flex-wrap:wrap!important;padding:14px!important;background:#f8fafc!important;border-top:1px solid #dfe4ea!important}
+.invoiceBottomActions button{min-height:44px!important;padding:10px 18px!important}
+.invoiceServiceEmpty{margin:10px 14px!important}
+.invoiceCustomerVehicleCard{padding:14px 16px!important}
+.invoiceHeaderGrid{grid-template-columns:minmax(280px,1.4fr) minmax(230px,1fr) minmax(220px,1.2fr) 150px 130px 150px!important}
+.invoiceCustomerField,.invoiceUnitField{background:#fff;border:1px solid #e1e5ea;border-radius:9px;padding:10px;box-shadow:0 4px 14px rgba(16,24,40,.05)}
+.invoiceCustomerField{grid-column:span 1!important}.invoiceUnitField{grid-column:span 1!important}
+@media(max-width:1180px){
+ .invoiceGridHeader{display:none!important}
+ .invoiceServiceHead{grid-template-columns:82px minmax(180px,1fr) 100px 44px!important}
+ .invoiceServiceTitle{grid-column:2!important}.invoiceServiceTotal{grid-column:3!important}.invoiceServiceQuickAdd{grid-column:4!important}
+ .invoiceServicePartRow,.invoiceServiceLaborRow{grid-template-columns:95px minmax(200px,1fr) 80px 105px 115px 65px 110px 100px 44px!important}
+ .invoiceServiceSubtotal{grid-template-columns:95px minmax(200px,1fr) 80px 105px 115px 65px 110px 100px 44px!important}
+ .invoiceServiceSubtotalLabel{grid-column:1/8!important}.invoiceServiceSubtotalValue{grid-column:8!important}
+ .invoiceHeaderGrid{grid-template-columns:1fr 1fr 1fr!important}
+}
+@media(max-width:820px){
+ .invoiceHeaderGrid{grid-template-columns:1fr!important}
+ .invoiceServiceHead{grid-template-columns:70px minmax(0,1fr) 42px!important}.invoiceServiceTotal{display:none!important}.invoiceServiceQuickAdd{grid-column:3!important}
+ .invoiceServicePartRow,.invoiceServiceLaborRow{grid-template-columns:86px 1fr 1fr!important;padding:10px!important;gap:8px!important}
+ .invoiceGridItemLabel{grid-column:1!important;align-self:start;padding-top:10px!important}
+ .invoicePartDescription,.invoiceLaborDescription{grid-column:2/4!important}
+ .invoiceQtyUnit{grid-column:1/2!important}.invoiceCostCell{grid-column:2!important}.invoicePriceCell{grid-column:3!important}
+ .invoiceLaborRateField{grid-column:2/4!important}
+ .invoiceDiscountControl{grid-column:1/2!important}.invoiceTaxCell{grid-column:2!important;justify-content:flex-start!important}.invoiceLineNet{grid-column:3!important}
+ .invoiceRowActions{grid-column:3!important}
+ .invoiceServiceSubtotal{grid-template-columns:1fr auto!important;padding:10px!important}.invoiceServiceSubtotalLabel{grid-column:1!important}.invoiceServiceSubtotalValue{grid-column:2!important}
+}
+@media(max-width:560px){
+ .invoiceServicePartRow,.invoiceServiceLaborRow{grid-template-columns:1fr 1fr!important}
+ .invoiceGridItemLabel{grid-column:1/3!important}.invoicePartDescription,.invoiceLaborDescription,.invoiceLaborRateField{grid-column:1/3!important}
+ .invoiceQtyUnit{grid-column:1!important}.invoiceCostCell{grid-column:2!important}.invoicePriceCell{grid-column:1!important}.invoiceDiscountControl{grid-column:2!important}
+ .invoiceTaxCell{grid-column:1!important}.invoiceLineNet{grid-column:2!important}.invoiceRowActions{grid-column:2!important}
+ .invoiceBottomActions{display:grid!important;grid-template-columns:1fr!important}
+}
+@media print{
+ .invoiceGridHeader{display:grid!important;grid-template-columns:100px 1fr 58px 80px 88px 55px 75px!important;padding:6px 8px!important}
+ .invoiceGridHeader span:nth-child(4),.invoiceGridHeader span:nth-child(7),.invoiceGridHeader span:nth-child(9){display:none!important}
+ .invoiceServiceHead{grid-template-columns:100px 1fr 88px!important;padding:6px 8px!important}
+ .invoiceServiceTitle{grid-column:2!important}.invoiceServiceTotal{grid-column:3!important;display:block!important}.invoiceServiceQuickAdd{display:none!important}
+ .invoiceServicePartRow,.invoiceServiceLaborRow{grid-template-columns:100px 1fr 58px 88px 55px 75px!important;padding:5px 8px!important}
+ .invoiceCostCell,.invoiceDiscountControl,.invoiceRowActions{display:none!important}
+ .invoiceLaborRateField{grid-column:4!important}.invoiceRateWrap{display:block!important;border:0!important}.invoiceRateWrap select{display:none!important}
+ .invoicePartDescription{grid-template-columns:100px 1fr!important}
+ .invoiceTaxCell{grid-column:auto!important}
+ .invoiceServiceSubtotal{grid-template-columns:1fr 88px!important;padding:6px 8px!important}.invoiceServiceSubtotalLabel{grid-column:1!important}.invoiceServiceSubtotalValue{grid-column:2!important}
+ .invoiceServiceFooterActions,.invoiceBottomActions{display:none!important}
+}
+</style>
+
+<style>
+/* v24.16 dedicated invoice tab + preserved drafts + live inventory part lookup */
+body.invoiceWorkspaceMode{background:#f5f7fb;overflow:hidden}
+body.invoiceWorkspaceMode>header,body.invoiceWorkspaceMode>#onlineBetaBar,body.invoiceWorkspaceMode>#mobileBottomNav,body.invoiceWorkspaceMode>#mobileMoreSheet,body.invoiceWorkspaceMode>main,body.invoiceWorkspaceMode>#shopAiFab{display:none!important}
+body.invoiceWorkspaceMode #invoiceModal{display:block!important;position:fixed!important;inset:0!important;background:#f5f7fb!important;z-index:1200!important;padding:0!important;overflow:hidden!important}
+body.invoiceWorkspaceMode #invoiceModal .invoiceWorkspaceBox{position:relative!important;margin:0!important;width:100vw!important;max-width:none!important;height:100dvh!important;max-height:none!important;border-radius:0!important;box-shadow:none!important;padding:0!important;background:#f5f7fb!important;overflow:auto!important}
+body.invoiceWorkspaceMode #invoiceModal .x{position:fixed!important;right:18px!important;top:14px!important;z-index:1300!important;width:42px!important;height:42px!important;border-radius:12px!important;background:#fff!important;color:#344054!important;border:1px solid #d0d5dd!important;box-shadow:0 4px 16px rgba(16,24,40,.12)!important}
+body.invoiceWorkspaceMode #invoiceEditor{width:min(1880px,100%);margin:0 auto;padding:20px 28px 48px}
+body.invoiceWorkspaceMode .invoiceEditorGrid{grid-template-columns:minmax(0,1fr) 320px!important;gap:18px!important;align-items:start}
+body.invoiceWorkspaceMode .invoiceTotals{position:sticky!important;top:18px!important}
+body.invoiceWorkspaceMode .invoiceLineItemsCard{min-width:0}
+.invoicePartDescription{display:block!important}
+.invoicePartLookupWrap{position:relative;display:grid;grid-template-columns:minmax(125px,.75fr) minmax(190px,1.35fr);gap:7px}
+.invoicePartSuggest{display:none;position:absolute;z-index:75;left:0;right:0;top:calc(100% + 6px);background:#fff;border:1px solid #cfd8e6;border-radius:12px;box-shadow:0 14px 34px rgba(16,24,40,.18);max-height:340px;overflow:auto;min-width:480px}
+.invoicePartSuggest.open{display:block}.invoicePartSuggestItem{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;padding:11px 13px!important;background:#fff!important;color:#101828!important;border:0!important;border-bottom:1px solid #edf0f3!important;border-radius:0!important;text-align:left!important;min-height:58px!important}
+.invoicePartSuggestItem:hover,.invoicePartSuggestItem:focus{background:#eff6ff!important}.invoicePartSuggestItem span:first-child{min-width:0}.invoicePartSuggestItem b,.invoicePartSuggestItem small{display:block}.invoicePartSuggestItem small{color:#667085;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.invoicePartSuggestMeta{text-align:right;white-space:nowrap}.invoicePartSuggestMeta b{color:#155eef}.invoicePartSuggestState{padding:13px;color:#667085}.invoicePartSuggestState.is-error{color:#b42318}
+@media(max-width:1100px){body.invoiceWorkspaceMode #invoiceEditor{padding:14px}.invoicePartSuggest{min-width:min(520px,88vw)}body.invoiceWorkspaceMode .invoiceEditorGrid{grid-template-columns:1fr!important}body.invoiceWorkspaceMode .invoiceTotals{position:static!important}}
+@media(max-width:760px){body.invoiceWorkspaceMode #invoiceEditor{padding:8px 8px 80px}.invoicePartLookupWrap{grid-template-columns:1fr}.invoicePartSuggest{position:fixed;left:8px;right:8px;top:auto;bottom:10px;min-width:0;max-height:50dvh}}
+@media print{body.invoiceWorkspaceMode #invoiceModal .x{display:none!important}}
+</style>
+
+/* v24.16 invoice workspace polish */
+.invoiceWorkspaceTopbar{position:sticky;top:0;z-index:40;margin:-2px -2px 14px;padding:12px 14px;background:rgba(245,247,251,.96);backdrop-filter:blur(10px);border-bottom:1px solid #dde4ee}
+.invoiceWorkspaceTopbarRight{display:flex;align-items:center;gap:10px}.invoiceDraftState{font-size:12px;font-weight:800;color:#475467;padding:6px 9px;border-radius:999px;background:#eef2f6}.invoiceDraftState[data-state="saving"]{background:#eff8ff;color:#175cd3}.invoiceDraftState[data-state="saved"]{background:#ecfdf3;color:#027a48}.invoiceDraftState[data-state="error"]{background:#fef3f2;color:#b42318}.invoiceDraftState[data-state="dirty"]{background:#fff7e8;color:#b54708}
+.invoiceServiceCard{border-radius:12px!important;box-shadow:0 1px 3px rgba(16,24,40,.06)!important}.invoiceServiceHead{padding:11px 12px!important}.invoiceServiceRows{gap:0!important}.invoiceServicePartRow,.invoiceServiceLaborRow{border-radius:0!important;border-left:0!important;border-right:0!important;border-bottom:0!important;padding:9px 10px!important}.invoiceServiceFooterActions{padding:10px 12px!important;background:#fafbfc!important}.invoiceServiceSubtotal{padding:10px 12px!important}.invoiceGridHeader{position:sticky;top:70px;z-index:20;background:#f8fafc!important;border:1px solid #e4e7ec;border-radius:9px 9px 0 0}
+.invoicePartSuggestItem{cursor:pointer}.invoicePartSuggestItem:active{transform:none!important}.invoicePartLookupWrap input:focus{box-shadow:0 0 0 3px rgba(21,94,239,.12)!important;border-color:#84adff!important}
+@media(max-width:900px){.invoiceWorkspaceTopbar{position:static}.invoiceGridHeader{position:static}.invoiceWorkspaceTopbarRight{flex-wrap:wrap;justify-content:flex-end}}
