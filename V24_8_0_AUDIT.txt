@@ -1,0 +1,11 @@
+ITTR v24.8.0 STATIC RELEASE AUDIT
+- server.js node --check: PASS
+- extracted frontend JS node --check: PASS
+- root/public index identical: PASS
+- duplicate literal DOM ids: 0
+- CommonJS require() calls: 0
+- AI shop-chat Fullbay schema checked against action_completed_at: PASS
+- permanent invoice delete restricted to owner/admin + exact invoice-number confirmation: PASS
+- server-side external credentials only: PASS
+- existing PostgreSQL data retained; migrations are ADD COLUMN / role constraint only: PASS
+- v23.7.1 inventory import parameter fix not intentionally modified

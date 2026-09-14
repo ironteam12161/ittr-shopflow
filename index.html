@@ -6,13 +6,13 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.7.1-MAJOR-SYSTEM-AUDIT-20260914">
+<meta name="ittr-build" content="ITTR-24.8.0-MAJOR-SYSTEM-AUDIT-20260914">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.7.1</title>
+<title>ITTR ShopFlow v24.8.0</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -703,7 +703,7 @@ body.modalOpen{overflow:hidden}
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.7.1 ONLINE · FULL SYSTEM AUDIT · SERVICE HISTORY · INVOICING</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.8.0 ONLINE · FULL SYSTEM AUDIT · SERVICE HISTORY · INVOICING</div>
 <div id="appErrorBanner" style="display:none;position:fixed;left:8px;right:8px;top:66px;z-index:1000;background:#fef3f2;color:#b42318;border:1px solid #fecdca;border-radius:10px;padding:10px;font-size:13px"><b>App error:</b> <span id="appErrorText"></span> <button type="button" onclick="this.parentElement.style.display='none'" style="float:right;min-height:28px;padding:2px 8px">×</button></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1109,12 +1109,12 @@ body.modalOpen{overflow:hidden}
 </section>
 
 <section id="accounts" class="hidden">
-  <div class="toolbar"><h1>Mechanic Accounts</h1><button onclick="openMechanicAccount()">+ Add Mechanic</button></div>
+  <div class="toolbar"><h1>Team Accounts & Permissions</h1><div class="actions"><button onclick="openMechanicAccount()">+ Add Mechanic</button><button class="secondary" onclick="openManagerAccount()">+ Add Manager</button></div></div>
   <div class="notice">Each mechanic has a separate login. New mechanic accounts automatically appear in the work-order assignment list.</div>
   <div class="card">
     <table>
       <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Action</th></tr></thead>
-      <tbody id="mechanicAccountsTable"></tbody>
+      <tbody id="mechanicAccountsTable"></tbody><tbody id="managerAccountsTable"></tbody>
     </table>
   </div>
 </section>
@@ -1130,6 +1130,7 @@ body.modalOpen{overflow:hidden}
 <div id="inventoryCountModal" class="modal"><div class="modalbox inventoryCountBox"><div class="modalhead"><div><h2>Physical Inventory Count</h2><div class="muted">Scan manufacturer or ITTR barcodes, verify physical quantity, then post only reviewed differences.</div></div><button class="x" onclick="closeInventoryCount()">×</button></div><div id="inventoryCountBody"><div class="muted">Loading inventory count…</div></div></div></div>
 <div id="partsScannerModal" class="modal"><div class="modalbox" style="max-width:680px"><div class="modalhead"><div><h2 id="partsScannerTitle">Barcode Scanner</h2><div id="partsScannerSubhead" class="muted">Scan or enter a barcode.</div></div><button class="x" onclick="closePartsScanner()">×</button></div><div class="scanHero"><b id="partsScannerPrompt">Scan a part barcode</b><div class="muted">Use the phone camera, a USB/Bluetooth scanner, or type the barcode.</div><div id="scannerViewport" class="scannerViewport hidden"><video id="partsScannerVideo" playsinline muted></video><div class="scannerAim"></div></div><div class="actions"><button type="button" onclick="startPartsCamera()">📷 Start Camera</button><button type="button" class="secondary" onclick="stopPartsCamera()">Stop Camera</button></div><div class="field full"><label>Barcode / Part Number</label><input id="partsScanInput" class="scanInput" autocomplete="off" placeholder="ITTR-P-000184" onkeydown="if(event.key==='Enter'){event.preventDefault();lookupScannedPart()}"></div><button type="button" onclick="lookupScannedPart()">Find Part</button><div id="partsScanResult" style="margin-top:12px"></div></div></div></div>
 
+<button id="shopAiFab" type="button" onclick="toggleShopAI()" title="ITTR AI Assistant" style="position:fixed;right:22px;bottom:22px;z-index:650;border-radius:999px;padding:14px 18px;box-shadow:0 8px 28px #0003">✦ ITTR AI</button><div id="shopAiPanel" class="hidden" style="position:fixed;right:22px;bottom:82px;width:min(440px,calc(100vw - 24px));height:min(620px,calc(100vh - 120px));z-index:651;background:white;border:1px solid #d8dee8;border-radius:16px;box-shadow:0 18px 60px #0004;overflow:hidden"><div class="modalhead" style="padding:14px"><div><h3 style="margin:0">ITTR Shop Assistant</h3><div class="muted">Ask in English, Ukrainian, Polish, Spanish or Russian.</div></div><button class="x" onclick="toggleShopAI(false)">×</button></div><div id="shopAiMessages" style="height:calc(100% - 142px);overflow:auto;padding:14px;background:#f8fafc"><div class="card">Ask about a unit, repair history, parts, or shop workflow.<br><b>Example:</b> коли була заміна масла на 6600?</div></div><div style="padding:12px;border-top:1px solid #e5e7eb"><textarea id="shopAiInput" rows="2" placeholder="Ask ITTR AI…" style="width:100%;resize:none" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendShopAI()}"></textarea><div class="actions" style="justify-content:flex-end;margin-top:6px"><button onclick="sendShopAI()">Send</button></div></div></div>
 </main>
 <datalist id="fullbayCustomerList"></datalist>
 <datalist id="fullbayPartNumberList"></datalist>
@@ -1234,6 +1235,7 @@ body.modalOpen{overflow:hidden}
   </form>
 </div>
 </div>
+<div id="managerAccountModal" class="modal"><div class="modalbox" style="max-width:760px"><div class="modalhead"><div><h2>Create Manager Account</h2><div class="muted">Choose exactly what this manager can access.</div></div><button class="x" onclick="closeModal('managerAccountModal')">✕</button></div><form id="managerAccountForm"><div class="row"><div class="field"><label>Name</label><input name="display" required></div><div class="field"><label>Username</label><input name="username" required></div><div class="field"><label>Email</label><input name="email" type="email"></div><div class="field"><label>Temporary Password</label><input name="password" type="password" minlength="8" required></div></div><div class="card"><b>Permissions</b><div class="row" style="margin-top:10px"><label class="checkline"><input type="checkbox" name="invoices" checked> Invoices & payments</label><label class="checkline"><input type="checkbox" name="financials" checked> Financial totals</label><label class="checkline"><input type="checkbox" name="inventory" checked> Parts & inventory</label><label class="checkline"><input type="checkbox" name="customers" checked> Customers & vehicles</label><label class="checkline"><input type="checkbox" name="reports" checked> Reports</label><label class="checkline"><input type="checkbox" name="employees"> Manage employees</label></div></div><button type="submit">Create Manager</button></form></div></div>
 
 <div id="editModal" class="modal">
 <div class="modalbox">
@@ -1422,7 +1424,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION="24.7.1";
+const FRONTEND_VERSION="24.8.0";
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
@@ -1572,11 +1574,11 @@ function allowedViewForRole(view){
  if(!session)return false;
  const adminViews=["dashboard","workorders","invoices","trucksearch","customers","parts","procenter","activityhistory","completed","approvals","accounts"];
  const mechanicViews=["mechanic","inspection","mycompleted"];
- return session.role==="admin" ? adminViews.includes(view) : mechanicViews.includes(view);
+ return ["admin","manager"].includes(session.role) ? adminViews.includes(view) : mechanicViews.includes(view);
 }
 
 function defaultViewForRole(){
- return session?.role==="admin" ? "dashboard" : "mechanic";
+ return ["admin","manager"].includes(session?.role) ? "dashboard" : "mechanic";
 }
 
 function syncMobileChrome(){
@@ -1728,7 +1730,7 @@ function applyRole(){
  if(session?.username && USERS?.[session.username]?.language){
    currentLanguage=USERS[session.username].language;
  }
-  const isAdmin=session?.role==="admin", isMechanic=session?.role==="mechanic";
+  const isAdmin=["admin","manager"].includes(session?.role), isMechanic=session?.role==="mechanic";
   document.querySelectorAll(".adminOnly").forEach(el=>el.classList.toggle("hiddenRole",!isAdmin));
   document.querySelectorAll(".mechanicOnly").forEach(el=>el.classList.toggle("hiddenRole",!isMechanic));
   document.getElementById("currentUser").textContent=session?(session.display||session.username):"";
@@ -1762,7 +1764,7 @@ async function logout(){
   document.getElementById("loginUser").value="";document.getElementById("loginPass").value="";document.getElementById("loginScreen").style.display="flex";
 }
 function requireAdmin(){
-  if(session?.role!=="admin"){alert(tr("Admin access required."));return false}
+  if(!["admin","manager"].includes(session?.role)){alert(tr("Manager access required."));return false}
   return true;
 }
 function requireMechanic(){
@@ -2610,7 +2612,7 @@ function refreshMechanicSelects(selectedEdit=""){
 function openAddHelper(workOrderId){
  const w=state.workorders.find(x=>String(x.id)===String(workOrderId));
  if(!w)return alert(tr("Work order not found."));
- if(session?.role!=="admin" && !mechanicAssignedToWorkOrder(w,session?.username))return alert(tr("You are not assigned to this work order."));
+ if(!["admin","manager"].includes(session?.role) && !mechanicAssignedToWorkOrder(w,session?.username))return alert(tr("You are not assigned to this work order."));
  const assigned=new Set(assignedMechanicUsernames(w));
  const available=mechanicAccounts().filter(m=>!assigned.has(String(m.username||"").toLowerCase()));
  if(!available.length)return alert(tr("Every mechanic is already assigned to this work order."));
@@ -2681,7 +2683,7 @@ function setActivityHistoryToday(){const e=document.getElementById("activityHist
 function setActivityHistoryYesterday(){const d=new Date();d.setDate(d.getDate()-1);const e=document.getElementById("activityHistoryDateFilter");if(e)e.value=activityHistoryDateKey(d.toISOString());renderMechanicActivityHistory()}
 function clearActivityHistoryDate(){const e=document.getElementById("activityHistoryDateFilter");if(e)e.value="";renderMechanicActivityHistory()}
 function renderMechanicActivityHistory(){
- if(session?.role!=="admin")return;
+ if(!["admin","manager"].includes(session?.role))return;
  const box=document.getElementById("activityHistoryResults"),sum=document.getElementById("activityHistorySummary");if(!box||!sum)return;
  refreshActivityHistoryMechanicFilter();
  const users=USERS,mf=document.getElementById("activityHistoryMechanicFilter")?.value||"all",df=document.getElementById("activityHistoryDateFilter")?.value||"";
@@ -2702,6 +2704,12 @@ function renderMechanicActivityHistory(){
  applyTranslations();if(currentLanguage==="uk"&&typeof scheduleAITranslation==="function")scheduleAITranslation();
 }
 
+function toggleShopAI(force){const p=document.getElementById('shopAiPanel');if(!p)return;const show=force===undefined?p.classList.contains('hidden'):force;p.classList.toggle('hidden',!show);if(show)setTimeout(()=>document.getElementById('shopAiInput')?.focus(),30)}
+async function sendShopAI(){const inp=document.getElementById('shopAiInput'),box=document.getElementById('shopAiMessages'),q=String(inp?.value||'').trim();if(!q)return;inp.value='';box.insertAdjacentHTML('beforeend',`<div class="card" style="margin:8px 0 8px 38px"><b>You</b><div>${esc(q)}</div></div><div id="aiThinking" class="muted" style="padding:8px">ITTR AI is checking shop records…</div>`);box.scrollTop=box.scrollHeight;try{const d=await apiJSON('/api/ai/shop-chat',{method:'POST',body:JSON.stringify({message:q})});document.getElementById('aiThinking')?.remove();box.insertAdjacentHTML('beforeend',`<div class="card" style="margin:8px 38px 8px 0"><b>ITTR AI${d.matchedUnit?` · Unit ${esc(d.matchedUnit)}`:''}</b><div style="white-space:pre-wrap;margin-top:6px">${esc(d.result||'')}</div></div>`)}catch(e){document.getElementById('aiThinking')?.remove();box.insertAdjacentHTML('beforeend',`<div class="card" style="margin:8px;color:#b42318">${esc(e.message||'AI request failed')}</div>`)}box.scrollTop=box.scrollHeight}
+function openManagerAccount(){if(session?.role!=='admin')return alert('Only the owner/admin can create managers.');document.getElementById('managerAccountForm').reset();document.getElementById('managerAccountModal').classList.add('open')}
+document.getElementById('managerAccountForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),permissions={invoices:f.has('invoices'),financials:f.has('financials'),inventory:f.has('inventory'),customers:f.has('customers'),reports:f.has('reports'),employees:f.has('employees')};try{await apiJSON('/api/admin/managers',{method:'POST',body:JSON.stringify({username:f.get('username'),display:f.get('display'),email:f.get('email'),password:f.get('password'),permissions})});closeModal('managerAccountModal');await loadStaffAccounts()}catch(ex){alert(ex.message)}};
+async function loadStaffAccounts(){if(!["admin","manager"].includes(session?.role))return;try{const d=await apiJSON('/api/admin/staff');const managers=(d.items||[]).filter(x=>x.role==='manager'),box=document.getElementById('managerAccountsTable');if(box)box.innerHTML=managers.map(m=>`<tr><td>${esc(m.display)}</td><td>${esc(m.username)}</td><td>Manager</td><td>${session?.role==='admin'?`<button class="danger" onclick="deleteManagerAccount('${encodeURIComponent(m.username)}')">Delete Manager</button>`:'<span class="muted">Managed by owner</span>'}</td></tr>`).join('')}catch(e){console.warn('staff accounts',e.message)}}
+async function deleteManagerAccount(u){if(session?.role!=='admin')return;if(!confirm('Delete this manager account?'))return;try{await apiJSON('/api/admin/managers/'+decodeURIComponent(u),{method:'DELETE'});await loadStaffAccounts()}catch(e){alert(e.message)}}
 function renderMechanicAccounts(){
  const box=document.getElementById("mechanicAccountsTable");
  if(!box)return;
@@ -2714,7 +2722,7 @@ function renderMechanicAccounts(){
      ${m.username==="mechanic"?'<span class="muted"> Default account</span>':`<button class="danger" data-username="${encodeURIComponent(m.username)}" onclick="deleteMechanicAccount(decodeURIComponent(this.dataset.username))">Delete</button>`}
    </td>
  </tr>`).join("");
- box.innerHTML=rows||'<tr><td colspan="4" class="muted">No mechanic accounts created.</td></tr>';
+ box.innerHTML=rows||'<tr><td colspan="4" class="muted">No mechanic accounts created.</td></tr>';loadStaffAccounts();
 }
 
 
@@ -2952,7 +2960,7 @@ function calendarJobCard(w){
  </div>`;
 }
 function renderCalendar(){
- if(session?.role!=="admin")return;
+ if(!["admin","manager"].includes(session?.role))return;
  const box=document.getElementById("shopCalendar");
  const title=document.getElementById("calendarTitle");
  if(!box||!title)return;
@@ -3042,7 +3050,7 @@ function mechanicCurrentWork(username){
  return inProgress?{w:inProgress,task:null}:null;
 }
 function renderMechanicLiveStatus(){
- if(session?.role!=="admin")return;
+ if(!["admin","manager"].includes(session?.role))return;
  const box=document.getElementById("mechanicLiveStatus");
  if(!box)return;
  const mechanics=mechanicAccounts();
@@ -3144,7 +3152,7 @@ function unitSearchKey(w,i=null){
  return String(w?.unit||i?.unitSnapshot||"Unknown Unit").trim()||"Unknown Unit";
 }
 function renderTruckSearch(){
- if(session?.role!=="admin")return;
+ if(!["admin","manager"].includes(session?.role))return;
  const box=document.getElementById("truckSearchResults");
  if(!box)return;
 
@@ -3367,7 +3375,7 @@ Object.assign(UI_TRANSLATIONS,{"Dashboard":"Панель","Work Orders":"Нар�
 let customerDirectoryTimer=null,customerDirectoryCache=[],customerProfileCache=null,unitLookupTimer=null,unitSuggestionCache=[];
 function debouncedCustomerDirectory(){clearTimeout(customerDirectoryTimer);customerDirectoryTimer=setTimeout(renderCustomerDirectory,220)}
 async function renderCustomerDirectory(){
- if(session?.role!=="admin")return;const tbody=document.getElementById("customerDirectoryTable");if(!tbody)return;const rawQ=document.getElementById("customerDirectorySearch")?.value?.trim()||"";if(rawQ.length>=2&&document.getElementById("smartDirectoryResults")&&!document.getElementById("smartDirectoryResults").classList.contains("hidden"))return;const q="";tbody.innerHTML='<tr><td colspan="6">Loading customers…</td></tr>';
+ if(!["admin","manager"].includes(session?.role))return;const tbody=document.getElementById("customerDirectoryTable");if(!tbody)return;const rawQ=document.getElementById("customerDirectorySearch")?.value?.trim()||"";if(rawQ.length>=2&&document.getElementById("smartDirectoryResults")&&!document.getElementById("smartDirectoryResults").classList.contains("hidden"))return;const q="";tbody.innerHTML='<tr><td colspan="6">Loading customers…</td></tr>';
  try{const d=await apiJSON(`/api/customers?q=${encodeURIComponent(q)}`);customerDirectoryCache=d.items||[];if(Array.isArray(d.warnings)&&d.warnings.length)console.warn("Customer CRM warnings:",d.warnings);const total=customerDirectoryCache.length,units=customerDirectoryCache.reduce((a,x)=>a+Number(x.unit_count||0),0),services=customerDirectoryCache.reduce((a,x)=>a+Number(x.service_count||0),0),active=customerDirectoryCache.filter(x=>x.active!==false).length;const stats=document.getElementById("customerDirectoryStats");if(stats)stats.innerHTML=`<div class="customerStat"><span class="muted">Customers</span><b>${total}</b></div><div class="customerStat"><span class="muted">Active</span><b>${active}</b></div><div class="customerStat"><span class="muted">Known Units</span><b>${units}</b></div><div class="customerStat"><span class="muted">Service Records</span><b>${services}</b></div>`;
  tbody.innerHTML=customerDirectoryCache.length?customerDirectoryCache.map(c=>`<tr><td><button class="customerNameLink" onclick="openCustomerProfile(${c.id})">${esc(cleanImportedDisplayText(c.customer_name)||"")}</button><div class="muted">${c.fullbay_id?`Fullbay ${esc(cleanVehicleMeta(c.fullbay_id))} · `:""}${c.active===false?"Inactive":"Active"}</div></td><td>${esc(cleanImportedDisplayText(c.contact_name)||"—")}<div class="muted">${esc(cleanImportedDisplayText(c.phone)||"—")}${c.email?` · ${esc(cleanImportedDisplayText(c.email))}`:""}</div></td><td>DOT ${esc(cleanVehicleMeta(c.dot_number)||"—")}<div class="muted">${esc(uniqueImportedParts([c.city,c.state,c.postal_code]).join(", ")||"—")}</div></td><td><b>${Number(c.unit_count||0)}</b></td><td><b>${Number(c.service_count||0)}</b></td><td><button class="secondary" onclick="openCustomerProfile(${c.id})">Open</button></td></tr>`).join(""):'<tr><td colspan="6" class="empty">No customers found.</td></tr>';applyTranslations();}
  catch(e){tbody.innerHTML=`<tr><td colspan="6" class="error">${esc(e.message||"Unable to load customers.")}</td></tr>`}
@@ -3455,7 +3463,7 @@ async function loadCloudStateAfterLogin(){
  const remoteUsers=d.users?.payload||{},remoteShop=d.shopflow?.payload||{workorders:[],issues:[]},remotePro=d.pro?.payload||{};
  const remoteEmpty=Object.keys(remoteUsers).length===0 && (!remoteShop.workorders||remoteShop.workorders.length===0) && Object.keys(remotePro).length===0;
  const localHasData=Object.keys(localUsers||{}).length>0 || (localShop?.workorders||[]).length>0 || Object.keys(localPro||{}).length>0;
- if(remoteEmpty && localHasData && session?.role==="admin"){
+ if(remoteEmpty && localHasData && ["admin","manager"].includes(session?.role)){
    const useLocal=confirm("The online database is empty, but this browser has existing ITTR data. Upload this browser's current users/work orders/operations data to the cloud now?\n\nChoose OK to migrate it, or Cancel to start with an empty online database.");
    if(useLocal){await apiJSON("/api/state/import-local",{method:"POST",body:JSON.stringify({users:localUsers,shopflow:localShop,pro:localPro})});}
  }
@@ -3722,7 +3730,7 @@ function render(){
  const issues=state.issues||[];
  const completed=wo.filter(w=>w.status==="Completed");
 
- if(session?.role==="admin"){
+ if(["admin","manager"].includes(session?.role)){
    renderAdminTable();
 
    const completedTable=document.getElementById("completedTable");
@@ -3772,13 +3780,13 @@ function render(){
  const notify=document.getElementById("approvalNotify");
  if(notify){
    notify.textContent=pendingApprovals.length;
-   notify.style.display=(session?.role==="admin" && pendingApprovals.length)?"inline-block":"none";
+   notify.style.display=(["admin","manager"].includes(session?.role) && pendingApprovals.length)?"inline-block":"none";
  }
 
  const mobileNotify=document.getElementById("mobileApprovalNotify");
  if(mobileNotify){
    mobileNotify.textContent=pendingApprovals.length;
-   mobileNotify.style.display=(session?.role==="admin" && pendingApprovals.length)?"inline-block":"none";
+   mobileNotify.style.display=(["admin","manager"].includes(session?.role) && pendingApprovals.length)?"inline-block":"none";
  }
 
  updateMobileBackButton();
@@ -3787,7 +3795,7 @@ function render(){
 }
 function renderAdminTable(){
  const table=document.getElementById("workTable");
- if(!table || session?.role!=="admin")return;
+ if(!table || !["admin","manager"].includes(session?.role))return;
 
  let wo=(state.workorders||[]).filter(w=>w.status!=="Completed");
  if(adminFilter==="future")wo=wo.filter(w=>!readyForMechanic(w));
@@ -3965,7 +3973,7 @@ function findingRecordCard(i,w){
  </div>`;
 }
 function renderFindingsCenter(){
- if(session?.role!=="admin")return;
+ if(!["admin","manager"].includes(session?.role))return;
  const box=document.getElementById("approvalIssues"); if(!box)return;
  const all=Array.isArray(state.issues)?state.issues.slice():[],waiting=all.filter(findingNeedsAction).length,today=all.filter(isFindingToday).length,yesterday=all.filter(isFindingYesterday).length,resolved=all.length-waiting;
  const summary=document.getElementById("findingSummary");
@@ -4484,9 +4492,9 @@ function taskPartsHTML(w,t,i){
    <div><b>${esc(p.partNumber||"—")}</b></div>
    <div class="partDesc">${esc(p.description||"—")}<div class="muted">${p.addedBy?`Added by ${esc(mechanicDisplay(p.addedBy)||p.addedBy)}${p.addedAt?` · ${fmtDateTime(p.addedAt)}`:""}`:""}</div></div>
    <div>Qty ${esc(String(p.qty||1))}</div>
-   ${(session?.role==="admin"||String(p.addedBy||"").toLowerCase()===String(session?.username||"").toLowerCase())&&w.status!=="Completed"?`<button type="button" class="danger" onclick="removeTaskPart(${w.id},'${esc(String(t.uid||""))}','${esc(String(p.id||""))}')">×</button>`:""}
+   ${(["admin","manager"].includes(session?.role)||String(p.addedBy||"").toLowerCase()===String(session?.username||"").toLowerCase())&&w.status!=="Completed"?`<button type="button" class="danger" onclick="removeTaskPart(${w.id},'${esc(String(t.uid||""))}','${esc(String(p.id||""))}')">×</button>`:""}
  </div>`).join(""):`<div class="muted">No parts recorded for this job.</div>`;
- const add=((session?.role==="mechanic"&&visibleToCurrentMechanic(w))||session?.role==="admin")&&w.status!=="Completed"?`<div class="partAddGrid">
+ const add=((session?.role==="mechanic"&&visibleToCurrentMechanic(w))||["admin","manager"].includes(session?.role))&&w.status!=="Completed"?`<div class="partAddGrid">
    <input id="partNo_${w.id}_${i}" list="fullbayPartNumberList" placeholder="Part Number" oninput="fullbayPartSuggest(this,${w.id},${i},'number')">
    <input class="partDescInput" id="partDesc_${w.id}_${i}" list="fullbayPartDescriptionList" placeholder="Part Description" oninput="fullbayPartSuggest(this,${w.id},${i},'description')">
    <input id="partQty_${w.id}_${i}" type="number" min="0.01" step="0.01" value="1" placeholder="Qty">
@@ -4679,12 +4687,12 @@ function openDetail(id){
  if(!visibleToCurrentMechanic(w) && !ownCompleted && !ownUpcoming) return alert(tr("You do not have access to this work order."));
 }
  document.getElementById("detailTitle").textContent=session?.role==="mechanic"?`Unit ${w.unit}`:`Work Order #${w.id} — ${w.unit}`;
- const adminControls=(session?.role==="admin" && w.status!=="Completed")?`
+ const adminControls=(["admin","manager"].includes(session?.role) && w.status!=="Completed")?`
    <h2 style="margin-top:16px">Admin Controls</h2>
    <div class="field"><label>Parking spot #</label><input id="parkingEdit" value="${esc(w.parking||"")}" placeholder="P-12"></div>
    <button class="secondary" onclick="saveParking(${w.id})">Save Parking Spot</button> <button class="secondary" onclick="closeModal('detailModal');openEdit(${w.id})">Edit Full Work Order</button> <button class="danger" onclick="deleteWorkOrder(${w.id})">Delete Work Order</button>
    ${w.unitType==="customer"?(w.truckHere?`<button class="purple" onclick="markTruckNotHere(${w.id})">Move Back to Future / Not Here</button>`:`<button class="success" onclick="markTruckHere(${w.id});openDetail(${w.id})">✓ Mark Truck Is Here</button>`):`<span class="badge b-here">Fleet unit auto-release: ${w.fleetAuto!==false?"ON":"OFF"}</span>`}
- `:(session?.role==="admin"?`
+ `:(["admin","manager"].includes(session?.role)?`
    <h2 style="margin-top:16px">Admin Controls</h2>
    <button class="danger" onclick="deleteWorkOrder(${w.id})">Delete Work Order</button>
  `:"");
@@ -4701,7 +4709,7 @@ function openDetail(id){
  document.getElementById("detailBody").innerHTML=`
   <div class="muted">${esc(w.customer)} · ${esc(w.date)} ${esc(w.time)} · Parking: ${esc(w.parking||"—")}</div>${(w.vin||w.make||w.model||w.plate||w.dotNumber)?`<div class="vehicleMatchCard" style="margin-top:8px"><b>${esc([w.year,w.make,w.model].filter(Boolean).join(" ")||`Unit ${w.unit}`)}</b><div class="muted">${esc([w.vin?`VIN ${w.vin}`:"",w.plate?`Plate ${w.plate}`:"",w.dotNumber?`DOT ${w.dotNumber}`:"",w.mileage?`${Number(w.mileage).toLocaleString()} mi`:""].filter(Boolean).join(" · "))}</div></div>`:""}
   <div class="assignmentStrip">${assignmentChips(w)}</div>
-  ${(session?.role==="admin" || (session?.role==="mechanic"&&visibleToCurrentMechanic(w)))&&w.status!=="Completed"?`<div class="helperActions"><button type="button" class="secondary" onclick="openAddHelper(${w.id})">+ Add Helper Mechanic</button>${session?.role==="admin"?(w.helpers||[]).map(u=>`<button type="button" class="danger" data-helper="${encodeURIComponent(u)}" onclick="removeHelperMechanic(${w.id},decodeURIComponent(this.dataset.helper))">Remove ${esc(mechanicDisplay(u))}</button>`).join(""):""}</div>`:""}
+  ${(["admin","manager"].includes(session?.role) || (session?.role==="mechanic"&&visibleToCurrentMechanic(w)))&&w.status!=="Completed"?`<div class="helperActions"><button type="button" class="secondary" onclick="openAddHelper(${w.id})">+ Add Helper Mechanic</button>${["admin","manager"].includes(session?.role)?(w.helpers||[]).map(u=>`<button type="button" class="danger" data-helper="${encodeURIComponent(u)}" onclick="removeHelperMechanic(${w.id},decodeURIComponent(this.dataset.helper))">Remove ${esc(mechanicDisplay(u))}</button>`).join(""):""}</div>`:""}
   <p><b>Priority:</b> ${esc(w.priority)} &nbsp; <b>Status:</b> ${esc(w.status)} &nbsp; ${availabilityBadge(w)} ${w.isReactivated?'<span class="badge b-wait">Reactivated</span>':""}</p>
   ${w.notes?`<div class="card" style="background:#fafafa"><b>Notes</b><div>${esc(w.notes)}</div></div>`:""}
   <h2 style="margin-top:16px">Assigned Jobs</h2>
@@ -4881,7 +4889,7 @@ document.addEventListener("DOMContentLoaded",async()=>{
  if(session&&cloudToken){const ok=await restoreCloudSession();if(!ok)session=null;}
  showLogin();
  if(session){applyRole();render();}else{applyTranslations();}
- setInterval(()=>{if(session?.role==="admin"&&currentView==="dashboard"&&!document.hidden)renderMechanicLiveStatus()},2000);
+ setInterval(()=>{if(["admin","manager"].includes(session?.role)&&currentView==="dashboard"&&!document.hidden)renderMechanicLiveStatus()},2000);
 // Pull newer cloud snapshots so admin approvals and mechanic updates appear across devices.
 setInterval(()=>{if(session&&cloudReady&&!document.hidden)refreshCloudStateSilently()},4000);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&session&&cloudReady)refreshCloudStateSilently()});
@@ -4930,7 +4938,7 @@ function addInvoiceLineFromMenu(type='labor'){const job=String(document.getEleme
 function addInvoiceChildLine(parentId,type='part'){addInvoiceLine(type,'',parentId)}
 async function addInvoiceLine(type='labor',jobName='Service',parentLineId=null){const i=activeInvoice?.invoice;if(!i)return;const typ=parentLineId?(['part','sublet','fee','other'].includes(type)?type:'part'):'labor';const defaults={labor:{description:'',quantity:1,unitPrice:0,taxable:false},part:{description:'',quantity:1,unitPrice:0,taxable:true},sublet:{description:'',quantity:1,unitPrice:0,taxable:false},fee:{description:'',quantity:1,unitPrice:0,taxable:false},other:{description:'',quantity:1,unitPrice:0,taxable:false}}[typ];try{const r=await fetch(`/api/invoices/${i.id}/lines`,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({lineType:typ,description:defaults.description,quantity:defaults.quantity,unitPrice:defaults.unitPrice,taxable:defaults.taxable,jobName:jobName||'Service',parentLineId})}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to add line');await openInvoice(i.id);setTimeout(()=>{const row=document.querySelector(`[data-invoice-line="${d.id}"]`);row?.querySelector('.ilDesc')?.focus();row?.scrollIntoView({behavior:'smooth',block:'center'})},30)}catch(e){alert(e.message)}}
 function invoiceLinePayload(id){const el=document.querySelector(`[data-invoice-line="${id}"]`);if(!el)return null;const lineType=el.querySelector('.ilType')?.value||'other',parentLineId=Number(el.querySelector('.ilParent')?.value||0)||null;return {lineType,description:el.querySelector('.ilDesc')?.value||'',partNumber:lineType==='part'?(el.querySelector('.ilPart')?.value||''):'',quantity:Number(el.querySelector('.ilQty')?.value||0),unitPrice:Number(el.querySelector('.ilPrice')?.value||0),unitCost:Number(el.querySelector('.ilCost')?.value||0),taxable:Boolean(el.querySelector('.ilTax')?.checked),jobName:String(el.querySelector('.ilJob')?.value||activeInvoice.lines.find(x=>String(x.id)===String(id))?.job_name||'Service').trim()||'Service',jobUid:String(activeInvoice.lines.find(x=>String(x.id)===String(id))?.job_uid||''),parentLineId}}
-function renderInvoiceEditor(){const {invoice:i,lines,payments}=activeInvoice,locked=['paid','void'].includes(i.status);document.getElementById('invoiceEditor').innerHTML=`<div class="toolbar"><div><h1 style="margin:0">${esc(i.invoice_number)}</h1><div class="muted">${esc(i.customer_name)} · Unit ${esc(i.unit_number||'—')} ${i.work_order_id?`· WO #${esc(i.work_order_id)}`:''}</div></div><span class="invoiceStatus is-${i.status}">${esc(i.status)}</span></div><div class="invoiceEditorGrid"><div><div class="card"><h2 style="margin-top:0">Customer & Billing</h2><div class="row"><div class="field"><label>Customer</label><input id="invCustomer" value="${esc(i.customer_name)}" ${locked?'disabled':''}></div><div class="field"><label>Unit</label><input id="invUnit" value="${esc(i.unit_number||'')}" ${locked?'disabled':''}></div></div><div class="row"><div class="field"><label>VIN</label><input id="invVin" value="${esc(i.vin||'')}" ${locked?'disabled':''}></div><div class="field"><label>Mileage</label><input id="invMileage" type="number" value="${Number(i.mileage||0)||''}" ${locked?'disabled':''}></div><div class="field"><label>Customer PO #</label><input id="invPo" value="${esc(i.po_number||'')}" ${locked?'disabled':''}></div></div><div class="row"><div class="field"><label>Invoice Date</label><input id="invDate" type="date" value="${esc(String(i.invoice_date||'').slice(0,10))}" ${locked?'disabled':''}></div><div class="field"><label>Due Date</label><input id="invDue" type="date" value="${esc(String(i.due_date||'').slice(0,10))}" ${locked?'disabled':''}></div><div class="field"><label>Terms</label><input id="invTerms" value="${esc(i.terms||'')}" ${locked?'disabled':''}></div></div></div><div class="card"><div class="toolbar"><div><h2 style="margin:0">Labor Operations & Attached Parts</h2><div class="muted">Build the invoice the same way the repair was performed: create labor first, then attach the parts, sublet or fees used for that labor.</div></div>${locked?'':`<button class="secondary" onclick="toggleInvoiceAddMenu()">+ New Labor</button>`}</div>${locked?'':`<div id="invoiceAddMenu" class="invoiceAddMenu is-hidden"><div class="hint"><b>Start a new repair operation.</b> Name the service/job and create the labor first. Parts are added from inside that labor operation.</div><div class="field"><label>Service / Job</label><input id="invoiceNewJobName" value="" placeholder="e.g. PM Service, Replace Wheel Seal, Diagnostics"></div><div><button class="invoiceAddType newLaborOnly" onclick="addInvoiceLineFromMenu('labor')">+ Create Labor Operation</button></div></div>`}${invoiceGroupedLinesHtml(lines,locked)}</div><div class="card"><h2 style="margin-top:0">Customer Note</h2><textarea id="invCustomerNote" rows="3" ${locked?'disabled':''}>${esc(i.customer_note||'')}</textarea><h3>Internal Note</h3><textarea id="invInternalNote" rows="2" ${locked?'disabled':''}>${esc(i.internal_note||'')}</textarea></div></div><div><div class="card invoiceTotals"><h2 style="margin-top:0">Invoice Summary</h2><div class="field"><label>Sales Tax %</label><input id="invTaxRate" type="number" step="0.001" value="${Number(i.tax_rate||0)}" ${locked?'disabled':''}></div><div class="field"><label>Shop Supplies</label><input id="invShopSupplies" type="number" step="0.01" value="${Number(i.shop_supplies||0)}" ${locked?'disabled':''}></div><div class="field"><label>Environmental / Other Fee</label><input id="invEnvFee" type="number" step="0.01" value="${Number(i.environmental_fee||0)}" ${locked?'disabled':''}></div><div class="field"><label>Invoice Discount</label><input id="invDiscount" type="number" step="0.01" value="${Number(i.discount||0)}" ${locked?'disabled':''}></div><hr><div class="muted">Subtotal <b style="float:right">${invMoney(i.subtotal)}</b></div><div class="muted">Tax <b style="float:right">${invMoney(i.tax)}</b></div><div style="margin-top:12px">Total <b style="float:right">${invMoney(i.total)}</b></div><div class="muted">Paid <b style="float:right">${invMoney(i.amount_paid)}</b></div><div style="margin-top:12px">Balance Due</div><div class="moneyBig">${invMoney(i.balance_due)}</div><div class="actions" style="margin-top:14px">${locked?'':`<button onclick="saveInvoiceHeader()">Save Changes</button>`}<button class="secondary" onclick="downloadInvoicePDF(${i.id})">PDF</button>${i.status==='draft'?`<button class="success" onclick="finalizeInvoice(${i.id})">Finalize / Mark Sent</button>`:''}${['sent','partial'].includes(i.status)?`<button class="success" onclick="recordInvoicePayment(${i.id},${Number(i.balance_due||0)})">Record Payment</button>`:''}${i.status!=='void'&&Number(i.amount_paid||0)===0?`<button class="danger" onclick="voidInvoice(${i.id})">Void</button>`:''}</div><h3>Payments</h3>${payments.map(p=>`<div class="historyitem"><b>${invMoney(p.amount)}</b> · ${esc(p.method||'Other')}<div class="muted">${esc(String(p.paid_at||'').slice(0,19).replace('T',' '))} ${p.reference?`· ${esc(p.reference)}`:''}</div></div>`).join('')||'<div class="muted">No payments recorded.</div>'}</div></div></div>`}
+function renderInvoiceEditor(){const {invoice:i,lines,payments}=activeInvoice,locked=['paid','void'].includes(i.status);document.getElementById('invoiceEditor').innerHTML=`<div class="toolbar"><div><h1 style="margin:0">${esc(i.invoice_number)}</h1><div class="muted">${esc(i.customer_name)} · Unit ${esc(i.unit_number||'—')} ${i.work_order_id?`· WO #${esc(i.work_order_id)}`:''}</div></div><span class="invoiceStatus is-${i.status}">${esc(i.status)}</span></div><div class="invoiceEditorGrid"><div><div class="card"><h2 style="margin-top:0">Customer & Billing</h2><div class="row"><div class="field"><label>Customer</label><input id="invCustomer" value="${esc(i.customer_name)}" ${locked?'disabled':''}></div><div class="field"><label>Unit</label><input id="invUnit" value="${esc(i.unit_number||'')}" ${locked?'disabled':''}></div></div><div class="row"><div class="field"><label>VIN</label><input id="invVin" value="${esc(i.vin||'')}" ${locked?'disabled':''}></div><div class="field"><label>Mileage</label><input id="invMileage" type="number" value="${Number(i.mileage||0)||''}" ${locked?'disabled':''}></div><div class="field"><label>Customer PO #</label><input id="invPo" value="${esc(i.po_number||'')}" ${locked?'disabled':''}></div></div><div class="row"><div class="field"><label>Invoice Date</label><input id="invDate" type="date" value="${esc(String(i.invoice_date||'').slice(0,10))}" ${locked?'disabled':''}></div><div class="field"><label>Due Date</label><input id="invDue" type="date" value="${esc(String(i.due_date||'').slice(0,10))}" ${locked?'disabled':''}></div><div class="field"><label>Terms</label><input id="invTerms" value="${esc(i.terms||'')}" ${locked?'disabled':''}></div></div></div><div class="card"><div class="toolbar"><div><h2 style="margin:0">Labor Operations & Attached Parts</h2><div class="muted">Build the invoice the same way the repair was performed: create labor first, then attach the parts, sublet or fees used for that labor.</div></div>${locked?'':`<button class="secondary" onclick="toggleInvoiceAddMenu()">+ New Labor</button>`}</div>${locked?'':`<div id="invoiceAddMenu" class="invoiceAddMenu is-hidden"><div class="hint"><b>Start a new repair operation.</b> Name the service/job and create the labor first. Parts are added from inside that labor operation.</div><div class="field"><label>Service / Job</label><input id="invoiceNewJobName" value="" placeholder="e.g. PM Service, Replace Wheel Seal, Diagnostics"></div><div><button class="invoiceAddType newLaborOnly" onclick="addInvoiceLineFromMenu('labor')">+ Create Labor Operation</button></div></div>`}${invoiceGroupedLinesHtml(lines,locked)}</div><div class="card"><h2 style="margin-top:0">Customer Note</h2><textarea id="invCustomerNote" rows="3" ${locked?'disabled':''}>${esc(i.customer_note||'')}</textarea><h3>Internal Note</h3><textarea id="invInternalNote" rows="2" ${locked?'disabled':''}>${esc(i.internal_note||'')}</textarea></div></div><div><div class="card invoiceTotals"><h2 style="margin-top:0">Invoice Summary</h2><div class="field"><label>Sales Tax %</label><input id="invTaxRate" type="number" step="0.001" value="${Number(i.tax_rate||0)}" ${locked?'disabled':''}></div><div class="field"><label>Shop Supplies</label><input id="invShopSupplies" type="number" step="0.01" value="${Number(i.shop_supplies||0)}" ${locked?'disabled':''}></div><div class="field"><label>Environmental / Other Fee</label><input id="invEnvFee" type="number" step="0.01" value="${Number(i.environmental_fee||0)}" ${locked?'disabled':''}></div><div class="field"><label>Invoice Discount</label><input id="invDiscount" type="number" step="0.01" value="${Number(i.discount||0)}" ${locked?'disabled':''}></div><hr><div class="muted">Subtotal <b style="float:right">${invMoney(i.subtotal)}</b></div><div class="muted">Tax <b style="float:right">${invMoney(i.tax)}</b></div><div style="margin-top:12px">Total <b style="float:right">${invMoney(i.total)}</b></div><div class="muted">Paid <b style="float:right">${invMoney(i.amount_paid)}</b></div><div style="margin-top:12px">Balance Due</div><div class="moneyBig">${invMoney(i.balance_due)}</div><div class="actions" style="margin-top:14px">${locked?'':`<button onclick="saveInvoiceHeader()">Save Changes</button>`}<button class="secondary" onclick="downloadInvoicePDF(${i.id})">PDF</button>${i.status==='draft'?`<button class="success" onclick="finalizeInvoice(${i.id})">Finalize / Mark Sent</button>`:''}${['sent','partial'].includes(i.status)?`<button class="success" onclick="recordInvoicePayment(${i.id},${Number(i.balance_due||0)})">Record Payment</button>`:''}${i.status!=='void'&&Number(i.amount_paid||0)===0?`<button class="danger" onclick="voidInvoice(${i.id})">Void</button>${session?.role==='admin'?`<button class="danger" onclick="permanentlyDeleteInvoice(${i.id},'${esc(i.invoice_number)}')">Delete Permanently</button>`:''}<button class="secondary" onclick="createInvoicePaymentLink(${i.id})">Payment Link</button><button class="secondary" onclick="emailInvoice(${i.id})">Email Invoice</button>`:''}</div><h3>Payments</h3>${payments.map(p=>`<div class="historyitem"><b>${invMoney(p.amount)}</b> · ${esc(p.method||'Other')}<div class="muted">${esc(String(p.paid_at||'').slice(0,19).replace('T',' '))} ${p.reference?`· ${esc(p.reference)}`:''}</div></div>`).join('')||'<div class="muted">No payments recorded.</div>'}</div></div></div>`}
 async function persistInvoiceLine(id){const i=activeInvoice.invoice,b=invoiceLinePayload(id);if(!b)return {ok:true};const r=await fetch(`/api/invoices/${i.id}/lines/${id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(b)}),d=await r.json();if(!r.ok)throw new Error(d.error||'Line save failed');return d}
 async function saveAllInvoiceLines(){for(const l of (activeInvoice?.lines||[])){if(document.querySelector(`[data-invoice-line="${l.id}"]`))await persistInvoiceLine(l.id)}}
 async function saveInvoiceHeader(){const i=activeInvoice.invoice;try{await saveAllInvoiceLines();const b={customerName:document.getElementById('invCustomer').value,unitNumber:document.getElementById('invUnit').value,vin:document.getElementById('invVin').value,poNumber:document.getElementById('invPo').value,mileage:Number(document.getElementById('invMileage')?.value||0),invoiceDate:document.getElementById('invDate').value,dueDate:document.getElementById('invDue').value,terms:document.getElementById('invTerms').value,taxRate:Number(document.getElementById('invTaxRate').value||0),shopSupplies:Number(document.getElementById('invShopSupplies').value||0),environmentalFee:Number(document.getElementById('invEnvFee').value||0),discount:Number(document.getElementById('invDiscount').value||0),customerNote:document.getElementById('invCustomerNote').value,internalNote:document.getElementById('invInternalNote').value};const r=await fetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(b)}),d=await r.json();if(!r.ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);await loadInvoices();return true}catch(e){alert(e.message);return false}}
@@ -4938,6 +4946,9 @@ async function saveInvoiceLine(id){try{const i=activeInvoice.invoice;await persi
 async function deleteInvoiceLine(lineId){if(!confirm('Remove this line? If this is a labor operation, its attached parts and charges will also be removed.'))return;const i=activeInvoice.invoice,r=await fetch(`/api/invoices/${i.id}/lines/${lineId}`,{method:'DELETE',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to remove line');await openInvoice(i.id)}
 async function finalizeInvoice(id){if(!confirm('Finalize this invoice and mark it sent/open? Review prices, tax and customer PO first.'))return;if(!(await saveInvoiceHeader()))return;const r=await fetch(`/api/invoices/${id}/finalize`,{method:'POST',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to finalize');await openInvoice(id);await loadInvoices()}
 async function recordInvoicePayment(id,balance){const amount=Number(prompt(`Payment amount (balance ${invMoney(balance)}):`,Number(balance).toFixed(2)));if(!amount)return;const method=prompt('Payment method (Check, ACH, Credit Card, Cash, Other):','Check')||'Other',reference=prompt('Check # / transaction reference (optional):','')||'';const r=await fetch(`/api/invoices/${id}/payments`,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({amount,method,reference})}),d=await r.json();if(!r.ok)return alert(d.error||'Payment failed');await openInvoice(id);await loadInvoices()}
+async function permanentlyDeleteInvoice(id,num){const typed=prompt(`Permanent deletion removes the invoice and payment records. Type ${num} to confirm:`,'');if(typed!==num)return;try{await apiJSON(`/api/invoices/${id}`,{method:'DELETE',body:JSON.stringify({confirmInvoiceNumber:typed})});closeModal('invoiceModal');await loadInvoices()}catch(e){alert(e.message)}}
+async function createInvoicePaymentLink(id){try{const d=await apiJSON(`/api/invoices/${id}/payment-link`,{method:'POST',body:'{}'});if(d.url){await navigator.clipboard?.writeText(d.url).catch(()=>{});alert('Secure payment link created and copied to clipboard.')}}catch(e){alert(e.message)}}
+async function emailInvoice(id){const email=prompt('Customer email address:','');if(!email)return;try{await apiJSON(`/api/invoices/${id}/email`,{method:'POST',body:JSON.stringify({email})});alert('Invoice email sent.')}catch(e){alert(e.message)}}
 async function voidInvoice(id){if(!confirm('Void this invoice? This keeps the audit record but removes it from accounts receivable.'))return;const r=await fetch(`/api/invoices/${id}/void`,{method:'POST',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to void');await openInvoice(id);await loadInvoices()}
 async function downloadInvoicePDF(id){try{const r=await fetch(`/api/invoices/${id}/pdf`,{headers:authHeaders(),cache:'no-store'});if(!r.ok){const d=await r.json();throw new Error(d.error||'PDF failed')}const b=await r.blob(),u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=`Invoice-${id}.pdf`;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}catch(e){alert(e.message)}}
 
