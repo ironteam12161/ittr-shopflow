@@ -1055,7 +1055,7 @@ app.get("/api/smart-search",auth,adminOnly,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"24.17.2",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"24.17.3",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -1088,7 +1088,7 @@ async function reconcileDuplicateImportedCustomers(){
  return {merged};
 }
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.17.2",backend:"24.17.2",build:"ITTR-24.17.2-LABOR-PDF-RENDERER-FIX-20260914"}));
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.17.3",backend:"24.17.3",build:"ITTR-24.17.3-PRO-INVOICE-NOTES-PDF-FIX-20260914"}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.8.0",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
@@ -2101,277 +2101,262 @@ app.get('/api/invoices/:id/pdf',auth,managerPermission("invoices"),async(req,res
 
   const doc=new PDFDocument({
    size:'LETTER',
-   margins:{top:34,right:36,bottom:42,left:36},
+   margins:{top:36,right:42,bottom:44,left:42},
    bufferPages:true,
-   info:{Title:`Invoice ${i.invoice_number}`}
+   info:{Title:`Invoice ${i.invoice_number}`,Author:'Iron Team Truck & Trailer Repair'}
   });
   doc.pipe(res);
 
   const money=n=>`$${invoiceMoney(n).toFixed(2)}`;
-  const PAGE_W=612,L=36,R=576,W=540,NAVY='#243447',INK='#111827',MUTED='#64748b',LINE='#cbd5e1',PALE='#f1f5f9',SOFT='#f8fafc';
-  const safeText=v=>String(v??'').trim();
-  const drawText=(text,x,y,opt={})=>doc.text(safeText(text),x,y,opt);
-  const hline=(y,color=LINE)=>doc.moveTo(L,y).lineTo(R,y).strokeColor(color).lineWidth(.6).stroke();
+  const L=42,R=570,W=528;
+  const NAVY='#22364b',INK='#111827',MUTED='#64748b',LINE='#cbd5e1',PALE='#f1f5f9',SOFT='#f8fafc',BLUE='#eaf4ff';
+  const s=v=>String(v??'').trim();
+  const text=(v,x,y,opt={})=>doc.text(s(v),x,y,opt);
   const rect=(x,y,w,h,fill=null,stroke=LINE)=>{
    if(fill){doc.save().rect(x,y,w,h).fill(fill).restore()}
    if(stroke){doc.save().rect(x,y,w,h).strokeColor(stroke).lineWidth(.6).stroke().restore()}
   };
-  const pageBottom=()=>doc.page.height-doc.page.margins.bottom-4;
-  let y=34;
+  const line=y=>doc.save().moveTo(L,y).lineTo(R,y).strokeColor('#e2e8f0').lineWidth(.5).stroke().restore();
+  const pageBottom=()=>doc.page.height-doc.page.margins.bottom-8;
+  let y=36;
 
-  function addPage(){
+  function newPage(){
    doc.addPage();
-   y=36;
+   y=38;
   }
-  function ensureSpace(height){
-   if(y+height>pageBottom())addPage();
+  function ensure(h){
+   if(y+h>pageBottom())newPage();
+  }
+  function drawTableHeader(){
+   ensure(24);
+   rect(L,y,W,23,PALE,LINE);
+   const cols=[
+    [L+8,40,'TYPE','left'],
+    [L+56,235,'DESCRIPTION','left'],
+    [L+300,58,'QTY / HRS','right'],
+    [L+363,76,'RATE / PRICE','right'],
+    [L+444,82,'AMOUNT','right']
+   ];
+   doc.fillColor('#334155').font('Helvetica-Bold').fontSize(7);
+   for(const [x0,w,label,align] of cols)text(label,x0,y+8,{width:w,align});
+   y+=23;
   }
 
   // Header
   doc.fillColor(INK).font('Helvetica-Bold').fontSize(18);
-  drawText('IRON TEAM TRUCK & TRAILER REPAIR',L,y,{width:350});
-  doc.fillColor(MUTED).font('Helvetica').fontSize(8);
-  drawText('Professional Heavy-Duty Truck & Trailer Service',L,y+23,{width:350});
+  text('IRON TEAM TRUCK & TRAILER REPAIR',L,y,{width:350});
+  doc.fillColor(MUTED).font('Helvetica').fontSize(8.2);
+  text('Professional Heavy-Duty Truck & Trailer Service',L,y+23,{width:350});
 
-  rect(408,y-4,168,62,PALE,null);
-  doc.fillColor(INK).font('Helvetica-Bold').fontSize(22);
-  drawText('INVOICE',420,y+3,{width:144,align:'right'});
+  rect(410,y-3,160,63,PALE,null);
+  doc.fillColor(INK).font('Helvetica-Bold').fontSize(21);
+  text('INVOICE',420,y+5,{width:140,align:'right'});
   doc.fontSize(10);
-  drawText(i.invoice_number,420,y+31,{width:144,align:'right'});
-  y+=78;
+  text(i.invoice_number,420,y+34,{width:140,align:'right'});
+  y+=80;
 
-  // Bill-to + invoice metadata panels
-  const panelY=y,panelH=78,leftW=300,gap=12,rightX=L+leftW+gap,rightW=W-leftW-gap;
+  // Bill-to and invoice metadata
+  const panelY=y,leftW=292,gap=12,rightX=L+leftW+gap,rightW=W-leftW-gap,panelH=82;
   rect(L,panelY,leftW,panelH,'#ffffff',LINE);
-  doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(7.5);
-  drawText('BILL TO',L+10,panelY+9,{width:leftW-20});
+  doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(7.2);
+  text('BILL TO',L+10,panelY+10,{width:leftW-20});
   doc.fillColor(INK).font('Helvetica-Bold').fontSize(10.5);
-  drawText(i.customer_name||'—',L+10,panelY+24,{width:leftW-20});
-  const addr1=i.billing_address||i.customer_billing_address||i.customer_address||'';
-  const cityLine=[
+  text(i.customer_name||'—',L+10,panelY+25,{width:leftW-20});
+  const billStreet=i.billing_address||i.customer_billing_address||i.customer_address||'';
+  const billCity=[
    i.billing_city||i.customer_billing_city||i.customer_city,
    i.billing_state||i.customer_billing_state||i.customer_state,
    i.billing_postal_code||i.customer_billing_postal_code||i.customer_postal_code
   ].filter(Boolean).join(' ');
   doc.fillColor('#334155').font('Helvetica').fontSize(8.2);
-  drawText([addr1,cityLine].filter(Boolean).join('\n'),L+10,panelY+40,{width:leftW-20,lineGap:1});
+  text([billStreet,billCity].filter(Boolean).join('\n'),L+10,panelY+42,{width:leftW-20,lineGap:1});
 
   rect(rightX,panelY,rightW,panelH,'#ffffff',LINE);
   const meta=[
    ['INVOICE DATE',String(i.invoice_date||'').slice(0,10)||'—'],
    ['DUE DATE',String(i.due_date||'').slice(0,10)||'—'],
    ['TERMS',i.terms||'Due on Receipt'],
-   ['STATUS',String(i.status||'open').toUpperCase()]
+   ['STATUS',String(i.status||'draft').toUpperCase()]
   ];
-  meta.forEach((row,idx)=>{
-   const yy=panelY+9+idx*16;
-   doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(7.2);
-   drawText(row[0],rightX+10,yy,{width:88});
-   doc.fillColor(INK).font('Helvetica').fontSize(8.2);
-   drawText(row[1],rightX+100,yy,{width:rightW-110,align:'right'});
+  meta.forEach((r,n)=>{
+   const yy=panelY+10+n*16;
+   doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(7.1);
+   text(r[0],rightX+10,yy,{width:82});
+   doc.fillColor(INK).font('Helvetica').fontSize(8.1);
+   text(r[1],rightX+96,yy,{width:rightW-106,align:'right'});
   });
   y+=panelH+12;
 
-  // Vehicle strip
-  const col=[72,210,105,153],labels=['UNIT #','VIN','MILEAGE','DOT / PO'];
-  const vals=[
+  // Vehicle information
+  const widths=[70,205,100,153],labels=['UNIT #','VIN','MILEAGE','DOT / PO'];
+  const values=[
    i.unit_number||'—',
    i.vin||'—',
    i.mileage?`${Number(i.mileage).toLocaleString()} mi`:'—',
    [i.dot_number||i.customer_dot_number,i.po_number].filter(Boolean).join(' / ')||'—'
   ];
-  rect(L,y,W,45,'#ffffff',LINE);
-  let vx=L;
+  rect(L,y,W,48,'#ffffff',LINE);
+  let xx=L;
   for(let n=0;n<4;n++){
-   if(n)doc.moveTo(vx,y).lineTo(vx,y+45).strokeColor('#e2e8f0').lineWidth(.5).stroke();
+   if(n)doc.save().moveTo(xx,y).lineTo(xx,y+48).strokeColor('#e2e8f0').lineWidth(.5).stroke().restore();
    doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(7);
-   drawText(labels[n],vx+8,y+7,{width:col[n]-16});
-   doc.fillColor(INK).font('Helvetica').fontSize(n===1?7.7:8.2);
-   drawText(vals[n],vx+8,y+21,{width:col[n]-16,ellipsis:true});
-   vx+=col[n];
+   text(labels[n],xx+8,y+8,{width:widths[n]-16});
+   doc.fillColor(INK).font('Helvetica').fontSize(n===1?7.5:8.1);
+   text(values[n],xx+8,y+23,{width:widths[n]-16,ellipsis:true});
+   xx+=widths[n];
   }
-  y+=57;
+  y+=60;
 
-  // Table header
-  function drawColumnHeader(){
-   rect(L,y,W,22,PALE,LINE);
-   const cols=[
-    {x:L+8,w:52,t:'#'},
-    {x:L+58,w:278,t:'DESCRIPTION'},
-    {x:L+338,w:58,t:'QTY / HRS',a:'right'},
-    {x:L+399,w:76,t:'RATE / PRICE',a:'right'},
-    {x:L+478,w:90,t:'AMOUNT',a:'right'}
-   ];
-   doc.fillColor('#334155').font('Helvetica-Bold').fontSize(7);
-   cols.forEach(c=>drawText(c.t,c.x,y+7,{width:c.w,align:c.a||'left'}));
-   y+=22;
-  }
-  drawColumnHeader();
+  drawTableHeader();
 
-  const labors=lines
-   .filter(l=>l.line_type==='labor')
-   .sort((a,b)=>Number(a.sort_order||a.id)-Number(b.sort_order||b.id));
-  const nonLabor=lines
-   .filter(l=>l.line_type!=='labor')
-   .sort((a,b)=>Number(a.sort_order||a.id)-Number(b.sort_order||b.id));
+  const labors=lines.filter(l=>l.line_type==='labor').sort((a,b)=>Number(a.sort_order||a.id)-Number(b.sort_order||b.id));
+  const other=lines.filter(l=>l.line_type!=='labor').sort((a,b)=>Number(a.sort_order||a.id)-Number(b.sort_order||b.id));
   const used=new Set();
 
-  function partsForLabor(labor,index){
-   let items=nonLabor.filter(c=>String(c.parent_line_id||'')===String(labor.id));
-   if(items.length)return items;
-   // Backward compatibility for old invoices that predate parent_line_id.
-   items=nonLabor.filter(c=>!c.parent_line_id && (
+  function childrenFor(labor,index){
+   let rows=other.filter(c=>String(c.parent_line_id||'')===String(labor.id));
+   if(rows.length)return rows;
+   rows=other.filter(c=>!c.parent_line_id && (
     (c.job_uid&&labor.job_uid&&String(c.job_uid)===String(labor.job_uid)) ||
     (c.job_name&&labor.job_name&&String(c.job_name).toLowerCase()===String(labor.job_name).toLowerCase())
    ));
-   // Only the first matching labor receives ambiguous legacy children.
-   if(items.length){
+   if(rows.length){
     const earlier=labors.slice(0,index).some(prev=>
      (prev.job_uid&&labor.job_uid&&String(prev.job_uid)===String(labor.job_uid)) ||
      (prev.job_name&&labor.job_name&&String(prev.job_name).toLowerCase()===String(labor.job_name).toLowerCase())
     );
     if(earlier)return [];
    }
-   return items;
+   return rows;
   }
 
-  function drawLaborBlock(labor,index){
-   const parts=partsForLabor(labor,index);
-   const blockHeight=34+(parts.length?18:0)+(parts.length*26)+25;
-   ensureSpace(Math.min(blockHeight,180));
-   if(y<45)drawColumnHeader();
+  function drawLabor(labor,index){
+   const children=childrenFor(labor,index);
+   const estimate=34+(children.length?18:0)+children.length*28+28;
+   ensure(Math.min(estimate,190));
+   if(y<48)drawTableHeader();
 
-   const laborAmount=Number(labor.line_total||0);
-   const laborDesc=safeText(labor.description)||'Labor';
+   const laborTotal=Number(labor.line_total||0);
+   const laborDescription=s(labor.description)||'Labor';
 
-   // Labor row: description is the only visible work heading. job_name is intentionally not printed.
+   // Strong labor header; internal legacy job/service names are never printed.
    rect(L,y,W,34,NAVY,null);
-   rect(L+9,y+5,24,24,'#ffffff',null);
+   rect(L+9,y+5,25,24,'#ffffff',null);
    doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(9);
-   drawText(String(index+1),L+9,y+12,{width:24,align:'center'});
+   text(String(index+1),L+9,y+12,{width:25,align:'center'});
    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(8);
-   drawText('LABOR:',L+43,y+11,{width:42});
+   text('LABOR',L+48,y+11,{width:42});
    doc.fontSize(9);
-   drawText(laborDesc,L+84,y+10,{width:252,ellipsis:true});
+   text(laborDescription,L+91,y+10,{width:205,ellipsis:true});
    doc.font('Helvetica').fontSize(8.2);
-   drawText(Number(labor.quantity||0).toFixed(2),L+338,y+11,{width:58,align:'right'});
-   drawText(money(labor.unit_price),L+399,y+11,{width:76,align:'right'});
+   text(Number(labor.quantity||0).toFixed(2),L+300,y+11,{width:58,align:'right'});
+   text(money(labor.unit_price),L+363,y+11,{width:76,align:'right'});
    doc.font('Helvetica-Bold');
-   drawText(money(laborAmount),L+478,y+11,{width:90,align:'right'});
+   text(money(laborTotal),L+444,y+11,{width:82,align:'right'});
    y+=34;
 
-   if(parts.length){
-    doc.fillColor('#475569').font('Helvetica-Bold').fontSize(7);
+   if(children.length){
     rect(L,y,W,18,'#eef2f6',null);
-    drawText('Parts used for this labor',L+44,y+6,{width:260});
+    doc.fillColor('#475569').font('Helvetica-Bold').fontSize(7);
+    text('PARTS USED FOR THIS LABOR',L+48,y+6,{width:250});
     y+=18;
    }
 
-   let partsTotal=0;
-   for(const part of parts){
+   let partTotal=0;
+   for(const part of children){
     used.add(part.id);
-    ensureSpace(30);
+    ensure(30);
     const amount=Number(part.line_total||0);
-    partsTotal+=amount;
-    const type=part.line_type==='part'?'PART':String(part.line_type||'OTHER').toUpperCase();
-    const leftLabel=part.part_number?`${type} · ${part.part_number}`:type;
-    doc.fillColor('#334155').font('Helvetica').fontSize(7.6);
-    drawText(leftLabel,L+10,y+8,{width:118,ellipsis:true});
-    doc.fillColor(INK).fontSize(8);
-    drawText(part.description||part.part_number||'Part',L+132,y+8,{width:204,ellipsis:true});
-    drawText(String(Number(part.quantity||0)),L+338,y+8,{width:58,align:'right'});
-    drawText(money(part.unit_price),L+399,y+8,{width:76,align:'right'});
-    drawText(money(amount),L+478,y+8,{width:90,align:'right'});
-    y+=26;
-    hline(y,'#e2e8f0');
+    partTotal+=amount;
+
+    doc.fillColor('#475569').font('Helvetica-Bold').fontSize(7.2);
+    text(part.line_type==='part'?'PART':String(part.line_type||'ITEM').toUpperCase(),L+8,y+9,{width:40});
+    const desc=[part.part_number?`#${part.part_number}`:'',part.description||''].filter(Boolean).join('  ·  ')||'Item';
+    doc.fillColor(INK).font('Helvetica').fontSize(8);
+    text(desc,L+56,y+8,{width:235,ellipsis:true});
+    text(String(Number(part.quantity||0)),L+300,y+8,{width:58,align:'right'});
+    text(money(part.unit_price),L+363,y+8,{width:76,align:'right'});
+    doc.font('Helvetica-Bold');
+    text(money(amount),L+444,y+8,{width:82,align:'right'});
+    y+=28;
+    line(y);
    }
 
-   const blockTotal=laborAmount+partsTotal;
-   rect(L,y,W,25,SOFT,null);
-   doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(7.4);
-   drawText(`${Number(labor.quantity||0).toFixed(2)} labor hr · ${parts.length} part${parts.length===1?'':'s'}`,L+230,y+8,{width:238,align:'right'});
-   doc.fillColor(INK).fontSize(8.7);
-   drawText(money(blockTotal),L+478,y+7,{width:90,align:'right'});
-   y+=31;
+   const total=laborTotal+partTotal;
+   rect(L,y,W,27,SOFT,null);
+   doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(7.3);
+   text(`${Number(labor.quantity||0).toFixed(2)} labor hr  ·  ${children.length} part${children.length===1?'':'s'}`,L+250,y+9,{width:188,align:'right'});
+   doc.fillColor(INK).fontSize(8.8);
+   text(money(total),L+444,y+8,{width:82,align:'right'});
+   y+=34;
   }
 
-  if(labors.length){
-   labors.forEach((labor,index)=>drawLaborBlock(labor,index));
-  }else{
-   // No labor: render standalone parts/charges without inventing a service or job heading.
-   for(const l of nonLabor){
-    used.add(l.id);
-    ensureSpace(30);
-    doc.fillColor('#334155').font('Helvetica').fontSize(7.6);
-    drawText(`${String(l.line_type||'ITEM').toUpperCase()}${l.part_number?` · ${l.part_number}`:''}`,L+10,y+8,{width:118,ellipsis:true});
-    doc.fillColor(INK).fontSize(8);
-    drawText(l.description||l.part_number||'Item',L+132,y+8,{width:204,ellipsis:true});
-    drawText(String(Number(l.quantity||0)),L+338,y+8,{width:58,align:'right'});
-    drawText(money(l.unit_price),L+399,y+8,{width:76,align:'right'});
-    drawText(money(l.line_total),L+478,y+8,{width:90,align:'right'});
-    y+=26;hline(y,'#e2e8f0');
-   }
-  }
+  labors.forEach((labor,index)=>drawLabor(labor,index));
 
-  // Any legacy unattached charges not matched to a labor.
-  const orphaned=nonLabor.filter(l=>!used.has(l.id));
-  if(orphaned.length){
-   ensureSpace(24+orphaned.length*26);
+  const orphan=other.filter(r=>!used.has(r.id));
+  if(orphan.length){
+   ensure(26+orphan.length*28);
    rect(L,y,W,20,PALE,null);
-   doc.fillColor('#475569').font('Helvetica-Bold').fontSize(7.5);
-   drawText('OTHER ITEMS',L+10,y+7,{width:200});
+   doc.fillColor('#475569').font('Helvetica-Bold').fontSize(7.2);
+   text('OTHER ITEMS',L+8,y+7,{width:150});
    y+=20;
-   for(const l of orphaned){
-    ensureSpace(30);
-    doc.fillColor('#334155').font('Helvetica').fontSize(7.6);
-    drawText(`${String(l.line_type||'ITEM').toUpperCase()}${l.part_number?` · ${l.part_number}`:''}`,L+10,y+8,{width:118,ellipsis:true});
-    doc.fillColor(INK).fontSize(8);
-    drawText(l.description||l.part_number||'Item',L+132,y+8,{width:204,ellipsis:true});
-    drawText(String(Number(l.quantity||0)),L+338,y+8,{width:58,align:'right'});
-    drawText(money(l.unit_price),L+399,y+8,{width:76,align:'right'});
-    drawText(money(l.line_total),L+478,y+8,{width:90,align:'right'});
-    y+=26;hline(y,'#e2e8f0');
+   for(const part of orphan){
+    doc.fillColor('#475569').font('Helvetica-Bold').fontSize(7.2);
+    text(part.line_type==='part'?'PART':String(part.line_type||'ITEM').toUpperCase(),L+8,y+9,{width:40});
+    const desc=[part.part_number?`#${part.part_number}`:'',part.description||''].filter(Boolean).join('  ·  ')||'Item';
+    doc.fillColor(INK).font('Helvetica').fontSize(8);
+    text(desc,L+56,y+8,{width:235,ellipsis:true});
+    text(String(Number(part.quantity||0)),L+300,y+8,{width:58,align:'right'});
+    text(money(part.unit_price),L+363,y+8,{width:76,align:'right'});
+    doc.font('Helvetica-Bold');
+    text(money(part.line_total),L+444,y+8,{width:82,align:'right'});
+    y+=28;line(y);
    }
   }
 
   y+=8;
-  ensureSpace(150);
 
-  // Notes + totals side by side.
-  const summaryTop=y,notesW=292,summaryX=350,summaryW=226;
-  rect(L,summaryTop,notesW,134,'#ffffff',LINE);
+  // Customer notes are printed exactly as saved. Never replace them with generic text.
+  const customerNote=s(i.customer_note);
+  doc.font('Helvetica').fontSize(8);
+  const noteTextHeight=customerNote?doc.heightOfString(customerNote,{width:278,lineGap:2}):0;
+  const bottomPanelH=Math.max(138,Math.min(224,noteTextHeight+48));
+  ensure(bottomPanelH+4);
+
+  const notesW=300,gap2=14,summaryX=L+notesW+gap2,summaryW=W-notesW-gap2,top=y;
+  rect(L,top,notesW,bottomPanelH,'#ffffff',LINE);
   doc.fillColor(INK).font('Helvetica-Bold').fontSize(8.5);
-  drawText('CUSTOMER NOTES',L+10,summaryTop+9,{width:notesW-20});
-  doc.fillColor('#334155').font('Helvetica').fontSize(8);
-  drawText(i.customer_note||'Thank you for your business!',L+10,summaryTop+27,{width:notesW-20,height:96,lineGap:2});
+  text('CUSTOMER NOTES',L+10,top+10,{width:notesW-20});
+  if(customerNote){
+   doc.fillColor('#334155').font('Helvetica').fontSize(8);
+   text(customerNote,L+10,top+29,{width:notesW-20,height:bottomPanelH-39,lineGap:2});
+  }
 
-  rect(summaryX,summaryTop,summaryW,134,'#ffffff',LINE);
-  let sy=summaryTop+9;
-  const summaryRow=(label,value,bold=false,size=8.3,fill=null)=>{
-   if(fill)rect(summaryX+1,sy-4,summaryW-2,22,fill,null);
+  rect(summaryX,top,summaryW,bottomPanelH,'#ffffff',LINE);
+  let sy=top+12;
+  const row=(label,value,{bold=false,size=8.3,fill=null}={})=>{
+   if(fill)rect(summaryX+1,sy-5,summaryW-2,23,fill,null);
    doc.fillColor(INK).font(bold?'Helvetica-Bold':'Helvetica').fontSize(size);
-   drawText(label,summaryX+10,sy,{width:105});
-   drawText(value,summaryX+118,sy,{width:98,align:'right'});
-   sy+=19;
+   text(label,summaryX+10,sy,{width:95});
+   text(value,summaryX+108,sy,{width:summaryW-118,align:'right'});
+   sy+=20;
   };
   const rawSubtotal=Number(i.subtotal||0)+Number(i.discount||0);
-  summaryRow('Subtotal',money(rawSubtotal));
-  if(Number(i.discount||0)>0)summaryRow('Discount',`-${money(i.discount)}`);
-  summaryRow(`Tax (${Number(i.tax_rate||0).toFixed(3)}%)`,money(i.tax));
-  summaryRow('TOTAL',money(i.total),true,11,'#e8f3ff');
-  summaryRow('Paid',money(i.amount_paid));
-  summaryRow('BALANCE DUE',money(i.balance_due),true,10.5,PALE);
+  row('Subtotal',money(rawSubtotal));
+  if(Number(i.discount||0)>0)row('Discount',`-${money(i.discount)}`);
+  row(`Tax (${Number(i.tax_rate||0).toFixed(3)}%)`,money(i.tax));
+  row('TOTAL',money(i.total),{bold:true,size:11,fill:BLUE});
+  row('Paid',money(i.amount_paid));
+  row('BALANCE DUE',money(i.balance_due),{bold:true,size:10.5,fill:PALE});
 
-  y=summaryTop+146;
-
-  // Footer safely inside printable area. Never write at/under page bottom.
-  const range=doc.bufferedPageRange();
-  for(let n=0;n<range.count;n++){
-   doc.switchToPage(range.start+n);
-   const footerY=doc.page.height-doc.page.margins.bottom-10;
-   doc.moveTo(L,footerY-7).lineTo(R,footerY-7).strokeColor('#cbd5e1').lineWidth(.5).stroke();
-   doc.fillColor(MUTED).font('Helvetica').fontSize(6.8);
-   drawText(`IRON TEAM TRUCK & TRAILER REPAIR  ·  ${i.invoice_number}  ·  Page ${n+1} of ${range.count}`,L,footerY,{width:W,align:'center'});
+  // Footer remains safely inside every page's printable area.
+  const pages=doc.bufferedPageRange();
+  for(let p=0;p<pages.count;p++){
+   doc.switchToPage(pages.start+p);
+   const fy=doc.page.height-doc.page.margins.bottom-9;
+   doc.save().moveTo(L,fy-7).lineTo(R,fy-7).strokeColor(LINE).lineWidth(.5).stroke().restore();
+   doc.fillColor(MUTED).font('Helvetica').fontSize(6.7);
+   text(`IRON TEAM TRUCK & TRAILER REPAIR   ·   ${i.invoice_number}   ·   Page ${p+1} of ${pages.count}`,L,fy,{width:W,align:'center'});
   }
 
   doc.end();
