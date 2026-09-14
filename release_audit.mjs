@@ -12,9 +12,9 @@ const pkg = JSON.parse(read('package.json'));
 const modulesInvoicesHtml = read('modules/invoices.html');
 const modulesInvoicesJs = read('modules/invoices.js');
 
-check('release package version is 24.17.9', pkg.version === '24.17.9', pkg.version);
-check('frontend release is 24.17.9', html.includes("const FRONTEND_VERSION='24.17.9';") || html.includes('const FRONTEND_VERSION="24.17.9"'));
-check('backend release is 24.17.9', server.includes('frontendExpected:"24.17.9",backend:"24.17.9"'));
+check('release package version is 24.18.0', pkg.version === '24.18.0', pkg.version);
+check('frontend release is 24.18.0', html.includes("const FRONTEND_VERSION='24.18.0';") || html.includes('const FRONTEND_VERSION="24.18.0"'));
+check('backend release is 24.18.0', server.includes('frontendExpected:"24.18.0",backend:"24.18.0"'));
 check('static web root restricted to public directory', server.includes('app.use(express.static(publicDir') && !server.includes('app.use(express.static(webRoot'));
 check('parts search is read-only (no per-result barcode write loop)', !server.includes('for(const x of r.rows)if(!x.internal_barcode)x.internal_barcode=await ensurePartBarcode'));
 check('production 500 responses hide internal error detail', server.includes('isProd?"An unexpected server error occurred.":safe'));
@@ -235,12 +235,17 @@ check('additional fees autosave while editing',
 check('PDF item summary exposes shop and environmental fees',
   server.includes("row('Shop Supplies',money(shopSupplies))") &&
   server.includes("row('Environmental / Other',money(environmentalFee))"));
-check('standard parts warranty appears on invoice and PDF',
-  html.includes('PARTS WARRANTY') &&
-  server.includes('We are responsible for handling eligible warranty claims on parts supplied and installed'));
+check('customer invoice includes full warranty and repair authorization terms',
+  html.includes('WARRANTY &amp; REPAIR AUTHORIZATION') &&
+  html.includes('express mechanic\'s lien on your vehicle') &&
+  server.includes('Any warranties on the parts and accessories sold hereby are made by the manufacturer') &&
+  server.includes('express mechanic\\\'s lien on your vehicle'));
 check('50-mile tire wheel re-torque notice appears on invoice and PDF',
-  html.includes('after approximately 50 miles of driving') &&
-  server.includes('checked and re-torqued after approximately 50 miles of driving'));
+  html.includes('recheck wheel nut torque after 50 miles of driving') &&
+  server.includes('recheck wheel nut torque after 50 miles of driving'));
+check('customer invoice includes signature lines',
+  html.includes('Customer Signature: ______________________________') &&
+  server.includes('Customer Signature: ______________________________'));
 check('invoice email includes warranty and tire notice',
   server.includes('<b>Parts Warranty:</b>') &&
   server.includes('<b>Tire / Wheel Safety:</b>'));
@@ -291,6 +296,24 @@ check('inventory part selection autofills stored selling price', html.includes("
 check('invoice part rows expose markup percent control', html.includes('class=\"ilMarkup\"') && html.includes('invoiceApplyPartMarkup'));
 check('manual selling price recalculates effective markup', html.includes('function invoicePartPriceChanged') && html.includes('invoiceMarkupFromCostPrice'));
 check('cost plus markup recalculates selling price', html.includes('function invoicePartCostChanged') && html.includes('cost*(1+markup/100)'));
+
+
+check('invoice part lookup is viewport-positioned and not clipped by service rows',
+  html.includes('function positionInvoicePartLookup(lineId)') &&
+  html.includes("position:'fixed'") &&
+  modulesInvoicesHtml.includes('z-index:5000!important') &&
+  modulesInvoicesHtml.includes('overflow:visible!important'));
+check('invoice part search result has full description and pricing layout',
+  modulesInvoicesHtml.includes('grid-template-columns:minmax(300px,1fr) 220px!important') &&
+  modulesInvoicesHtml.includes('text-overflow:clip!important'));
+check('print invoice uses one consistent five-column labor-parts grid',
+  modulesInvoicesHtml.includes('grid-template-columns:48px minmax(0,1fr) 58px 78px 82px!important') &&
+  server.includes('const tableCuts=[L+48,L+296,L+361,L+442]') &&
+  server.includes('function drawTableGuides'));
+check('print invoice legal block is customer-ready and page-safe',
+  modulesInvoicesHtml.includes('.invoiceLegalBlock{display:block!important;break-inside:avoid!important') &&
+  server.includes('const noticeH=Math.max(150,legalH+tireH+82)') &&
+  server.includes('ensure(noticeH+8)'));
 
 const failed = checks.filter(x=>!x.ok);
 for (const x of checks) console.log(`${x.ok?'PASS':'FAIL'}  ${x.name}${x.detail?` — ${x.detail}`:''}`);

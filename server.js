@@ -1055,7 +1055,7 @@ app.get("/api/smart-search",auth,adminOnly,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"24.17.9",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"24.18.0",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -1088,8 +1088,8 @@ async function reconcileDuplicateImportedCustomers(){
  return {merged};
 }
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.17.9",backend:"24.17.9",build:"ITTR-24.17.9-MECHANIC-USDOT-VIN-SELF-START-20260914"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.17.9",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.18.0",backend:"24.18.0",build:"ITTR-24.18.0-PRINT-LEGAL-PART-LOOKUP-20260914"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.18.0",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -2375,15 +2375,19 @@ app.get('/api/invoices/:id/pdf',auth,managerPermission("invoices"),async(req,res
   function ensure(h){
    if(y+h>pageBottom())newPage();
   }
+  const tableCuts=[L+48,L+296,L+361,L+442];
+  function drawTableGuides(y0,h,color='#e2e8f0'){
+   for(const x0 of tableCuts)doc.save().moveTo(x0,y0).lineTo(x0,y0+h).strokeColor(color).lineWidth(.45).stroke().restore();
+  }
   function drawTableHeader(){
    ensure(24);
-   rect(L,y,W,23,PALE,LINE);
+   rect(L,y,W,23,PALE,LINE);drawTableGuides(y,23,'#cbd5e1');
    const cols=[
-    [L+8,40,'TYPE','left'],
-    [L+56,235,'DESCRIPTION','left'],
-    [L+300,58,'QTY / HRS','right'],
-    [L+363,76,'RATE / PRICE','right'],
-    [L+444,82,'AMOUNT','right']
+    [L+6,38,'TYPE','left'],
+    [L+55,232,'DESCRIPTION','left'],
+    [L+300,57,'QTY / HRS','right'],
+    [L+365,72,'RATE / PRICE','right'],
+    [L+447,76,'AMOUNT','right']
    ];
    doc.fillColor('#334155').font('Helvetica-Bold').fontSize(7);
    for(const [x0,w,label,align] of cols)text(label,x0,y+8,{width:w,align});
@@ -2488,7 +2492,7 @@ app.get('/api/invoices/:id/pdf',auth,managerPermission("invoices"),async(req,res
    const laborDescription=s(labor.description)||'Labor';
 
    // Strong labor header; internal legacy job/service names are never printed.
-   rect(L,y,W,34,NAVY,null);
+   rect(L,y,W,34,NAVY,null);drawTableGuides(y,34,'#526477');
    rect(L+9,y+5,25,24,'#ffffff',null);
    doc.fillColor(NAVY).font('Helvetica-Bold').fontSize(9);
    text(String(index+1),L+9,y+12,{width:25,align:'center'});
@@ -2526,6 +2530,7 @@ app.get('/api/invoices/:id/pdf',auth,managerPermission("invoices"),async(req,res
     text(money(part.unit_price),L+363,y+8,{width:76,align:'right'});
     doc.font('Helvetica-Bold');
     text(money(amount),L+444,y+8,{width:82,align:'right'});
+    drawTableGuides(y,28);
     y+=28;
     line(y);
    }
@@ -2558,7 +2563,7 @@ app.get('/api/invoices/:id/pdf',auth,managerPermission("invoices"),async(req,res
     text(money(part.unit_price),L+363,y+8,{width:76,align:'right'});
     doc.font('Helvetica-Bold');
     text(money(part.line_total),L+444,y+8,{width:82,align:'right'});
-    y+=28;line(y);
+    drawTableGuides(y,28);y+=28;line(y);
    }
   }
 
@@ -2605,21 +2610,34 @@ app.get('/api/invoices/:id/pdf',auth,managerPermission("invoices"),async(req,res
   row('Paid',money(i.amount_paid));
   row('BALANCE DUE',money(i.balance_due),{bold:true,size:10.5,fill:PALE});
 
-  // Standard customer-facing warranty and wheel safety notice.
+  // Customer-facing warranty, repair authorization, mechanic's lien, safety and signature section.
   y=top+bottomPanelH+12;
-  const warrantyNotice='PARTS WARRANTY: We are responsible for handling eligible warranty claims on parts supplied and installed by Iron Team Truck & Trailer Repair, subject to the applicable manufacturer warranty and shop terms.';
-  const tireNotice='TIRE / WHEEL SAFETY: After tire or wheel service, wheel fasteners / lug nuts must be checked and re-torqued after approximately 50 miles of driving. Please return to our shop for this safety check. Stop driving and have the vehicle inspected if looseness, vibration, noise, or any abnormal condition is noticed.';
-  doc.font('Helvetica').fontSize(7.1);
-  const warrantyH=doc.heightOfString(warrantyNotice,{width:W-20,lineGap:1.3});
-  const tireH=doc.heightOfString(tireNotice,{width:W-20,lineGap:1.3});
-  const noticeH=Math.max(66,warrantyH+tireH+30);
+  const legalNotice='Any warranties on the parts and accessories sold hereby are made by the manufacturer. You understand and agree that we make no warranties of any kind unless expressed in writing. You hereby authorize us to perform the repair work herein set forth and to purchase the necessary material and parts to perform such repair work. You agree that we are not responsible for loss or damage to your vehicle or articles left in your vehicle in case of fire, theft, or any other cause beyond our control or for any delays caused by unavailability of parts or delays in part shipments by the supplier or transporter. In addition, you agree that we are not responsible for damages to your vehicle from freezing due to lack of antifreeze. You hereby grant our employees permission to operate your vehicle on streets, highways, or elsewhere for the purpose of testing and/or inspection. You acknowledge and agree that an express mechanic\'s lien on your vehicle is granted to secure payment of this invoice for the repair work detailed in this invoice.';
+  const tireNotice='After tires or wheels are replaced or serviced, you must stop and recheck wheel nut torque after 50 miles of driving to ensure proper installation and safety. Failure to comply with this requirement releases Iron Team Truck & Trailer Repair from liability for tire or wheel loss or resulting damage.';
+  doc.font('Helvetica').fontSize(7.2);
+  const legalH=doc.heightOfString(legalNotice,{width:W-20,lineGap:1.45});
+  doc.font('Helvetica-Bold').fontSize(7.2);
+  const tireH=doc.heightOfString(tireNotice,{width:W-20,lineGap:1.35});
+  const noticeH=Math.max(150,legalH+tireH+82);
   ensure(noticeH+8);
-  rect(L,y,W,noticeH,SOFT,LINE);
-  doc.fillColor(INK).font('Helvetica-Bold').fontSize(7.3);
-  text('IMPORTANT WARRANTY & TIRE / WHEEL SAFETY NOTICE',L+10,y+9,{width:W-20});
+  rect(L,y,W,noticeH,'#ffffff',LINE);
+  doc.fillColor(INK).font('Helvetica-Bold').fontSize(7.5);
+  text('WARRANTY & REPAIR AUTHORIZATION',L+10,y+10,{width:W-20});
+  doc.fillColor('#334155').font('Helvetica').fontSize(7.2);
+  text(legalNotice,L+10,y+25,{width:W-20,lineGap:1.45});
+  let ly=y+27+legalH+8;
+  doc.save().moveTo(L+10,ly).lineTo(R-10,ly).strokeColor(LINE).lineWidth(.55).stroke().restore();
+  ly+=10;
+  doc.fillColor(INK).font('Helvetica-Bold').fontSize(7.7);
+  text('IMPORTANT SAFETY NOTICE',L+10,ly,{width:W-20});
+  ly+=14;
+  doc.fillColor(INK).font('Helvetica-Bold').fontSize(7.2);
+  text(tireNotice,L+10,ly,{width:W-20,lineGap:1.35});
+  ly+=tireH+18;
   doc.fillColor('#334155').font('Helvetica').fontSize(7.1);
-  text(warrantyNotice,L+10,y+24,{width:W-20,lineGap:1.3});
-  text(tireNotice,L+10,y+25+warrantyH,{width:W-20,lineGap:1.3});
+  text('Customer Signature: ______________________________',L+10,ly,{width:225});
+  text('Printed Name: ______________________________',L+245,ly,{width:210});
+  text('Date: ______________',L+455,ly,{width:63,align:'right'});
   y+=noticeH+8;
 
   // Footer remains safely inside every page's printable area.
@@ -2800,5 +2818,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v24.17.9 Online running on port ${port}`))})
+  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v24.18.0 Online running on port ${port}`))})
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});
