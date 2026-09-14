@@ -1,4 +1,6 @@
 import express from "express";
+import http from "http";
+import {WebSocketServer,WebSocket} from "ws";
 import OpenAI from "openai";
 import path from "path";
 import multer from "multer";
@@ -23,6 +25,7 @@ const fmcsaCache=new Map();
 const NHTSA_VPIC_BASE="https://vpic.nhtsa.dot.gov/api/vehicles";
 const vinDecodeCache=new Map();
 const app=express();
+const httpServer=http.createServer(app);
 const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:20*1024*1024}});
 const photoUpload=multer({
  storage:multer.memoryStorage(),
@@ -525,6 +528,12 @@ async function auth(req,res,next){
    req.user=q.rows[0]; req.sessionToken=token; next();
  }catch(e){next(e)}
 }
+const liveWss=new WebSocketServer({server:httpServer,path:"/ws/shop-status"});
+const liveClients=new Set();
+function broadcastShopStatus(type,payload={}){const msg=JSON.stringify({type,at:new Date().toISOString(),...payload});for(const ws of liveClients){if(ws.readyState===WebSocket.OPEN)try{ws.send(msg)}catch(_){}}}
+liveWss.on("connection",async(ws,req)=>{try{const u=new URL(req.url,"http://localhost"),token=String(u.searchParams.get("token")||"").trim();if(!token){ws.close(1008,"Authentication required");return}const q=await requireDb().query(`SELECT u.username,u.display_name,u.role FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now() AND u.active=true`,[hashToken(token)]);if(!q.rowCount){ws.close(1008,"Session expired");return}ws.ittrUser=q.rows[0];ws.isAlive=true;ws.on("pong",()=>{ws.isAlive=true});liveClients.add(ws);ws.send(JSON.stringify({type:"connected",at:new Date().toISOString()}));ws.on("close",()=>liveClients.delete(ws))}catch(e){console.error("WebSocket auth",e.message);try{ws.close(1011,"Connection error")}catch(_){}}});
+const liveHeartbeat=setInterval(()=>{for(const ws of liveClients){if(ws.isAlive===false){liveClients.delete(ws);try{ws.terminate()}catch(_){}continue}ws.isAlive=false;try{ws.ping()}catch(_){}}},25000);liveHeartbeat.unref?.();
+
 function adminOnly(req,res,next){if(!["admin","manager"].includes(req.user?.role))return res.status(403).json({error:"Manager access required."});next()}
 function ownerOnly(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Owner/Admin access required."});next()}
 function can(req,key){return req.user?.role==="admin" || (req.user?.role==="manager" && req.user?.permissions?.[key]!==false)}
@@ -966,7 +975,7 @@ app.get("/api/customer-units/:id/profile",auth,managerPermission("customers"),as
 
 app.get("/api/customer-units/suggest",auth,async(req,res,next)=>{try{
  try{await syncCustomerUnitDirectory()}catch(e){console.error("Unit suggest sync warning:",e?.message)}const q=String(req.query.q||"").trim();if(q.length<1)return res.json({items:[]});const like=`%${q}%`,db=requireDb();
- const r=await db.query(`SELECT u.*,c.customer_name AS canonical_customer,c.phone AS customer_phone,c.email AS customer_email,c.dot_number FROM customer_units u LEFT JOIN fullbay_import_customers c ON c.id::text=u.customer_id::text WHERE u.unit_number ILIKE $1 OR coalesce(u.vin,'') ILIKE $1 OR coalesce(u.plate,'') ILIKE $1 OR coalesce(c.customer_name,u.customer_name,'') ILIKE $1 ORDER BY CASE WHEN lower(u.unit_number)=lower($2) THEN 0 WHEN lower(u.unit_number) LIKE lower($3) THEN 1 ELSE 2 END,u.unit_number LIMIT 20`,[like,q,`${q}%`]);res.json({items:r.rows.map(x=>({...x,customer_name:x.canonical_customer||x.customer_name}))});
+ const r=await db.query(`SELECT u.*,c.customer_name AS canonical_customer,c.phone AS customer_phone,c.email AS customer_email,c.dot_number FROM customer_units u LEFT JOIN fullbay_import_customers c ON c.id::text=u.customer_id::text WHERE u.unit_number ILIKE $1 OR coalesce(u.vin,'') ILIKE $1 OR coalesce(u.plate,'') ILIKE $1 OR coalesce(c.dot_number,'') ILIKE $1 OR coalesce(c.customer_name,u.customer_name,'') ILIKE $1 ORDER BY CASE WHEN lower(u.unit_number)=lower($2) THEN 0 WHEN lower(u.unit_number) LIKE lower($3) THEN 1 ELSE 2 END,u.unit_number LIMIT 20`,[like,q,`${q}%`]);res.json({items:r.rows.map(x=>({...x,customer_name:x.canonical_customer||x.customer_name}))});
 }catch(e){next(e)}});
 
 
@@ -1015,7 +1024,7 @@ async function reconcileDuplicateImportedCustomers(){
  return {merged};
 }
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.9.1",backend:"24.9.1",build:"ITTR-24.9.1-DYNAMIC-MODULES-20260914"}));
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.10.0",backend:"24.10.0",build:"ITTR-24.10.0-MOBILE-AI-RECEIVING-RESILIENCE-20260914"}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.8.0",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",async(req,res,next)=>{try{
@@ -1057,6 +1066,7 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{try{
    );
  }
  await audit(req.user.username,"state_save",{key,expectedVersion});
+ if(key==="shopflow")broadcastShopStatus("shopflow_changed",{by:req.user.username,version:Number(q.rows[0].version)});
  res.json({ok:true,version:Number(q.rows[0].version),updatedAt:q.rows[0].updated_at});
 }catch(e){next(e)}});
 
@@ -1092,6 +1102,25 @@ async function closeOpenTaskSession(db,workOrderId,taskUid,mechanic,endReason,pa
   );
 }
 
+
+app.post("/api/work-orders/self-start",auth,async(req,res,next)=>{
+ if(req.user?.role!=="mechanic")return res.status(403).json({error:"Mechanic account required."});
+ const db=await requireDb().connect();
+ try{
+  const b=req.body||{},customer=String(b.customer||"").trim(),unit=String(b.unit||"").trim(),vin=String(b.vin||"").trim().toUpperCase(),dotNumber=String(b.dotNumber||"").trim(),jobs=Array.isArray(b.jobs)?b.jobs.map(x=>String(x||"").trim()).filter(Boolean):[];
+  if(!customer||!unit||!jobs.length||(!vin&&!dotNumber)){return res.status(400).json({error:"Customer, unit, at least one job, and VIN or USDOT are required."});}
+  await db.query("BEGIN");
+  const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
+  if(!q.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Shop data not found."});}
+  const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
+  const numericIds=sf.workorders.map(x=>Number(x?.id)).filter(Number.isFinite);const id=(numericIds.length?Math.max(...numericIds):1000)+1;const now=new Date();
+  const w={id,unit,customer,customerId:String(b.customerId||""),unitRecordId:String(b.unitRecordId||""),vin,dotNumber,year:String(b.year||""),make:String(b.make||""),model:String(b.model||""),plate:String(b.plate||""),mileage:Number(b.mileage||0)||"",date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),mechanic:req.user.username,helpers:[],priority:String(b.priority||"Normal"),parking:String(b.parking||""),unitType:"customer",truckHere:true,status:"Open",notes:String(b.notes||""),arrivedAt:now.toISOString(),arrivedBy:req.user.username,createdAt:now.toISOString(),createdBy:req.user.username,createdVia:"mechanic_self_start",outcomeWorkflowVersion:1,history:[{type:"mechanic_self_start",at:now.toISOString(),by:req.user.username,byDisplay:req.user.display_name||req.user.username}],tasks:jobs.map((text,i)=>({uid:`wo-${id}-task-${i}-${crypto.randomBytes(4).toString("hex")}`,t:text,done:false,startedAt:"",stoppedAt:"",runningBy:"",elapsedMs:0,completedAt:"",taskOutcome:"",outcomeNote:"",outcomeAt:"",outcomeBy:"",paused:false,pausedAt:"",pauseReason:"",pauseNote:""}))};
+  sf.workorders.push(w);
+  const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
+  await db.query("COMMIT");await audit(req.user.username,"mechanic_work_order_self_created",{workOrderId:id,unit,vin,dotNumber,jobs:jobs.length});broadcastShopStatus("work_order_created",{workOrderId:id,by:req.user.username,version:Number(u.rows[0].version)});
+  res.status(201).json({ok:true,workOrder:w,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
+ }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
+});
 
 app.post("/api/work-orders/:id/helpers",auth,async(req,res,next)=>{
  const db=await requireDb().connect();
@@ -2109,5 +2138,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}app.listen(port,()=>console.log(`ITTR v24.7.1 Online running on port ${port}`))})
+  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v24.10.0 Online running on port ${port}`))})
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

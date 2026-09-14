@@ -10,9 +10,9 @@ const pub = read('public/index.html');
 const server = read('server.js');
 const pkg = JSON.parse(read('package.json'));
 
-check('release package version is 24.9.1', pkg.version === '24.9.1', pkg.version);
-check('frontend release is 24.9.1', html.includes('const FRONTEND_VERSION="24.9.1";'));
-check('backend release is 24.9.1', server.includes('frontendExpected:"24.9.1",backend:"24.9.1"'));
+check('release package version is 24.10.0', pkg.version === '24.10.0', pkg.version);
+check('frontend release is 24.10.0', html.includes('const FRONTEND_VERSION="24.10.0";'));
+check('backend release is 24.10.0', server.includes('frontendExpected:"24.10.0",backend:"24.10.0"'));
 check('root/public frontend byte-identical', html === pub, crypto.createHash('sha256').update(html).digest('hex').slice(0,12));
 
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
@@ -50,7 +50,7 @@ const critical = [
  ['smart receiving', 'id="smartReceivingModal"'],
  ['side-by-side receiving preview', 'receiveVerifyShell'],
  ['offline banner', 'id="offlineBanner"'],
- ['offline sync queue badge', 'id="syncQueueBadge"'],
+ ['offline sync queue badge', 'id="sync-queue-badge"'],
  ['manager permission middleware', 'function managerPermission(key)'],
 ];
 for (const [name, needle] of critical) check(name, html.includes(needle) || server.includes(needle));
@@ -83,6 +83,38 @@ for (const view of lazyViews) {
 check('route loader uses dynamic import', html.includes('import(cfg.js)'));
 check('route unmount aborts module listeners', html.includes('instance.scope.cleanup()'));
 check('heavy view DOM not embedded at startup', !html.includes('<div id="invoiceKpis"') && !html.includes('<div id="partsStats"') && !html.includes('<div id="vehicleProfileResults"'));
+
+// v24.10.0 mechanic/mobile/AI/receiving/resilience regression guards.
+check('mechanic self-start wizard UI', html.includes('id="mechanicStartModal"') && html.includes('openMechanicStartWizard()'));
+check('mechanic self-start mobile entry', html.includes('Start Job') && html.includes('onclick="openMechanicStartWizard()"'));
+check('mechanic self-start backend endpoint', server.includes('app.post("/api/work-orders/self-start",auth'));
+check('self-start restricted to mechanic role', server.includes('req.user?.role!=="mechanic"'));
+check('self-start forces current mechanic assignment', server.includes('mechanic:req.user.username') && server.includes('createdVia:"mechanic_self_start"'));
+check('self-start marks truck here', server.includes('truckHere:true') && server.includes('arrivedBy:req.user.username'));
+check('DOT included in mechanic unit lookup', server.includes("coalesce(c.dot_number,'') ILIKE $1"));
+check('touch-first mechanic target 52px', html.includes('min-height:52px!important'));
+check('job state color tokens', html.includes('--job-active:') && html.includes('--job-paused:') && html.includes('--job-hold:') && html.includes('--job-completed:'));
+check('AI FAB hidden while chat open', html.includes('body.aiChatOpen #shopAiFab') && html.includes('document.body.classList.toggle("aiChatOpen",open)'));
+check('AI mobile full screen 100dvh', html.includes('height:100dvh!important'));
+check('AI voice Web Speech API', html.includes('window.SpeechRecognition||window.webkitSpeechRecognition') && html.includes('r.interimResults=true'));
+for(const lang of ['en-US','uk-UA','pl-PL','es-ES','ru-RU']) check(`AI voice language ${lang}`,html.includes(`value="${lang}"`));
+check('persistent offline mutation queue', html.includes('ittr_sync_queue_v2') && html.includes('flushPersistentSyncQueue()'));
+check('sync badge exact requested id', html.includes('id="sync-queue-badge"'));
+check('online restores queued POST sync', html.includes('window.addEventListener("online",()=>{updateOnlineState();flushPersistentSyncQueue();connectLiveStatusSocket()})'));
+check('receiving 50/50 dual pane', html.includes('.receiveVerifyShell{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important'));
+check('receiving viewer zoom and rotate', html.includes('function receivingZoom') && html.includes('function receivingRotate') && html.includes('↻ 90°'));
+check('receiving supports price warning over 5 percent', html.includes("rise>5?'receivePriceWarning'") && html.includes('rise>5?`<div class="costRise">'));
+check('receiving missing part validation', html.includes('Part number required.'));
+check('receiving unlinked vendor validation', html.includes('Vendor profile is not linked yet'));
+check('receiving Save Draft', html.includes('saveReceivingDraft()') && html.includes('Save Draft'));
+check('receiving Commit to Stock Inventory', html.includes('Commit to Stock Inventory'));
+check('global toast region', html.includes('id="toastRegion"') && html.includes('function showToast'));
+check('runtime errors use toast', html.includes('window.addEventListener("unhandledrejection",e=>{showToast'));
+check('WebSocket server status feed', server.includes('new WebSocketServer({server:httpServer,path:"/ws/shop-status"})'));
+check('WebSocket auth uses session token hash', server.includes('s.token_hash=$1') && server.includes('[hashToken(token)]'));
+check('WebSocket client reconnect wrapper', html.includes('function connectLiveStatusSocket') && html.includes('2**Math.min(5,liveReconnectAttempt-1)'));
+check('WebSocket reconnect max 30 seconds', html.includes('Math.min(30000'));
+check('ws package dependency', pkg.dependencies?.ws === '8.18.3');
 
 const failed = checks.filter(x=>!x.ok);
 for (const x of checks) console.log(`${x.ok?'PASS':'FAIL'}  ${x.name}${x.detail?` — ${x.detail}`:''}`);

@@ -1,0 +1,28 @@
+ITTR ShopFlow v24.10.0 — PRO RELEASE AUDIT
+=========================================
+
+Base: v24.9.1 Task 1 Dynamic Modules.
+Scope: Tasks 2-5 plus mechanic self-create job and mobile AI overlay regression.
+
+Implemented:
+- Mechanic 3-step self-start WO wizard and protected server endpoint.
+- DOT/VIN/customer/unit lookup for mechanic check-in.
+- 52px touch controls and high-contrast repair state tokens.
+- AI chat mobile stacking/full-screen correction.
+- Multilingual Web Speech dictation with live interim transcription.
+- Persistent offline state mutation queue and exact sync queue badge.
+- Smart Receiving 50/50 OCR document/data workspace with zoom/rotate/pan.
+- >5% historical buy-price warning, missing part and vendor-link warnings.
+- Receiving Save Draft + Commit controls.
+- Global toast exception handling.
+- Authenticated WebSocket status channel with exponential reconnect.
+
+Security / integrity:
+- Mechanic self-start endpoint only accepts mechanic sessions.
+- Mechanic identity is taken from req.user, never from the client payload.
+- Server forces truckHere=true and records arrivedBy/createdBy audit identity.
+- WebSocket sessions authenticate against hashed auth session tokens.
+- No change to production database reset behavior.
+
+Regression audit result: 87/87 PASS.
+Full output: AUDIT_RESULTS_87_OF_87.txt
