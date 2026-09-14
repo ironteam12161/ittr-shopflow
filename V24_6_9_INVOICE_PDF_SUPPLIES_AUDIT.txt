@@ -1,0 +1,20 @@
+ITTR v24.6.9 PROFESSIONAL INVOICE / PDF / SUPPLIES AUDIT
+Build: ITTR-24.6.9-PRO-INVOICE-PDF-SUPPLIES-20260914
+
+Changes:
+- Removed duplicate Service / Job field and duplicate outer service grouping from invoice editor.
+- Labor operation description is now the single authoritative customer-facing service name.
+- Parts remain parented to their labor line by parent_line_id.
+- Shop Supplies, Environmental/Other fee and Discount are itemized in live summary and PDF.
+- Rebuilt invoice PDF header using Iron Team logo with non-overlapping company title.
+- PDF summary separately displays Services & Parts, Shop Supplies, Environmental/Other, Discount, Subtotal, Tax, Total, Paid and Balance Due.
+- Footer warranty/manufacturer responsibility and 50-mile wheel/tire torque recheck notice retained and improved.
+- PDF footer placement hardened to prevent blank overflow pages.
+- Existing tax exemption, Illinois tax lookup, labor rate presets, part inventory autocomplete, invoice reopen/void/delete-draft, and vehicle history sync preserved.
+
+Competitor review used for UX direction:
+- Fullbay: service-order to invoice continuity; parts/labor/fees/supplies captured through job lifecycle.
+- Tekmetric: configurable labor rates, taxes and shop fees.
+- Shopmonkey: service containers, labor/parts/fees, shop supplies, printable invoice controls, AR reporting.
+
+No destructive database reset.
