@@ -11,9 +11,9 @@ const server = read('server.js');
 const pkg = JSON.parse(read('package.json'));
 const modulesInvoicesHtml = read('modules/invoices.html');
 
-check('release package version is 24.14.0', pkg.version === '24.14.0', pkg.version);
-check('frontend release is 24.14.0', html.includes("const FRONTEND_VERSION='24.14.0';") || html.includes('const FRONTEND_VERSION="24.14.0";'));
-check('backend release is 24.14.0', server.includes('frontendExpected:"24.14.0",backend:"24.14.0"'));
+check('release package version is 24.15.0', pkg.version === '24.15.0', pkg.version);
+check('frontend release is 24.15.0', html.includes("const FRONTEND_VERSION='24.15.0';") || html.includes('const FRONTEND_VERSION="24.15.0";'));
+check('backend release is 24.15.0', server.includes('frontendExpected:"24.15.0",backend:"24.15.0"'));
 check('root/public frontend byte-identical', html === pub, crypto.createHash('sha256').update(html).digest('hex').slice(0,12));
 
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
@@ -164,8 +164,20 @@ check('invoice bottom Add Misc Charge', html.includes('Add Misc Charge'));
 check('invoice service quick Add Part', html.includes('title="Add part to this service"'));
 check('invoice service subtotal row', modulesInvoicesHtml.includes('invoiceServiceSubtotal'));
 check('invoice old rate presets all preserved', ['115','110','100','60'].every(v=>html.includes(`value="${v}"`)));
+
+// v24.15.0 dedicated invoice workspace and inventory autocomplete guards.
+check('invoice list opens dedicated workspace', html.includes('openInvoiceWorkspace(${i.id})'));
+check('invoice workspace URL supported', html.includes("searchParams.set('invoiceWorkspace'"));
+check('invoice workspace activates after login', html.includes('activateInvoiceWorkspaceFromURL'));
+check('invoice workspace uses full viewport class', modulesInvoicesHtml.includes('body.invoiceWorkspaceMode #invoiceModal'));
+check('part rows query live inventory', html.includes('/api/parts?q=${encodeURIComponent(q)}&limit=12'));
+check('part inventory lookup fills part number', html.includes("set('.ilPart',cleanPartField(item.part_number,''))"));
+check('part inventory lookup fills description', html.includes("set('.ilDesc',cleanPartField(item.description,''))"));
+check('part inventory lookup fills cost', html.includes("set('.ilCost',Number(item.cost||0).toFixed(2))"));
+check('part inventory lookup fills selling price', html.includes("set('.ilPrice',Number(item.price||0).toFixed(2))"));
+check('part inventory suggestions show availability', html.includes('Avail ${Number(x.available||0).toLocaleString()}'));
+
 const failed = checks.filter(x=>!x.ok);
 for (const x of checks) console.log(`${x.ok?'PASS':'FAIL'}  ${x.name}${x.detail?` — ${x.detail}`:''}`);
 console.log(`\n${checks.length-failed.length}/${checks.length} checks passed.`);
 if (failed.length) process.exit(1);
-
