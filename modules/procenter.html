@@ -1,3 +1,7 @@
+
+<style>
+.aiHandsFreeBar{display:grid;grid-template-columns:190px 1fr;gap:10px;align-items:stretch;margin:10px 0}.aiMicBig{min-height:58px;font-size:15px;font-weight:850;border-radius:14px;display:flex;align-items:center;justify-content:center;gap:8px}.aiMicBig.recording{background:#b42318!important;color:#fff!important;animation:aiRecPulse .9s infinite alternate;box-shadow:0 0 0 6px rgba(180,35,24,.12)}@keyframes aiRecPulse{to{transform:scale(1.02);box-shadow:0 0 0 10px rgba(180,35,24,.06)}}.aiVoiceControl{display:grid;grid-template-columns:160px 1fr;gap:8px;align-items:center}.aiProcessing{display:inline-flex;align-items:center;gap:8px;padding:9px 11px;border-radius:10px;background:#eff6ff;color:#1d4ed8;font-weight:800;margin-top:8px}.aiSpinner{width:16px;height:16px;border:2px solid #bfdbfe;border-top-color:#2563eb;border-radius:50%;animation:aiSpin .8s linear infinite}@keyframes aiSpin{to{transform:rotate(360deg)}}.aiVerifyBanner{margin-top:10px;padding:12px 14px;border-radius:12px;background:#fff7ed;border:1px solid #fdba74;color:#9a3412;font-weight:850}.aiActionGrid button:disabled,.aiRunButton:disabled{opacity:.55;cursor:wait}@media(max-width:700px){.aiHandsFreeBar{grid-template-columns:1fr}.aiVoiceControl{grid-template-columns:1fr}.aiMicBig{min-height:64px}}
+</style>
 <div class="toolbar"><div>
     <h1>Shop Operations</h1>
     <div class="muted">Maintenance, productivity, team controls, reporting, integrations and shop tools. Vehicle records now live in Customers & Vehicles.</div>
@@ -108,39 +112,14 @@
   </div>
 
   <div id="proPanelAitools" class="proPanel hidden">
+    <div class="card"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><b>AI Connection</b><div id="aiConnectionStatus" class="muted">Checking server…</div></div><button type="button" class="secondary" onclick="checkAIConnection()">Check Connection</button></div></div>
     <div class="card">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-        <div><b>AI Connection</b><div id="aiConnectionStatus" class="muted">Checking server…</div></div>
-        <button type="button" class="secondary" onclick="checkAIConnection()">Check Connection</button>
-      </div>
+      <h2>AI Shop Writing Assistant</h2><div class="muted">Dictate or type in English, Ukrainian, Polish, Spanish, Russian, or mixed shop language. Technical facts are preserved.</div>
+      <div class="field full"><label>Mechanic Note / Rough Text</label><textarea id="aiShopText" rows="6" placeholder="Type or dictate a mechanic note in any language..."></textarea></div>
+      <div class="aiHandsFreeBar"><button id="aiShopMicButton" type="button" class="aiMicBig secondary" onclick="startVoiceNote()">🎙️ Hold / Tap to Speak</button><div class="aiVoiceControl"><select id="aiShopVoiceLanguage" aria-label="Dictation language"><option value="auto">Auto / App Language</option><option value="en-US">English</option><option value="uk-UA">Українська</option><option value="pl-PL">Polski</option><option value="es-ES">Español</option><option value="ru-RU">Русский</option></select><div><b id="aiShopVoiceState">Ready for dictation</b><div class="muted">Tap once to start; tap again to stop. Live text appears in the note box.</div></div></div></div>
+      <div class="aiActionGrid"><button data-ai-action onclick="aiProfessionalNote('professional')">Professional English</button><button data-ai-action class="secondary" onclick="aiProfessionalNote('invoice')">Short Invoice Description</button><button data-ai-action class="secondary" onclick="aiProfessionalNote('detailed')">Detailed Repair Description</button><button data-ai-action class="secondary" onclick="aiProfessionalNote('customer')">Customer-Friendly</button><button data-ai-action class="secondary" onclick="aiProfessionalNote('grammar')">Fix Grammar Only</button><button data-ai-action class="secondary" onclick="aiProfessionalNote('ukrainian')">Translate to Ukrainian</button></div>
+      <div id="aiShopProcessing" class="aiProcessing hidden"><span class="aiSpinner"></span><span>⚡ AI Analyzing Fault Codes...</span></div><div id="aiShopResult" class="aiResult"></div><div class="actions"><button type="button" class="secondary" onclick="copyAIResult('aiShopResult')">Copy Result</button></div>
     </div>
-
-    <div class="card">
-      <h2>AI Shop Writing Assistant</h2>
-      <div class="muted">Write naturally in Ukrainian, English, Polish, Spanish, Russian, or mixed shop language. AI will preserve technical facts and produce professional American English.</div>
-      <div class="field full"><label>Mechanic Note / Rough Text</label><textarea id="aiShopText" rows="5" placeholder="Type or dictate a mechanic note in any language..."></textarea></div>
-      <div class="aiActionGrid">
-        <button onclick="aiProfessionalNote('professional')">Professional English</button>
-        <button class="secondary" onclick="aiProfessionalNote('invoice')">Short Invoice Description</button>
-        <button class="secondary" onclick="aiProfessionalNote('detailed')">Detailed Repair Description</button>
-        <button class="secondary" onclick="aiProfessionalNote('customer')">Customer-Friendly</button>
-        <button class="secondary" onclick="aiProfessionalNote('grammar')">Fix Grammar Only</button>
-        <button class="secondary" onclick="aiProfessionalNote('ukrainian')">Translate to Ukrainian</button>
-        <button class="secondary" onclick="startVoiceNote()">🎤 Dictate Note</button>
-      </div>
-      <div id="aiShopResult" class="aiResult"></div>
-      <div class="actions"><button type="button" class="secondary" onclick="copyAIResult('aiShopResult')">Copy Result</button></div>
-    </div>
-    <div class="card">
-      <h2>AI Diagnostic Assistant</h2>
-      <div class="field full"><label>Complaint / Symptoms / Fault Codes / Measurements</label><textarea id="aiDiagnosticInput" rows="6"></textarea></div>
-      <button onclick="aiDiagnosticAssistant()">Suggest Diagnostic Steps</button>
-      <div id="aiDiagnosticResult" class="aiResult"></div>
-    </div>
-    <div class="card">
-      <h2>Part Number / Cross Reference Assistant</h2>
-      <div class="row"><div class="field"><label>VIN</label><input id="aiPartVin"></div><div class="field"><label>Part # / Description</label><input id="aiPartQuery"></div></div>
-      <button onclick="aiPartAssistant()">Research Part</button>
-      <div id="aiPartResult" class="aiResult"></div><div class="aiVerify">AI cross-reference results are suggestions only. Verify the final part number and fitment in an OEM/manufacturer/vendor catalog before ordering or installing.</div>
-    </div>
+    <div class="card"><h2>AI Diagnostic Assistant</h2><div class="field full"><label>Complaint / Symptoms / Fault Codes / Measurements</label><textarea id="aiDiagnosticInput" rows="6"></textarea></div><button id="aiDiagnosticRun" class="aiRunButton" data-ai-action onclick="aiDiagnosticAssistant()">Suggest Diagnostic Steps</button><div id="aiDiagnosticProcessing" class="aiProcessing hidden"><span class="aiSpinner"></span><span>⚡ AI Analyzing Fault Codes...</span></div><div id="aiDiagnosticResult" class="aiResult"></div></div>
+    <div class="card"><h2>Part Number / Cross Reference Assistant</h2><div class="row"><div class="field"><label>VIN</label><input id="aiPartVin"></div><div class="field"><label>Part # / Description</label><input id="aiPartQuery"></div></div><button id="aiPartRun" class="aiRunButton" data-ai-action onclick="aiPartAssistant()">Research Part</button><div id="aiPartProcessing" class="aiProcessing hidden"><span class="aiSpinner"></span><span>⚡ AI Analyzing Part Cross-Reference...</span></div><div id="aiPartResult" class="aiResult"></div><div class="aiVerifyBanner">⚠️ AI suggestion only. Verify fitment in OEM catalog before ordering.</div></div>
   </div>
