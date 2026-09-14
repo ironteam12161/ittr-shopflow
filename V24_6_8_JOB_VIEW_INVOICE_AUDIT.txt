@@ -1,0 +1,30 @@
+ITTR ShopFlow v24.6.8 — Professional Job View Invoice UX Audit
+Build: ITTR-24.6.8-JOB-VIEW-INVOICE-UX-20260914
+
+Market/workflow basis
+- Fullbay: service order/invoice flow is organized around services, labor hours, attached parts and one-time data entry.
+- Mitchell 1 Job View: related labor and parts are grouped into job containers for clearer on-screen and customer-facing invoices.
+
+UX changes
+- Removed the visually duplicated outer service grouping from the daily invoice workflow.
+- Each labor operation is now the primary job card.
+- Parts, sublet and fees stay directly underneath their labor operation.
+- Compact table-style rows replace tall stacked forms.
+- Internal cost/admin fields are collapsed under details instead of dominating customer billing fields.
+- Part number + description search remains connected to ITTR inventory and uses a wide suggestion panel.
+- Labor rate plan and numeric $/hr are separate, readable columns.
+- Labor 1 remains the invoice default for newly-created labor; later overrides remain local.
+- Adding labor/part continues to preserve visible unsaved lines and header fields first.
+- Illinois IDOR tax lookup and live tax/total calculations are preserved.
+- Sent/partial invoices remain editable under existing server rules; paid/void remain locked.
+- Permanent delete remains blocked when payments exist.
+
+Static audit
+- server.js node --check: PASS
+- extracted frontend JavaScript node --check: PASS
+- duplicate DOM IDs: 0
+- duplicate Express method/path routes: 0
+- required invoice functions present: PASS
+- final v24.6.8 invoice CSS loads after legacy invoice CSS: PASS
+- root index.html and public/index.html identical: PASS
+- no destructive database reset/migration added.
