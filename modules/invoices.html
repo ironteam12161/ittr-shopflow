@@ -165,7 +165,7 @@
 </style>
 
 <style>
-/* v24.15 dedicated invoice workspace + live inventory part lookup */
+/* v24.16 dedicated invoice tab + preserved drafts + live inventory part lookup */
 body.invoiceWorkspaceMode{background:#f5f7fb;overflow:hidden}
 body.invoiceWorkspaceMode>header,body.invoiceWorkspaceMode>#onlineBetaBar,body.invoiceWorkspaceMode>#mobileBottomNav,body.invoiceWorkspaceMode>#mobileMoreSheet,body.invoiceWorkspaceMode>main,body.invoiceWorkspaceMode>#shopAiFab{display:none!important}
 body.invoiceWorkspaceMode #invoiceModal{display:block!important;position:fixed!important;inset:0!important;background:#f5f7fb!important;z-index:1200!important;padding:0!important;overflow:hidden!important}
@@ -184,3 +184,10 @@ body.invoiceWorkspaceMode .invoiceLineItemsCard{min-width:0}
 @media(max-width:760px){body.invoiceWorkspaceMode #invoiceEditor{padding:8px 8px 80px}.invoicePartLookupWrap{grid-template-columns:1fr}.invoicePartSuggest{position:fixed;left:8px;right:8px;top:auto;bottom:10px;min-width:0;max-height:50dvh}}
 @media print{body.invoiceWorkspaceMode #invoiceModal .x{display:none!important}}
 </style>
+
+/* v24.16 invoice workspace polish */
+.invoiceWorkspaceTopbar{position:sticky;top:0;z-index:40;margin:-2px -2px 14px;padding:12px 14px;background:rgba(245,247,251,.96);backdrop-filter:blur(10px);border-bottom:1px solid #dde4ee}
+.invoiceWorkspaceTopbarRight{display:flex;align-items:center;gap:10px}.invoiceDraftState{font-size:12px;font-weight:800;color:#475467;padding:6px 9px;border-radius:999px;background:#eef2f6}.invoiceDraftState[data-state="saving"]{background:#eff8ff;color:#175cd3}.invoiceDraftState[data-state="saved"]{background:#ecfdf3;color:#027a48}.invoiceDraftState[data-state="error"]{background:#fef3f2;color:#b42318}.invoiceDraftState[data-state="dirty"]{background:#fff7e8;color:#b54708}
+.invoiceServiceCard{border-radius:12px!important;box-shadow:0 1px 3px rgba(16,24,40,.06)!important}.invoiceServiceHead{padding:11px 12px!important}.invoiceServiceRows{gap:0!important}.invoiceServicePartRow,.invoiceServiceLaborRow{border-radius:0!important;border-left:0!important;border-right:0!important;border-bottom:0!important;padding:9px 10px!important}.invoiceServiceFooterActions{padding:10px 12px!important;background:#fafbfc!important}.invoiceServiceSubtotal{padding:10px 12px!important}.invoiceGridHeader{position:sticky;top:70px;z-index:20;background:#f8fafc!important;border:1px solid #e4e7ec;border-radius:9px 9px 0 0}
+.invoicePartSuggestItem{cursor:pointer}.invoicePartSuggestItem:active{transform:none!important}.invoicePartLookupWrap input:focus{box-shadow:0 0 0 3px rgba(21,94,239,.12)!important;border-color:#84adff!important}
+@media(max-width:900px){.invoiceWorkspaceTopbar{position:static}.invoiceGridHeader{position:static}.invoiceWorkspaceTopbarRight{flex-wrap:wrap;justify-content:flex-end}}

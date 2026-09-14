@@ -76,8 +76,8 @@ export function attachEditor(active){
  const customer=byId('invCustomerSelect'),unit=byId('invUnitSelect'),date=byId('invDate'),terms=byId('invTerms');
  customer?.addEventListener('change',customerChanged,{signal});unit?.addEventListener('change',unitChanged,{signal});date?.addEventListener('change',syncDueDate,{signal});terms?.addEventListener('change',syncDueDate,{signal});
  for(const id of ['invTaxRate','invDiscountType','invDiscountValue','invShopSupplies','invEnvFee'])byId(id)?.addEventListener('input',previewTotals,{signal});
- document.getElementById('invoiceEditor')?.addEventListener('input',e=>{if(e.target.closest('[data-invoice-line]'))previewTotals()},{signal});
- document.getElementById('invoiceEditor')?.addEventListener('change',e=>{if(e.target.classList?.contains('ilTax'))previewTotals()},{signal});
+ document.getElementById('invoiceEditor')?.addEventListener('input',e=>{if(e.target.closest('[data-invoice-line]'))previewTotals();window.invoiceSetSaveState?.('dirty','Unsaved changes')},{signal});
+ document.getElementById('invoiceEditor')?.addEventListener('change',e=>{if(e.target.classList?.contains('ilTax'))previewTotals();window.invoiceSetSaveState?.('dirty','Unsaved changes')},{signal});
  loadCustomers(active);previewTotals();
 }
 
