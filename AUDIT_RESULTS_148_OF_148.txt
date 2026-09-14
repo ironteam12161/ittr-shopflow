@@ -1,0 +1,156 @@
+
+> ittr-shopflow-online@24.16.0 check
+> node --check server.js && node --check frontend_check.js && node --check modules/invoices.js && node --check modules/trucksearch.js && node --check modules/parts.js && node --check modules/customers.js && node --check modules/procenter.js && node release_audit.mjs
+
+PASS  release package version is 24.16.0 — 24.16.0
+PASS  frontend release is 24.16.0
+PASS  backend release is 24.16.0
+PASS  root/public frontend byte-identical — 80a2427b65c2
+PASS  no duplicate DOM IDs
+PASS  frontend inline JavaScript syntax
+PASS  no duplicate Express method/path routes
+PASS  manager create backend
+PASS  manager delete backend
+PASS  manager add UI
+PASS  permanent invoice delete backend
+PASS  permanent invoice delete UI
+PASS  invoice void workflow
+PASS  AI floating button
+PASS  AI shop chat endpoint
+PASS  multilingual AI voice selector
+PASS  mechanic Truck Is Here
+PASS  complete work order flow
+PASS  Fullbay customers import
+PASS  Fullbay parts import
+PASS  Fullbay service history import
+PASS  barcode scanner
+PASS  smart receiving
+PASS  side-by-side receiving preview
+PASS  offline banner
+PASS  offline sync queue badge
+PASS  manager permission middleware
+PASS  Fullbay inventory INSERT max SQL parameter remains $22 — max=$22
+PASS  Fullbay inventory INSERT does not reference $23
+PASS  manager employee management gated by employees permission
+PASS  Fullbay parts import gated by inventory permission
+PASS  Fullbay customer import gated by customer permission
+PASS  invoice APIs gated by invoices permission
+PASS  customer APIs gated by customers permission
+PASS  inventory APIs gated by inventory permission
+PASS  lazy host present: invoices
+PASS  module HTML present: invoices
+PASS  module JS present: invoices
+PASS  lazy host present: trucksearch
+PASS  module HTML present: trucksearch
+PASS  module JS present: trucksearch
+PASS  lazy host present: parts
+PASS  module HTML present: parts
+PASS  module JS present: parts
+PASS  lazy host present: customers
+PASS  module HTML present: customers
+PASS  module JS present: customers
+PASS  lazy host present: procenter
+PASS  module HTML present: procenter
+PASS  module JS present: procenter
+PASS  route loader uses dynamic import
+PASS  route unmount aborts module listeners
+PASS  heavy view DOM not embedded at startup
+PASS  mechanic self-start wizard UI
+PASS  mechanic self-start mobile entry
+PASS  mechanic self-start backend endpoint
+PASS  self-start restricted to mechanic role
+PASS  self-start forces current mechanic assignment
+PASS  self-start marks truck here
+PASS  DOT included in mechanic unit lookup
+PASS  touch-first mechanic target 52px
+PASS  job state color tokens
+PASS  AI FAB hidden while chat open
+PASS  AI mobile full screen 100dvh
+PASS  AI voice Web Speech API
+PASS  AI voice language en-US
+PASS  AI voice language uk-UA
+PASS  AI voice language pl-PL
+PASS  AI voice language es-ES
+PASS  AI voice language ru-RU
+PASS  persistent offline mutation queue
+PASS  sync badge exact requested id
+PASS  online restores queued POST sync
+PASS  receiving 50/50 dual pane
+PASS  receiving viewer zoom and rotate
+PASS  receiving supports price warning over 5 percent
+PASS  receiving missing part validation
+PASS  receiving unlinked vendor validation
+PASS  receiving Save Draft
+PASS  receiving Commit to Stock Inventory
+PASS  global toast region
+PASS  runtime errors use toast
+PASS  WebSocket server status feed
+PASS  WebSocket auth uses session token hash
+PASS  WebSocket client reconnect wrapper
+PASS  WebSocket reconnect max 30 seconds
+PASS  ws package dependency
+PASS  invoice compact labor row
+PASS  invoice compact part row
+PASS  invoice per-line discount type
+PASS  invoice per-line taxable control
+PASS  invoice print stylesheet
+PASS  old paid/void invoice permanent delete visible to admin
+PASS  shop AI send implementation restored
+PASS  AI writing live speech recognition
+PASS  AI processing state
+PASS  AI part verification banner
+PASS  invoice customer selector
+PASS  invoice unit selector
+PASS  invoice VIN autofill field
+PASS  invoice USDOT autofill field
+PASS  invoice payment terms controlled options
+PASS  invoice global discount percent/fixed
+PASS  invoice due-date live module logic
+PASS  invoice live total preview
+PASS  invoice tax only taxable lines
+PASS  invoice snapshot USDOT schema
+PASS  invoice global discount schema
+PASS  invoice professional print branding
+PASS  invoice service-card grouping
+PASS  invoice labor shown before attached parts
+PASS  legacy labor rate preset 115
+PASS  legacy labor rate preset 110
+PASS  legacy labor rate preset 100
+PASS  legacy labor rate preset 60
+PASS  legacy labor rate labels restored
+PASS  customer default labor rate supported
+PASS  service supports direct part add
+PASS  service supports additional labor
+PASS  new service workflow
+PASS  invoice compact grid header
+PASS  invoice grid shows Cost column
+PASS  invoice grid shows Selling Price column
+PASS  invoice part cost remains editable
+PASS  invoice bottom Add Labor Line
+PASS  invoice bottom Add a Service
+PASS  invoice bottom Add Misc Charge
+PASS  invoice service quick Add Part
+PASS  invoice service subtotal row
+PASS  invoice old rate presets all preserved
+PASS  invoice list opens dedicated workspace
+PASS  invoice workspace URL supported
+PASS  invoice workspace activates after login
+PASS  invoice workspace uses full viewport class
+PASS  part rows query live inventory
+PASS  part inventory lookup fills part number
+PASS  part inventory lookup fills description
+PASS  part inventory lookup fills cost
+PASS  part inventory lookup fills selling price
+PASS  part inventory suggestions show availability
+PASS  mechanic account renderer restored
+PASS  invoice opens regular new tab without popup features
+PASS  invoice structural actions preserve current draft
+PASS  invoice draft preservation saves all line edits
+PASS  invoice line save preserves sibling unsaved rows
+PASS  invoice delete preserves sibling unsaved rows
+PASS  invoice visible draft state indicator
+PASS  parts autocomplete remains wired after draft fix
+
+148/148 checks passed.
+
+ZIP/package preparation: pending

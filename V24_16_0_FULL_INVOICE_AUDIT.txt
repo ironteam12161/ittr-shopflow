@@ -1,0 +1,12 @@
+ITTR v24.16.0 FULL INVOICE AUDIT
+
+ROOT CAUSES FIXED
+- renderMechanicAccounts() was called by render() but absent from the production index, causing the visible runtime App error. The renderer was restored and the call is defensively guarded.
+- v24.15 opened invoice workspaces with popup=yes and explicit dimensions, making browsers treat them as popup windows. The opener now uses _blank + noopener with no popup feature string.
+- Structural invoice actions posted the new line and then re-fetched/re-rendered the entire invoice. Unsaved DOM values were therefore replaced by the last database state. All current invoice lines and header fields are now persisted before structural changes.
+- Saving a single invoice row previously re-rendered the invoice and could wipe unsaved edits in other rows. Row Save now persists the full draft before refreshing.
+
+INVOICE AREAS AUDITED
+Create draft; customer/unit binding; VIN/USDOT/mileage; service grouping; legacy labor rates; add part; add labor; misc charge; inventory autocomplete; per-row cost/sell/tax/discount; global tax/discount; totals; header save; row save; delete line; reopen; finalize; payment; payment link; email; PDF; print; void; permanent deletion; dedicated tab workspace; mobile responsive behavior.
+
+NO DATABASE RESET REQUIRED.

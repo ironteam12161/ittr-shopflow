@@ -11,9 +11,9 @@ const server = read('server.js');
 const pkg = JSON.parse(read('package.json'));
 const modulesInvoicesHtml = read('modules/invoices.html');
 
-check('release package version is 24.15.0', pkg.version === '24.15.0', pkg.version);
-check('frontend release is 24.15.0', html.includes("const FRONTEND_VERSION='24.15.0';") || html.includes('const FRONTEND_VERSION="24.15.0";'));
-check('backend release is 24.15.0', server.includes('frontendExpected:"24.15.0",backend:"24.15.0"'));
+check('release package version is 24.16.0', pkg.version === '24.16.0', pkg.version);
+check('frontend release is 24.16.0', html.includes("const FRONTEND_VERSION='24.16.0';") || html.includes('const FRONTEND_VERSION="24.16.0";'));
+check('backend release is 24.16.0', server.includes('frontendExpected:"24.16.0",backend:"24.16.0"'));
 check('root/public frontend byte-identical', html === pub, crypto.createHash('sha256').update(html).digest('hex').slice(0,12));
 
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
@@ -177,6 +177,16 @@ check('part inventory lookup fills cost', html.includes("set('.ilCost',Number(it
 check('part inventory lookup fills selling price', html.includes("set('.ilPrice',Number(item.price||0).toFixed(2))"));
 check('part inventory suggestions show availability', html.includes('Avail ${Number(x.available||0).toLocaleString()}'));
 
+
+// v24.16.0 invoice tab / draft-preservation / runtime regression guards.
+check('mechanic account renderer restored', html.includes('function renderMechanicAccounts()') && html.includes('mechanicAccountsTable'));
+check('invoice opens regular new tab without popup features', html.includes("window.open(url,'_blank','noopener')") && !html.includes('popup=yes,width=${ww}'));
+check('invoice structural actions preserve current draft', html.includes("persistInvoiceDraftBeforeStructureChange('Preserving your invoice')"));
+check('invoice draft preservation saves all line edits', html.includes('await saveAllInvoiceLines()') && html.includes('function invoiceHeaderPayload()'));
+check('invoice line save preserves sibling unsaved rows', html.includes('async function saveInvoiceLine(id)') && html.includes("await saveAllInvoiceLines();const r=await fetch(`/api/invoices/${i.id}`"));
+check('invoice delete preserves sibling unsaved rows', html.includes("deleteInvoiceLine(lineId)") && html.includes("persistInvoiceDraftBeforeStructureChange('Preserving your invoice')"));
+check('invoice visible draft state indicator', html.includes('id="invoiceDraftState"') && modulesInvoicesHtml.includes('.invoiceDraftState'));
+check('parts autocomplete remains wired after draft fix', html.includes('scheduleInvoicePartLookup') && html.includes('/api/parts?q=${encodeURIComponent(q)}&limit=12'));
 const failed = checks.filter(x=>!x.ok);
 for (const x of checks) console.log(`${x.ok?'PASS':'FAIL'}  ${x.name}${x.detail?` — ${x.detail}`:''}`);
 console.log(`\n${checks.length-failed.length}/${checks.length} checks passed.`);
