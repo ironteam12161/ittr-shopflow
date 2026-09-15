@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.20.0</title>
+<title>ITTR ShopFlow v24.20.1</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -723,7 +723,7 @@ body.modalOpen{overflow:hidden}
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.20.0 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.20.1 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -970,7 +970,7 @@ body.modalOpen{overflow:hidden}
   <div class="aiCopilotHead"><div class="aiCopilotBrand"><div class="aiCopilotIcon">AI</div><div><h3 style="margin:0">ITTR Workshop Copilot</h3><div class="muted">Shop history · unit intelligence · licensed manuals · multilingual</div></div></div><div class="actions"><button class="secondary" style="color:white;border-color:#64748b;background:transparent" onclick="openManualLibrary()">Manuals</button><button class="x" onclick="toggleShopAI(false)">×</button></div></div>
   <div><div class="aiContextBar"><div class="field"><label>Unit context</label><input id="shopAiUnit" list="unitDirectoryList" placeholder="Unit # or VIN — optional"></div><button class="secondary" onclick="clearShopAI()">New Chat</button></div><div class="aiQuick"><button onclick="shopAiAskQuick('When was the last oil service on this unit?')">Last oil service</button><button onclick="shopAiAskQuick('Summarize the recent repair history for this unit.')">Recent repairs</button><button onclick="shopAiAskQuick('What open or future repairs are recorded for this unit?')">Open / future work</button><button onclick="shopAiAskQuick('Find the torque specification or service procedure I ask for using the licensed workshop manual.')">Torque / specs</button><button onclick="shopAiAskQuick('Help me find the correct wiring diagram or manual section for this unit.')">Wiring / manual</button></div></div>
   <div id="shopAiMessages" class="aiChatBody"><div class="aiWelcome"><b>Ask the shop like you would ask a senior service writer.</b><div class="muted" style="margin-top:5px">English, Ukrainian, Polish, Spanish or Russian. Unit history answers come from your own ITTR / Fullbay data. Exact technical specs are only returned from a licensed manual you add.</div><div class="aiWelcomeGrid"><div class="aiWelcomeCard"><b>Unit history</b><br>“коли була заміна масла на 6600?”</div><div class="aiWelcomeCard"><b>Technical reference</b><br>“What is the wheel nut torque on this truck?”</div></div></div></div>
-  <div class="aiComposer"><div class="aiComposerBox"><button id="shopAiAttach" class="secondary aiComposerIcon" type="button" onclick="document.getElementById('shopAiFile')?.click()" title="Attach invoice, PDF, image or CSV">＋</button><input id="shopAiFile" type="file" accept=".pdf,.csv,image/jpeg,image/png,image/webp,text/csv" hidden onchange="shopAiFileSelected(this)"><button id="shopAiMic" class="secondary aiComposerIcon" type="button" onclick="toggleShopAiVoice()" title="Voice input">🎤</button><textarea id="shopAiInput" rows="2" placeholder="Ask about a unit, repair, torque spec, procedure, wiring diagram…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendShopAI()}"></textarea><button id="shopAiSend" class="aiComposerIcon" onclick="sendShopAI()">➤</button></div><div class="aiComposerMeta"><span>AI can make mistakes. Verify safety-critical specs against the cited manual.</span><span style="display:flex;align-items:center;gap:8px"><label for="shopAiVoiceLanguage" class="muted">Voice</label><select id="shopAiVoiceLanguage" class="aiVoiceLanguage" aria-label="Voice input language"><option value="en-US">English</option><option value="uk-UA">Українська</option><option value="pl-PL">Polski</option><option value="es-ES">Español</option><option value="ru-RU">Русский</option></select><span id="shopAiVoiceStatus"></span></span></div></div>
+  <div class="aiComposer"><div class="aiComposerBox"><button id="shopAiAttach" class="secondary aiComposerIcon" type="button" onclick="document.getElementById('shopAiFile')?.click()" title="Attach invoice, PDF, image or CSV">＋</button><input id="shopAiFile" type="file" accept=".pdf,.csv,image/jpeg,image/png,image/webp,text/csv" hidden onchange="shopAiFileSelected(this)"><button id="shopAiMic" class="secondary aiComposerIcon" type="button" onclick="toggleShopAiVoice()" title="Voice input">🎤</button><textarea id="shopAiInput" rows="2" placeholder="Ask anything, or paste a screenshot here (Ctrl+V)…" onpaste="shopAiHandlePaste(event)" ondragover="shopAiDragOver(event)" ondrop="shopAiHandleDrop(event)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendShopAI()}"></textarea><button id="shopAiSend" class="aiComposerIcon" onclick="sendShopAI()">➤</button></div><div class="aiComposerMeta"><span>Paste screenshots with Ctrl+V · drag/drop files · AI can make mistakes. Verify safety-critical specs against the cited manual.</span><span style="display:flex;align-items:center;gap:8px"><label for="shopAiVoiceLanguage" class="muted">Voice</label><select id="shopAiVoiceLanguage" class="aiVoiceLanguage" aria-label="Voice input language"><option value="en-US">English</option><option value="uk-UA">Українська</option><option value="pl-PL">Polski</option><option value="es-ES">Español</option><option value="ru-RU">Русский</option></select><span id="shopAiVoiceStatus"></span></span></div></div>
 </div>
 <div id="manualLibraryModal" class="modal"><div class="modalbox" style="max-width:900px"><div class="modalhead"><div><h2>Workshop Manual Library</h2><div class="muted">Add only manuals and technical documents your shop owns or is licensed to use.</div></div><button class="x" onclick="closeModal('manualLibraryModal')">×</button></div><form id="manualLibraryForm"><div class="manualGrid"><div class="field"><label>Manual title *</label><input name="title" required placeholder="Freightliner Cascadia Workshop Manual"></div><div class="field"><label>Category</label><select name="category"><option value="service_manual">Service Manual</option><option value="wiring">Wiring Diagrams</option><option value="specifications">Specifications / Torque</option><option value="engine">Engine Manual</option><option value="transmission">Transmission Manual</option><option value="bulletin">Technical Bulletin</option></select></div><div class="field"><label>Make</label><input name="make" placeholder="Freightliner"></div><div class="field"><label>Model</label><input name="model" placeholder="Cascadia"></div><div class="field"><label>Year from</label><input name="yearFrom" type="number" placeholder="2018"></div><div class="field"><label>Year to</label><input name="yearTo" type="number" placeholder="2026"></div><div class="field"><label>Engine</label><input name="engine" placeholder="DD15 / X15"></div><div class="field"><label>Source name</label><input name="sourceName" placeholder="OEM / Mitchell TruckSeries / shop manual"></div><div class="field full"><label>Source URL (optional)</label><input name="sourceUrl" placeholder="Licensed portal or OEM source link"></div><div class="field full"><label>PDF manual (optional, max 20 MB)</label><input name="manual" type="file" accept="application/pdf"></div></div><div class="actions" style="margin-top:12px"><button type="button" class="secondary" onclick="closeModal('manualLibraryModal')">Close</button><button type="submit">Add Manual</button></div></form><div style="margin-top:16px"><h3>Available Manuals</h3><div id="manualLibraryList" class="muted">Loading…</div></div></div></div>
 </main>
@@ -1267,7 +1267,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.20.0';
+const FRONTEND_VERSION='24.20.1';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1489,7 +1489,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.20.0";
+const ROUTE_MODULE_VERSION="24.20.1";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -2690,7 +2690,31 @@ function toggleShopAiVoice(){const SR=window.SpeechRecognition||window.webkitSpe
 let shopAiBusy=false;
 function shopAiMessageHtml(role,text,sources=[]){const head=role==='user'?'You':'Workshop AI';const chips=(sources||[]).map(s=>`<span class="aiSourceChip ${s.type==='manual'?'manual':''}"${s.manualId?` onclick="openManualDocument(${Number(s.manualId)})"`:''}>${esc(s.label||s.type||'Source')}</span>`).join('');return `<div class="aiMsg ${role}"><div class="aiMsgHead">${head}</div><div>${esc(String(text||'')).replace(/\n/g,'<br>')}</div>${chips?`<div class="aiSources">${chips}</div>`:''}</div>`}
 let shopAiPendingFile=null,shopAiImportDraft=null;
-function shopAiFileSelected(input){shopAiPendingFile=input?.files?.[0]||null;if(!shopAiPendingFile)return;const body=document.getElementById('shopAiMessages');body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`Attached: ${shopAiPendingFile.name}. ${/csv/i.test(shopAiPendingFile.type)||/\\.csv$/i.test(shopAiPendingFile.name)?'CSV detected. Customer/unit and repair-order CSV files can be routed to the import tools.':'I can analyze this as a legacy invoice/service-order document and prepare a draft.'}`));}
+function shopAiAcceptFile(file,source='attached'){
+  if(!file)return false;
+  const ok=/^(image\/jpeg|image\/png|image\/webp|application\/pdf|text\/csv)$/i.test(file.type||'')||/\.(pdf|csv|jpe?g|png|webp)$/i.test(file.name||'');
+  if(!ok){showToast?.('Paste or attach a PDF, CSV, JPG, PNG, or WEBP file.','warning',6500);return false}
+  shopAiPendingFile=file;
+  const body=document.getElementById('shopAiMessages');
+  const label=file.name||'pasted-file';
+  body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`${source==='pasted'?'Pasted':'Attached'}: ${label}. ${/csv/i.test(file.type)||/\.csv$/i.test(label)?'CSV detected. I can route it to the protected import tools.':'I can analyze this as a legacy invoice/service-order document and prepare a draft.'}`));
+  body?.scrollTo({top:body.scrollHeight,behavior:'smooth'});
+  return true;
+}
+function shopAiHandlePaste(event){
+  const items=Array.from(event.clipboardData?.items||[]);
+  const fileItem=items.find(x=>x.kind==='file'&&/^image\//i.test(x.type||''))||items.find(x=>x.kind==='file');
+  if(!fileItem)return;
+  const file=fileItem.getAsFile?.();if(!file)return;
+  event.preventDefault();
+  const ext=(file.type||'image/png').split('/')[1]?.replace('jpeg','jpg')||'png';
+  const named=new File([file],`pasted-invoice-${new Date().toISOString().replace(/[:.]/g,'-')}.${ext}`,{type:file.type||'image/png'});
+  if(shopAiAcceptFile(named,'pasted'))showToast?.('Screenshot pasted into Workshop AI. Add a message or press Send to analyze it.','success',5500);
+}
+function shopAiDragOver(event){event.preventDefault();event.dataTransfer.dropEffect='copy'}
+function shopAiHandleDrop(event){event.preventDefault();const file=event.dataTransfer?.files?.[0];if(file&&shopAiAcceptFile(file,'attached'))showToast?.('File dropped into Workshop AI.','success',4500)}
+
+function shopAiFileSelected(input){const file=input?.files?.[0]||null;if(!file)return;shopAiAcceptFile(file,'attached');}
 function shopAiImportSummary(d){const sv=Array.isArray(d?.services)?d.services:[],parts=sv.reduce((n,x)=>n+(Array.isArray(x.parts)?x.parts.length:0),0),labor=sv.reduce((n,x)=>n+(Array.isArray(x.labor)?x.labor.length:0),0),warn=Array.isArray(d?.warnings)?d.warnings:[];return `AI IMPORT REVIEW\\nCustomer: ${d.customerName||'Needs review'}${d.matches?.customer?' ✓ Matched':''}\\nUnit: ${d.unitNumber||'Needs review'}${d.matches?.unit?' ✓ Matched':''}\\nVIN: ${d.vin||'—'}\\nSource: ${d.sourceNumber||'—'}\\nServices: ${sv.length} · Labor lines: ${labor} · Parts: ${parts}\\nLabor total: ${d.laborTotal==null?'—':money(d.laborTotal)} · Parts total: ${d.partsTotal==null?'—':money(d.partsTotal)} · Total: ${d.grandTotal==null?'—':money(d.grandTotal)}${warn.length?`\\nNeeds review: ${warn.join('; ')}`:''}\\n\\nNothing has been written to billing yet.`}
 async function analyzeShopAiAttachment(message){const f=shopAiPendingFile;if(!f)return false;if(/\\.csv$/i.test(f.name)||/csv/i.test(f.type)){showToast('CSV detected. Opening Fullbay Data Center so you can use the safe customer/unit or repair-order importer.','info',6500);shopAiPendingFile=null;document.getElementById('shopAiFile').value='';toggleShopAI(false);showView('operations');setTimeout(()=>{try{showProPanel('fullbay')}catch{}},250);return true}const fd=new FormData();fd.append('file',f);fd.append('message',message||'Import this legacy invoice into ITTR.');const resp=await fetch('/api/ai/import/analyze',{method:'POST',headers:authHeaders(),body:fd});const data=await resp.json().catch(()=>({}));if(!resp.ok)throw new Error(data.error||`AI import failed (${resp.status})`);shopAiImportDraft=data.draft;shopAiPendingFile=null;document.getElementById('shopAiFile').value='';const body=document.getElementById('shopAiMessages');body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',shopAiImportSummary(shopAiImportDraft)));body?.insertAdjacentHTML('beforeend','<div class="aiMsg assistant"><div class="aiMsgHead">Review actions</div><div class="actions"><button class="primary" onclick="commitShopAiInvoiceDraft()">Create Draft Invoice</button><button class="secondary" onclick="shopAiImportDraft=null">Discard</button></div></div>');return true}
 async function commitShopAiInvoiceDraft(){if(!shopAiImportDraft)return showToast('No AI import draft is waiting for review.','warning');if(!confirm('Create a DRAFT invoice from this AI extraction? You can review and edit it before finalizing.'))return;const r=await fetch('/api/ai/import/commit-invoice',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({draft:shopAiImportDraft})});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Could not create draft invoice.');shopAiImportDraft=null;showToast('Draft invoice created. Opening it in a new tab.','success');openInvoiceWorkspace?.(d.id)}
