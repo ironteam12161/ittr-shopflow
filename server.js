@@ -1173,7 +1173,7 @@ app.get("/api/smart-search",auth,adminOnly,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"24.22.2",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"24.22.3",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -1207,7 +1207,7 @@ async function reconcileDuplicateImportedCustomers(){
 }
 
 
-// ===== v24.22.2: Samsara + duplicate customer management =====
+// ===== v24.22.3: Samsara + duplicate customer management =====
 const SAMSARA_API_BASE='https://api.samsara.com';
 async function samsaraRequest(pathname,query={}){
  const token=String(process.env.SAMSARA_API_TOKEN||'').trim();
@@ -1283,22 +1283,43 @@ app.get('/api/customers/duplicate-audit',auth,managerPermission('customers'),asy
 });
 
 app.post('/api/customers/merge-preview',auth,ownerOnly,async(req,res)=>{
+ let stage='validate';
  try{
   const db=requireDb(),masterId=Number(req.body?.masterId),duplicateId=Number(req.body?.duplicateId);
-  if(!masterId||!duplicateId||masterId===duplicateId)return res.status(400).json({error:'Select two different customer records.'});
-  const customers=(await db.query('SELECT id,customer_name,dot_number,fullbay_id FROM fullbay_import_customers WHERE id=ANY($1::bigint[]) ORDER BY id',[[masterId,duplicateId]])).rows;
-  if(customers.length!==2)return res.status(404).json({error:'One or both customer records were not found.'});
-  const counts={};
-  for(const id of [masterId,duplicateId]){
-   const r=await db.query(`SELECT
-    (SELECT count(*)::int FROM customer_units WHERE customer_id=$1) units,
-    (SELECT count(*)::int FROM fullbay_service_history WHERE customer_id=$1) history,
-    (SELECT count(*)::int FROM customer_invoices WHERE customer_id=$1) invoices,
-    (SELECT count(*)::int FROM service_orders WHERE customer_id=$1) service_orders`,[id]);
-   counts[id]=r.rows[0];
+  if(!Number.isSafeInteger(masterId)||!Number.isSafeInteger(duplicateId)||masterId<=0||duplicateId<=0||masterId===duplicateId)
+   return res.status(400).json({error:'Select two different customer records.'});
+
+  stage='load customers';
+  const master=(await db.query('SELECT id,customer_name,dot_number,fullbay_id FROM fullbay_import_customers WHERE id=$1',[masterId])).rows[0];
+  const duplicate=(await db.query('SELECT id,customer_name,dot_number,fullbay_id FROM fullbay_import_customers WHERE id=$1',[duplicateId])).rows[0];
+  if(!master||!duplicate)return res.status(404).json({error:'One or both customer records were not found.'});
+
+  async function safeCustomerCount(table,id){
+   const allowed=new Set(['customer_units','fullbay_service_history','customer_invoices','service_orders']);
+   if(!allowed.has(table))throw new Error('Unsupported merge preview table.');
+   const exists=(await db.query('SELECT to_regclass($1) AS name',[`public.${table}`])).rows[0]?.name;
+   if(!exists)return 0;
+   return Number((await db.query(`SELECT count(*)::int AS n FROM ${table} WHERE customer_id=$1`,[id])).rows[0]?.n||0);
   }
-  res.json({ok:true,customers,counts});
- }catch(e){console.error('customer merge preview failed',e);res.status(500).json({error:'Customer merge preview failed.'})}
+  stage='count master';
+  const masterCounts={
+   units:await safeCustomerCount('customer_units',masterId),
+   history:await safeCustomerCount('fullbay_service_history',masterId),
+   invoices:await safeCustomerCount('customer_invoices',masterId),
+   service_orders:await safeCustomerCount('service_orders',masterId)
+  };
+  stage='count duplicate';
+  const duplicateCounts={
+   units:await safeCustomerCount('customer_units',duplicateId),
+   history:await safeCustomerCount('fullbay_service_history',duplicateId),
+   invoices:await safeCustomerCount('customer_invoices',duplicateId),
+   service_orders:await safeCustomerCount('service_orders',duplicateId)
+  };
+  res.json({ok:true,customers:[master,duplicate],counts:{[masterId]:masterCounts,[duplicateId]:duplicateCounts}});
+ }catch(e){
+  console.error('customer merge preview failed at '+stage,e);
+  res.status(500).json({error:`Customer merge preview failed during ${stage}.`});
+ }
 });
 app.post('/api/customers/merge',auth,ownerOnly,async(req,res,next)=>{
  const pool=requireDb(),db=await pool.connect();
@@ -1317,8 +1338,11 @@ app.post('/api/customers/merge',auth,ownerOnly,async(req,res,next)=>{
    else{await db.query('UPDATE customer_units SET customer_id=$1,customer_name=$2,updated_at=now() WHERE id=$3',[masterId,master.customer_name,u.id]);movedUnits++}
   }
   const hist=await db.query('UPDATE fullbay_service_history SET customer_id=$1,customer_name=$2,updated_at=now() WHERE customer_id=$3 RETURNING id',[masterId,master.customer_name,duplicateId]);
-  const invoices=await db.query('UPDATE customer_invoices SET customer_id=$1,customer_name=$2,updated_at=now() WHERE customer_id=$3 RETURNING id',[masterId,master.customer_name,duplicateId]);
-  const serviceOrders=await db.query('UPDATE service_orders SET customer_id=$1,customer_name=$2,updated_at=now() WHERE customer_id=$3 RETURNING id',[masterId,master.customer_name,duplicateId]);
+  let invoices={rowCount:0},serviceOrders={rowCount:0};
+  if((await db.query("SELECT to_regclass('public.customer_invoices') AS name")).rows[0]?.name)
+   invoices=await db.query('UPDATE customer_invoices SET customer_id=$1,customer_name=$2,updated_at=now() WHERE customer_id=$3 RETURNING id',[masterId,master.customer_name,duplicateId]);
+  if((await db.query("SELECT to_regclass('public.service_orders') AS name")).rows[0]?.name)
+   serviceOrders=await db.query('UPDATE service_orders SET customer_id=$1,customer_name=$2,updated_at=now() WHERE customer_id=$3 RETURNING id',[masterId,master.customer_name,duplicateId]);
   await db.query(`UPDATE fullbay_import_customers SET phone=coalesce(nullif(phone,''),$2),email=coalesce(nullif(email,''),$3),dot_number=coalesce(nullif(dot_number,''),$4),updated_at=now() WHERE id=$1`,[masterId,dup.phone||null,dup.email||null,dup.usdot||null]);
   await db.query('DELETE FROM fullbay_import_customers WHERE id=$1',[duplicateId]);
   await db.query('COMMIT');
@@ -1326,8 +1350,8 @@ app.post('/api/customers/merge',auth,ownerOnly,async(req,res,next)=>{
   res.json({ok:true,masterId,duplicateId,movedUnits,mergedUnits,historyMoved:hist.rowCount,invoicesMoved:invoices.rowCount,serviceOrdersMoved:serviceOrders.rowCount});
  }catch(e){try{await db.query('ROLLBACK')}catch{};next(e)}finally{db.release()}
 });
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.22.2",backend:"24.22.2",build:"ITTR-24.22.2-PRINT-LEGAL-PART-LOOKUP-20260914"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.22.2",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.22.3",backend:"24.22.3",build:"ITTR-24.22.3-PRINT-LEGAL-PART-LOOKUP-20260914"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.22.3",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -3036,7 +3060,7 @@ app.post('/api/ai/import/commit-history',auth,managerPermission('customers'),asy
 }catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
 app.post('/api/ai/import/commit-invoice',auth,managerPermission('invoices'),async(req,res,next)=>{const db=await requireDb().connect();try{const d=req.body?.draft||{};if(!Array.isArray(d.services)||!d.services.length)return res.status(400).json({error:'No service lines were detected. Review the import first.'});await db.query('BEGIN');const customerId=Number(d.matches?.customer?.id||0)||null,unitId=Number(d.matches?.unit?.id||0)||null,num=await nextInvoiceNumber(db),terms=String(d.terms||'Due on Receipt'),days=/60/.test(terms)?60:/30/.test(terms)?30:/15/.test(terms)?15:0;const q=await db.query(`INSERT INTO customer_invoices(invoice_number,customer_id,customer_name,unit_id,unit_number,vin,dot_number,mileage,po_number,invoice_date,due_date,terms,tax_rate,internal_note,created_by) VALUES($1,$2::bigint,$3,$4::bigint,$5,$6,$7,$8::numeric,$9,coalesce($10::date,CURRENT_DATE),coalesce($11::date,coalesce($10::date,CURRENT_DATE)+$12::int),$13,0,$14,$15) RETURNING id`,[num,customerId,String(d.customerName||d.matches?.customer?.name||'Legacy Customer'),unitId,String(d.unitNumber||d.matches?.unit?.unitNumber||''),String(d.vin||d.matches?.unit?.vin||''),String(d.usdot||d.matches?.customer?.dotNumber||''),Number(d.mileage||0)||null,String(d.poNumber||''),d.invoiceDate||null,d.dueDate||null,days,terms,`AI imported from legacy ${d.documentType||'invoice'}${d.sourceNumber?` · Source ${d.sourceNumber}`:''}. Review before finalizing.`,req.user.username]);const iid=q.rows[0].id;let order=0;for(const svc of d.services){const job=String(svc.description||'Legacy Service').slice(0,500);const labors=Array.isArray(svc.labor)&&svc.labor.length?svc.labor:[{description:job,hours:0,rate:0,taxable:false}];let parent=null;for(const l of labors){const qty=Math.max(0,Number(l.hours||0)),price=Math.max(0,Number(l.rate||0));const x=await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,quantity,unit_price,unit_cost,taxable,line_total,parent_line_id) VALUES($1,$2,$3,$4,'labor',$5,$6::numeric,$7::numeric,0,$8::boolean,$6::numeric*$7::numeric,NULL) RETURNING id`,[iid,++order,crypto.randomUUID(),job,String(l.description||job),qty,price,l.taxable===true]);if(!parent)parent=x.rows[0].id}for(const part of Array.isArray(svc.parts)?svc.parts:[]){const qty=Math.max(0,Number(part.quantity||0)),price=Math.max(0,Number(part.unitPrice||0));await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_name,line_type,description,part_number,quantity,unit_price,unit_cost,taxable,line_total,parent_line_id) VALUES($1,$2,$3,'part',$4,$5,$6::numeric,$7::numeric,0,$8::boolean,$6::numeric*$7::numeric,$9::bigint)`,[iid,++order,job,String(part.description||part.partNumber||'Part'),String(part.partNumber||''),qty,price,part.taxable!==false,parent])}}
  await recalcInvoice(db,iid);await db.query('COMMIT');await audit(req.user.username,'ai_legacy_invoice_committed',{invoiceId:iid,sourceNumber:d.sourceNumber||'',services:d.services.length});res.json({ok:true,id:iid})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
-app.post('/api/ai/copilot/action',auth,async(req,res)=>{try{const message=String(req.body?.message||'').trim();if(!message)return res.status(400).json({error:'message required'});const m=message.toLowerCase();let action=null;if(/\b(open|go to|show)\b.*\binvoice/.test(m))action={type:'navigate',view:'invoices',label:'Open Invoices'};else if(/\b(open|go to|show)\b.*\b(parts|inventory)\b/.test(m))action={type:'navigate',view:'parts',label:'Open Parts'};else if(/\b(open|go to|show)\b.*\bcustomer/.test(m))action={type:'navigate',view:'customers',label:'Open Customers'};else if(/\b(open|go to|show)\b.*\b(work order|work orders)\b/.test(m))action={type:'navigate',view:'workorders',label:'Open Work Orders'};else if(/\b(check|audit|diagnos|bug|lag|slow|error)/.test(m)){const db=requireDb();const build={frontend:'24.22.2',backend:'24.22.2'};const auditRows=(await db.query('SELECT action,created_at FROM server_audit ORDER BY id DESC LIMIT 40')).rows;action={type:'diagnostic',label:'ShopFlow diagnostic',report:{build,online:true,recentAuditEvents:auditRows.length,checks:['API route available','Database query successful','Copilot action layer responding'],note:'Runtime browser performance and failed requests are captured by the client diagnostic snapshot when available.'}}}res.json({ok:true,action})}catch(e){return aiErrorResponse(res,e,'Copilot action failed')}});
+app.post('/api/ai/copilot/action',auth,async(req,res)=>{try{const message=String(req.body?.message||'').trim();if(!message)return res.status(400).json({error:'message required'});const m=message.toLowerCase();let action=null;if(/\b(open|go to|show)\b.*\binvoice/.test(m))action={type:'navigate',view:'invoices',label:'Open Invoices'};else if(/\b(open|go to|show)\b.*\b(parts|inventory)\b/.test(m))action={type:'navigate',view:'parts',label:'Open Parts'};else if(/\b(open|go to|show)\b.*\bcustomer/.test(m))action={type:'navigate',view:'customers',label:'Open Customers'};else if(/\b(open|go to|show)\b.*\b(work order|work orders)\b/.test(m))action={type:'navigate',view:'workorders',label:'Open Work Orders'};else if(/\b(check|audit|diagnos|bug|lag|slow|error)/.test(m)){const db=requireDb();const build={frontend:'24.22.3',backend:'24.22.3'};const auditRows=(await db.query('SELECT action,created_at FROM server_audit ORDER BY id DESC LIMIT 40')).rows;action={type:'diagnostic',label:'ShopFlow diagnostic',report:{build,online:true,recentAuditEvents:auditRows.length,checks:['API route available','Database query successful','Copilot action layer responding'],note:'Runtime browser performance and failed requests are captured by the client diagnostic snapshot when available.'}}}res.json({ok:true,action})}catch(e){return aiErrorResponse(res,e,'Copilot action failed')}});
 
 app.post("/api/ai/shop-chat",auth,async(req,res)=>{try{
  const question=String(req.body?.message||'').trim();if(!question)return res.status(400).json({error:'message required'});if(question.length>3000)return res.status(400).json({error:'Message is too long.'});
@@ -3112,5 +3136,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v24.22.2 Online running on port ${port}`))})
+  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v24.22.3 Online running on port ${port}`))})
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});
