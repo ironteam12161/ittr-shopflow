@@ -11,3 +11,13 @@ window.aiPartAssistant=async function(){const q=document.getElementById("aiPartQ
 export async function mount(scope){localAbort=new AbortController();scope.on(scope.host,"ittr:module-refresh",()=>window.renderProCenter?.(),{passive:true});await window.renderProCenter?.();setTimeout(()=>window.checkAIConnection?.(),0)}
 export async function afterShow(){await window.renderProCenter?.()}
 export function unmount(){localAbort?.abort();localAbort=null;if(voiceRecognition){try{voiceRecognition.stop()}catch{}voiceRecognition=null}}
+
+async function reconcileFullbayHistory(){
+ if(!requireAdmin())return;
+ const box=document.getElementById("fullbayImportStatus");if(box)box.textContent="Auditing customer/unit/history links…";
+ try{
+  const d=await apiJSON("/api/fullbay/history/reconcile",{method:"POST",body:"{}"}),r=d.report||{};
+  alert(`History audit complete.\n\nCustomer links repaired: ${r.customerLinks||0}\nUnit links repaired: ${r.unitLinks||0}\nMetadata backfilled: ${r.metadataBackfill||0}\nHistory rows still without a unit: ${r.orphanHistory||0}\nUnits with non-standard/short VIN or serial: ${r.invalidVinUnits||0}\nDuplicate customer + unit-number groups: ${r.duplicateCustomerUnits||0}\n\nNo records were deleted.`);
+  await renderFullbayImportStatus();
+ }catch(e){alert(e.message||"History audit failed.");if(box)box.textContent=e.message||"History audit failed."}
+}
