@@ -1,4 +1,4 @@
-# ITTR ShopFlow v24.21.2 — AI Paste + DB Fix
+# ITTR ShopFlow v24.22.0 — AI Paste + DB Fix
 
 Fixes the AI import error `column "buy_price" does not exist`. The actual inventory table uses `cost` and `price`; AI enrichment now aliases those correctly.
 
