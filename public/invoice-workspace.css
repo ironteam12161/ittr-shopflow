@@ -1,4 +1,5 @@
-<style>
+/* ITTR v24.21.2 authoritative invoice workspace stylesheet */
+
 #invoices .invoice-module-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:16px}
 #invoices .invoice-module-head h1{margin:0 0 4px}
 #invoices .invoice-module-actions{display:flex;gap:8px;flex-wrap:wrap}
@@ -38,13 +39,9 @@
  .invoiceTotals h2,.invoiceTotals h3,.invoiceTotals .historyitem,.invoiceTotals .invoiceAdvancedFees{display:none!important}.invoiceTotals{width:310px!important;margin-left:auto!important;border-top:1px solid #111!important;padding-top:8px!important}.invoiceTotals .invoiceSummaryRow,.invoiceTotals .invoiceSummaryGrand,.invoiceBalanceLabel,.moneyBig{visibility:visible!important}.invoiceTotals hr{border:0;border-top:1px solid #ddd}.moneyBig{font-size:18pt!important}.invoiceGlobalDiscount{display:none!important}
  .invoiceEditorGrid>div>.card:last-child{margin-top:16px!important;border-top:1px solid #ddd!important;padding-top:10px!important}.invoiceWarrantyNotice{visibility:visible!important;display:grid!important;break-inside:avoid!important;margin-top:14px!important;padding:9px 10px!important;border:1px solid #bbb!important;border-radius:0!important;font-size:7.5pt!important;line-height:1.3!important}.invoiceWarrantyNotice *{visibility:visible!important}.invoiceWarrantyNotice b{font-size:7.5pt!important}body{background:#fff!important;color:#000!important}
 }
-</style>
-<div class="invoice-module-head"><div><h1>Invoices</h1><div class="muted">Open invoices in a dedicated full-screen billing workspace with inventory-connected parts, service labor, tax, discounts and customer-ready printing.</div></div><div class="invoice-module-actions"><button onclick="openManualInvoice()">+ New Invoice</button></div></div>
-<div id="invoiceKpis" class="statgrid"></div>
-<div class="invoice-filter-card"><button class="filterbtn active" data-invfilter="all" onclick="setInvoiceFilter('all',this)">All</button><button class="filterbtn" data-invfilter="draft" onclick="setInvoiceFilter('draft',this)">Draft</button><button class="filterbtn" data-invfilter="sent" onclick="setInvoiceFilter('sent',this)">Open</button><button class="filterbtn" data-invfilter="overdue" onclick="setInvoiceFilter('overdue',this)">Overdue</button><button class="filterbtn" data-invfilter="paid" onclick="setInvoiceFilter('paid',this)">Paid</button><button class="filterbtn" data-invfilter="void" onclick="setInvoiceFilter('void',this)">Void</button></div>
-<div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Invoice</th><th>Customer / Unit</th><th>Date / Due</th><th>Status</th><th>Total</th><th>Paid</th><th>Balance</th><th></th></tr></thead><tbody id="invoiceTable"></tbody></table></div>
 
-<style>
+
+
 /* v24.13.0 service-card invoicing */
 .invoiceServiceBuilderBar{position:sticky;top:0;z-index:8;background:#fff;padding:4px 0 12px;border-bottom:1px solid #eef1f4;margin-bottom:12px}
 .invoiceNewServiceBox{display:grid;grid-template-columns:minmax(260px,1fr) auto;gap:10px;align-items:end;background:#f7f9fc;border:1px solid #dbe3ef;border-radius:12px;padding:12px;margin:0 0 14px}.invoiceNewServiceBox.is-hidden{display:none}
@@ -55,10 +52,9 @@
 @media(max-width:1150px){.invoiceServicePartRow{grid-template-columns:110px minmax(180px,1fr) 65px 90px 110px 90px}.invoiceServiceLaborRow{grid-template-columns:minmax(180px,1fr) 70px minmax(220px,1fr) 110px 90px}.invoiceRowSave,.invoiceRowDelete{grid-row:2}.invoiceServicePartRow .invoiceRowSave,.invoiceServiceLaborRow .invoiceRowSave{grid-column:-3}.invoiceServicePartRow .invoiceRowDelete,.invoiceServiceLaborRow .invoiceRowDelete{grid-column:-2}}
 @media(max-width:760px){.invoiceServiceBuilderBar{position:static}.invoiceNewServiceBox{grid-template-columns:1fr}.invoiceServiceHead{grid-template-columns:36px 1fr}.invoiceServiceTotal{grid-column:2;text-align:left}.invoiceServiceSection{padding:0 10px 12px}.invoiceServiceSectionHead{align-items:flex-start}.invoiceServiceSectionHead>div{align-items:flex-start;flex-wrap:wrap}.invoiceServicePartRow,.invoiceServiceLaborRow{grid-template-columns:1fr 1fr}.invoiceServicePartRow .descField,.invoiceServiceLaborRow .descField,.invoiceServiceLaborRow .invoiceLaborRateField{grid-column:1/-1}.invoiceRateWrap{grid-template-columns:minmax(0,1fr) 88px}.invoiceDiscountControl{grid-template-columns:80px 1fr}.invoiceTaxCell,.invoiceLineNet{align-items:flex-start}.invoiceRowSave{grid-column:1}.invoiceRowDelete{grid-column:2;justify-self:end}.invoiceServiceTitle input{font-size:15px}}
 @media print{.invoiceServiceBuilderBar,.invoiceNewServiceBox,.invoiceServiceSectionHead button,.invoiceRowSave,.invoiceRowDelete{display:none!important}.invoiceServiceStack{gap:10px!important}.invoiceServiceCard{box-shadow:none!important;border:1px solid #bfc7d1!important;border-radius:0!important;break-inside:avoid}.invoiceServiceHead{padding:8px!important;background:#eef1f4!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.invoiceServiceIndex{background:#111!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.invoiceServiceTitle input{border:0!important;padding:0!important;background:transparent!important}.invoiceServiceSection{padding:0 8px 8px!important}.invoiceServiceSectionHead{padding:6px 0!important}.invoiceServicePartRow,.invoiceServiceLaborRow{grid-template-columns:1.5fr 2fr .55fr .8fr .75fr!important;border:0!important;border-top:1px solid #ddd!important;border-radius:0!important;padding:5px 0!important;gap:5px!important;background:#fff!important}.invoiceServicePartRow .invoiceDiscountControl,.invoiceServicePartRow .invoiceTaxCell,.invoiceServiceLaborRow .invoiceDiscountControl,.invoiceServiceLaborRow .invoiceTaxCell,.invoiceServiceLaborRow .invoiceLaborRateField select{display:none!important}.invoiceServiceLaborRow .invoiceLaborRateField{display:block!important}.invoiceServiceLaborRow .invoiceRateWrap{border:0!important;display:block!important}.invoiceServiceLaborRow .invoiceRateWrap input{border:0!important;text-align:left!important}.invoiceLineNet{align-items:flex-end!important}.invoiceServiceEmpty{display:none!important}}
-</style>
 
 
-<style>
+
 /* ===== v24.14.0 COMPACT SERVICE-GRID INVOICING ===== */
 .invoiceLineItemsCard{padding:0!important;overflow:hidden!important;border:1px solid #dfe4ea!important}
 .invoiceServiceBuilderBar{position:static!important;margin:0!important;padding:14px 16px!important;border-bottom:1px solid #dfe4ea!important;background:#fff!important}
@@ -163,9 +159,9 @@
  .invoiceServiceSubtotal{grid-template-columns:1fr 88px!important;padding:6px 8px!important}.invoiceServiceSubtotalLabel{grid-column:1!important}.invoiceServiceSubtotalValue{grid-column:2!important}
  .invoiceServiceFooterActions,.invoiceBottomActions{display:none!important}
 }
-</style>
 
-<style>
+
+
 /* v24.16 dedicated invoice tab + preserved drafts + live inventory part lookup */
 body.invoiceWorkspaceMode{background:#f5f7fb;overflow:hidden}
 body.invoiceWorkspaceMode>header,body.invoiceWorkspaceMode>#onlineBetaBar,body.invoiceWorkspaceMode>#mobileBottomNav,body.invoiceWorkspaceMode>#mobileMoreSheet,body.invoiceWorkspaceMode>main,body.invoiceWorkspaceMode>#shopAiFab{display:none!important}
@@ -184,19 +180,18 @@ body.invoiceWorkspaceMode .invoiceLineItemsCard{min-width:0}
 @media(max-width:1100px){body.invoiceWorkspaceMode #invoiceEditor{padding:14px}.invoicePartSuggest{min-width:min(520px,88vw)}body.invoiceWorkspaceMode .invoiceEditorGrid{grid-template-columns:1fr!important}body.invoiceWorkspaceMode .invoiceTotals{position:static!important}}
 @media(max-width:760px){body.invoiceWorkspaceMode #invoiceEditor{padding:8px 8px 80px}.invoicePartLookupWrap{grid-template-columns:1fr}.invoicePartSuggest{position:fixed;left:8px;right:8px;top:auto;bottom:10px;min-width:0;max-height:50dvh}}
 @media print{body.invoiceWorkspaceMode #invoiceModal .x{display:none!important}}
-</style>
 
-<style>
+
+
 /* v24.16 invoice workspace polish */
 .invoiceWorkspaceTopbar{position:sticky;top:0;z-index:40;margin:-2px -2px 14px;padding:12px 14px;background:rgba(245,247,251,.96);backdrop-filter:blur(10px);border-bottom:1px solid #dde4ee}
 .invoiceWorkspaceTopbarRight{display:flex;align-items:center;gap:10px}.invoiceDraftState{font-size:12px;font-weight:800;color:#475467;padding:6px 9px;border-radius:999px;background:#eef2f6}.invoiceDraftState[data-state="saving"]{background:#eff8ff;color:#175cd3}.invoiceDraftState[data-state="saved"]{background:#ecfdf3;color:#027a48}.invoiceDraftState[data-state="error"]{background:#fef3f2;color:#b42318}.invoiceDraftState[data-state="dirty"]{background:#fff7e8;color:#b54708}
 .invoiceServiceCard{border-radius:12px!important;box-shadow:0 1px 3px rgba(16,24,40,.06)!important}.invoiceServiceHead{padding:11px 12px!important}.invoiceServiceRows{gap:0!important}.invoiceServicePartRow,.invoiceServiceLaborRow{border-radius:0!important;border-left:0!important;border-right:0!important;border-bottom:0!important;padding:9px 10px!important}.invoiceServiceFooterActions{padding:10px 12px!important;background:#fafbfc!important}.invoiceServiceSubtotal{padding:10px 12px!important}.invoiceGridHeader{position:sticky;top:70px;z-index:20;background:#f8fafc!important;border:1px solid #e4e7ec;border-radius:9px 9px 0 0}
 .invoicePartSuggestItem{cursor:pointer}.invoicePartSuggestItem:active{transform:none!important}.invoicePartLookupWrap input:focus{box-shadow:0 0 0 3px rgba(21,94,239,.12)!important;border-color:#84adff!important}
 @media(max-width:900px){.invoiceWorkspaceTopbar{position:static}.invoiceGridHeader{position:static}.invoiceWorkspaceTopbarRight{flex-wrap:wrap;justify-content:flex-end}}
-</style>
 
 
-<style>
+
 /* v24.16.3 invoice grid layout repair */
 .invoiceGridHeader{
   display:grid!important;
@@ -230,10 +225,9 @@ body.invoiceWorkspaceMode .invoiceLineItemsCard{min-width:0}
 @media(max-width:560px){
   .invoiceServicePartRow,.invoiceServiceLaborRow{grid-template-columns:1fr 1fr!important}
 }
-</style>
 
 
-<style>
+
 /* v24.16.4 simplified invoice UX */
 .invoiceLineItemsCard{padding:18px!important}
 .invoiceServiceBuilderBar{
@@ -353,10 +347,9 @@ body.invoiceWorkspaceMode .invoiceLineItemsCard{min-width:0}
   .invoiceNotesGrid{grid-template-columns:1fr!important}
   .invoiceServiceFooterActions:before{width:100%!important}
 }
-</style>
 
 
-<style>
+
 /* v24.17.0 labor-first invoicing */
 .invoiceLaborBlockHead{
   display:grid!important;
@@ -380,9 +373,9 @@ body.invoiceWorkspaceMode .invoiceLineItemsCard{min-width:0}
 .invoiceServiceBuilderBar .muted{font-size:13px!important}
 .invoiceServiceSubtotalLabel{font-weight:750!important}
 .invoiceServiceSubtotalValue{font-weight:900!important}
-</style>
 
-<style>
+
+
 /* v24.17.0 professional print / PDF invoice */
 @media print{
   @page{size:letter;margin:.38in}
@@ -596,11 +589,11 @@ body.invoiceWorkspaceMode .invoiceLineItemsCard{min-width:0}
   #invPreviewTotal,#invPreviewBalance{font-size:12pt!important;font-weight:900!important}
   .invoiceEditorGrid:after{content:"";display:block!important;clear:both!important}
 }
-</style>
 
-<style>.invoiceLaborBlock .invoiceServiceTotal:before{content:'Labor';}</style>
 
-<style>
+.invoiceLaborBlock .invoiceServiceTotal:before{content:'Labor';}
+
+
 /* v24.18.0 part-search viewport + customer-ready print alignment */
 body.invoiceWorkspaceMode .invoiceLineItemsCard,
 body.invoiceWorkspaceMode .invoiceServiceStack,
@@ -658,10 +651,9 @@ body.invoiceWorkspaceMode .invoiceServicePartRow:focus-within{position:relative!
   .invoiceServiceSubtotal{display:grid!important;grid-template-columns:1fr 82px!important;padding:6px 7px!important;border-top:1px solid #bfc7d1!important;background:#f8fafc!important}.invoiceServiceSubtotalLabel{grid-column:1!important;text-align:right!important;padding-right:8px!important;font-size:7pt!important}.invoiceServiceSubtotalValue{grid-column:2!important;text-align:right!important;font-size:8pt!important;font-weight:800!important}
   .invoiceLegalBlock{display:block!important;break-inside:avoid!important;margin-top:12px!important;padding:11px 12px!important;border:1px solid #bfc7d1!important;background:#fff!important;font-size:7.2pt!important;line-height:1.38!important}.invoiceLegalBlock b{font-size:7.3pt!important}.invoiceLegalTerms span{line-height:1.42!important}.invoiceSafetyNotice{margin-top:9px!important;padding:8px 9px!important;border:1px solid #9aa4b2!important;background:#fff!important}.invoiceSafetyNotice span{display:block!important;margin-top:5px!important;font-weight:700!important}.invoiceSignatureGrid{display:grid!important;grid-template-columns:1.25fr 1.25fr .65fr!important;gap:14px!important;margin-top:11px!important;padding-top:9px!important;border-top:1px solid #bfc7d1!important;font-size:7pt!important}
 }
-</style>
 
 
-<style>
+
 /* ===== v24.18.1 COMPACT DESKTOP INVOICE GRID =====
    Keeps every editable control on one row and aligns header/part/labor columns. */
 @media screen and (min-width:1101px){
@@ -785,9 +777,9 @@ body.invoiceWorkspaceMode .invoiceServicePartRow:focus-within{position:relative!
   body.invoiceWorkspaceMode .invoiceServicePartRow select,
   body.invoiceWorkspaceMode .invoiceServiceLaborRow select{font-size:11px!important;padding-left:5px!important;padding-right:5px!important}
 }
-</style>
 
-<style>
+
+
 /* ===== v24.18.2 CUSTOMER PRINT LAYOUT — final override ===== */
 .invoicePrintLineHeader{display:none}
 @media print{
@@ -885,9 +877,9 @@ body.invoiceWorkspaceMode .invoiceServicePartRow:focus-within{position:relative!
   .invoiceLegalBlock{margin-top:9px!important;padding:8px 9px!important;font-size:6.7pt!important;line-height:1.3!important;break-inside:avoid!important}
   .invoiceSafetyNotice{margin-top:6px!important;padding:6px 7px!important}.invoiceSignatureGrid{margin-top:7px!important;padding-top:7px!important;font-size:6.5pt!important}
 }
-</style>
 
-<style id="invoice-v24211-layout-hardening">
+
+
 /* v24.21.2 — invoice workspace regression hardening */
 body.invoiceWorkspaceMode #invoiceEditor{font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-serif!important;color:#172033}
 body.invoiceWorkspaceMode .invoiceLineItemsCard{overflow:visible!important}
@@ -962,4 +954,3 @@ body.invoiceWorkspaceMode textarea{box-sizing:border-box!important;max-width:100
  body.invoiceWorkspaceMode .invoiceWarrantyNotice,
  body.invoiceWorkspaceMode .invoiceLegalBlock{break-inside:avoid!important;page-break-inside:avoid!important}
 }
-</style>
