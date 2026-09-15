@@ -1,0 +1,23 @@
+import fs from 'fs';
+const s=fs.readFileSync('server.js','utf8'), j=fs.readFileSync('public/modules/procenter.js','utf8');
+let pass=0,fail=0;const ck=(n,v)=>{console.log((v?'PASS ':'FAIL ')+n);v?pass++:fail++};
+const customerDDL=(s.match(/CREATE TABLE IF NOT EXISTS fullbay_import_customers\([\s\S]*?\n \);/)||[''])[0]+
+ (s.match(/ALTER TABLE fullbay_import_customers[\s\S]*?ALTER TABLE fullbay_import_parts/)||[''])[0];
+ck('customer schema has dot_number',customerDDL.includes('dot_number TEXT'));
+ck('customer schema does not define usdot',!customerDDL.match(/\busdot\b/));
+ck('duplicate audit aliases dot_number to usdot for UI',s.includes('c.dot_number AS usdot'));
+ck('merge writes dot_number, not nonexistent usdot',s.includes("dot_number=coalesce(nullif(dot_number,''),$4)")&&!s.includes("usdot=coalesce(nullif(usdot"));
+ck('merge relinks units',s.includes("UPDATE customer_units SET customer_id=$1"));
+ck('merge relinks Fullbay history',s.includes("UPDATE fullbay_service_history SET customer_id=$1"));
+ck('merge relinks invoices',s.includes("UPDATE customer_invoices SET customer_id=$1"));
+ck('merge relinks service orders',s.includes("UPDATE service_orders SET customer_id=$1"));
+ck('merge is owner only',s.includes("app.post('/api/customers/merge',auth,ownerOnly"));
+ck('merge uses BEGIN/COMMIT/ROLLBACK',s.includes("await db.query('BEGIN')")&&s.includes("await db.query('COMMIT')")&&s.includes("await db.query('ROLLBACK')"));
+ck('merge preview is non destructive',s.includes("/api/customers/merge-preview")&&j.includes("MERGE PREVIEW — nothing changed yet"));
+ck('UI requires typed MERGE',j.includes("typed!=='MERGE'"));
+ck('UI requires second confirm',j.includes("confirm('This will relink"));
+ck('duplicate audit handler exported',j.includes('window.auditDuplicateCustomers'));
+ck('merge handlers exported',j.includes('window.previewDuplicateMerge')&&j.includes('window.commitDuplicateMerge'));
+ck('Samsara secret server only',s.includes('process.env.SAMSARA_API_TOKEN')&&!/Bearer\s+[A-Za-z0-9_-]{20,}/.test(j));
+ck('Fullbay inventory $22 regression guard preserved',s.includes('$22')&&!/fullbay_import_parts[\s\S]{0,1200}\$23/.test(s));
+console.log(`DEEP ${pass}/${pass+fail} passed`);if(fail)process.exit(1);
