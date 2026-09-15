@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.20.1</title>
+<title>ITTR ShopFlow v24.21.0</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -723,7 +723,7 @@ body.modalOpen{overflow:hidden}
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.20.1 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.21.0 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1267,7 +1267,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.20.1';
+const FRONTEND_VERSION='24.21.0';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1489,7 +1489,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.20.1";
+const ROUTE_MODULE_VERSION="24.21.0";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -2715,8 +2715,19 @@ function shopAiDragOver(event){event.preventDefault();event.dataTransfer.dropEff
 function shopAiHandleDrop(event){event.preventDefault();const file=event.dataTransfer?.files?.[0];if(file&&shopAiAcceptFile(file,'attached'))showToast?.('File dropped into Workshop AI.','success',4500)}
 
 function shopAiFileSelected(input){const file=input?.files?.[0]||null;if(!file)return;shopAiAcceptFile(file,'attached');}
-function shopAiImportSummary(d){const sv=Array.isArray(d?.services)?d.services:[],parts=sv.reduce((n,x)=>n+(Array.isArray(x.parts)?x.parts.length:0),0),labor=sv.reduce((n,x)=>n+(Array.isArray(x.labor)?x.labor.length:0),0),warn=Array.isArray(d?.warnings)?d.warnings:[];return `AI IMPORT REVIEW\\nCustomer: ${d.customerName||'Needs review'}${d.matches?.customer?' ✓ Matched':''}\\nUnit: ${d.unitNumber||'Needs review'}${d.matches?.unit?' ✓ Matched':''}\\nVIN: ${d.vin||'—'}\\nSource: ${d.sourceNumber||'—'}\\nServices: ${sv.length} · Labor lines: ${labor} · Parts: ${parts}\\nLabor total: ${d.laborTotal==null?'—':money(d.laborTotal)} · Parts total: ${d.partsTotal==null?'—':money(d.partsTotal)} · Total: ${d.grandTotal==null?'—':money(d.grandTotal)}${warn.length?`\\nNeeds review: ${warn.join('; ')}`:''}\\n\\nNothing has been written to billing yet.`}
-async function analyzeShopAiAttachment(message){const f=shopAiPendingFile;if(!f)return false;if(/\\.csv$/i.test(f.name)||/csv/i.test(f.type)){showToast('CSV detected. Opening Fullbay Data Center so you can use the safe customer/unit or repair-order importer.','info',6500);shopAiPendingFile=null;document.getElementById('shopAiFile').value='';toggleShopAI(false);showView('operations');setTimeout(()=>{try{showProPanel('fullbay')}catch{}},250);return true}const fd=new FormData();fd.append('file',f);fd.append('message',message||'Import this legacy invoice into ITTR.');const resp=await fetch('/api/ai/import/analyze',{method:'POST',headers:authHeaders(),body:fd});const data=await resp.json().catch(()=>({}));if(!resp.ok)throw new Error(data.error||`AI import failed (${resp.status})`);shopAiImportDraft=data.draft;shopAiPendingFile=null;document.getElementById('shopAiFile').value='';const body=document.getElementById('shopAiMessages');body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',shopAiImportSummary(shopAiImportDraft)));body?.insertAdjacentHTML('beforeend','<div class="aiMsg assistant"><div class="aiMsgHead">Review actions</div><div class="actions"><button class="primary" onclick="commitShopAiInvoiceDraft()">Create Draft Invoice</button><button class="secondary" onclick="shopAiImportDraft=null">Discard</button></div></div>');return true}
+function shopAiImportSummary(d){const sv=Array.isArray(d?.services)?d.services:[],parts=sv.reduce((n,x)=>n+(Array.isArray(x.parts)?x.parts.length:0),0),labor=sv.reduce((n,x)=>n+(Array.isArray(x.labor)?x.labor.length:0),0),warn=Array.isArray(d?.warnings)?d.warnings:[];return `LEGACY FULLBAY HISTORY REVIEW
+Customer: ${d.customerName||'Needs review'}${d.matches?.customer?' ✓ Matched':''}
+Unit: ${d.unitNumber||'Needs review'}${d.matches?.unit?' ✓ Matched':''}
+VIN: ${d.vin||'—'}
+Service Order / Source: ${d.sourceNumber||'Needs review'}
+Completed date: ${d.invoiceDate||d.dueDate||'Needs review'}
+Services: ${sv.length} · Labor lines: ${labor} · Parts: ${parts}
+Labor total: ${d.laborTotal==null?'—':money(d.laborTotal)} · Parts total: ${d.partsTotal==null?'—':money(d.partsTotal)} · Total: ${d.grandTotal==null?'—':money(d.grandTotal)}${warn.length?`
+Needs review: ${warn.join('; ')}`:''}
+
+Nothing has been written to customer/unit history yet.`}
+async function analyzeShopAiAttachment(message){const f=shopAiPendingFile;if(!f)return false;if(/\\.csv$/i.test(f.name)||/csv/i.test(f.type)){showToast('CSV detected. Opening Fullbay Data Center so you can use the safe customer/unit or repair-order importer.','info',6500);shopAiPendingFile=null;document.getElementById('shopAiFile').value='';toggleShopAI(false);showView('operations');setTimeout(()=>{try{showProPanel('fullbay')}catch{}},250);return true}const fd=new FormData();fd.append('file',f);fd.append('message',message||'Import this legacy invoice into ITTR.');const resp=await fetch('/api/ai/import/analyze',{method:'POST',headers:authHeaders(),body:fd});const data=await resp.json().catch(()=>({}));if(!resp.ok)throw new Error(data.error||`AI import failed (${resp.status})`);shopAiImportDraft=data.draft;shopAiPendingFile=null;document.getElementById('shopAiFile').value='';const body=document.getElementById('shopAiMessages');body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',shopAiImportSummary(shopAiImportDraft)));body?.insertAdjacentHTML('beforeend','<div class="aiMsg assistant"><div class="aiMsgHead">Review actions</div><div class="actions"><button class="primary" onclick="commitShopAiHistoryDraft()">Add to Completed History</button><button class="secondary" onclick="commitShopAiInvoiceDraft()">Create Draft Invoice Instead</button><button class="secondary" onclick="shopAiImportDraft=null">Discard</button></div></div>');return true}
+async function commitShopAiHistoryDraft(){if(!shopAiImportDraft)return showToast('No legacy history draft is waiting for review.','warning');if(!shopAiImportDraft.matches?.customer||!shopAiImportDraft.matches?.unit)return showToast('Customer and unit must both match before history can be saved.','warning',8000);if(!confirm('Add these extracted repairs as COMPLETED historical Fullbay work for this customer/unit?'))return;const r=await fetch('/api/ai/import/commit-history',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({draft:shopAiImportDraft})});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Could not add completed history.');shopAiImportDraft=null;showToast(`Completed history added: ${d.serviceOrder}.`,'success',6500);const body=document.getElementById('shopAiMessages');body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`Saved ${d.services} completed service record${d.services===1?'':'s'} to ${d.serviceOrder}. Open the customer or unit Service History to review the repair details.`))}
 async function commitShopAiInvoiceDraft(){if(!shopAiImportDraft)return showToast('No AI import draft is waiting for review.','warning');if(!confirm('Create a DRAFT invoice from this AI extraction? You can review and edit it before finalizing.'))return;const r=await fetch('/api/ai/import/commit-invoice',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({draft:shopAiImportDraft})});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Could not create draft invoice.');shopAiImportDraft=null;showToast('Draft invoice created. Opening it in a new tab.','success');openInvoiceWorkspace?.(d.id)}
 async function tryShopAiAction(message){const r=await fetch('/api/ai/copilot/action',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({message})});const d=await r.json().catch(()=>({}));if(!r.ok||!d.action)return false;const a=d.action,body=document.getElementById('shopAiMessages');if(a.type==='navigate'){body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`${a.label}.`));toggleShopAI(false);showView(a.view);return true}if(a.type==='diagnostic'){body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`${a.label}\\n${(a.report?.checks||[]).map(x=>'✓ '+x).join('\\n')}\\nRecent audit events: ${a.report?.recentAuditEvents??0}\\n${a.report?.note||''}`));return true}return false}
 async function sendShopAI(){if(shopAiBusy)return;const input=document.getElementById('shopAiInput'),unit=document.getElementById('shopAiUnit'),body=document.getElementById('shopAiMessages'),sendBtn=document.getElementById('shopAiSend');const message=String(input?.value||'').trim();if(!message&&!shopAiPendingFile)return;shopAiBusy=true;if(sendBtn)sendBtn.disabled=true;body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('user',message));if(input)input.value='';const thinking=document.createElement('div');thinking.className='aiThinking';thinking.innerHTML='<span class="aiDot"></span><span class="aiDot"></span><span class="aiDot"></span><span>Workshop AI is checking shop records…</span>';body?.appendChild(thinking);body?.scrollTo({top:body.scrollHeight,behavior:'smooth'});try{if(shopAiPendingFile){thinking.remove();await analyzeShopAiAttachment(message);return}if(await tryShopAiAction(message)){thinking.remove();return}const r=await fetch('/api/ai/shop-chat',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({message,unit:String(unit?.value||'').trim()})});let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.error||`AI request failed (${r.status})`);thinking.remove();body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',d.result||'No response returned.',d.sources||[]));if(d.matchedUnit&&unit&&!unit.value)unit.value=d.matchedUnit}catch(e){thinking.remove();body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`Unable to answer: ${e.message}`));showToast?.(e.message,'error',8000)}finally{shopAiBusy=false;if(sendBtn)sendBtn.disabled=false;body?.scrollTo({top:body.scrollHeight,behavior:'smooth'})}}

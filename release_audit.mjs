@@ -12,9 +12,9 @@ const pkg = JSON.parse(read('package.json'));
 const modulesInvoicesHtml = read('modules/invoices.html');
 const modulesInvoicesJs = read('modules/invoices.js');
 
-check('release package version is 24.20.1', pkg.version === '24.20.1', pkg.version);
-check('frontend release is 24.20.1', html.includes("const FRONTEND_VERSION='24.20.1';") || html.includes('const FRONTEND_VERSION="24.20.1"'));
-check('backend release is 24.20.1', server.includes('frontendExpected:"24.20.1",backend:"24.20.1"'));
+check('release package version is 24.21.0', pkg.version === '24.21.0', pkg.version);
+check('frontend release is 24.21.0', html.includes("const FRONTEND_VERSION='24.21.0';") || html.includes('const FRONTEND_VERSION="24.21.0"'));
+check('backend release is 24.21.0', server.includes('frontendExpected:"24.21.0",backend:"24.21.0"'));
 check('static web root restricted to public directory', server.includes('app.use(express.static(publicDir') && !server.includes('app.use(express.static(webRoot'));
 check('parts search is read-only (no per-result barcode write loop)', !server.includes('for(const x of r.rows)if(!x.internal_barcode)x.internal_barcode=await ensurePartBarcode'));
 check('production 500 responses hide internal error detail', server.includes('isProd?"An unexpected server error occurred.":safe'));
@@ -350,7 +350,7 @@ check('repair order metadata fields preserved', server.includes('service_writer'
 check('customer unit import UI exists', html.includes('fullbayCustomerUnitsFile') && html.includes('uploadFullbayCustomerUnits'));
 check('repair order import UI exists', html.includes('fullbayRepairOrdersFile') && html.includes('uploadFullbayRepairOrders'));
 
-check('v24.20.1 route modules use explicit cache-busting version', html.includes('ROUTE_MODULE_VERSION="24.20.1"') && html.includes('routeAsset("/modules/procenter.html")'));
+check('v24.21.0 route modules use explicit cache-busting version', html.includes('ROUTE_MODULE_VERSION="24.21.0"') && html.includes('routeAsset("/modules/procenter.html")'));
 check('lazy module HTML fetch bypasses stale browser cache', html.includes('fetch(cfg.html,{cache:"no-store"})'));
 check('server disables cache for public module assets', server.includes('filePath.includes(`${path.sep}modules${path.sep}`)'));
 const procenterHtml=fs.readFileSync('public/modules/procenter.html','utf8');
@@ -371,5 +371,12 @@ check('AI inventory enrichment uses real cost/price schema', server.includes('co
 check('Workshop AI supports clipboard screenshot paste', html.includes('onpaste="shopAiHandlePaste(event)"') && html.includes('function shopAiHandlePaste(event)'));
 check('Workshop AI supports drag and drop attachments', html.includes('ondrop="shopAiHandleDrop(event)"') && html.includes('function shopAiHandleDrop(event)'));
 check('Workshop AI attachment validation is shared', html.includes('function shopAiAcceptFile(file'));
+
+check('AI legacy import can commit completed history', server.includes("/api/ai/import/commit-history") && html.includes("Add to Completed History"));
+check('AI completed history requires matched customer and unit', server.includes("Match the legacy document to an existing ITTR customer and unit"));
+check('AI history preserves individual parts in raw detail', server.includes("aiParts:parts") && server.includes("x.raw?.aiParts"));
+check('Fullbay history reconciliation endpoint exists', server.includes("/api/fullbay/history/reconcile") && server.includes("reconcileFullbayHistoryLinks"));
+check('Fullbay service order lookup normalizes SO variants', server.includes("canonicalFullbaySo") && server.includes("Quick SO"));
+check('AI review uses real line breaks instead of literal slash-n', html.includes("LEGACY FULLBAY HISTORY REVIEW") && !html.includes("AI IMPORT REVIEW\\\\nCustomer"));
 console.log(`\n${checks.length-failed.length}/${checks.length} checks passed.`);
 if (failed.length) process.exit(1);

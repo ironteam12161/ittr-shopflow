@@ -813,17 +813,52 @@ app.post("/api/fullbay/import/service-history",auth,managerPermission("customers
  }catch(e){next(e)}
 });
 
+
+function canonicalFullbaySo(v){
+ const x=String(cleanFullbayCell(v)||'').trim().replace(/\s*\(Quick SO\)\s*$/i,'').trim();
+ return x.replace(/^SO[\s#-]*/i,'').trim();
+}
+async function reconcileFullbayHistoryLinks(db){
+ const result={customerLinks:0,unitLinks:0,metadataBackfill:0,invalidVinUnits:0,duplicateCustomerUnits:0,orphanHistory:0};
+ const c=await db.query(`UPDATE fullbay_service_history h SET customer_id=c.id,customer_name=c.customer_name,updated_at=now()
+   FROM fullbay_import_customers c
+   WHERE h.customer_id IS NULL AND lower(trim(h.customer_name))=lower(trim(c.customer_name)) RETURNING h.id`);
+ result.customerLinks=c.rowCount;
+ const u=await db.query(`UPDATE fullbay_service_history h SET unit_record_id=u.id,vin=coalesce(nullif(h.vin,''),u.vin),customer_id=coalesce(h.customer_id,u.customer_id),customer_name=coalesce(nullif(h.customer_name,''),u.customer_name),updated_at=now()
+   FROM customer_units u
+   WHERE h.unit_record_id IS NULL AND (
+     (coalesce(h.vin,'')<>'' AND length(trim(h.vin))=17 AND lower(trim(h.vin))=lower(trim(u.vin)))
+     OR (coalesce(h.unit_number,'')<>'' AND lower(trim(h.unit_number))=lower(trim(u.unit_number)) AND (h.customer_id::text=u.customer_id::text OR lower(trim(h.customer_name))=lower(trim(u.customer_name))))
+   ) RETURNING h.id`);
+ result.unitLinks=u.rowCount;
+ const b=await db.query(`UPDATE fullbay_service_history h SET vin=coalesce(nullif(h.vin,''),u.vin),unit_number=coalesce(nullif(h.unit_number,''),u.unit_number),customer_id=coalesce(h.customer_id,u.customer_id),customer_name=coalesce(nullif(h.customer_name,''),u.customer_name),updated_at=now()
+   FROM customer_units u WHERE h.unit_record_id=u.id AND (
+     (coalesce(h.vin,'')='' AND coalesce(u.vin,'')<>'') OR (coalesce(h.unit_number,'')='' AND coalesce(u.unit_number,'')<>'') OR h.customer_id IS NULL
+   ) RETURNING h.id`);
+ result.metadataBackfill=b.rowCount;
+ result.invalidVinUnits=Number((await db.query(`SELECT count(*)::int n FROM customer_units WHERE coalesce(trim(vin),'')<>'' AND trim(vin) !~ '^[A-HJ-NPR-Z0-9]{17}$'`)).rows[0]?.n||0);
+ result.duplicateCustomerUnits=Number((await db.query(`SELECT count(*)::int n FROM (SELECT customer_id,lower(trim(unit_number)) u FROM customer_units WHERE coalesce(trim(unit_number),'')<>'' GROUP BY customer_id,lower(trim(unit_number)) HAVING count(*)>1) x`)).rows[0]?.n||0);
+ result.orphanHistory=Number((await db.query(`SELECT count(*)::int n FROM fullbay_service_history WHERE unit_record_id IS NULL`)).rows[0]?.n||0);
+ return result;
+}
+app.post("/api/fullbay/history/reconcile",auth,managerPermission("customers"),async(req,res,next)=>{try{
+ const db=requireDb(),report=await reconcileFullbayHistoryLinks(db);
+ await audit(req.user.username,"fullbay_history_reconciled",report);
+ res.json({ok:true,report});
+}catch(e){next(e)}});
+
 app.get("/api/fullbay/service-orders/:so",auth,async(req,res,next)=>{try{
- const db=requireDb(),so=String(req.params.so||"").trim(),customerId=String(req.query.customerId||"").trim(),unit=String(req.query.unit||"").trim();
- if(!so)return res.status(400).json({error:"Service order is required."});
- const params=[so];let where="service_order=$1";
+ const db=requireDb(),so=String(req.params.so||"").trim(),canonical=canonicalFullbaySo(so),customerId=String(req.query.customerId||"").trim(),unit=String(req.query.unit||"").trim();
+ if(!canonical)return res.status(400).json({error:"Service order is required."});
+ const params=[canonical];let where="regexp_replace(regexp_replace(coalesce(service_order,''),'\\s*\\(Quick SO\\)\\s*$','','i'),'^SO[\\s#-]*','','i')=$1";
  if(customerId){params.push(customerId);where+=` AND customer_id::text=$${params.length}::text`}
- if(unit){params.push(unit);where+=` AND coalesce(unit_number,'')=$${params.length}`}
+ if(unit){params.push(unit);where+=` AND lower(trim(coalesce(unit_number,'')))=lower(trim($${params.length}))`}
  const r=await db.query(`SELECT * FROM fullbay_service_history WHERE ${where} ORDER BY action_completed_at NULLS LAST,action_number,id`,params);
  if(!r.rowCount)return res.status(404).json({error:"Service order not found."});
- const rows=r.rows,first=rows[0];
- const sum=k=>rows.reduce((n,x)=>n+Number(x[k]||0),0);
- res.json({order:{source:"fullbay",serviceOrder:first.service_order,invoice:first.invoice_number,po:first.po_number,customerId:first.customer_id,customer:first.customer_name,unit:first.unit_number,vin:first.vin,status:first.unit_status,unitType:first.unit_type,unitSubtype:first.unit_subtype,completedAt:rows.map(x=>x.action_completed_at).filter(Boolean).sort().pop()||null,mileage:Math.max(...rows.map(x=>Number(x.unit_miles||0))),leadTech:rows.map(x=>x.lead_tech).find(Boolean)||"",technicians:[...new Set(rows.map(x=>x.tech).filter(Boolean))],hours:sum("hours"),laborAmount:sum("labor_amount"),partAmount:sum("part_amount"),totalAmount:sum("total_amount"),actions:rows.map(x=>({action:x.action_number,complaint:x.complaint,correction:x.actual_correction,hours:Number(x.hours||0),laborAmount:Number(x.labor_amount||0),partAmount:Number(x.part_amount||0),totalAmount:Number(x.total_amount||0),tech:x.tech||x.lead_tech||"",component:x.component||"",system:x.system||""}))}});
+ const rows=r.rows,first=rows[0],detailRows=rows.filter(x=>x.action_number||x.actual_correction||Number(x.hours||0)||Number(x.labor_amount||0)||Number(x.part_amount||0));
+ const used=detailRows.length?detailRows:rows;
+ const sum=k=>used.reduce((n,x)=>n+Number(x[k]||0),0);
+ res.json({order:{source:"fullbay",serviceOrder:first.service_order,invoice:rows.map(x=>x.invoice_number).find(Boolean)||null,po:rows.map(x=>x.po_number).find(Boolean)||null,customerId:first.customer_id,customer:first.customer_name,unit:first.unit_number,vin:first.vin,status:first.unit_status,unitType:first.unit_type,unitSubtype:first.unit_subtype,completedAt:rows.map(x=>x.action_completed_at).filter(Boolean).sort().pop()||null,mileage:Math.max(0,...rows.map(x=>Number(x.unit_miles||0))),leadTech:rows.map(x=>x.lead_tech).find(Boolean)||"",technicians:[...new Set(rows.map(x=>x.tech).filter(Boolean))],hours:sum("hours"),laborAmount:sum("labor_amount"),partAmount:sum("part_amount"),totalAmount:sum("total_amount"),actions:used.map(x=>({action:x.action_number,complaint:x.complaint,correction:x.actual_correction,hours:Number(x.hours||0),laborAmount:Number(x.labor_amount||0),partAmount:Number(x.part_amount||0),totalAmount:Number(x.total_amount||0),tech:x.tech||x.lead_tech||"",component:x.component||"",system:x.system||"",parts:Array.isArray(x.raw?.aiParts)?x.raw.aiParts:[],labor:Array.isArray(x.raw?.aiLabor)?x.raw.aiLabor:[],sourceFile:x.source_file||""}))}});
 }catch(e){next(e)}});
 
 app.get("/api/fullbay/customers",auth,async(req,res,next)=>{try{
@@ -1138,7 +1173,7 @@ app.get("/api/smart-search",auth,adminOnly,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"24.20.1",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"24.21.0",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -1171,8 +1206,8 @@ async function reconcileDuplicateImportedCustomers(){
  return {merged};
 }
 
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.20.1",backend:"24.20.1",build:"ITTR-24.20.1-PRINT-LEGAL-PART-LOOKUP-20260914"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.20.1",photoStorageConfigured:r2Configured})});
+app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.21.0",backend:"24.21.0",build:"ITTR-24.21.0-PRINT-LEGAL-PART-LOOKUP-20260914"}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.21.0",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -2832,7 +2867,7 @@ async function multimodalInvoiceExtract(file,extraText=''){
  const mime=String(file?.mimetype||'').toLowerCase();if(!file?.buffer?.length)throw new Error('Attach an invoice image or PDF.');
  if(!['image/jpeg','image/png','image/webp','application/pdf'].includes(mime)){const e=new Error('AI invoice import supports PDF, JPG, PNG, and WEBP.');e.status=415;throw e}
  const data=`data:${mime};base64,${file.buffer.toString('base64')}`;
- const schema=`Return ONLY valid JSON with this shape: {"documentType":"invoice|service_order|unknown","sourceNumber":"","customerName":"","customerPhone":"","unitNumber":"","vin":"","usdot":"","mileage":null,"invoiceDate":"YYYY-MM-DD or empty","dueDate":"YYYY-MM-DD or empty","terms":"","poNumber":"","authorizer":"","laborTotal":null,"partsTotal":null,"grandTotal":null,"services":[{"description":"","labor":[{"description":"","hours":0,"rate":0,"amount":0,"taxable":false}],"parts":[{"partNumber":"","description":"","quantity":0,"unitPrice":0,"amount":0,"taxable":true}]}],"warnings":[]}. Never invent unreadable values. Use empty string/null and add a warning. Group each part under the labor/service immediately above it. Preserve source numbers exactly.`;
+ const schema=`Return ONLY valid JSON with this shape: {"documentType":"invoice|service_order|unknown","sourceNumber":"","customerName":"","customerPhone":"","unitNumber":"","vin":"","usdot":"","mileage":null,"invoiceDate":"YYYY-MM-DD or empty","dueDate":"YYYY-MM-DD or empty","terms":"","poNumber":"","authorizer":"","laborTotal":null,"partsTotal":null,"grandTotal":null,"services":[{"description":"","labor":[{"description":"","hours":0,"rate":0,"amount":0,"taxable":false}],"parts":[{"partNumber":"","description":"","quantity":0,"unitPrice":0,"amount":0,"taxable":true}]}],"warnings":[]}. Never invent unreadable values. Use empty string/null and add a warning. Group each part under the labor/service immediately above it. Preserve source numbers exactly. For Fullbay documents, if a field labeled Service Order or SO is visible, use that value as sourceNumber (for example SO-1009); do not substitute an invoice number. Treat the document as historical completed repair work unless the user explicitly asks to create a new billing invoice.`;
  const prompt=`You are ITTR Legacy Invoice Import AI. Extract this heavy-duty truck/trailer invoice or service order for migration into a repair ERP. ${schema}\nUser note: ${String(extraText||'').slice(0,1500)}`;
  let response;
  if(openRouterClient){const content=[{type:'text',text:prompt}];if(mime==='application/pdf')content.push({type:'file',file:{filename:file.originalname||'invoice.pdf',file_data:data}});else content.push({type:'image_url',image_url:{url:data}});response=await openRouterClient.chat.completions.create({model:openRouterInvoiceFallbackModel,messages:[{role:'user',content}],temperature:0,max_tokens:5000, ...(mime==='application/pdf'?{plugins:[{id:'file-parser',pdf:{engine:'cloudflare-ai'}}]}:{})});return extractJsonObject(response.choices?.[0]?.message?.content||'')}
@@ -2847,9 +2882,41 @@ async function enrichLegacyInvoiceDraft(db,draft){
  return {...d,matches:{customer:customer?{id:customer.id,name:customer.customer_name,dotNumber:customer.dot_number}:null,unit:unit?{id:unit.id,unitNumber:unit.unit_number,vin:unit.vin,customerId:unit.customer_id}:null,parts:partMatches}};
 }
 app.post('/api/ai/import/analyze',auth,managerPermission('invoices'),upload.single('file'),async(req,res)=>{try{const extracted=await multimodalInvoiceExtract(req.file,String(req.body?.message||''));const draft=await enrichLegacyInvoiceDraft(requireDb(),extracted);await audit(req.user.username,'ai_legacy_invoice_analyzed',{file:req.file?.originalname||'',sourceNumber:draft.sourceNumber||'',customer:draft.customerName||'',unit:draft.unitNumber||''});res.json({ok:true,draft})}catch(e){return aiErrorResponse(res,e,'AI import analysis failed')}});
+
+app.post('/api/ai/import/commit-history',auth,managerPermission('customers'),async(req,res,next)=>{const db=await requireDb().connect();try{
+ const d=req.body?.draft||{},services=Array.isArray(d.services)?d.services:[];
+ if(!services.length)return res.status(400).json({error:'No completed service lines were detected.'});
+ const customerId=Number(d.matches?.customer?.id||0)||null,unitId=Number(d.matches?.unit?.id||0)||null;
+ if(!customerId||!unitId)return res.status(409).json({error:'Match the legacy document to an existing ITTR customer and unit before adding it to permanent vehicle history.'});
+ const unit=(await db.query('SELECT * FROM customer_units WHERE id=$1::bigint',[unitId])).rows[0];
+ if(!unit||String(unit.customer_id)!==String(customerId))return res.status(409).json({error:'The selected unit does not belong to the matched customer.'});
+ const source=String(d.sourceNumber||'').trim()||`AI-${Date.now()}`,so=/^SO/i.test(source)?source:`SO-${source}`;
+ const completed=d.invoiceDate||d.dueDate||new Date().toISOString().slice(0,10);
+ await db.query('BEGIN');
+ let imported=0;
+ for(let i=0;i<services.length;i++){
+   const svc=services[i]||{},labors=Array.isArray(svc.labor)?svc.labor:[],parts=Array.isArray(svc.parts)?svc.parts:[];
+   const laborAmount=labors.reduce((n,l)=>n+Number(l.amount ?? (Number(l.hours||0)*Number(l.rate||0)) ?? 0),0);
+   const partAmount=parts.reduce((n,p)=>n+Number(p.amount ?? (Number(p.quantity||0)*Number(p.unitPrice||0)) ?? 0),0);
+   const hours=labors.reduce((n,l)=>n+Number(l.hours||0),0),total=laborAmount+partAmount;
+   const complaint=String(svc.description||labors[0]?.description||`Legacy service ${i+1}`).slice(0,2000);
+   const correction=String(svc.correction||svc.description||labors.map(x=>x.description).filter(Boolean).join('; ')||complaint).slice(0,5000);
+   const key=`ai-legacy-history:${canonicalFullbaySo(so).toLowerCase()}:${customerId}:${unitId}:${i+1}`;
+   const raw={aiImported:true,documentType:d.documentType||'legacy',sourceNumber:source,authorizer:d.authorizer||'',terms:d.terms||'',warnings:d.warnings||[],aiLabor:labors,aiParts:parts};
+   await db.query(`INSERT INTO fullbay_service_history(source_key,customer_id,customer_name,unit_record_id,unit_number,vin,unit_status,unit_type,unit_subtype,service_order,invoice_number,po_number,action_number,action_completed_at,lead_tech,tech,complaint,actual_correction,hours,labor_amount,part_amount,total_amount,unit_miles,component,system,raw,source_file,service_writer,invoiced,service_status,parts_status)
+   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::date,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26::jsonb,$27,$28,$29,$30,$31)
+   ON CONFLICT(source_key) DO UPDATE SET customer_id=EXCLUDED.customer_id,customer_name=EXCLUDED.customer_name,unit_record_id=EXCLUDED.unit_record_id,unit_number=EXCLUDED.unit_number,vin=EXCLUDED.vin,service_order=EXCLUDED.service_order,invoice_number=EXCLUDED.invoice_number,po_number=EXCLUDED.po_number,action_completed_at=EXCLUDED.action_completed_at,complaint=EXCLUDED.complaint,actual_correction=EXCLUDED.actual_correction,hours=EXCLUDED.hours,labor_amount=EXCLUDED.labor_amount,part_amount=EXCLUDED.part_amount,total_amount=EXCLUDED.total_amount,unit_miles=EXCLUDED.unit_miles,raw=EXCLUDED.raw,source_file=EXCLUDED.source_file,service_status='Completed',parts_status='Done',updated_at=now()`,
+   [key,customerId,d.matches.customer.name||d.customerName||unit.customer_name,unitId,unit.unit_number,unit.vin,unit.unit_status,unit.unit_type,unit.unit_subtype,so,d.documentType==='invoice'?source:null,String(d.poNumber||'')||null,String(i+1),completed,null,null,complaint,correction,hours,laborAmount,partAmount,total,Number(d.mileage||unit.mileage||0)||null,'Legacy Fullbay','Repair History',JSON.stringify(raw),'AI legacy screenshot',null,d.documentType==='invoice', 'Completed','Done']);
+   imported++;
+ }
+ await reconcileFullbayHistoryLinks(db);
+ await db.query('COMMIT');
+ await audit(req.user.username,'ai_legacy_history_committed',{serviceOrder:so,customerId,unitId,services:imported,sourceNumber:source});
+ res.json({ok:true,serviceOrder:so,customerId,unitId,services:imported});
+}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
 app.post('/api/ai/import/commit-invoice',auth,managerPermission('invoices'),async(req,res,next)=>{const db=await requireDb().connect();try{const d=req.body?.draft||{};if(!Array.isArray(d.services)||!d.services.length)return res.status(400).json({error:'No service lines were detected. Review the import first.'});await db.query('BEGIN');const customerId=Number(d.matches?.customer?.id||0)||null,unitId=Number(d.matches?.unit?.id||0)||null,num=await nextInvoiceNumber(db),terms=String(d.terms||'Due on Receipt'),days=/60/.test(terms)?60:/30/.test(terms)?30:/15/.test(terms)?15:0;const q=await db.query(`INSERT INTO customer_invoices(invoice_number,customer_id,customer_name,unit_id,unit_number,vin,dot_number,mileage,po_number,invoice_date,due_date,terms,tax_rate,internal_note,created_by) VALUES($1,$2::bigint,$3,$4::bigint,$5,$6,$7,$8::numeric,$9,coalesce($10::date,CURRENT_DATE),coalesce($11::date,coalesce($10::date,CURRENT_DATE)+$12::int),$13,0,$14,$15) RETURNING id`,[num,customerId,String(d.customerName||d.matches?.customer?.name||'Legacy Customer'),unitId,String(d.unitNumber||d.matches?.unit?.unitNumber||''),String(d.vin||d.matches?.unit?.vin||''),String(d.usdot||d.matches?.customer?.dotNumber||''),Number(d.mileage||0)||null,String(d.poNumber||''),d.invoiceDate||null,d.dueDate||null,days,terms,`AI imported from legacy ${d.documentType||'invoice'}${d.sourceNumber?` · Source ${d.sourceNumber}`:''}. Review before finalizing.`,req.user.username]);const iid=q.rows[0].id;let order=0;for(const svc of d.services){const job=String(svc.description||'Legacy Service').slice(0,500);const labors=Array.isArray(svc.labor)&&svc.labor.length?svc.labor:[{description:job,hours:0,rate:0,taxable:false}];let parent=null;for(const l of labors){const qty=Math.max(0,Number(l.hours||0)),price=Math.max(0,Number(l.rate||0));const x=await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,quantity,unit_price,unit_cost,taxable,line_total,parent_line_id) VALUES($1,$2,$3,$4,'labor',$5,$6::numeric,$7::numeric,0,$8::boolean,$6::numeric*$7::numeric,NULL) RETURNING id`,[iid,++order,crypto.randomUUID(),job,String(l.description||job),qty,price,l.taxable===true]);if(!parent)parent=x.rows[0].id}for(const part of Array.isArray(svc.parts)?svc.parts:[]){const qty=Math.max(0,Number(part.quantity||0)),price=Math.max(0,Number(part.unitPrice||0));await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_name,line_type,description,part_number,quantity,unit_price,unit_cost,taxable,line_total,parent_line_id) VALUES($1,$2,$3,'part',$4,$5,$6::numeric,$7::numeric,0,$8::boolean,$6::numeric*$7::numeric,$9::bigint)`,[iid,++order,job,String(part.description||part.partNumber||'Part'),String(part.partNumber||''),qty,price,part.taxable!==false,parent])}}
  await recalcInvoice(db,iid);await db.query('COMMIT');await audit(req.user.username,'ai_legacy_invoice_committed',{invoiceId:iid,sourceNumber:d.sourceNumber||'',services:d.services.length});res.json({ok:true,id:iid})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
-app.post('/api/ai/copilot/action',auth,async(req,res)=>{try{const message=String(req.body?.message||'').trim();if(!message)return res.status(400).json({error:'message required'});const m=message.toLowerCase();let action=null;if(/\b(open|go to|show)\b.*\binvoice/.test(m))action={type:'navigate',view:'invoices',label:'Open Invoices'};else if(/\b(open|go to|show)\b.*\b(parts|inventory)\b/.test(m))action={type:'navigate',view:'parts',label:'Open Parts'};else if(/\b(open|go to|show)\b.*\bcustomer/.test(m))action={type:'navigate',view:'customers',label:'Open Customers'};else if(/\b(open|go to|show)\b.*\b(work order|work orders)\b/.test(m))action={type:'navigate',view:'workorders',label:'Open Work Orders'};else if(/\b(check|audit|diagnos|bug|lag|slow|error)/.test(m)){const db=requireDb();const build={frontend:'24.20.1',backend:'24.20.1'};const auditRows=(await db.query('SELECT action,created_at FROM server_audit ORDER BY id DESC LIMIT 40')).rows;action={type:'diagnostic',label:'ShopFlow diagnostic',report:{build,online:true,recentAuditEvents:auditRows.length,checks:['API route available','Database query successful','Copilot action layer responding'],note:'Runtime browser performance and failed requests are captured by the client diagnostic snapshot when available.'}}}res.json({ok:true,action})}catch(e){return aiErrorResponse(res,e,'Copilot action failed')}});
+app.post('/api/ai/copilot/action',auth,async(req,res)=>{try{const message=String(req.body?.message||'').trim();if(!message)return res.status(400).json({error:'message required'});const m=message.toLowerCase();let action=null;if(/\b(open|go to|show)\b.*\binvoice/.test(m))action={type:'navigate',view:'invoices',label:'Open Invoices'};else if(/\b(open|go to|show)\b.*\b(parts|inventory)\b/.test(m))action={type:'navigate',view:'parts',label:'Open Parts'};else if(/\b(open|go to|show)\b.*\bcustomer/.test(m))action={type:'navigate',view:'customers',label:'Open Customers'};else if(/\b(open|go to|show)\b.*\b(work order|work orders)\b/.test(m))action={type:'navigate',view:'workorders',label:'Open Work Orders'};else if(/\b(check|audit|diagnos|bug|lag|slow|error)/.test(m)){const db=requireDb();const build={frontend:'24.21.0',backend:'24.21.0'};const auditRows=(await db.query('SELECT action,created_at FROM server_audit ORDER BY id DESC LIMIT 40')).rows;action={type:'diagnostic',label:'ShopFlow diagnostic',report:{build,online:true,recentAuditEvents:auditRows.length,checks:['API route available','Database query successful','Copilot action layer responding'],note:'Runtime browser performance and failed requests are captured by the client diagnostic snapshot when available.'}}}res.json({ok:true,action})}catch(e){return aiErrorResponse(res,e,'Copilot action failed')}});
 
 app.post("/api/ai/shop-chat",auth,async(req,res)=>{try{
  const question=String(req.body?.message||'').trim();if(!question)return res.status(400).json({error:'message required'});if(question.length>3000)return res.status(400).json({error:'Message is too long.'});
@@ -2925,5 +2992,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v24.20.1 Online running on port ${port}`))})
+  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v24.21.0 Online running on port ${port}`))})
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});
