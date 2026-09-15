@@ -1,4 +1,4 @@
-# ITTR ShopFlow v24.22.0 — Invoice Layout + Print Fix
+# ITTR ShopFlow v24.22.1 — Invoice Layout + Print Fix
 
 Fixes the invoice regression shown in production:
 - lazy-loaded invoice CSS is promoted into document `<head>` so it cannot disappear when route DOM changes;
