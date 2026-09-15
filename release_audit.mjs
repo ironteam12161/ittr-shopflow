@@ -12,9 +12,9 @@ const pkg = JSON.parse(read('package.json'));
 const modulesInvoicesHtml = read('modules/invoices.html');
 const modulesInvoicesJs = read('modules/invoices.js');
 
-check('release package version is 24.18.2', pkg.version === '24.18.2', pkg.version);
-check('frontend release is 24.18.2', html.includes("const FRONTEND_VERSION='24.18.2';") || html.includes('const FRONTEND_VERSION="24.18.2"'));
-check('backend release is 24.18.2', server.includes('frontendExpected:"24.18.2",backend:"24.18.2"'));
+check('release package version is 24.19.0', pkg.version === '24.19.0', pkg.version);
+check('frontend release is 24.19.0', html.includes("const FRONTEND_VERSION='24.19.0';") || html.includes('const FRONTEND_VERSION="24.19.0"'));
+check('backend release is 24.19.0', server.includes('frontendExpected:"24.19.0",backend:"24.19.0"'));
 check('static web root restricted to public directory', server.includes('app.use(express.static(publicDir') && !server.includes('app.use(express.static(webRoot'));
 check('parts search is read-only (no per-result barcode write loop)', !server.includes('for(const x of r.rows)if(!x.internal_barcode)x.internal_barcode=await ensurePartBarcode'));
 check('production 500 responses hide internal error detail', server.includes('isProd?"An unexpected server error occurred.":safe'));
@@ -341,6 +341,14 @@ check('print collapses empty customer notes',
   html.includes('invoicePrintEmptyNotes') && modulesInvoicesHtml.includes('.invoiceNotesCard.invoicePrintEmptyNotes{display:none!important}'));
 check('server PDF filters empty placeholder invoice lines',
   server.includes('rawLines=Array.isArray(x.lines)?x.lines:[]') && server.includes("l.line_type==='labor'||String(l.part_number||'').trim()"));
+
+
+check('CustomersUnits CSV import endpoint exists', server.includes('/api/fullbay/import/customer-units') && server.includes('fullbay_unit_id'));
+check('repairOrders CSV import endpoint exists', server.includes('/api/fullbay/import/repair-orders') && server.includes('repair-order:'));
+check('repair order import is idempotent by source key', server.includes('ON CONFLICT(source_key) DO UPDATE SET customer_id=EXCLUDED.customer_id'));
+check('repair order metadata fields preserved', server.includes('service_writer') && server.includes('service_status') && server.includes('parts_status') && server.includes('unit_return'));
+check('customer unit import UI exists', html.includes('fullbayCustomerUnitsFile') && html.includes('uploadFullbayCustomerUnits'));
+check('repair order import UI exists', html.includes('fullbayRepairOrdersFile') && html.includes('uploadFullbayRepairOrders'));
 
 const failed = checks.filter(x=>!x.ok);
 for (const x of checks) console.log(`${x.ok?'PASS':'FAIL'}  ${x.name}${x.detail?` — ${x.detail}`:''}`);
