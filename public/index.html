@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.21.0</title>
+<title>ITTR ShopFlow v24.21.1</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -723,7 +723,7 @@ body.modalOpen{overflow:hidden}
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.21.0 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.21.1 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1267,7 +1267,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.21.0';
+const FRONTEND_VERSION='24.21.1';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1489,7 +1489,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.21.0";
+const ROUTE_MODULE_VERSION="24.21.1";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -1529,7 +1529,17 @@ async function mountRouteModule(view){
  host.classList.remove("routeModuleError");host.classList.add("routeModuleLoading");host.setAttribute("aria-busy","true");
  try{
   const {html,module}=await loadRouteModuleAssets(view);
-  host.innerHTML=html;
+  // Route CSS must live in <head>, not inside a lazy host that can be hidden/unmounted.
+  // This also keeps invoice workspace/print styling stable in isolated tabs and print preview.
+  const tpl=document.createElement('template');tpl.innerHTML=html;
+  tpl.content.querySelectorAll('style').forEach((node,i)=>{
+    const id=`route-style-${view}-${i}`;
+    let style=document.getElementById(id);
+    if(!style){style=document.createElement('style');style.id=id;style.dataset.routeStyle=view;document.head.appendChild(style)}
+    style.textContent=node.textContent||'';
+    node.remove();
+  });
+  host.replaceChildren(tpl.content.cloneNode(true));
   const scope=createRouteModuleScope(view,host);
   routeModuleInstances.set(view,{module,scope});
   if(typeof module.mount==="function")await module.mount(scope);

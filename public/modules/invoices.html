@@ -886,3 +886,80 @@ body.invoiceWorkspaceMode .invoiceServicePartRow:focus-within{position:relative!
   .invoiceSafetyNotice{margin-top:6px!important;padding:6px 7px!important}.invoiceSignatureGrid{margin-top:7px!important;padding-top:7px!important;font-size:6.5pt!important}
 }
 </style>
+
+<style id="invoice-v24211-layout-hardening">
+/* v24.21.1 — invoice workspace regression hardening */
+body.invoiceWorkspaceMode #invoiceEditor{font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-serif!important;color:#172033}
+body.invoiceWorkspaceMode .invoiceLineItemsCard{overflow:visible!important}
+body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important}
+body.invoiceWorkspaceMode .invoiceServiceCard{overflow:visible!important}
+body.invoiceWorkspaceMode .invoiceServiceRows{overflow:visible!important}
+body.invoiceWorkspaceMode .invoiceServicePartRow,
+body.invoiceWorkspaceMode .invoiceServiceLaborRow{width:100%!important;box-sizing:border-box!important}
+body.invoiceWorkspaceMode input,
+body.invoiceWorkspaceMode select,
+body.invoiceWorkspaceMode textarea{box-sizing:border-box!important;max-width:100%}
+@media screen and (min-width:1101px){
+ body.invoiceWorkspaceMode .invoiceGridHeader,
+ body.invoiceWorkspaceMode .invoiceServicePartRow,
+ body.invoiceWorkspaceMode .invoiceServiceLaborRow{
+   display:grid!important;
+   grid-template-columns:72px minmax(280px,1fr) 66px 80px 76px 86px 54px 94px 82px 40px!important;
+   gap:6px!important;align-items:center!important;
+ }
+ body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLaborRateField{grid-column:4 / span 3!important}
+ body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceTaxCell{grid-column:7!important}
+ body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceDiscountControl{grid-column:8!important}
+ body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLineNet{grid-column:9!important}
+ body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceRowActions{grid-column:10!important}
+}
+@media print{
+ @page{size:letter;margin:.38in}
+ html,body{width:auto!important;height:auto!important;overflow:visible!important}
+ body.invoiceWorkspaceMode{background:#fff!important;overflow:visible!important}
+ body.invoiceWorkspaceMode #invoiceModal{position:static!important;inset:auto!important;overflow:visible!important;background:#fff!important;padding:0!important}
+ body.invoiceWorkspaceMode #invoiceModal .invoiceWorkspaceBox{position:static!important;width:100%!important;height:auto!important;max-height:none!important;overflow:visible!important;padding:0!important}
+ body.invoiceWorkspaceMode #invoiceEditor{width:100%!important;max-width:none!important;margin:0!important;padding:0!important}
+ body.invoiceWorkspaceMode .invoiceWorkspaceTopbar,
+ body.invoiceWorkspaceMode .invoiceCustomerVehicleCard,
+ body.invoiceWorkspaceMode .invoiceAppOnly,
+ body.invoiceWorkspaceMode .invoiceSummaryActions,
+ body.invoiceWorkspaceMode .invoiceServiceFooterActions,
+ body.invoiceWorkspaceMode .invoiceRowActions,
+ body.invoiceWorkspaceMode .invoiceGridHeader{display:none!important}
+ body.invoiceWorkspaceMode .invoicePrintOnly{display:flex!important}
+ body.invoiceWorkspaceMode .invoicePrintBillGrid{display:grid!important}
+ body.invoiceWorkspaceMode .invoiceEditorGrid{display:block!important}
+ body.invoiceWorkspaceMode .invoiceLineItemsCard{border:0!important;padding:0!important;margin:0!important}
+ body.invoiceWorkspaceMode .invoiceServiceCard{break-inside:avoid!important;border:1px solid #c9ced6!important;margin:7px 0!important;border-radius:0!important;box-shadow:none!important}
+ body.invoiceWorkspaceMode .invoiceServiceHead{padding:6px 8px!important;min-height:0!important}
+ body.invoiceWorkspaceMode .invoiceNestedPartsLabel{padding:4px 8px 4px 56px!important}
+ body.invoiceWorkspaceMode .invoiceServicePartRow,
+ body.invoiceWorkspaceMode .invoiceServiceLaborRow{
+   display:grid!important;
+   grid-template-columns:56px minmax(0,1fr) 54px 66px 72px!important;
+   gap:5px!important;padding:4px 7px!important;min-height:0!important;font-size:7.5pt!important;
+ }
+ body.invoiceWorkspaceMode .invoiceServicePartRow .invoicePartLookupWrap{grid-column:2!important;display:grid!important;grid-template-columns:92px minmax(0,1fr)!important;gap:4px!important}
+ body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceGridItemLabel{grid-column:1!important}
+ body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLaborDescription{grid-column:2!important}
+ body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceQtyUnit{grid-column:3!important}
+ body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLaborRateField{grid-column:4!important}
+ body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLineNet{grid-column:5!important}
+ body.invoiceWorkspaceMode .invoiceServicePartRow .invoiceQtyUnit{grid-column:3!important}
+ body.invoiceWorkspaceMode .invoiceServicePartRow .invoicePriceCell{grid-column:4!important}
+ body.invoiceWorkspaceMode .invoiceServicePartRow .invoiceLineNet{grid-column:5!important}
+ body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceTaxCell,
+ body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceDiscountControl,
+ body.invoiceWorkspaceMode .invoiceServicePartRow .invoiceCostCell,
+ body.invoiceWorkspaceMode .invoiceServicePartRow .invoiceMarkupCell,
+ body.invoiceWorkspaceMode .invoiceServicePartRow .invoiceTaxCell,
+ body.invoiceWorkspaceMode .invoiceServicePartRow .invoiceDiscountControl{display:none!important}
+ body.invoiceWorkspaceMode .invoiceServicePartRow input,
+ body.invoiceWorkspaceMode .invoiceServiceLaborRow input,
+ body.invoiceWorkspaceMode .invoiceServiceLaborRow select{font-size:7.5pt!important;min-height:0!important;height:auto!important;border:0!important;padding:0!important;background:transparent!important}
+ body.invoiceWorkspaceMode .invoiceTotals{width:270px!important;margin:10px 0 0 auto!important;padding:8px 0 0!important;border-top:1px solid #222!important;break-inside:avoid!important}
+ body.invoiceWorkspaceMode .invoiceWarrantyNotice,
+ body.invoiceWorkspaceMode .invoiceLegalBlock{break-inside:avoid!important;page-break-inside:avoid!important}
+}
+</style>
