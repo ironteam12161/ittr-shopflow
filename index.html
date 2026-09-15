@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.18.2</title>
+<title>ITTR ShopFlow v24.19.0</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -723,7 +723,7 @@ body.modalOpen{overflow:hidden}
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.18.2 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.19.0 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1267,7 +1267,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.18.2';
+const FRONTEND_VERSION='24.19.0';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -3481,6 +3481,19 @@ async function uploadFullbayServiceHistory(){
  try{const r=await fetch("/api/fullbay/import/service-history",{method:"POST",headers:{Authorization:`Bearer ${cloudToken}`},body:fd});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||`Import failed (${r.status})`);alert(`Fullbay Details imported successfully.\n\nRows: ${Number(d.imported||0).toLocaleString()}\nUnits linked/created: ${Number(d.units||0).toLocaleString()}\nCustomers matched: ${Number(d.customers||0).toLocaleString()}\nSkipped: ${Number(d.skipped||0).toLocaleString()}`);input.value="";await renderFullbayImportStatus();await renderCustomerDirectory();}
  catch(e){if(box)box.textContent=e.message||"Import failed.";alert(e.message||"Service history import failed.")}
 }
+async function uploadFullbayCustomerUnits(){
+ if(!requireAdmin())return;const input=document.getElementById("fullbayCustomerUnitsFile"),file=input?.files?.[0];if(!file)return alert("Choose CustomersUnits.csv first.");
+ if(!confirm("Import/update customers and units from this CSV? Existing matching Fullbay IDs, VINs, and customer/unit numbers will be updated rather than duplicated."))return;
+ const fd=new FormData();fd.append("file",file);const box=document.getElementById("fullbayImportStatus");if(box)box.textContent=`Importing ${file.name}…`;
+ try{const r=await fetch("/api/fullbay/import/customer-units",{method:"POST",headers:{Authorization:`Bearer ${cloudToken}`},body:fd});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||`Import failed (${r.status})`);alert(`Customers + Units imported.\n\nRows: ${d.rows||0}\nCustomers created: ${d.customersCreated||0}\nUnits created: ${d.unitsCreated||0}\nUnits updated: ${d.unitsUpdated||0}\nSkipped: ${d.skipped||0}`);input.value="";await renderFullbayImportStatus();await renderCustomerDirectory();}catch(e){alert(e.message||"Customers + Units import failed.");await renderFullbayImportStatus()}
+}
+async function uploadFullbayRepairOrders(){
+ if(!requireAdmin())return;const input=document.getElementById("fullbayRepairOrdersFile"),file=input?.files?.[0];if(!file)return alert("Choose repairOrders.csv first.");
+ if(!confirm("Import these historical repair orders into unit service history? Re-importing the same SO numbers will update them instead of creating duplicates."))return;
+ const fd=new FormData();fd.append("file",file);const box=document.getElementById("fullbayImportStatus");if(box)box.textContent=`Importing ${file.name}…`;
+ try{const r=await fetch("/api/fullbay/import/repair-orders",{method:"POST",headers:{Authorization:`Bearer ${cloudToken}`},body:fd});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||`Import failed (${r.status})`);alert(`Repair Orders imported.\n\nRows: ${d.rows||0}\nNew: ${d.imported||0}\nUpdated: ${d.updated||0}\nCustomer matches: ${d.customerMatches||0}\nUnit matches: ${d.unitMatches||0}\nSkipped: ${d.skipped||0}`);input.value="";await renderFullbayImportStatus();}catch(e){alert(e.message||"Repair Orders import failed.");await renderFullbayImportStatus()}
+}
+
 async function decodeImportedUnitVins(){
  if(!requireAdmin())return;if(!confirm("Use the official NHTSA VIN decoder to fill missing year, make, model and available engine/transmission data for imported units?"))return;const box=document.getElementById("fullbayImportStatus");if(box)box.textContent="Decoding missing VIN details with NHTSA…";
  try{const d=await apiJSON("/api/customer-units/decode-missing-vins",{method:"POST",body:JSON.stringify({limit:100})});alert(`VIN decode finished.\nChecked: ${d.checked||0}\nUpdated: ${d.updated||0}\nFailed: ${d.failed||0}`);await renderFullbayImportStatus();await renderCustomerDirectory()}
