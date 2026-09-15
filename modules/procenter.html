@@ -91,8 +91,11 @@
         <div class="field"><label>Customers CSV</label><input id="fullbayCustomersFile" type="file" accept=".csv,text/csv"></div>
         <div class="field"><label>Parts / Inventory CSV</label><input id="fullbayPartsFile" type="file" accept=".csv,text/csv"></div>
         <div class="field"><label>Details / Units + Service History CSV</label><input id="fullbayServiceFile" type="file" accept=".csv,text/csv"></div>
+        <div class="field"><label>Customers + Units CSV</label><input id="fullbayCustomerUnitsFile" type="file" accept=".csv,text/csv"></div>
+        <div class="field"><label>Repair Orders CSV</label><input id="fullbayRepairOrdersFile" type="file" accept=".csv,text/csv"></div>
       </div>
-      <div class="actions"><button type="button" onclick="uploadFullbayCsv('customers')">Import / Update Customers</button><button type="button" onclick="uploadFullbayCsv('parts')">Import / Update Inventory</button><button type="button" onclick="uploadFullbayServiceHistory()">Import Units + Service History</button><button type="button" class="secondary" onclick="decodeImportedUnitVins()">Decode Missing VIN Details</button><button type="button" class="secondary" onclick="renderFullbayImportStatus()">Refresh</button></div>
+      <div class="actions"><button type="button" onclick="uploadFullbayCsv('customers')">Import / Update Customers</button><button type="button" onclick="uploadFullbayCsv('parts')">Import / Update Inventory</button><button type="button" onclick="uploadFullbayServiceHistory()">Import Units + Service History</button><button type="button" onclick="uploadFullbayCustomerUnits()">Import Customers + Units</button><button type="button" onclick="uploadFullbayRepairOrders()">Import Repair Orders</button><button type="button" class="secondary" onclick="decodeImportedUnitVins()">Decode Missing VIN Details</button><button type="button" class="secondary" onclick="renderFullbayImportStatus()">Refresh</button></div>
+      <div class="notice" style="margin-top:10px"><b>Recommended order:</b> import <b>Customers + Units</b> first, then <b>Repair Orders</b>. Both are safe to repeat and update matching records instead of duplicating them.</div>
       <div class="notice" style="margin-top:10px"><b>Details import:</b> reads Customer, Unit #, VIN, SO, Invoice, Complaint, Actual Correction, labor/parts amounts, mileage, technician, component and system. It automatically creates/links units under the matching customer.</div>
       <div id="fullbayImportStatus" class="aiResult">Loading…</div>
     </div>
