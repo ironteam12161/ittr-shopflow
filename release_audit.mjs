@@ -12,9 +12,9 @@ const pkg = JSON.parse(read('package.json'));
 const modulesInvoicesHtml = read('modules/invoices.html');
 const modulesInvoicesJs = read('modules/invoices.js');
 
-check('release package version is 24.21.0', pkg.version === '24.21.0', pkg.version);
-check('frontend release is 24.21.0', html.includes("const FRONTEND_VERSION='24.21.0';") || html.includes('const FRONTEND_VERSION="24.21.0"'));
-check('backend release is 24.21.0', server.includes('frontendExpected:"24.21.0",backend:"24.21.0"'));
+check('release package version is 24.21.1', pkg.version === '24.21.1', pkg.version);
+check('frontend release is 24.21.1', html.includes("const FRONTEND_VERSION='24.21.1';") || html.includes('const FRONTEND_VERSION="24.21.1"'));
+check('backend release is 24.21.1', server.includes('frontendExpected:"24.21.1",backend:"24.21.1"'));
 check('static web root restricted to public directory', server.includes('app.use(express.static(publicDir') && !server.includes('app.use(express.static(webRoot'));
 check('parts search is read-only (no per-result barcode write loop)', !server.includes('for(const x of r.rows)if(!x.internal_barcode)x.internal_barcode=await ensurePartBarcode'));
 check('production 500 responses hide internal error detail', server.includes('isProd?"An unexpected server error occurred.":safe'));
@@ -350,7 +350,7 @@ check('repair order metadata fields preserved', server.includes('service_writer'
 check('customer unit import UI exists', html.includes('fullbayCustomerUnitsFile') && html.includes('uploadFullbayCustomerUnits'));
 check('repair order import UI exists', html.includes('fullbayRepairOrdersFile') && html.includes('uploadFullbayRepairOrders'));
 
-check('v24.21.0 route modules use explicit cache-busting version', html.includes('ROUTE_MODULE_VERSION="24.21.0"') && html.includes('routeAsset("/modules/procenter.html")'));
+check('v24.21.1 route modules use explicit cache-busting version', html.includes('ROUTE_MODULE_VERSION="24.21.1"') && html.includes('routeAsset("/modules/procenter.html")'));
 check('lazy module HTML fetch bypasses stale browser cache', html.includes('fetch(cfg.html,{cache:"no-store"})'));
 check('server disables cache for public module assets', server.includes('filePath.includes(`${path.sep}modules${path.sep}`)'));
 const procenterHtml=fs.readFileSync('public/modules/procenter.html','utf8');
@@ -378,5 +378,10 @@ check('AI history preserves individual parts in raw detail', server.includes("ai
 check('Fullbay history reconciliation endpoint exists', server.includes("/api/fullbay/history/reconcile") && server.includes("reconcileFullbayHistoryLinks"));
 check('Fullbay service order lookup normalizes SO variants', server.includes("canonicalFullbaySo") && server.includes("Quick SO"));
 check('AI review uses real line breaks instead of literal slash-n', html.includes("LEGACY FULLBAY HISTORY REVIEW") && !html.includes("AI IMPORT REVIEW\\\\nCustomer"));
+
+check('lazy route CSS is promoted to document head', html.includes("route-style-${view}-${i}") && html.includes("document.head.appendChild(style)"));
+check('invoice v24.21.1 layout hardening exists', modulesInvoicesHtml.includes("invoice-v24211-layout-hardening"));
+check('invoice print hides editable customer vehicle form', modulesInvoicesHtml.includes("body.invoiceWorkspaceMode .invoiceCustomerVehicleCard") && modulesInvoicesHtml.includes("display:none!important"));
+check('invoice print forces stable five-column service rows', modulesInvoicesHtml.includes("grid-template-columns:56px minmax(0,1fr) 54px 66px 72px"));
 console.log(`\n${checks.length-failed.length}/${checks.length} checks passed.`);
 if (failed.length) process.exit(1);
