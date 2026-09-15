@@ -57,7 +57,7 @@ async function previewDuplicateMerge(groupIndex){
    Will relink: ${dc.units||0} units · ${dc.history||0} history records · ${dc.invoices||0} invoices · ${dc.service_orders||0} service orders.
    <div style="margin-top:8px"><input id="dupConfirm${groupIndex}" placeholder="Type MERGE" style="max-width:150px">
    <button class="danger" onclick="commitDuplicateMerge(${groupIndex},${masterId},${duplicateId})">Merge Customer</button></div></div>`;
- }catch(e){box.innerHTML=`<div class="error">${esc(e.message||'Merge preview failed.')}</div>`}
+ }catch(e){box.innerHTML=`<div class="error"><b>Merge preview could not load.</b><br>${esc(e.message||'Merge preview failed.')}</div>`}
 }
 async function commitDuplicateMerge(groupIndex,masterId,duplicateId){
  const typed=String(document.getElementById(`dupConfirm${groupIndex}`)?.value||'').trim().toUpperCase();
@@ -70,7 +70,7 @@ async function commitDuplicateMerge(groupIndex,masterId,duplicateId){
  }catch(e){alert(e.message||'Customer merge failed.')}
 }
 
-// v24.22.2 lazy-route global action exports
+// v24.22.3 lazy-route global action exports
 window.loadSamsaraFleet = loadSamsaraFleet;
 window.renderSamsaraFleet = renderSamsaraFleet;
 window.auditDuplicateCustomers = auditDuplicateCustomers;
