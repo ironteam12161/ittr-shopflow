@@ -12,9 +12,9 @@ const pkg = JSON.parse(read('package.json'));
 const modulesInvoicesHtml = read('modules/invoices.html');
 const modulesInvoicesJs = read('modules/invoices.js');
 
-check('release package version is 24.19.1', pkg.version === '24.19.1', pkg.version);
-check('frontend release is 24.19.1', html.includes("const FRONTEND_VERSION='24.19.1';") || html.includes('const FRONTEND_VERSION="24.19.1"'));
-check('backend release is 24.19.1', server.includes('frontendExpected:"24.19.1",backend:"24.19.1"'));
+check('release package version is 24.20.0', pkg.version === '24.20.0', pkg.version);
+check('frontend release is 24.20.0', html.includes("const FRONTEND_VERSION='24.20.0';") || html.includes('const FRONTEND_VERSION="24.20.0"'));
+check('backend release is 24.20.0', server.includes('frontendExpected:"24.20.0",backend:"24.20.0"'));
 check('static web root restricted to public directory', server.includes('app.use(express.static(publicDir') && !server.includes('app.use(express.static(webRoot'));
 check('parts search is read-only (no per-result barcode write loop)', !server.includes('for(const x of r.rows)if(!x.internal_barcode)x.internal_barcode=await ensurePartBarcode'));
 check('production 500 responses hide internal error detail', server.includes('isProd?"An unexpected server error occurred.":safe'));
@@ -350,14 +350,21 @@ check('repair order metadata fields preserved', server.includes('service_writer'
 check('customer unit import UI exists', html.includes('fullbayCustomerUnitsFile') && html.includes('uploadFullbayCustomerUnits'));
 check('repair order import UI exists', html.includes('fullbayRepairOrdersFile') && html.includes('uploadFullbayRepairOrders'));
 
-const failed = checks.filter(x=>!x.ok);
-for (const x of checks) console.log(`${x.ok?'PASS':'FAIL'}  ${x.name}${x.detail?` — ${x.detail}`:''}`);
-
-check('v24.19.1 route modules use explicit cache-busting version', html.includes('ROUTE_MODULE_VERSION="24.19.1"') && html.includes('routeAsset("/modules/procenter.html")'));
+check('v24.20.0 route modules use explicit cache-busting version', html.includes('ROUTE_MODULE_VERSION="24.20.0"') && html.includes('routeAsset("/modules/procenter.html")'));
 check('lazy module HTML fetch bypasses stale browser cache', html.includes('fetch(cfg.html,{cache:"no-store"})'));
 check('server disables cache for public module assets', server.includes('filePath.includes(`${path.sep}modules${path.sep}`)'));
 const procenterHtml=fs.readFileSync('public/modules/procenter.html','utf8');
 check('Customers + Units importer is rendered in actual ProCenter module', procenterHtml.includes('fullbayCustomerUnitsFile') && procenterHtml.includes('uploadFullbayCustomerUnits()') && procenterHtml.includes('CustomersUnits.csv'));
 check('Repair Orders importer is rendered in actual ProCenter module', procenterHtml.includes('fullbayRepairOrdersFile') && procenterHtml.includes('uploadFullbayRepairOrders()') && procenterHtml.includes('repairOrders.csv'));
+
+check('AI Copilot attachment input exists', html.includes('id="shopAiFile"') && html.includes('analyzeShopAiAttachment'));
+check('AI legacy invoice analysis API exists', server.includes("/api/ai/import/analyze") && server.includes('multimodalInvoiceExtract'));
+check('AI import is review-first draft commit', server.includes("/api/ai/import/commit-invoice") && server.includes('Review before finalizing'));
+check('AI Copilot controlled action API exists', server.includes("/api/ai/copilot/action") && html.includes('tryShopAiAction'));
+check('AI invoice import matches customers units and parts', server.includes('enrichLegacyInvoiceDraft') && server.includes('fullbay_import_parts'));
+check('AI invoice import supports images and PDF', server.includes("'image/jpeg','image/png','image/webp','application/pdf'"));
+check('AI CSV attachment routes to safe import center', html.includes('CSV detected. Opening Fullbay Data Center'));
+const failed = checks.filter(x=>!x.ok);
+for (const x of checks) console.log(`${x.ok?'PASS':'FAIL'}  ${x.name}${x.detail?` — ${x.detail}`:''}`);
 console.log(`\n${checks.length-failed.length}/${checks.length} checks passed.`);
 if (failed.length) process.exit(1);
