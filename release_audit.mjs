@@ -12,9 +12,9 @@ const pkg = JSON.parse(read('package.json'));
 const modulesInvoicesHtml = read('modules/invoices.html');
 const modulesInvoicesJs = read('modules/invoices.js');
 
-check('release package version is 24.19.0', pkg.version === '24.19.0', pkg.version);
-check('frontend release is 24.19.0', html.includes("const FRONTEND_VERSION='24.19.0';") || html.includes('const FRONTEND_VERSION="24.19.0"'));
-check('backend release is 24.19.0', server.includes('frontendExpected:"24.19.0",backend:"24.19.0"'));
+check('release package version is 24.19.1', pkg.version === '24.19.1', pkg.version);
+check('frontend release is 24.19.1', html.includes("const FRONTEND_VERSION='24.19.1';") || html.includes('const FRONTEND_VERSION="24.19.1"'));
+check('backend release is 24.19.1', server.includes('frontendExpected:"24.19.1",backend:"24.19.1"'));
 check('static web root restricted to public directory', server.includes('app.use(express.static(publicDir') && !server.includes('app.use(express.static(webRoot'));
 check('parts search is read-only (no per-result barcode write loop)', !server.includes('for(const x of r.rows)if(!x.internal_barcode)x.internal_barcode=await ensurePartBarcode'));
 check('production 500 responses hide internal error detail', server.includes('isProd?"An unexpected server error occurred.":safe'));
@@ -352,5 +352,12 @@ check('repair order import UI exists', html.includes('fullbayRepairOrdersFile') 
 
 const failed = checks.filter(x=>!x.ok);
 for (const x of checks) console.log(`${x.ok?'PASS':'FAIL'}  ${x.name}${x.detail?` — ${x.detail}`:''}`);
+
+check('v24.19.1 route modules use explicit cache-busting version', html.includes('ROUTE_MODULE_VERSION="24.19.1"') && html.includes('routeAsset("/modules/procenter.html")'));
+check('lazy module HTML fetch bypasses stale browser cache', html.includes('fetch(cfg.html,{cache:"no-store"})'));
+check('server disables cache for public module assets', server.includes('filePath.includes(`${path.sep}modules${path.sep}`)'));
+const procenterHtml=fs.readFileSync('public/modules/procenter.html','utf8');
+check('Customers + Units importer is rendered in actual ProCenter module', procenterHtml.includes('fullbayCustomerUnitsFile') && procenterHtml.includes('uploadFullbayCustomerUnits()') && procenterHtml.includes('CustomersUnits.csv'));
+check('Repair Orders importer is rendered in actual ProCenter module', procenterHtml.includes('fullbayRepairOrdersFile') && procenterHtml.includes('uploadFullbayRepairOrders()') && procenterHtml.includes('repairOrders.csv'));
 console.log(`\n${checks.length-failed.length}/${checks.length} checks passed.`);
 if (failed.length) process.exit(1);
