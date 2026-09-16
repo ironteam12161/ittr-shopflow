@@ -49,7 +49,7 @@ async function previewDuplicateMerge(groupIndex){
  if(duplicateIds.length!==1){box.innerHTML='<div class="error">This group has more than two records. Merge one pair at a time.</div>';return}
  const duplicateId=duplicateIds[0];
  try{
-  const p=await apiJSON('/api/customers/merge-preview',{method:'POST',body:{masterId,duplicateId}});
+  const p=await apiJSON('/api/customers/merge-preview',{method:'POST',body:JSON.stringify({masterId,duplicateId})});
   const master=p.customers.find(c=>Number(c.id)===masterId),dup=p.customers.find(c=>Number(c.id)===duplicateId),dc=p.counts[duplicateId]||{};
   box.innerHTML=`<div class="notice" style="margin-top:10px"><b>MERGE PREVIEW — nothing changed yet</b><br>
    Keep: <b>${esc(master?.customer_name||masterId)}</b><br>
@@ -64,13 +64,13 @@ async function commitDuplicateMerge(groupIndex,masterId,duplicateId){
  if(typed!=='MERGE'){alert('Type MERGE exactly before continuing.');return}
  if(!confirm('This will relink the duplicate customer records to the selected master. Continue?'))return;
  try{
-  const r=await apiJSON('/api/customers/merge',{method:'POST',body:{masterId,duplicateId}});
+  const r=await apiJSON('/api/customers/merge',{method:'POST',body:JSON.stringify({masterId,duplicateId})});
   alert(`Merge complete. ${r.movedUnits||0} units moved, ${r.mergedUnits||0} duplicate units consolidated, ${r.historyMoved||0} history rows, ${r.invoicesMoved||0} invoices, ${r.serviceOrdersMoved||0} service orders relinked.`);
   await auditDuplicateCustomers();
  }catch(e){alert(e.message||'Customer merge failed.')}
 }
 
-// v24.22.3 lazy-route global action exports
+// v24.22.4 lazy-route global action exports
 window.loadSamsaraFleet = loadSamsaraFleet;
 window.renderSamsaraFleet = renderSamsaraFleet;
 window.auditDuplicateCustomers = auditDuplicateCustomers;
