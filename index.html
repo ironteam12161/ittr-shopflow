@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.22.3</title>
+<title>ITTR ShopFlow v24.22.4</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -721,7 +721,7 @@ body.modalOpen{overflow:hidden}
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.22.3">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.22.4">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -739,7 +739,7 @@ body.invoiceWorkspaceMode .invoiceRateWrap{display:grid!important;grid-template-
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.22.3 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.22.4 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1283,7 +1283,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.22.3';
+const FRONTEND_VERSION='24.22.4';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1293,7 +1293,7 @@ function persistentSyncCount(){return Object.keys(readPersistentSyncQueue()).len
 function persistQueuedState(key,payload){const q=readPersistentSyncQueue();q[key]={payload,queuedAt:new Date().toISOString()};writePersistentSyncQueue(q)}
 function removePersistedState(key){const q=readPersistentSyncQueue();delete q[key];writePersistentSyncQueue(q)}
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
-async function apiJSON(url,options={}){const opts={...options,headers:authHeaders({"Content-Type":"application/json",...(options.headers||{})})};const r=await fetch(url,opts);let d={};try{d=await r.json()}catch(_){}if(r.status===401&&!url.includes("/api/auth/login")){cloudToken="";sessionStorage.removeItem("ittr_cloud_token");session=null;sessionStorage.removeItem("ittr_session");showLogin();throw new Error(d.error||"Session expired.")}if(!r.ok)throw new Error(d.error||`Server error ${r.status}`);return d}
+async function apiJSON(url,options={}){const normalizedBody=options.body&&typeof options.body==="object"&&!(options.body instanceof FormData)&&!(options.body instanceof Blob)?JSON.stringify(options.body):options.body;const opts={...options,body:normalizedBody,headers:authHeaders({"Content-Type":"application/json",...(options.headers||{})})};const r=await fetch(url,opts);let d={};try{d=await r.json()}catch(_){}if(r.status===401&&!url.includes("/api/auth/login")){cloudToken="";sessionStorage.removeItem("ittr_cloud_token");session=null;sessionStorage.removeItem("ittr_session");showLogin();throw new Error(d.error||"Session expired.")}if(!r.ok)throw new Error(d.error||`Server error ${r.status}`);return d}
 function updateSyncQueueBadge(){const badge=document.getElementById("sync-queue-badge"),text=document.getElementById("syncQueueText");if(!badge||!text)return;const pending=Math.max(cloudPending.size,persistentSyncCount()),offline=!navigator.onLine;badge.classList.toggle("is-visible",pending>0||offline);badge.classList.toggle("is-offline",offline);text.textContent=offline?`Offline (${pending} Pending)`:pending?`Syncing (${pending})…`:`Synced`}
 async function pushQueuedState(key,payload){const d=await apiJSON(`/api/state/${key}`,{method:"PUT",body:JSON.stringify({payload,expectedVersion:Number(cloudVersions[key]||0)})});if(d?.version!=null)cloudVersions[key]=Number(d.version);removePersistedState(key)}
 function queueCloudState(key,payload){persistQueuedState(key,payload);cloudPending.add(key);updateSyncQueueBadge();if(!cloudReady||!cloudToken||!navigator.onLine)return;clearTimeout(cloudSaving[key]);cloudSaving[key]=setTimeout(async()=>{try{await pushQueuedState(key,payload)}catch(e){showSyncError(e.message)}finally{cloudPending.delete(key);cloudSaving[key]=null;updateSyncQueueBadge()}},180)}
@@ -1505,7 +1505,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.22.3";
+const ROUTE_MODULE_VERSION="24.22.4";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},

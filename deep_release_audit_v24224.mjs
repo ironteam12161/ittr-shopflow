@@ -1,0 +1,15 @@
+import fs from 'fs';
+const h=fs.readFileSync('index.html','utf8'),j=fs.readFileSync('public/modules/procenter.js','utf8'),s=fs.readFileSync('server.js','utf8');
+let p=0,f=0;const ck=(n,v)=>{console.log((v?'PASS ':'FAIL ')+n);v?p++:f++};
+ck('apiJSON auto-stringifies plain object body',h.includes('normalizedBody=options.body&&typeof options.body==="object"'));
+ck('preview explicitly JSON.stringify body',j.includes("apiJSON('/api/customers/merge-preview',{method:'POST',body:JSON.stringify({masterId,duplicateId})})"));
+ck('commit explicitly JSON.stringify body',j.includes("apiJSON('/api/customers/merge',{method:'POST',body:JSON.stringify({masterId,duplicateId})})"));
+ck('preview endpoint still owner-only',s.includes("app.post('/api/customers/merge-preview',auth,ownerOnly"));
+ck('merge endpoint still owner-only',s.includes("app.post('/api/customers/merge',auth,ownerOnly"));
+ck('preview still uses dot_number',s.includes('dot_number,fullbay_id'));
+ck('merge remains transactional',s.includes("await db.query('BEGIN')")&&s.includes("await db.query('COMMIT')")&&s.includes("await db.query('ROLLBACK')"));
+ck('typed MERGE remains',j.includes("typed!=='MERGE'"));
+ck('second confirmation remains',j.includes("confirm('This will relink"));
+ck('Samsara secret remains server-side',s.includes('process.env.SAMSARA_API_TOKEN'));
+ck('Fullbay $22 guard remains',s.includes('$22')&&!/fullbay_import_parts[\s\S]{0,1200}\$23/.test(s));
+console.log(`REQUEST AUDIT ${p}/${p+f} passed`);if(f)process.exit(1);
