@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.23.3</title>
+<title>ITTR ShopFlow v24.24.0</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -691,6 +691,14 @@ body.modalOpen{overflow:hidden}
   .invoiceLineSecondary .invoiceLineActions button{width:100%}
 }
 
+
+/* v24.24.0 shop-floor touch/state contract */
+:root{--job-active:#067647;--job-active-bg:#ecfdf3;--job-paused:#b54708;--job-paused-bg:#fffaeb;--job-hold:#b42318;--job-hold-bg:#fef3f2;--job-completed:#3538cd;--job-completed-bg:#eef4ff}
+.mechanicAction,.taskcontrols button,.mechanicActivityActions button,.mechanicWizardNav button,
+button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],button[data-shop-action="pause"],button[data-shop-action="complete-wo"]{
+ min-height:52px!important;font-size:16px!important;padding:16px!important;touch-action:manipulation
+}
+
 </style>
 <style>
 .invoiceStatus{display:inline-flex;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:800;text-transform:uppercase}.is-draft{background:#f2f4f7;color:#475467}.is-sent,.is-partial{background:#fff4e5;color:#b54708}.is-paid{background:#ecfdf3;color:#027a48}.is-void{background:#fef3f2;color:#b42318}.invoiceEditorGrid{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px}.invoiceTotals{position:sticky;top:12px}.moneyBig{font-size:28px;font-weight:900}.invoiceJob{background:#fff;border:1px solid #dfe5ec;border-radius:14px;margin:12px 0;overflow:hidden;box-shadow:0 1px 2px rgba(16,24,40,.04)}.invoiceJobHead{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;background:#f8fafc;border-bottom:1px solid #e8edf2}.invoiceJobTitle{font-size:15px;font-weight:850;color:#172033}.invoiceJobMeta{font-size:11px;color:#667085;margin-top:2px}.invoiceJobActions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.invoiceJobActions button{padding:7px 9px;font-size:12px}.invoiceLine{padding:12px 14px;border-bottom:1px solid #edf0f3}.invoiceLine:last-child{border-bottom:0}.invoiceLineGrid{display:grid;grid-template-columns:112px minmax(180px,1.6fr) 110px 110px 118px 96px 72px 42px;gap:8px;align-items:end}.invoiceFieldMini{min-width:0}.invoiceFieldMini label{display:block;font-size:10px;font-weight:800;letter-spacing:.03em;color:#667085;text-transform:uppercase;margin:0 0 5px}.invoiceFieldMini input,.invoiceFieldMini select{width:100%;min-width:0;height:38px;padding:7px 9px;border:1px solid #cfd6df;border-radius:8px;background:#fff}.invoiceFieldMini input:focus,.invoiceFieldMini select:focus{outline:2px solid rgba(37,99,235,.16);border-color:#2563eb}.invoiceAmountBox{height:38px;display:flex;align-items:center;justify-content:flex-end;padding:0 10px;border:1px solid #dce2e8;border-radius:8px;background:#f8fafc;font-weight:850}.invoiceTaxCell{height:38px;display:flex;align-items:center;gap:5px;font-size:11px;font-weight:750;color:#475467}.invoiceLineFoot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}.invoiceLineFoot .muted{font-size:11px}.invoiceLineActions{display:flex;gap:6px}.invoiceLineActions button{padding:6px 9px;font-size:11px}.invoiceAddMenu{display:flex;gap:7px;flex-wrap:wrap;padding:10px 12px;border:1px dashed #b8c3d1;border-radius:12px;background:#fbfcfe;margin:10px 0}.invoiceAddMenu .hint{width:100%;font-size:11px;color:#667085}.invoiceAddType{display:inline-flex;align-items:center;gap:6px}.invoicePartOnly.is-hidden{display:none}.overdueText{color:#b42318;font-weight:800}@media(max-width:1050px){.invoiceLineGrid{grid-template-columns:105px minmax(180px,1fr) 95px 95px 105px 85px 64px 42px}}@media(max-width:760px){.invoiceEditorGrid{grid-template-columns:1fr}.invoiceTotals{position:static}.invoiceJobHead{align-items:flex-start;flex-direction:column}.invoiceJobActions{justify-content:flex-start}.invoiceLineGrid{grid-template-columns:1fr 1fr}.invoiceFieldMini.descField{grid-column:1/-1}.invoiceFieldMini.typeField{grid-column:1/-1}.invoiceFieldMini.partNoField{grid-column:1/-1}.invoiceFieldMini.amountField{grid-column:1/-1}.invoiceTaxCell{height:auto;padding:6px 0}.invoiceDeleteCell{align-self:end}.invoiceLineFoot{align-items:flex-start;flex-direction:column}.invoiceEditorGrid .card{padding:12px}.invoiceTableMobile{display:block}}
@@ -714,14 +722,14 @@ body.modalOpen{overflow:hidden}
 
 /* ===== v24.16.0 PRO SYSTEM AUDIT + DYNAMIC MODULE LOADING ===== */
 #shopAiFab{position:fixed!important;right:20px!important;bottom:22px!important;z-index:660!important;display:flex!important;align-items:center;gap:8px;background:#0f172a!important;color:#fff;border:1px solid #24324a!important;font-weight:850;border-radius:999px!important;padding:12px 16px!important;box-shadow:0 14px 36px rgba(15,23,42,.28)!important;visibility:visible!important;opacity:1!important}
-#syncQueueBadge{display:none;align-items:center;gap:7px;padding:6px 9px;border-radius:999px;background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;font-size:12px;font-weight:800;white-space:nowrap}#syncQueueBadge.is-visible{display:inline-flex}#syncQueueBadge.is-offline{background:#fef2f2;color:#b42318;border-color:#fecaca}#syncQueueBadge .syncDot{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px rgba(180,83,9,.1)}
+#sync-queue-badge{display:none;align-items:center;gap:7px;padding:6px 9px;border-radius:999px;background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;font-size:12px;font-weight:800;white-space:nowrap}#sync-queue-badge.is-visible{display:inline-flex}#sync-queue-badge.is-offline{background:#fef2f2;color:#b42318;border-color:#fecaca}#sync-queue-badge .syncDot{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px rgba(180,83,9,.1)}
 .receiveVerifyShell{display:grid;grid-template-columns:minmax(320px,.9fr) minmax(520px,1.4fr);gap:14px;align-items:start}.receiveDocumentPane{position:sticky;top:8px;height:min(74dvh,820px);background:#111827;border-radius:16px;overflow:hidden;border:1px solid #263244}.receiveDocumentPane iframe,.receiveDocumentPane img{width:100%;height:100%;border:0;object-fit:contain;background:#111827}.receiveDocumentFallback{height:100%;display:grid;place-items:center;color:#e5e7eb;padding:20px;text-align:center}.receiveDataPane{min-width:0}.receiveValidationError{outline:2px solid #f04438!important;background:#fff5f4!important}.receiveValidationWarn{outline:2px solid #f79009!important;background:#fffcf5!important}.aiVoiceLanguage{min-height:34px!important;height:34px;padding:4px 8px!important;font-size:12px!important;border-radius:8px;border:1px solid #cbd5e1;background:#fff;color:#334155}@media(max-width:900px){.receiveVerifyShell{grid-template-columns:1fr}.receiveDocumentPane{position:relative;top:auto;height:46dvh;min-height:320px}}
 #shopAiPanel{position:fixed!important;right:18px!important;bottom:82px!important;width:min(760px,calc(100vw - 36px))!important;height:min(780px,calc(100vh - 104px))!important;background:#fff!important;border:1px solid #d7dee8!important;border-radius:20px!important;box-shadow:0 28px 90px rgba(15,23,42,.28)!important;overflow:hidden!important;z-index:651!important;display:grid;grid-template-rows:auto auto 1fr auto}
 #shopAiPanel.hidden{display:none!important}.aiCopilotHead{padding:15px 16px;background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;display:flex;justify-content:space-between;gap:12px;align-items:center}.aiCopilotBrand{display:flex;align-items:center;gap:11px}.aiCopilotIcon{width:38px;height:38px;border-radius:12px;background:#fff;color:#0f172a;display:grid;place-items:center;font-weight:950}.aiCopilotHead .muted{color:#cbd5e1}.aiCopilotHead .x{background:rgba(255,255,255,.12);color:#fff}.aiContextBar{padding:10px 14px;border-bottom:1px solid #e5e7eb;background:#f8fafc;display:flex;gap:8px;align-items:end;flex-wrap:wrap}.aiContextBar .field{margin:0;flex:1;min-width:180px}.aiContextBar label{font-size:10px;text-transform:uppercase;letter-spacing:.05em}.aiContextBar input{height:38px}.aiQuick{display:flex;gap:6px;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid #edf0f3}.aiQuick button{padding:7px 10px;font-size:11px;background:#fff;color:#334155;border:1px solid #cbd5e1}.aiQuick button:hover{background:#eff6ff;border-color:#93c5fd}.aiChatBody{overflow:auto;padding:15px;background:linear-gradient(#f8fafc,#f1f5f9)}.aiWelcome{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:14px;box-shadow:0 2px 8px rgba(15,23,42,.04)}.aiWelcomeGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.aiWelcomeCard{border:1px solid #e2e8f0;border-radius:12px;padding:10px;background:#fbfdff;font-size:12px}.aiMsg{max-width:88%;margin:10px 0;border-radius:16px;padding:11px 13px;box-shadow:0 1px 3px rgba(15,23,42,.06);font-size:13px;line-height:1.45}.aiMsg.user{margin-left:auto;background:#155eef;color:#fff;border-bottom-right-radius:5px}.aiMsg.assistant{margin-right:auto;background:#fff;border:1px solid #dfe6ee;border-bottom-left-radius:5px}.aiMsgHead{font-size:11px;font-weight:850;margin-bottom:5px;opacity:.85}.aiSources{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px;padding-top:8px;border-top:1px solid #edf0f3}.aiSourceChip{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:750;border-radius:999px;padding:5px 8px;background:#eef4ff;color:#344054;border:1px solid #d7e3ff}.aiSourceChip.manual{background:#ecfdf3;border-color:#abefc6;color:#067647;cursor:pointer}.aiComposer{padding:12px 14px;border-top:1px solid #dfe5ec;background:#fff}.aiComposerBox{display:grid;grid-template-columns:auto auto 1fr auto;gap:8px;align-items:end;border:1px solid #cfd8e3;border-radius:14px;padding:7px;background:#fff}.aiComposerBox:focus-within{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.10)}.aiComposer textarea{border:0!important;outline:0!important;box-shadow:none!important;resize:none;min-height:42px;max-height:110px;padding:9px 6px}.aiComposerIcon{width:40px;height:40px;padding:0;border-radius:10px}.aiComposerMeta{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-top:6px;font-size:10px;color:#667085}.aiThinking{display:flex;gap:5px;align-items:center;padding:8px 2px;color:#667085}.aiDot{width:6px;height:6px;border-radius:50%;background:#64748b;animation:aiPulse 1s infinite alternate}.aiDot:nth-child(2){animation-delay:.2s}.aiDot:nth-child(3){animation-delay:.4s}@keyframes aiPulse{to{opacity:.25;transform:translateY(-2px)}}
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.23.3">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.24.0">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -739,7 +747,7 @@ body.invoiceWorkspaceMode .invoiceRateWrap{display:grid!important;grid-template-
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.23.3 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.24.0 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -986,7 +994,7 @@ body.invoiceWorkspaceMode .invoiceRateWrap{display:grid!important;grid-template-
   <div class="aiCopilotHead"><div class="aiCopilotBrand"><div class="aiCopilotIcon">AI</div><div><h3 style="margin:0">ITTR Workshop Copilot</h3><div class="muted">Shop history · unit intelligence · licensed manuals · multilingual</div></div></div><div class="actions"><button class="secondary" style="color:white;border-color:#64748b;background:transparent" onclick="openManualLibrary()">Manuals</button><button class="x" onclick="toggleShopAI(false)">×</button></div></div>
   <div><div class="aiContextBar"><div class="field"><label>Unit context</label><input id="shopAiUnit" list="unitDirectoryList" placeholder="Unit # or VIN — optional"></div><button class="secondary" onclick="clearShopAI()">New Chat</button></div><div class="aiQuick"><button onclick="shopAiAskQuick('When was the last oil service on this unit?')">Last oil service</button><button onclick="shopAiAskQuick('Summarize the recent repair history for this unit.')">Recent repairs</button><button onclick="shopAiAskQuick('What open or future repairs are recorded for this unit?')">Open / future work</button><button onclick="shopAiAskQuick('Find the torque specification or service procedure I ask for using the licensed workshop manual.')">Torque / specs</button><button onclick="shopAiAskQuick('Help me find the correct wiring diagram or manual section for this unit.')">Wiring / manual</button></div></div>
   <div id="shopAiMessages" class="aiChatBody"><div class="aiWelcome"><b>Ask the shop like you would ask a senior service writer.</b><div class="muted" style="margin-top:5px">English, Ukrainian, Polish, Spanish or Russian. Unit history answers come from your own ITTR / Fullbay data. Exact technical specs are only returned from a licensed manual you add.</div><div class="aiWelcomeGrid"><div class="aiWelcomeCard"><b>Unit history</b><br>“коли була заміна масла на 6600?”</div><div class="aiWelcomeCard"><b>Technical reference</b><br>“What is the wheel nut torque on this truck?”</div></div></div></div>
-  <div class="aiComposer"><div class="aiComposerBox"><button id="shopAiAttach" class="secondary aiComposerIcon" type="button" onclick="document.getElementById('shopAiFile')?.click()" title="Attach invoice, PDF, image or CSV">＋</button><input id="shopAiFile" type="file" accept=".pdf,.csv,image/jpeg,image/png,image/webp,text/csv" hidden onchange="shopAiFileSelected(this)"><button id="shopAiMic" class="secondary aiComposerIcon" type="button" onclick="toggleShopAiVoice()" title="Voice input">🎤</button><textarea id="shopAiInput" rows="2" placeholder="Ask anything, or paste a screenshot here (Ctrl+V)…" onpaste="shopAiHandlePaste(event)" ondragover="shopAiDragOver(event)" ondrop="shopAiHandleDrop(event)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendShopAI()}"></textarea><button id="shopAiSend" class="aiComposerIcon" onclick="sendShopAI()">➤</button></div><div class="aiComposerMeta"><span>Paste screenshots with Ctrl+V · drag/drop files · AI can make mistakes. Verify safety-critical specs against the cited manual.</span><span style="display:flex;align-items:center;gap:8px"><label for="shopAiVoiceLanguage" class="muted">Voice</label><select id="shopAiVoiceLanguage" class="aiVoiceLanguage" aria-label="Voice input language"><option value="en-US">English</option><option value="uk-UA">Українська</option><option value="pl-PL">Polski</option><option value="es-ES">Español</option><option value="ru-RU">Русский</option></select><span id="shopAiVoiceStatus"></span></span></div></div>
+  <div class="aiComposer"><div class="aiComposerBox"><button id="shopAiAttach" class="secondary aiComposerIcon" type="button" onclick="document.getElementById('shopAiFile')?.click()" title="Attach invoice, PDF, image or CSV">＋</button><input id="shopAiFile" type="file" accept=".pdf,.csv,image/jpeg,image/png,image/webp,text/csv" hidden onchange="shopAiFileSelected(this)"><button id="shopAiMic" class="secondary aiComposerIcon" type="button" onclick="toggleShopAiVoice()" title="Hold / Tap to Speak" aria-label="Hold or tap to speak" aria-pressed="false">🎙️</button><textarea id="shopAiInput" rows="2" placeholder="Ask anything, or paste a screenshot here (Ctrl+V)…" onpaste="shopAiHandlePaste(event)" ondragover="shopAiDragOver(event)" ondrop="shopAiHandleDrop(event)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendShopAI()}"></textarea><button id="shopAiSend" class="aiComposerIcon" onclick="sendShopAI()">➤</button></div><div class="aiComposerMeta"><span>Paste screenshots with Ctrl+V · drag/drop files · AI can make mistakes. Verify safety-critical specs against the cited manual.</span><span style="display:flex;align-items:center;gap:8px"><label for="shopAiVoiceLanguage" class="muted">Voice</label><select id="shopAiVoiceLanguage" class="aiVoiceLanguage" aria-label="Voice input language"><option value="en-US">English</option><option value="uk-UA">Українська</option><option value="pl-PL">Polski</option><option value="es-ES">Español</option><option value="ru-RU">Русский</option></select><span id="shopAiVoiceStatus"></span></span></div></div>
 </div>
 <div id="manualLibraryModal" class="modal"><div class="modalbox" style="max-width:900px"><div class="modalhead"><div><h2>Workshop Manual Library</h2><div class="muted">Add only manuals and technical documents your shop owns or is licensed to use.</div></div><button class="x" onclick="closeModal('manualLibraryModal')">×</button></div><form id="manualLibraryForm"><div class="manualGrid"><div class="field"><label>Manual title *</label><input name="title" required placeholder="Freightliner Cascadia Workshop Manual"></div><div class="field"><label>Category</label><select name="category"><option value="service_manual">Service Manual</option><option value="wiring">Wiring Diagrams</option><option value="specifications">Specifications / Torque</option><option value="engine">Engine Manual</option><option value="transmission">Transmission Manual</option><option value="bulletin">Technical Bulletin</option></select></div><div class="field"><label>Make</label><input name="make" placeholder="Freightliner"></div><div class="field"><label>Model</label><input name="model" placeholder="Cascadia"></div><div class="field"><label>Year from</label><input name="yearFrom" type="number" placeholder="2018"></div><div class="field"><label>Year to</label><input name="yearTo" type="number" placeholder="2026"></div><div class="field"><label>Engine</label><input name="engine" placeholder="DD15 / X15"></div><div class="field"><label>Source name</label><input name="sourceName" placeholder="OEM / Mitchell TruckSeries / shop manual"></div><div class="field full"><label>Source URL (optional)</label><input name="sourceUrl" placeholder="Licensed portal or OEM source link"></div><div class="field full"><label>PDF manual (optional, max 20 MB)</label><input name="manual" type="file" accept="application/pdf"></div></div><div class="actions" style="margin-top:12px"><button type="button" class="secondary" onclick="closeModal('manualLibraryModal')">Close</button><button type="submit">Add Manual</button></div></form><div style="margin-top:16px"><h3>Available Manuals</h3><div id="manualLibraryList" class="muted">Loading…</div></div></div></div>
 </main>
@@ -1249,17 +1257,10 @@ body.invoiceWorkspaceMode .invoiceRateWrap{display:grid!important;grid-template-
 <script src="/vendor/html5-qrcode.min.js"></script>
 <script>
 
-(async function ITTRRemoveOldServiceWorkers(){
- try{
-  if("serviceWorker" in navigator){
-   const regs=await navigator.serviceWorker.getRegistrations();
-   for(const reg of regs)await reg.unregister();
-  }
-  if("caches" in window){
-   const names=await caches.keys();
-   for(const name of names)await caches.delete(name);
-  }
- }catch(e){console.warn("ITTR cache cleanup:",e);}
+(function ITTRServiceWorkerBoot(){
+ if(!('serviceWorker' in navigator))return;
+ window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(e=>console.warn('ITTR service worker:',e)));
+ navigator.serviceWorker.addEventListener('message',e=>{if(e.data?.type==='ITTR_SYNC_REQUEST')flushPersistentSyncQueue?.()});
 })();
 
 
@@ -1283,14 +1284,14 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.23.3';
+const FRONTEND_VERSION='24.24.0';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
 function readPersistentSyncQueue(){try{return JSON.parse(localStorage.getItem(PERSISTENT_SYNC_KEY)||"{}")||{}}catch(_){return {}}}
 function writePersistentSyncQueue(q){localStorage.setItem(PERSISTENT_SYNC_KEY,JSON.stringify(q||{}))}
 function persistentSyncCount(){return Object.keys(readPersistentSyncQueue()).length}
-function persistQueuedState(key,payload){const q=readPersistentSyncQueue();q[key]={payload,queuedAt:new Date().toISOString()};writePersistentSyncQueue(q)}
+function persistQueuedState(key,payload){const q=readPersistentSyncQueue();q[key]={payload,queuedAt:new Date().toISOString()};writePersistentSyncQueue(q);try{navigator.serviceWorker?.ready?.then(r=>r.sync?.register?.('ittr-sync')).catch(()=>{})}catch(_){}}
 function removePersistedState(key){const q=readPersistentSyncQueue();delete q[key];writePersistentSyncQueue(q)}
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
 async function apiJSON(url,options={}){const normalizedBody=options.body&&typeof options.body==="object"&&!(options.body instanceof FormData)&&!(options.body instanceof Blob)?JSON.stringify(options.body):options.body;const opts={...options,body:normalizedBody,headers:authHeaders({"Content-Type":"application/json",...(options.headers||{})})};const r=await fetch(url,opts);let d={};try{d=await r.json()}catch(_){}if(r.status===401&&!url.includes("/api/auth/login")){cloudToken="";sessionStorage.removeItem("ittr_cloud_token");session=null;sessionStorage.removeItem("ittr_session");showLogin();throw new Error(d.error||"Session expired.")}if(!r.ok)throw new Error(d.error||`Server error ${r.status}`);return d}
@@ -1505,7 +1506,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.23.3";
+const ROUTE_MODULE_VERSION="24.24.0";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -3408,8 +3409,9 @@ function openInvoiceServiceHistory(invoiceId){
    ${pp.length?`<div style="margin-top:10px"><b>Parts Used</b>${pp.map(p=>`<div style="display:grid;grid-template-columns:140px 1fr 70px 100px 100px;gap:8px;padding:7px 0;border-top:1px solid var(--line,#e5e7eb)"><span>${esc(cleanImportedDisplayText(p.partNumber)||"—")}</span><span>${esc(cleanImportedDisplayText(p.description)||"Part")}</span><span>Qty ${Number(p.quantity||0)}</span><span>${money(Number(p.unitPrice||0))}</span><b>${money(Number(p.lineTotal||0))}</b></div>`).join("")}</div>`:""}
   </div>`}).join("");
  const unattached=parts.filter(p=>!usedPartIds.has(String(p.id)));
- const body=document.getElementById("invoiceHistoryDetailBody");
- document.getElementById("invoiceHistoryDetailTitle").textContent=`Completed Service · ${w.invoice||"Invoice"}`;
+ const body=document.getElementById("invoiceHistoryDetailBody"),title=document.getElementById("invoiceHistoryDetailTitle"),modal=document.getElementById("invoiceHistoryDetailModal");
+ if(!body||!title||!modal){console.error("Invoice history modal DOM is unavailable",{body:!!body,title:!!title,modal:!!modal});return showToast?.("Service history window could not open. Refresh the page and try again.","error",6000)}
+ title.textContent=`Completed Service · ${w.invoice||"Invoice"}`;
  body.innerHTML=`<div class="fullbayGrid">
   <div class="fullbayStat"><span class="muted">Customer</span><b style="font-size:16px">${esc(cleanImportedDisplayText(c.customer_name||u.customer_name)||"—")}</b></div>
   <div class="fullbayStat"><span class="muted">Vehicle</span><b style="font-size:16px">Unit ${esc(cleanVehicleMeta(w.unit||u.unit_number)||"—")}</b><div class="muted">${esc(cleanVehicleMeta(w.vin||u.vin)||"")}</div></div>
@@ -3428,7 +3430,7 @@ function openInvoiceServiceHistory(invoiceId){
  ${other.length?`<div class="card"><b>Other Charges / Services</b>${other.map(x=>`<div style="padding:7px 0;border-top:1px solid var(--line,#e5e7eb)">${esc(cleanImportedDisplayText(x.description)||cleanImportedDisplayText(x.lineType)||"Charge")} · ${money(Number(x.lineTotal||0))}</div>`).join("")}</div>`:""}
  <div class="notice" style="margin-top:12px"><b>Service history is read-only.</b> To correct labor, parts, pricing, mileage, or billing information, edit the original invoice.</div>
  <div class="actions" style="margin-top:12px"><button class="primary" onclick="closeModal('invoiceHistoryDetailModal');closeModal('vehicleProfileModal');openInvoiceWorkspace(${Number(w.id)})">Edit Original Invoice</button><button class="secondary" onclick="closeModal('invoiceHistoryDetailModal')">Close</button></div>`;
- document.getElementById("invoiceHistoryDetailModal").classList.add("open");syncModalState();
+ modal.classList.add("open");syncModalState();
 }
 
 function renderVehicleHistoryRows(){
@@ -4516,13 +4518,6 @@ async function printPartLabel(id,pn,desc,loc){let svg='';try{const r=await fetch
 .receiveVerifyShell{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;align-items:stretch!important}.receiveDocumentPane{height:min(76dvh,860px)!important;display:flex!important;flex-direction:column!important}.receiveViewerToolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px;background:#0f172a;color:#fff;border-bottom:1px solid #344054}.receiveViewerToolbar button{min-height:40px;background:#1d2939!important;color:#fff!important;border:1px solid #475467!important}.receiveViewerStage{flex:1;overflow:auto;cursor:grab;display:grid;place-items:center;background:#111827;padding:18px}.receiveViewerStage:active{cursor:grabbing}.receiveViewerTransform{transform-origin:center center;transition:transform .12s ease;max-width:none}.receiveViewerTransform img{max-width:none!important;width:auto!important;height:auto!important;min-width:60%;object-fit:contain}.receiveViewerTransform iframe{width:720px!important;height:900px!important;background:#fff}.receivePriceWarning{background:#fffaeb!important;outline:2px solid #fdb022!important;border-radius:10px}.receiveInlineWarning{font-size:11px;font-weight:800;color:#b54708;margin-top:4px}.receiveInlineError{font-size:11px;font-weight:800;color:#b42318;margin-top:4px}.receiveStickyCommit{position:sticky!important;bottom:0;z-index:4;background:#fff;border-top:2px solid #d0d5dd;padding:12px 0!important}.receiveStickyCommit .actions button{min-height:50px;padding:12px 16px}
 @media(max-width:760px){#shopAiPanel{inset:0!important;right:auto!important;bottom:auto!important;width:100vw!important;height:100dvh!important;max-height:none!important;border-radius:0!important;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}.aiComposer textarea{font-size:16px!important}.toastRegion{top:max(10px,env(safe-area-inset-top));right:12px}.mechanicWizardBox{width:100%!important;height:100dvh!important;max-height:none!important;border-radius:0!important;margin:0!important}.mechanicWizardProgress{font-size:12px}.receiveVerifyShell{grid-template-columns:1fr!important}.receiveDocumentPane{position:relative!important;height:44dvh!important;min-height:280px!important}.receiveDataPane{overflow:visible}.receiveStickyCommit{bottom:0}.mechanicActivityActions{display:grid!important;grid-template-columns:1fr!important}}
 </style></head><body><div class="label"><div><div class="brand">IRON TEAM · PARTS</div><div class="pn">${esc(partNo)}</div><div class="desc">${esc(description)}</div></div><div class="barcode">${svg}</div><div class="footer"><span class="code">${esc(code)}</span><span class="location">${esc(location||'General')}</span></div></div><script>window.onload=()=>setTimeout(()=>window.print(),150)<\/script>
-<div class="modal" id="invoiceHistoryDetailModal">
- <div class="modalCard" style="max-width:980px">
-  <div class="modalHead"><h2 id="invoiceHistoryDetailTitle">Completed Service</h2><button class="iconBtn" onclick="closeModal('invoiceHistoryDetailModal')">×</button></div>
-  <div id="invoiceHistoryDetailBody"></div>
- </div>
-</div>
-
 </body></html>`);w.document.close()}
 let smartReceivingData=null,smartReceivingPreviewUrl='';
 function openSmartReceiving(){const m=document.getElementById('smartReceivingModal');m?.classList.add('open');resetSmartReceiving();refreshVendorList();syncModalState();updateMobileBackButton()}
@@ -5302,6 +5297,8 @@ function renderInvoiceEditor(){
        <div class="field"><label>USDOT #</label><input id="invDot" value="${esc(i.dot_number||i.customer_dot_number||'')}" readonly></div>
        <div class="field"><label>Mileage</label><input id="invMileage" type="number" min="0" step="1" value="${Number(i.mileage||0)||''}" ${locked?'disabled':''}></div>
        <div class="field"><label>Customer PO #</label><input id="invPo" value="${esc(i.po_number||'')}" ${locked?'disabled':''}></div>
+       <div class="field invoiceAppOnly"><label>Fleet Pricing Tier</label><select id="invFleetTier" onchange="applyInvoiceFleetTier(this.value)" ${locked?'disabled':''}><option value="retail" ${String(i.fleet_tier||'retail')==='retail'?'selected':''}>Retail · 30% parts markup</option><option value="preferred" ${String(i.fleet_tier||'')==='preferred'?'selected':''}>Preferred · 20% parts markup + 5% invoice discount</option><option value="national" ${String(i.fleet_tier||'')==='national'?'selected':''}>National Fleet · 15% parts markup + 10% invoice discount</option></select></div>
+       <div class="field invoiceAppOnly"><label>Work Order Sync</label><div style="display:flex;gap:8px"><input id="invSyncWoId" value="${esc(i.work_order_id||'')}" placeholder="WO #" ${locked?'disabled':''}><button type="button" class="secondary" onclick="syncInvoiceFromWorkOrder()" ${locked?'disabled':''}>↻ Sync from Work Order</button></div></div>
      </div>
      <input id="invCustomer" type="hidden" value="${esc(i.customer_name)}"><input id="invUnit" type="hidden" value="${esc(i.unit_number||'')}"><input id="invCustomerId" type="hidden" value="${i.customer_id||''}"><input id="invUnitId" type="hidden" value="${i.unit_id||''}">
      <div class="invoiceTermsGrid">
@@ -5349,7 +5346,7 @@ async function persistInvoiceLine(id){const i=activeInvoice.invoice,b=invoiceLin
 async function saveAllInvoiceLines(){for(const l of (activeInvoice?.lines||[])){if(document.querySelector(`[data-invoice-line="${l.id}"]`))await persistInvoiceLine(l.id)}}
 function invoiceHeaderPayload(){
  const i=activeInvoice?.invoice||{},customerSelect=document.getElementById('invCustomerSelect'),unitSelect=document.getElementById('invUnitSelect');
- return {customerId:Number(document.getElementById('invCustomerId')?.value||0)||null,customerName:document.getElementById('invCustomer')?.value||customerSelect?.selectedOptions?.[0]?.textContent||i.customer_name||'',unitId:Number(document.getElementById('invUnitId')?.value||0)||null,unitNumber:document.getElementById('invUnit')?.value||unitSelect?.selectedOptions?.[0]?.textContent||'',vin:document.getElementById('invVin')?.value||'',dotNumber:document.getElementById('invDot')?.value||'',poNumber:document.getElementById('invPo')?.value||'',mileage:Number(document.getElementById('invMileage')?.value||0),invoiceDate:document.getElementById('invDate')?.value||'',dueDate:document.getElementById('invDue')?.value||'',terms:document.getElementById('invTerms')?.value||'Due on Receipt',taxRate:Number(document.getElementById('invTaxRate')?.value||0),shopSupplies:Number(document.getElementById('invShopSupplies')?.value||0),environmentalFee:Number(document.getElementById('invEnvFee')?.value||0),discountType:document.getElementById('invDiscountType')?.value||'fixed',discountValue:Number(document.getElementById('invDiscountValue')?.value||0),customerNote:document.getElementById('invCustomerNote')?.value||'',internalNote:document.getElementById('invInternalNote')?.value||''};
+ return {customerId:Number(document.getElementById('invCustomerId')?.value||0)||null,customerName:document.getElementById('invCustomer')?.value||customerSelect?.selectedOptions?.[0]?.textContent||i.customer_name||'',unitId:Number(document.getElementById('invUnitId')?.value||0)||null,unitNumber:document.getElementById('invUnit')?.value||unitSelect?.selectedOptions?.[0]?.textContent||'',vin:document.getElementById('invVin')?.value||'',dotNumber:document.getElementById('invDot')?.value||'',poNumber:document.getElementById('invPo')?.value||'',mileage:Number(document.getElementById('invMileage')?.value||0),invoiceDate:document.getElementById('invDate')?.value||'',dueDate:document.getElementById('invDue')?.value||'',terms:document.getElementById('invTerms')?.value||'Due on Receipt',taxRate:Number(document.getElementById('invTaxRate')?.value||0),shopSupplies:Number(document.getElementById('invShopSupplies')?.value||0),environmentalFee:Number(document.getElementById('invEnvFee')?.value||0),discountType:document.getElementById('invDiscountType')?.value||'fixed',discountValue:Number(document.getElementById('invDiscountValue')?.value||0),customerNote:document.getElementById('invCustomerNote')?.value||'',internalNote:document.getElementById('invInternalNote')?.value||'',fleetTier:document.getElementById('invFleetTier')?.value||i.fleet_tier||'retail'};
 }
 let invoiceHeaderAutosaveTimer=null;
 let invoiceHeaderAutosaveBusy=false;
@@ -5398,6 +5395,42 @@ async function persistInvoiceDraftBeforeStructureChange(label='Saving draft'){
  finally{invoiceDraftSaveBusy=false}
 }
 function invoiceSetSaveState(state,text){const el=document.getElementById('invoiceDraftState');if(!el)return;el.dataset.state=state||'';el.textContent=text||''}
+
+
+const INVOICE_FLEET_MATRIX={
+ retail:{label:'Retail',partsMarkup:30,discount:0},
+ preferred:{label:'Preferred',partsMarkup:20,discount:5},
+ national:{label:'National Fleet',partsMarkup:15,discount:10}
+};
+async function applyInvoiceFleetTier(tier){
+ const cfg=INVOICE_FLEET_MATRIX[String(tier||'retail')]||INVOICE_FLEET_MATRIX.retail;
+ if(!activeInvoice?.invoice)return;
+ if(!confirm(`Apply ${cfg.label} pricing?\n\nParts markup: ${cfg.partsMarkup}%\nGlobal invoice discount: ${cfg.discount}%\n\nExisting part selling prices will be recalculated from recorded cost.`)){
+  const el=document.getElementById('invFleetTier');if(el)el.value=activeInvoice.invoice.fleet_tier||'retail';return;
+ }
+ document.querySelectorAll('[data-invoice-line]').forEach(row=>{
+   if(row.querySelector('.ilType')?.value!=='part')return;
+   const cost=Number(row.querySelector('.ilCost')?.value||0),price=row.querySelector('.ilPrice');
+   if(cost>0&&price){price.value=(cost*(1+cfg.partsMarkup/100)).toFixed(2);price.dispatchEvent(new Event('input',{bubbles:true}))}
+ });
+ const dt=document.getElementById('invDiscountType'),dv=document.getElementById('invDiscountValue');
+ if(dt)dt.value='percent';if(dv)dv.value=String(cfg.discount);
+ activeInvoice.invoice.fleet_tier=String(tier||'retail');window.InvoiceUX?.previewTotals?.();scheduleInvoiceHeaderAutosave();
+ showToast?.(`${cfg.label} pricing applied. Review before finalizing.`,'success',4500);
+}
+async function syncInvoiceFromWorkOrder(){
+ const i=activeInvoice?.invoice;if(!i)return;
+ if(!(await persistInvoiceDraftBeforeStructureChange('Saving invoice before work-order sync')))return;
+ const wo=String(document.getElementById('invSyncWoId')?.value||i.work_order_id||'').trim();
+ if(!wo)return showToast?.('Enter or link a Work Order number first.','warning',5000);
+ if(!confirm(`Replace the current labor/parts lines with the latest jobs, mechanic time, and assigned parts from Work Order #${wo}?\n\nInvoice header, customer, fees, payments, and pricing tier will be preserved.`))return;
+ try{
+  invoiceSetSaveState('saving','Syncing Work Order…');
+  const d=await apiJSON(`/api/invoices/${i.id}/sync-work-order`,{method:'POST',body:{workOrderId:wo}});
+  await openInvoice(i.id);
+  showToast?.(`WO #${d.workOrderId} synced: ${d.jobs} job(s), ${d.parts} part line(s), ${Number(d.hours||0).toFixed(2)} labor hr.`,'success',6500);
+ }catch(e){invoiceSetSaveState('error','WO sync failed');showToast?.(e.message||'Work Order sync failed.','error',8000)}
+}
 
 async function saveInvoiceHeader(){const i=activeInvoice.invoice;try{invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const r=await fetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(invoiceHeaderPayload())}),d=await r.json();if(!r.ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);await loadInvoices();invoiceSetSaveState('saved','All changes saved');showToast?.('Invoice saved.','success',2200);return true}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message,'error',7000)||alert(e.message);return false}}
 async function saveInvoiceLine(id){try{const i=activeInvoice.invoice;invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const r=await fetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(invoiceHeaderPayload())}),d=await r.json();if(!r.ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);invoiceSetSaveState('saved','All changes saved')}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message||'Save failed','error',7000)}}
@@ -5512,6 +5545,14 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
       <button class="mobileMoreItem" data-mobile-view="accounts" onclick="mobileMoreGo('accounts')"><span class="mi">♟</span><b>Mechanics</b><span>Accounts & access</span></button>
     </div>
   </div>
+</div>
+
+
+<div class="modal" id="invoiceHistoryDetailModal">
+ <div class="modalCard" style="max-width:980px">
+  <div class="modalHead"><h2 id="invoiceHistoryDetailTitle">Completed Service</h2><button class="iconBtn" onclick="closeModal('invoiceHistoryDetailModal')">×</button></div>
+  <div id="invoiceHistoryDetailBody"></div>
+ </div>
 </div>
 
 </body>

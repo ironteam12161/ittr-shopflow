@@ -1,3 +1,14 @@
+
+export const FLEET_PRICING_MATRIX=Object.freeze({
+ retail:{partsMarkup:30,globalDiscount:0},
+ preferred:{partsMarkup:20,globalDiscount:5},
+ national:{partsMarkup:15,globalDiscount:10}
+});
+export async function syncFromWorkOrder(invoiceId,workOrderId){
+ if(!invoiceId||!workOrderId)throw new Error('Invoice and Work Order are required.');
+ return window.apiJSON(`/api/invoices/${encodeURIComponent(invoiceId)}/sync-work-order`,{method:'POST',body:{workOrderId:String(workOrderId)}});
+}
+
 let localAbort=null;
 let editorAbort=null;
 let customerCache=[];

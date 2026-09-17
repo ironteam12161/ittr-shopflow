@@ -70,7 +70,7 @@ async function commitDuplicateMerge(groupIndex,masterId,duplicateId){
  }catch(e){alert(e.message||'Customer merge failed.')}
 }
 
-// v24.23.3 lazy-route global action exports
+// v24.24.0 lazy-route global action exports
 window.loadSamsaraFleet = loadSamsaraFleet;
 window.renderSamsaraFleet = renderSamsaraFleet;
 window.auditDuplicateCustomers = auditDuplicateCustomers;
