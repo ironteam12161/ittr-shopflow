@@ -70,7 +70,7 @@ async function commitDuplicateMerge(groupIndex,masterId,duplicateId){
  }catch(e){alert(e.message||'Customer merge failed.')}
 }
 
-// v24.24.0 lazy-route global action exports
+// v24.24.1 lazy-route global action exports
 window.loadSamsaraFleet = loadSamsaraFleet;
 window.renderSamsaraFleet = renderSamsaraFleet;
 window.auditDuplicateCustomers = auditDuplicateCustomers;
@@ -95,3 +95,7 @@ async function deleteImportedFullbayHistory(){
 }
 window.auditImportedFullbayHistory=auditImportedFullbayHistory;
 window.deleteImportedFullbayHistory=deleteImportedFullbayHistory;
+
+window.previewSamsaraUnitSync=async function(){const b=document.getElementById('samsaraSyncSummary'),r=document.getElementById('samsaraSyncReview');try{if(b)b.textContent='Checking Samsara against ITTR units…';const d=await apiJSON('/api/samsara/unit-sync/preview');if(b)b.innerHTML=`<b>Preview:</b> ${d.totalSamsara} Samsara · ${d.totalIttr} ITTR · <b>${d.matched} matched</b> · ${d.ambiguous+d.unmatched} need review`;if(r)r.innerHTML=(d.items||[]).filter(x=>x.matchStatus!=='matched').map(x=>`<div class="notice" style="margin-top:8px"><b>${esc(x.name||x.unit||'Unnamed')}</b> · VIN ${esc(x.vin||'—')} · ${x.matchStatus}</div>`).join('')||'<div class="notice">All Samsara vehicles safely matched.</div>'}catch(e){if(b)b.textContent='Preview failed: '+(e.message||e)}};
+window.syncSamsaraUnits=async function(){if(!confirm('Sync Samsara to existing ITTR units? Uncertain matches will be skipped.'))return;const b=document.getElementById('samsaraSyncSummary');try{const d=await apiJSON('/api/samsara/unit-sync',{method:'POST',body:{}});if(b)b.innerHTML=`<b>Complete:</b> ${d.updated} updated · ${d.linked} newly linked · ${d.ambiguous+d.unmatched} need review`;showToast?.(`Samsara updated ${d.updated} unit(s).`,'success',6000);await previewSamsaraUnitSync()}catch(e){if(b)b.textContent='Sync failed: '+(e.message||e)}};
+window.loadSamsaraAllUnits=async function(){const b=document.getElementById('samsaraSyncSummary'),r=document.getElementById('samsaraSyncReview');try{const d=await apiJSON('/api/samsara/all-units');if(b)b.innerHTML=`<b>All ITTR Units:</b> ${d.items.length} · ${d.items.filter(x=>x.samsaraStatus==='connected').length} Samsara connected`;if(r)r.innerHTML=`<div class="tableWrap"><table><thead><tr><th>Customer</th><th>Unit</th><th>VIN</th><th>Samsara</th><th>Driver</th><th>Location</th></tr></thead><tbody>${d.items.map(x=>`<tr><td>${esc(x.customer_name||'—')}</td><td><b>${esc(x.unit_number||'—')}</b></td><td>${esc(x.vin||'—')}</td><td>${x.samsaraStatus==='connected'?'<b style="color:#067647">Connected</b>':'Not connected'}</td><td>${esc(x.samsara_driver_name||'—')}</td><td>${esc(x.samsara_location||'—')}</td></tr>`).join('')}</tbody></table></div>`}catch(e){if(r)r.textContent=e.message||e}};
