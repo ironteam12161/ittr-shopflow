@@ -1,2 +1,2 @@
-# ITTR v24.24.4
+# ITTR v24.24.5
 Adds owner-only cleanup for the incomplete legacy Fullbay service-history import. It deletes only `fullbay_service_history` rows whose source key begins `fullbay:` after audit + exact typed confirmation + browser confirmation. Customers, units, ITTR invoices/work orders, inventory and AI-added history are preserved. The existing Fullbay service-history importer and detailed service-order viewer remain ready for a new complete export.

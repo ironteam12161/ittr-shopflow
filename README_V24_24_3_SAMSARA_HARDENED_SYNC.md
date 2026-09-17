@@ -1,4 +1,4 @@
-# v24.24.4 Samsara Hardened Sync
+# v24.24.5 Samsara Hardened Sync
 Production fix after v24.24.2 reached the route but returned a generic server error.
 
 Changes:
