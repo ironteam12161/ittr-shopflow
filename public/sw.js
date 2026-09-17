@@ -1,5 +1,5 @@
-// ITTR ShopFlow v24.24.1 production PWA service worker
-const CACHE='ittr-shopflow-v24.24.1';
+// ITTR ShopFlow v24.24.2 production PWA service worker
+const CACHE='ittr-shopflow-v24.24.2';
 const SHELL=['/','/index.html','/manifest.webmanifest','/invoice-workspace.css','/modules/invoices.html','/modules/invoices.js','/modules/parts.html','/modules/parts.js','/modules/procenter.html','/modules/procenter.js','/assets/iron-team-logo.png'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil((async()=>{for(const k of await caches.keys())if(k!==CACHE)await caches.delete(k);await self.clients.claim()})()));
