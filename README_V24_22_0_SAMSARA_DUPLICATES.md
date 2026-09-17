@@ -1,2 +1,2 @@
-# ITTR ShopFlow v24.23.2
+# ITTR ShopFlow v24.23.3
 Adds server-side Samsara fleet integration (vehicles, drivers, GPS, speed, engine state, odometer, history) and whole-database duplicate-customer audit with owner-only transactional merge. Merge moves Fullbay history/units, deduplicates units by VIN then unit number, and never auto-merges. Configure Railway variable SAMSARA_API_TOKEN. No database reset or schema migration.
