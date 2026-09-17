@@ -1,4 +1,4 @@
-# ITTR v24.23.3 — Merge Request Fix
+# ITTR v24.24.0 — Merge Request Fix
 
 Root cause confirmed: the Review Merge frontend called `apiJSON()` with a JavaScript object as `fetch()` body. ITTR's `apiJSON()` previously expected an already-stringified JSON body. The browser therefore sent `[object Object]`; Express rejected the request before the merge-preview route could run, which is why the route's new stage-specific error never appeared.
 

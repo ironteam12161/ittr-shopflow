@@ -1,4 +1,4 @@
-# ITTR ShopFlow v24.23.3 — AI Copilot + Intelligent Import
+# ITTR ShopFlow v24.24.0 — AI Copilot + Intelligent Import
 
 Workshop AI is upgraded from Q&A into a controlled ShopFlow Copilot.
 

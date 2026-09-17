@@ -12,9 +12,9 @@ const pkg = JSON.parse(read('package.json'));
 const modulesInvoicesHtml = read('modules/invoices.html');
 const modulesInvoicesJs = read('modules/invoices.js');
 
-check('release package version is 24.23.3', pkg.version === '24.23.3', pkg.version);
-check('frontend release is 24.23.3', html.includes("const FRONTEND_VERSION='24.23.3';") || html.includes('const FRONTEND_VERSION="24.23.3"'));
-check('backend release is 24.23.3', server.includes('frontendExpected:"24.23.3",backend:"24.23.3"'));
+check('release package version is 24.24.0', pkg.version === '24.24.0', pkg.version);
+check('frontend release is 24.24.0', html.includes("const FRONTEND_VERSION='24.24.0';") || html.includes('const FRONTEND_VERSION="24.24.0"'));
+check('backend release is 24.24.0', server.includes('frontendExpected:"24.24.0",backend:"24.24.0"'));
 check('static web root restricted to public directory', server.includes('app.use(express.static(publicDir') && !server.includes('app.use(express.static(webRoot'));
 check('parts search is read-only (no per-result barcode write loop)', !server.includes('for(const x of r.rows)if(!x.internal_barcode)x.internal_barcode=await ensurePartBarcode'));
 check('production 500 responses hide internal error detail', server.includes('isProd?"An unexpected server error occurred.":safe'));
@@ -350,7 +350,7 @@ check('repair order metadata fields preserved', server.includes('service_writer'
 check('customer unit import UI exists', html.includes('fullbayCustomerUnitsFile') && html.includes('uploadFullbayCustomerUnits'));
 check('repair order import UI exists', html.includes('fullbayRepairOrdersFile') && html.includes('uploadFullbayRepairOrders'));
 
-check('v24.23.3 route modules use explicit cache-busting version', html.includes('ROUTE_MODULE_VERSION="24.23.3"') && html.includes('routeAsset("/modules/procenter.html")'));
+check('v24.24.0 route modules use explicit cache-busting version', html.includes('ROUTE_MODULE_VERSION="24.24.0"') && html.includes('routeAsset("/modules/procenter.html")'));
 check('lazy module HTML fetch bypasses stale browser cache', html.includes('fetch(cfg.html,{cache:"no-store"})'));
 check('server disables cache for public module assets', server.includes('filePath.includes(`${path.sep}modules${path.sep}`)'));
 const procenterHtml=fs.readFileSync('public/modules/procenter.html','utf8');
@@ -380,13 +380,13 @@ check('Fullbay service order lookup normalizes SO variants', server.includes("ca
 check('AI review uses real line breaks instead of literal slash-n', html.includes("LEGACY FULLBAY HISTORY REVIEW") && !html.includes("AI IMPORT REVIEW\\\\nCustomer"));
 
 check('lazy route CSS is promoted to document head', html.includes("route-style-${view}-${i}") && html.includes("document.head.appendChild(style)"));
-check('invoice v24.23.3 layout hardening exists', modulesInvoicesHtml.includes("invoice-v24211-layout-hardening"));
+check('invoice v24.24.0 layout hardening exists', modulesInvoicesHtml.includes("invoice-v24211-layout-hardening"));
 check('invoice print hides editable customer vehicle form', modulesInvoicesHtml.includes("body.invoiceWorkspaceMode .invoiceCustomerVehicleCard") && modulesInvoicesHtml.includes("display:none!important"));
 check('invoice print forces stable five-column service rows', modulesInvoicesHtml.includes("grid-template-columns:56px minmax(0,1fr) 54px 66px 72px"));
 
 const invoiceStaticCss=fs.readFileSync('public/invoice-workspace.css','utf8');
 check('invoice workspace has authoritative static CSS file', invoiceStaticCss.includes('authoritative invoice workspace stylesheet') && invoiceStaticCss.includes('.invoiceServiceLaborRow'));
-check('app shell globally loads invoice workspace CSS', html.includes('/invoice-workspace.css?v=24.23.3'));
+check('app shell globally loads invoice workspace CSS', html.includes('/invoice-workspace.css?v=24.24.0'));
 check('app shell contains emergency invoice grid fallback', html.includes('invoice-shell-emergency-layout'));
 check('canonical root and public invoice HTML are synchronized', fs.readFileSync('modules/invoices.html','utf8')===modulesInvoicesHtml);
 
@@ -405,7 +405,7 @@ check('customer merge relinks invoices and service orders', server.includes('UPD
 check('owner merge has preview endpoint', server.includes("/api/customers/merge-preview"));
 check('duplicate UI requires typed MERGE', fs.readFileSync('public/modules/procenter.js','utf8').includes("typed!=='MERGE'") && fs.readFileSync('public/modules/procenter.js','utf8').includes('commitDuplicateMerge'));
 
-check('v24.23.3 duplicate merge actions exported from lazy route', fs.readFileSync('public/modules/procenter.js','utf8').includes('window.previewDuplicateMerge = previewDuplicateMerge') && fs.readFileSync('public/modules/procenter.js','utf8').includes('window.commitDuplicateMerge = commitDuplicateMerge'));
+check('v24.24.0 duplicate merge actions exported from lazy route', fs.readFileSync('public/modules/procenter.js','utf8').includes('window.previewDuplicateMerge = previewDuplicateMerge') && fs.readFileSync('public/modules/procenter.js','utf8').includes('window.commitDuplicateMerge = commitDuplicateMerge'));
 
 check('merge preview avoids PostgreSQL ANY array dependency', !server.includes("id=ANY($1::bigint[])"));
 check('merge preview checks optional tables with to_regclass', server.includes("safeCustomerCount") && server.includes("SELECT to_regclass($1) AS name"));
@@ -441,5 +441,12 @@ check('invoice service history derives additional fees from real schema', server
 check('invoice service history no longer queries nonexistent tax_amount column', !server.includes('i.tax_amount,i.discount,i.additional_fees,i.other_charges'));
 check('invoice service history keeps all non-void billing statuses', server.includes("WHERE i.status<>'void'"));
 check('invoice history matches unit by unit_id or unit/customer identity', server.includes("i.unit_id=$1::bigint OR (lower(coalesce(i.unit_number,''))=lower($2)"));
+
+check('invoice history modal is in live app DOM after final script', html.indexOf('id="invoiceHistoryDetailModal"') > html.lastIndexOf('</script>'));
+check('invoice history title exists in live app DOM', html.indexOf('id="invoiceHistoryDetailTitle"') > html.lastIndexOf('</script>'));
+check('invoice history body exists in live app DOM', html.indexOf('id="invoiceHistoryDetailBody"') > html.lastIndexOf('</script>'));
+check('invoice history opener has null DOM guard', html.includes('Invoice history modal DOM is unavailable'));
+check('work order modal remains in live DOM', html.includes('id="woModal"'));
+check('work order detail modal remains in live DOM', html.includes('id="detailModal"'));
 console.log(`\n${checks.length-failed.length}/${checks.length} checks passed.`);
 if (failed.length) process.exit(1);

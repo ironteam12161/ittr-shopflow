@@ -1,4 +1,4 @@
-# ITTR v24.23.3 — Invoice → Completed Unit Service History
+# ITTR v24.24.0 — Invoice → Completed Unit Service History
 
 Every non-void ITTR invoice linked to a unit is represented in Unit Service History as a completed service visit, while retaining the separate billing status (Draft/Sent/Partial/Paid).
 

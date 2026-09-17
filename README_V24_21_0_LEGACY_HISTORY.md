@@ -1,4 +1,4 @@
-# ITTR ShopFlow v24.23.3 — Legacy Fullbay History Copilot
+# ITTR ShopFlow v24.24.0 — Legacy Fullbay History Copilot
 
 ## What changed
 - AI screenshot/PDF imports now default to **Completed History**, not billing.
