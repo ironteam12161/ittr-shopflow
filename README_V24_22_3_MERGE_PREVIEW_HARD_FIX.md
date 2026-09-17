@@ -1,4 +1,4 @@
-# ITTR v24.24.2 — Merge Preview Hard Fix
+# ITTR v24.24.3 — Merge Preview Hard Fix
 
 The duplicate scan works, but production showed the Review Merge endpoint still returned HTTP 500.
 This release removes the fragile array-based preview query and counts each customer independently.
