@@ -1,3 +1,3 @@
-# ITTR v24.24.1 — Barcode Performance Fix
+# ITTR v24.24.2 — Barcode Performance Fix
 
 Improves manufacturer barcode recognition and lookup speed. Camera detection now runs about 8 times/second instead of under 3 times/second, requests a 1280x720 environment camera, attempts continuous autofocus/exposure where supported, supports additional common 1D formats, and suppresses repeated reads. PostgreSQL now has GIN/lowercase barcode indexes and uses indexed JSON containment before the legacy case-insensitive alias fallback. Inventory-count scanning uses the same fast lookup. No inventory records or barcode aliases are deleted. No destructive DB migration.

@@ -1,4 +1,4 @@
-# ITTR v24.24.1 — Production Readiness / Service History Open Fix
+# ITTR v24.24.2 — Production Readiness / Service History Open Fix
 
 ## Confirmed root cause
 The v24.23.0 invoice-history modal was accidentally injected before the first literal `</body>` in index.html. That `</body>` belonged to the invoice print-window HTML template inside JavaScript, not the live application document. Therefore the live page had no `invoiceHistoryDetailTitle`, `invoiceHistoryDetailBody`, or `invoiceHistoryDetailModal`. Clicking an ITTR invoice history row attempted to set `.textContent` on null and produced the exact production error shown in the screenshot.
