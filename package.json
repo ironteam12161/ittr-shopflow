@@ -1,12 +1,12 @@
 {
   "name": "ittr-shopflow-online",
-  "version": "24.25.5",
+  "version": "24.25.6",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node runtime_samsara_name_patch.mjs && node runtime_samsara_realtime_patch.mjs && node runtime_samsara_v251_patch.mjs && node runtime_samsara_v252_patch.mjs && node runtime_samsara_v253_patch.mjs && node runtime_samsara_v254_patch.mjs && node runtime_samsara_v255_patch.mjs && node server.js",
+    "start": "node runtime_samsara_name_patch.mjs && node runtime_samsara_realtime_patch.mjs && node runtime_samsara_v251_patch.mjs && node runtime_samsara_v252_patch.mjs && node runtime_samsara_v253_patch.mjs && node runtime_samsara_v254_patch.mjs && node runtime_samsara_v255_patch.mjs && node runtime_v256_procenter_recovery.mjs && node server.js",
     "audit": "node release_audit.mjs",
-    "check": "node --check server.js && node --check runtime_samsara_name_patch.mjs && node --check runtime_samsara_realtime_patch.mjs && node --check runtime_samsara_v251_patch.mjs && node --check runtime_samsara_v252_patch.mjs && node --check runtime_samsara_v253_patch.mjs && node --check runtime_samsara_v254_patch.mjs && node --check runtime_samsara_v255_patch.mjs && node --check frontend_check.js && node --check modules/invoices.js && node --check modules/trucksearch.js && node --check modules/parts.js && node --check modules/customers.js && node --check modules/procenter.js && node release_audit.mjs"
+    "check": "node --check server.js && node --check runtime_samsara_name_patch.mjs && node --check runtime_samsara_realtime_patch.mjs && node --check runtime_samsara_v251_patch.mjs && node --check runtime_samsara_v252_patch.mjs && node --check runtime_samsara_v253_patch.mjs && node --check runtime_samsara_v254_patch.mjs && node --check runtime_samsara_v255_patch.mjs && node --check runtime_v256_procenter_recovery.mjs && node --check frontend_check.js && node --check modules/invoices.js && node --check modules/trucksearch.js && node --check modules/parts.js && node --check modules/customers.js && node --check modules/procenter.js && node release_audit.mjs"
   },
   "dependencies": {
     "express": "5.1.0",
