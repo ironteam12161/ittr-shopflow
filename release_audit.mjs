@@ -12,9 +12,9 @@ const pkg = JSON.parse(read('package.json'));
 const modulesInvoicesHtml = read('modules/invoices.html');
 const modulesInvoicesJs = read('modules/invoices.js');
 
-check('release package version is 24.22.4', pkg.version === '24.22.4', pkg.version);
-check('frontend release is 24.22.4', html.includes("const FRONTEND_VERSION='24.22.4';") || html.includes('const FRONTEND_VERSION="24.22.4"'));
-check('backend release is 24.22.4', server.includes('frontendExpected:"24.22.4",backend:"24.22.4"'));
+check('release package version is 24.23.1', pkg.version === '24.23.1', pkg.version);
+check('frontend release is 24.23.1', html.includes("const FRONTEND_VERSION='24.23.1';") || html.includes('const FRONTEND_VERSION="24.23.1"'));
+check('backend release is 24.23.1', server.includes('frontendExpected:"24.23.1",backend:"24.23.1"'));
 check('static web root restricted to public directory', server.includes('app.use(express.static(publicDir') && !server.includes('app.use(express.static(webRoot'));
 check('parts search is read-only (no per-result barcode write loop)', !server.includes('for(const x of r.rows)if(!x.internal_barcode)x.internal_barcode=await ensurePartBarcode'));
 check('production 500 responses hide internal error detail', server.includes('isProd?"An unexpected server error occurred.":safe'));
@@ -350,7 +350,7 @@ check('repair order metadata fields preserved', server.includes('service_writer'
 check('customer unit import UI exists', html.includes('fullbayCustomerUnitsFile') && html.includes('uploadFullbayCustomerUnits'));
 check('repair order import UI exists', html.includes('fullbayRepairOrdersFile') && html.includes('uploadFullbayRepairOrders'));
 
-check('v24.22.4 route modules use explicit cache-busting version', html.includes('ROUTE_MODULE_VERSION="24.22.4"') && html.includes('routeAsset("/modules/procenter.html")'));
+check('v24.23.1 route modules use explicit cache-busting version', html.includes('ROUTE_MODULE_VERSION="24.23.1"') && html.includes('routeAsset("/modules/procenter.html")'));
 check('lazy module HTML fetch bypasses stale browser cache', html.includes('fetch(cfg.html,{cache:"no-store"})'));
 check('server disables cache for public module assets', server.includes('filePath.includes(`${path.sep}modules${path.sep}`)'));
 const procenterHtml=fs.readFileSync('public/modules/procenter.html','utf8');
@@ -380,13 +380,13 @@ check('Fullbay service order lookup normalizes SO variants', server.includes("ca
 check('AI review uses real line breaks instead of literal slash-n', html.includes("LEGACY FULLBAY HISTORY REVIEW") && !html.includes("AI IMPORT REVIEW\\\\nCustomer"));
 
 check('lazy route CSS is promoted to document head', html.includes("route-style-${view}-${i}") && html.includes("document.head.appendChild(style)"));
-check('invoice v24.22.4 layout hardening exists', modulesInvoicesHtml.includes("invoice-v24211-layout-hardening"));
+check('invoice v24.23.1 layout hardening exists', modulesInvoicesHtml.includes("invoice-v24211-layout-hardening"));
 check('invoice print hides editable customer vehicle form', modulesInvoicesHtml.includes("body.invoiceWorkspaceMode .invoiceCustomerVehicleCard") && modulesInvoicesHtml.includes("display:none!important"));
 check('invoice print forces stable five-column service rows', modulesInvoicesHtml.includes("grid-template-columns:56px minmax(0,1fr) 54px 66px 72px"));
 
 const invoiceStaticCss=fs.readFileSync('public/invoice-workspace.css','utf8');
 check('invoice workspace has authoritative static CSS file', invoiceStaticCss.includes('authoritative invoice workspace stylesheet') && invoiceStaticCss.includes('.invoiceServiceLaborRow'));
-check('app shell globally loads invoice workspace CSS', html.includes('/invoice-workspace.css?v=24.22.4'));
+check('app shell globally loads invoice workspace CSS', html.includes('/invoice-workspace.css?v=24.23.1'));
 check('app shell contains emergency invoice grid fallback', html.includes('invoice-shell-emergency-layout'));
 check('canonical root and public invoice HTML are synchronized', fs.readFileSync('modules/invoices.html','utf8')===modulesInvoicesHtml);
 
@@ -405,7 +405,7 @@ check('customer merge relinks invoices and service orders', server.includes('UPD
 check('owner merge has preview endpoint', server.includes("/api/customers/merge-preview"));
 check('duplicate UI requires typed MERGE', fs.readFileSync('public/modules/procenter.js','utf8').includes("typed!=='MERGE'") && fs.readFileSync('public/modules/procenter.js','utf8').includes('commitDuplicateMerge'));
 
-check('v24.22.4 duplicate merge actions exported from lazy route', fs.readFileSync('public/modules/procenter.js','utf8').includes('window.previewDuplicateMerge = previewDuplicateMerge') && fs.readFileSync('public/modules/procenter.js','utf8').includes('window.commitDuplicateMerge = commitDuplicateMerge'));
+check('v24.23.1 duplicate merge actions exported from lazy route', fs.readFileSync('public/modules/procenter.js','utf8').includes('window.previewDuplicateMerge = previewDuplicateMerge') && fs.readFileSync('public/modules/procenter.js','utf8').includes('window.commitDuplicateMerge = commitDuplicateMerge'));
 
 check('merge preview avoids PostgreSQL ANY array dependency', !server.includes("id=ANY($1::bigint[])"));
 check('merge preview checks optional tables with to_regclass', server.includes("safeCustomerCount") && server.includes("SELECT to_regclass($1) AS name"));
@@ -415,5 +415,18 @@ check('merge handles optional invoice/service-order tables safely', server.inclu
 check('merge preview POST serializes JSON body', fs.readFileSync('public/modules/procenter.js','utf8').includes("body:JSON.stringify({masterId,duplicateId})"));
 check('apiJSON safely normalizes plain object bodies', html.includes('const normalizedBody=options.body&&typeof options.body==="object"'));
 check('merge commit POST serializes JSON body', (fs.readFileSync('public/modules/procenter.js','utf8').match(/body:JSON\.stringify\(\{masterId,duplicateId\}\)/g)||[]).length >= 2);
+
+check('invoice unit history is marked completed independently of billing status', server.includes('status:"Completed",invoiceStatus:x.status'));
+check('invoice history includes parent line linkage for parts', server.includes("'parentLineId',l.parent_line_id"));
+check('invoice history includes detailed part pricing', server.includes("'unitCost',l.unit_cost") && server.includes("'unitPrice',l.unit_price"));
+check('unit history opens read-only invoice service detail', html.includes('function openInvoiceServiceHistory(invoiceId)') && html.includes('Service history is read-only.'));
+check('invoice service detail groups Parts Used under labor', html.includes('Parts Used') && html.includes('p.parentLineId'));
+check('invoice service history edit path points only to original invoice', html.includes('Edit Original Invoice') && html.includes('openInvoiceWorkspace(${Number(w.id)})'));
+
+check('Fullbay history cleanup audit is owner-only', server.includes("app.get('/api/fullbay/history/import-audit',auth,ownerOnly"));
+check('Fullbay history cleanup delete is owner-only', server.includes("app.post('/api/fullbay/history/delete-imported',auth,ownerOnly"));
+check('Fullbay history cleanup requires exact typed confirmation', server.includes("confirmation!=='DELETE FULLBAY HISTORY'"));
+check('Fullbay cleanup targets imported source keys only', server.includes("DELETE FROM fullbay_service_history WHERE coalesce(source_key,'') LIKE 'fullbay:%'"));
+check('Fullbay cleanup UI preserves ITTR records', fs.readFileSync('public/modules/procenter.html','utf8').includes('does not delete ITTR invoices, work orders, customers, units, inventory'));
 console.log(`\n${checks.length-failed.length}/${checks.length} checks passed.`);
 if (failed.length) process.exit(1);
