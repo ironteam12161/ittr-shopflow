@@ -1,12 +1,12 @@
 {
   "name": "ittr-shopflow-online",
-  "version": "24.26.1",
+  "version": "24.26.2",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node runtime_samsara_name_patch.mjs && node runtime_samsara_realtime_patch.mjs && node runtime_samsara_v251_patch.mjs && node runtime_samsara_v252_patch.mjs && node runtime_samsara_v253_patch.mjs && node runtime_samsara_v254_patch.mjs && node runtime_samsara_v255_patch.mjs && node runtime_v256_procenter_recovery.mjs && node runtime_v257_fault_codes_fix.mjs && node runtime_v260_invoice_workspace_fix.mjs && node server.js",
+    "start": "node runtime_samsara_name_patch.mjs && node runtime_samsara_realtime_patch.mjs && node runtime_samsara_v251_patch.mjs && node runtime_samsara_v252_patch.mjs && node runtime_samsara_v253_patch.mjs && node runtime_samsara_v254_patch.mjs && node runtime_samsara_v255_patch.mjs && node runtime_v256_procenter_recovery.mjs && node runtime_v257_fault_codes_fix.mjs && node runtime_v260_invoice_workspace_fix.mjs && node runtime_v261_clean_invoice_print.mjs && node server.js",
     "audit": "node production_audit.mjs",
-    "check": "node --check server.js && node --check runtime_samsara_name_patch.mjs && node --check runtime_samsara_realtime_patch.mjs && node --check runtime_samsara_v251_patch.mjs && node --check runtime_samsara_v252_patch.mjs && node --check runtime_samsara_v253_patch.mjs && node --check runtime_samsara_v254_patch.mjs && node --check runtime_samsara_v255_patch.mjs && node --check runtime_v256_procenter_recovery.mjs && node --check runtime_v257_fault_codes_fix.mjs && node --check runtime_v260_invoice_workspace_fix.mjs && node --check frontend_check.js && node --check modules/invoices.js && node --check modules/trucksearch.js && node --check modules/parts.js && node --check modules/customers.js && node --check modules/procenter.js && node production_audit.mjs"
+    "check": "node --check server.js && node --check runtime_samsara_name_patch.mjs && node --check runtime_samsara_realtime_patch.mjs && node --check runtime_samsara_v251_patch.mjs && node --check runtime_samsara_v252_patch.mjs && node --check runtime_samsara_v253_patch.mjs && node --check runtime_samsara_v254_patch.mjs && node --check runtime_samsara_v255_patch.mjs && node --check runtime_v256_procenter_recovery.mjs && node --check runtime_v257_fault_codes_fix.mjs && node --check runtime_v260_invoice_workspace_fix.mjs && node --check runtime_v261_clean_invoice_print.mjs && node --check frontend_check.js && node --check modules/invoices.js && node --check modules/trucksearch.js && node --check modules/parts.js && node --check modules/customers.js && node --check modules/procenter.js && node production_audit.mjs"
   },
   "dependencies": {
     "express": "5.1.0",
