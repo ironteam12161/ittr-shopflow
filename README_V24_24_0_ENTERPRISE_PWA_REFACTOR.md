@@ -1,4 +1,4 @@
-# ITTR ShopFlow v24.24.3 — Enterprise PWA Refactor
+# ITTR ShopFlow v24.24.4 — Enterprise PWA Refactor
 
 Applied to v24.23.4 production-readiness base.
 

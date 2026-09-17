@@ -20,6 +20,6 @@ c('preview before API fallback',api404rel<0||p-f<api404rel);
 c('sync before API fallback',api404rel<0||q-f<api404rel);
 c('all-units before API fallback',api404rel<0||a-f<api404rel);
 c('integration status endpoint',s.includes('/api/samsara/integration-status'));
-c('version 24.24.3',s.includes('24.24.3'));
+c('version 24.24.4',s.includes('24.24.4'));
 c('Fullbay SQL guard preserved',s.includes('$22'));
 console.log(`${ok}/${ok+fail} route checks passed`); if(fail)process.exit(1);

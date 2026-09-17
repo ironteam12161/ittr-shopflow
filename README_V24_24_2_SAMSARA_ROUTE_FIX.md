@@ -1,4 +1,4 @@
-# ITTR ShopFlow v24.24.3 — Samsara Route Registration Fix
+# ITTR ShopFlow v24.24.4 — Samsara Route Registration Fix
 
 Fixes the production `API endpoint not found` error from v24.24.1.
 

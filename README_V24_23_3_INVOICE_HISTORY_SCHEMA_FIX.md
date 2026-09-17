@@ -1,4 +1,4 @@
-# ITTR v24.24.3 — Invoice Service History Schema Fix
+# ITTR v24.24.4 — Invoice Service History Schema Fix
 
 Root cause: the v24.23.0 invoice-history query referenced `customer_invoices.tax_amount`, `additional_fees`, and `other_charges`, but those columns do not exist in the production invoice schema. The profile endpoint catches that SQL error, so Fullbay history continued to display while all ITTR invoice-history rows silently disappeared.
 
