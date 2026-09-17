@@ -1,4 +1,33 @@
+# Dependencies
 node_modules/
+
+# Secrets / local environment
 .env
-.DS_Store
+.env.*
+!.env.example
+
+# Logs and runtime output
 *.log
+npm-debug.log*
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Temporary and backup files
+*.bak
+*.tmp
+*.temp
+*~
+
+# Browser-upload duplicate names (example: parts (4).html)
+* ([0-9]).js
+* ([0-9]).html
+* ([0-9][0-9]).js
+* ([0-9][0-9]).html
+
+# Generated release packages
+*.zip
+*.sha256
