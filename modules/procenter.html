@@ -129,3 +129,10 @@
 
 <section class="card" id="samsaraFleetCard" style="margin-top:16px"><div class="sectionHead"><div><div class="eyebrow">FLEET TELEMATICS</div><h2>Samsara Fleet</h2><p class="muted">Read-only live vehicle, driver and GPS information from Samsara.</p></div><button class="secondary" onclick="loadSamsaraFleet()">Refresh Samsara</button></div><div id="samsaraStatus" class="muted">Not checked yet.</div><div class="field" style="max-width:430px;margin:10px 0"><label>Search fleet</label><input id="samsaraSearch" placeholder="Unit, VIN, driver, plate or location…" oninput="renderSamsaraFleet()"></div><div id="samsaraFleetResults"></div></section>
 <section class="card" id="duplicateCustomerAuditCard" style="margin-top:16px"><div class="sectionHead"><div><div class="eyebrow">DATA QUALITY</div><h2>Duplicate Customer Audit</h2><p class="muted">Find likely duplicates such as Corp vs Corporation. Review first; nothing merges automatically.</p></div><button class="secondary" onclick="auditDuplicateCustomers()">Scan Customers</button></div><div id="duplicateCustomerResults" class="muted">Run the scan to review likely duplicates.</div></section>
+
+<section class="card" id="fullbayHistoryResetCard" style="margin-top:16px">
+ <div class="sectionHead"><div><div class="eyebrow">FULLBAY HISTORY</div><h2>Imported Service History Cleanup</h2>
+ <p class="muted">Remove the incomplete old Fullbay service-order history before importing a new complete export. This does not delete ITTR invoices, work orders, customers, units, inventory, or AI-added history.</p></div>
+ <button class="secondary" onclick="auditImportedFullbayHistory()">Audit Imported History</button></div>
+ <div id="fullbayHistoryResetResults" class="muted">Run the audit before deleting anything.</div>
+</section>

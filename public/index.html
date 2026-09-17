@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.22.4</title>
+<title>ITTR ShopFlow v24.23.1</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -721,7 +721,7 @@ body.modalOpen{overflow:hidden}
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.22.4">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.23.1">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -739,7 +739,7 @@ body.invoiceWorkspaceMode .invoiceRateWrap{display:grid!important;grid-template-
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.22.4 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.23.1 ONLINE · MOBILE SHOP FLOOR · AI · SMART RECEIVING</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1283,7 +1283,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.22.4';
+const FRONTEND_VERSION='24.23.1';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1505,7 +1505,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.22.4";
+const ROUTE_MODULE_VERSION="24.23.1";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -3383,8 +3383,8 @@ function vehicleHistoryJobRows(){
   const base={date:w.completedAt||w.date||null,mileage:w.mileage,source:w.source,parent:w};
   if(w.source==="invoice"){
    const labor=(w.tasks||[]).filter(t=>String(t?.lineType||"").toLowerCase()==="labor");
-   for(const t of labor){const job=cleanImportedDisplayText(t?.description||t?.t||t?.jobName)||"Labor / Service";out.push({...base,job,hours:Number(t?.quantity||0),amount:Number(t?.lineTotal||0),tech:cleanImportedDisplayText(t?.tech||""),doc:`Invoice ${cleanVehicleMeta(w.invoice||w.id)}`,sub:w.workOrderId?`WO #${cleanVehicleMeta(w.workOrderId)}`:"",open:`closeModal('vehicleProfileModal');openInvoice(${Number(w.id)})`})}
-   if(!labor.length)out.push({...base,job:"Invoice / service visit",hours:null,amount:Number(w.totalAmount||0),tech:"",doc:`Invoice ${cleanVehicleMeta(w.invoice||w.id)}`,sub:w.workOrderId?`WO #${cleanVehicleMeta(w.workOrderId)}`:"",open:`closeModal('vehicleProfileModal');openInvoice(${Number(w.id)})`});
+   for(const t of labor){const job=cleanImportedDisplayText(t?.description||t?.t||t?.jobName)||"Labor / Service";out.push({...base,job,hours:Number(t?.quantity||0),amount:Number(t?.lineTotal||0),tech:cleanImportedDisplayText(t?.tech||""),doc:`Invoice ${cleanVehicleMeta(w.invoice||w.id)}`,sub:w.workOrderId?`WO #${cleanVehicleMeta(w.workOrderId)}`:"",open:`openInvoiceServiceHistory(${Number(w.id)})`})}
+   if(!labor.length)out.push({...base,job:"Invoice / service visit",hours:null,amount:Number(w.totalAmount||0),tech:"",doc:`Invoice ${cleanVehicleMeta(w.invoice||w.id)}`,sub:w.workOrderId?`WO #${cleanVehicleMeta(w.workOrderId)}`:"",open:`openInvoiceServiceHistory(${Number(w.id)})`});
   }else if(w.source==="fullbay"){
    for(const t of (w.tasks||[])){const job=cleanImportedDisplayText(t?.outcomeNote||t?.t)||"Service performed";out.push({...base,job,hours:t?.hours==null?null:Number(t.hours),amount:t?.totalAmount==null?null:Number(t.totalAmount),tech:cleanImportedDisplayText(t?.tech||w.mechanic||""),doc:`SO #${cleanVehicleMeta(w.id)}`,sub:w.invoice?`Invoice #${cleanVehicleMeta(w.invoice)}`:"",open:`openFullbayServiceOrder('${encodeURIComponent(String(w.id||""))}',${c.id||'null'},'${encodeURIComponent(String(w.unit||unit.unit_number||""))}')`})}
   }else{
@@ -3393,6 +3393,44 @@ function vehicleHistoryJobRows(){
  }
  return out.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
 }
+
+function openInvoiceServiceHistory(invoiceId){
+ const history=Array.isArray(vehicleProfileCache?.history)?vehicleProfileCache.history:[],w=history.find(x=>x?.source==="invoice"&&Number(x.id)===Number(invoiceId));
+ if(!w)return showToast?.("Invoice service history could not be loaded.","error",5000);
+ const c=vehicleProfileCache?.customer||{},u=vehicleProfileCache?.unit||{},lines=Array.isArray(w.tasks)?w.tasks:[];
+ const labor=lines.filter(x=>String(x.lineType||"").toLowerCase()==="labor"),parts=lines.filter(x=>String(x.lineType||"").toLowerCase()==="part");
+ const other=lines.filter(x=>!["labor","part"].includes(String(x.lineType||"").toLowerCase()));
+ const attached=(l)=>parts.filter(p=>(p.parentLineId!=null&&String(p.parentLineId)===String(l.id))||(!p.parentLineId&&cleanImportedDisplayText(p.jobName).toLowerCase()===cleanImportedDisplayText(l.jobName).toLowerCase()));
+ const usedPartIds=new Set();
+ const jobs=labor.map((l,i)=>{const pp=attached(l);pp.forEach(p=>usedPartIds.add(String(p.id)));return `<div class="card" style="margin:10px 0">
+   <div style="display:flex;justify-content:space-between;gap:12px"><div><b>Action ${i+1} · ${esc(cleanImportedDisplayText(l.jobName||l.description)||"Service")}</b><div class="muted">What was done: ${esc(cleanImportedDisplayText(l.description)||"Labor / Service")}</div></div><div><b>${money(Number(l.lineTotal||0))}</b></div></div>
+   <div class="muted" style="margin-top:6px">${Number(l.quantity||0).toFixed(2)} hr · Rate ${money(Number(l.unitPrice||0))}</div>
+   ${pp.length?`<div style="margin-top:10px"><b>Parts Used</b>${pp.map(p=>`<div style="display:grid;grid-template-columns:140px 1fr 70px 100px 100px;gap:8px;padding:7px 0;border-top:1px solid var(--line,#e5e7eb)"><span>${esc(cleanImportedDisplayText(p.partNumber)||"—")}</span><span>${esc(cleanImportedDisplayText(p.description)||"Part")}</span><span>Qty ${Number(p.quantity||0)}</span><span>${money(Number(p.unitPrice||0))}</span><b>${money(Number(p.lineTotal||0))}</b></div>`).join("")}</div>`:""}
+  </div>`}).join("");
+ const unattached=parts.filter(p=>!usedPartIds.has(String(p.id)));
+ const body=document.getElementById("invoiceHistoryDetailBody");
+ document.getElementById("invoiceHistoryDetailTitle").textContent=`Completed Service · ${w.invoice||"Invoice"}`;
+ body.innerHTML=`<div class="fullbayGrid">
+  <div class="fullbayStat"><span class="muted">Customer</span><b style="font-size:16px">${esc(cleanImportedDisplayText(c.customer_name||u.customer_name)||"—")}</b></div>
+  <div class="fullbayStat"><span class="muted">Vehicle</span><b style="font-size:16px">Unit ${esc(cleanVehicleMeta(w.unit||u.unit_number)||"—")}</b><div class="muted">${esc(cleanVehicleMeta(w.vin||u.vin)||"")}</div></div>
+  <div class="fullbayStat"><span class="muted">Completed</span><b style="font-size:16px">${esc(w.completedAt?fmtDateTime(w.completedAt):"—")}</b><div class="muted">${w.mileage!=null?`${Number(w.mileage).toLocaleString()} mi`:""}</div></div>
+  <div class="fullbayStat"><span class="muted">Invoice</span><b style="font-size:16px">${esc(w.invoice||"—")}</b><div class="muted">Billing status: ${esc(String(w.invoiceStatus||"draft").toUpperCase())}</div></div>
+ </div>
+ <div class="fullbayGrid" style="margin-top:10px">
+  <div class="fullbayStat"><span class="muted">Labor</span><b>${money(labor.reduce((n,x)=>n+Number(x.lineTotal||0),0))}</b></div>
+  <div class="fullbayStat"><span class="muted">Parts</span><b>${money(parts.reduce((n,x)=>n+Number(x.lineTotal||0),0))}</b></div>
+  <div class="fullbayStat"><span class="muted">Fees / Other</span><b>${money(Number(w.additionalFees||0)+Number(w.otherCharges||0)+other.reduce((n,x)=>n+Number(x.lineTotal||0),0))}</b></div>
+  <div class="fullbayStat"><span class="muted">Invoice Total</span><b>${money(Number(w.totalAmount||0))}</b></div>
+ </div>
+ <h3 style="margin-top:18px">Jobs / Work Performed</h3>
+ ${jobs||'<div class="muted">No labor lines saved on this invoice.</div>'}
+ ${unattached.length?`<div class="card"><b>Additional Parts</b>${unattached.map(p=>`<div style="padding:7px 0;border-top:1px solid var(--line,#e5e7eb)">${esc(cleanImportedDisplayText(p.partNumber)||"—")} · ${esc(cleanImportedDisplayText(p.description)||"Part")} · Qty ${Number(p.quantity||0)} · ${money(Number(p.lineTotal||0))}</div>`).join("")}</div>`:""}
+ ${other.length?`<div class="card"><b>Other Charges / Services</b>${other.map(x=>`<div style="padding:7px 0;border-top:1px solid var(--line,#e5e7eb)">${esc(cleanImportedDisplayText(x.description)||cleanImportedDisplayText(x.lineType)||"Charge")} · ${money(Number(x.lineTotal||0))}</div>`).join("")}</div>`:""}
+ <div class="notice" style="margin-top:12px"><b>Service history is read-only.</b> To correct labor, parts, pricing, mileage, or billing information, edit the original invoice.</div>
+ <div class="actions" style="margin-top:12px"><button class="primary" onclick="closeModal('invoiceHistoryDetailModal');closeModal('vehicleProfileModal');openInvoiceWorkspace(${Number(w.id)})">Edit Original Invoice</button><button class="secondary" onclick="closeModal('invoiceHistoryDetailModal')">Close</button></div>`;
+ document.getElementById("invoiceHistoryDetailModal").classList.add("open");syncModalState();
+}
+
 function renderVehicleHistoryRows(){
  const body=document.getElementById("vehicleHistoryRows");if(!body||!vehicleProfileCache)return;
  const q=String(document.getElementById("vehicleHistorySearch")?.value||"").trim().toLowerCase(),src=String(document.getElementById("vehicleHistorySource")?.value||"");
@@ -4477,7 +4515,15 @@ async function printPartLabel(id,pn,desc,loc){let svg='';try{const r=await fetch
 .liveStatusBadge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;color:#475467}.liveStatusDot{width:8px;height:8px;border-radius:50%;background:#98a2b3}.liveStatusDot.connected{background:#12b76a}.liveStatusDot.reconnecting{background:#f79009}.liveStatusDot.offline{background:#f04438}
 .receiveVerifyShell{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;align-items:stretch!important}.receiveDocumentPane{height:min(76dvh,860px)!important;display:flex!important;flex-direction:column!important}.receiveViewerToolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px;background:#0f172a;color:#fff;border-bottom:1px solid #344054}.receiveViewerToolbar button{min-height:40px;background:#1d2939!important;color:#fff!important;border:1px solid #475467!important}.receiveViewerStage{flex:1;overflow:auto;cursor:grab;display:grid;place-items:center;background:#111827;padding:18px}.receiveViewerStage:active{cursor:grabbing}.receiveViewerTransform{transform-origin:center center;transition:transform .12s ease;max-width:none}.receiveViewerTransform img{max-width:none!important;width:auto!important;height:auto!important;min-width:60%;object-fit:contain}.receiveViewerTransform iframe{width:720px!important;height:900px!important;background:#fff}.receivePriceWarning{background:#fffaeb!important;outline:2px solid #fdb022!important;border-radius:10px}.receiveInlineWarning{font-size:11px;font-weight:800;color:#b54708;margin-top:4px}.receiveInlineError{font-size:11px;font-weight:800;color:#b42318;margin-top:4px}.receiveStickyCommit{position:sticky!important;bottom:0;z-index:4;background:#fff;border-top:2px solid #d0d5dd;padding:12px 0!important}.receiveStickyCommit .actions button{min-height:50px;padding:12px 16px}
 @media(max-width:760px){#shopAiPanel{inset:0!important;right:auto!important;bottom:auto!important;width:100vw!important;height:100dvh!important;max-height:none!important;border-radius:0!important;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}.aiComposer textarea{font-size:16px!important}.toastRegion{top:max(10px,env(safe-area-inset-top));right:12px}.mechanicWizardBox{width:100%!important;height:100dvh!important;max-height:none!important;border-radius:0!important;margin:0!important}.mechanicWizardProgress{font-size:12px}.receiveVerifyShell{grid-template-columns:1fr!important}.receiveDocumentPane{position:relative!important;height:44dvh!important;min-height:280px!important}.receiveDataPane{overflow:visible}.receiveStickyCommit{bottom:0}.mechanicActivityActions{display:grid!important;grid-template-columns:1fr!important}}
-</style></head><body><div class="label"><div><div class="brand">IRON TEAM · PARTS</div><div class="pn">${esc(partNo)}</div><div class="desc">${esc(description)}</div></div><div class="barcode">${svg}</div><div class="footer"><span class="code">${esc(code)}</span><span class="location">${esc(location||'General')}</span></div></div><script>window.onload=()=>setTimeout(()=>window.print(),150)<\/script></body></html>`);w.document.close()}
+</style></head><body><div class="label"><div><div class="brand">IRON TEAM · PARTS</div><div class="pn">${esc(partNo)}</div><div class="desc">${esc(description)}</div></div><div class="barcode">${svg}</div><div class="footer"><span class="code">${esc(code)}</span><span class="location">${esc(location||'General')}</span></div></div><script>window.onload=()=>setTimeout(()=>window.print(),150)<\/script>
+<div class="modal" id="invoiceHistoryDetailModal">
+ <div class="modalCard" style="max-width:980px">
+  <div class="modalHead"><h2 id="invoiceHistoryDetailTitle">Completed Service</h2><button class="iconBtn" onclick="closeModal('invoiceHistoryDetailModal')">×</button></div>
+  <div id="invoiceHistoryDetailBody"></div>
+ </div>
+</div>
+
+</body></html>`);w.document.close()}
 let smartReceivingData=null,smartReceivingPreviewUrl='';
 function openSmartReceiving(){const m=document.getElementById('smartReceivingModal');m?.classList.add('open');resetSmartReceiving();refreshVendorList();syncModalState();updateMobileBackButton()}
 function releaseSmartReceivingPreview(){if(smartReceivingPreviewUrl){URL.revokeObjectURL(smartReceivingPreviewUrl);smartReceivingPreviewUrl=''}}

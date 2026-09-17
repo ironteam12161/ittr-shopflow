@@ -1,0 +1,17 @@
+import fs from 'fs';
+const s=fs.readFileSync('server.js','utf8'),h=fs.readFileSync('index.html','utf8');
+let p=0,f=0;const ck=(n,v)=>{console.log((v?'PASS ':'FAIL ')+n);v?p++:f++};
+ck('non-void invoices remain in unit history',s.includes("WHERE i.status<>'void'"));
+ck('invoice history completed status separated from billing status',s.includes('status:"Completed",invoiceStatus:x.status'));
+ck('completion date prefers finalized timestamp',s.includes('completedAt:x.finalized_at||x.sent_at||x.invoice_date||x.created_at'));
+ck('labor and parts preserve parent linkage',s.includes("'parentLineId',l.parent_line_id"));
+ck('history carries qty price cost total',s.includes("'quantity',l.quantity")&&s.includes("'unitPrice',l.unit_price")&&s.includes("'unitCost',l.unit_cost")&&s.includes("'lineTotal',l.line_total"));
+ck('read-only service modal exists',h.includes('invoiceHistoryDetailModal')&&h.includes('Service history is read-only.'));
+ck('history rows no longer directly edit invoice',h.includes('open:`openInvoiceServiceHistory(${Number(w.id)})`'));
+ck('parts grouped below labor',h.includes('const attached=(l)=>parts.filter')&&h.includes('Parts Used'));
+ck('edit action explicitly opens original invoice',h.includes('Edit Original Invoice')&&h.includes('openInvoiceWorkspace(${Number(w.id)})'));
+ck('Fullbay history remains',s.includes('source:"fullbay"'));
+ck('ITTR work order history remains',s.includes('source:"ittr"'));
+ck('Samsara token remains server side',s.includes('process.env.SAMSARA_API_TOKEN'));
+ck('Fullbay inventory $22 guard preserved',s.includes('$22')&&!/fullbay_import_parts[\s\S]{0,1200}\$23/.test(s));
+console.log(`HISTORY AUDIT ${p}/${p+f} passed`);if(f)process.exit(1);

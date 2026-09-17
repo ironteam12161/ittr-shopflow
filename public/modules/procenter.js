@@ -70,9 +70,28 @@ async function commitDuplicateMerge(groupIndex,masterId,duplicateId){
  }catch(e){alert(e.message||'Customer merge failed.')}
 }
 
-// v24.22.4 lazy-route global action exports
+// v24.23.1 lazy-route global action exports
 window.loadSamsaraFleet = loadSamsaraFleet;
 window.renderSamsaraFleet = renderSamsaraFleet;
 window.auditDuplicateCustomers = auditDuplicateCustomers;
 window.previewDuplicateMerge = previewDuplicateMerge;
 window.commitDuplicateMerge = commitDuplicateMerge;
+
+async function auditImportedFullbayHistory(){
+ const out=document.getElementById('fullbayHistoryResetResults');if(out)out.textContent='Auditing imported Fullbay history…';
+ try{const d=await apiJSON('/api/fullbay/history/import-audit');
+ out.innerHTML=`<div class="notice"><b>${d.imported||0} imported Fullbay history rows found.</b><br>${d.incomplete||0} appear incomplete.<br>${d.aiHistory||0} AI-added history rows are protected from this cleanup.
+ <div style="margin-top:10px"><input id="fullbayDeleteConfirm" placeholder="Type DELETE FULLBAY HISTORY" style="min-width:270px"><button class="danger" onclick="deleteImportedFullbayHistory()">Delete Imported Fullbay History</button></div>
+ <div class="muted" style="margin-top:7px">Customers, units, ITTR invoices, ITTR work orders and inventory are preserved.</div></div>`}
+ catch(e){out.innerHTML=`<div class="error">${esc(e.message||'Fullbay history audit failed.')}</div>`}
+}
+async function deleteImportedFullbayHistory(){
+ const confirmation=String(document.getElementById('fullbayDeleteConfirm')?.value||'').trim();
+ if(confirmation!=='DELETE FULLBAY HISTORY'){alert('Type DELETE FULLBAY HISTORY exactly.');return}
+ if(!confirm('Delete ONLY the previously imported Fullbay service-history rows? Customers, units, ITTR invoices/work orders and inventory will remain.'))return;
+ try{const r=await apiJSON('/api/fullbay/history/delete-imported',{method:'POST',body:JSON.stringify({confirmation})});
+ alert(`${r.deleted||0} imported Fullbay history rows deleted. Customers, units and ITTR records were preserved.`);await auditImportedFullbayHistory()}
+ catch(e){alert(e.message||'Fullbay history cleanup failed.')}
+}
+window.auditImportedFullbayHistory=auditImportedFullbayHistory;
+window.deleteImportedFullbayHistory=deleteImportedFullbayHistory;
