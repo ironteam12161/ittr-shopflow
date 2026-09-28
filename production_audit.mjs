@@ -49,6 +49,25 @@ check('offline queue stores base server version',root.includes('baseVersion:Numb
 check('offline replay uses queued base version',root.includes('item?.baseVersion'));
 check('manager cannot trigger legacy browser import',root.includes('remoteEmpty && localHasData && session?.role==="admin"'));
 
+// v24.28.0 security phase 2
+check('CSP enabled',server.includes('contentSecurityPolicy:{directives:{')&&!server.includes('contentSecurityPolicy:false'));
+check('frame embedding blocked',server.includes('frameAncestors:["\'none\'"]'));
+check('browser permissions policy present',server.includes('Permissions-Policy'));
+check('AI limiter present',server.includes('const aiLimiter=rateLimit')&&server.includes('app.use("/api/ai",aiLimiter)'));
+check('upload limiter present',server.includes('const uploadLimiter=rateLimit')&&server.includes('app.use("/api/ai/import",uploadLimiter)'));
+check('mechanic state reads are role-scoped',server.includes('ITTR v24.28.0 role-scoped state reader')&&server.includes("req.user?.role==='mechanic'")&&server.includes('mechanicOwnsWorkOrder(req.user,w)'));
+check('mechanic cannot cloud-save users',root.includes('if(session?.role!=="mechanic")queueCloudState("users",USERS)'));
+check('mechanic cannot cloud-save pro state',root.includes('if(session?.role!=="mechanic")queueCloudState("pro",PRO)'));
+check('Fullbay customer directory management-only',server.includes('app.get("/api/fullbay/customers",auth,managerPermission("customers")'));
+check('Fullbay customer profile management-only',server.includes('app.get("/api/fullbay/customers/:id",auth,managerPermission("customers")'));
+check('full backup owner-only',server.includes('app.get("/api/admin/backup",auth,ownerOnly'));
+check('vendor resolver inventory-protected',server.includes("app.post('/api/parts/vendors/resolve',auth,managerPermission(\"inventory\")"));
+check('inventory transaction inventory-protected',server.includes('app.post("/api/parts/:id/transaction",auth,managerPermission("inventory")'));
+check('mechanic free-form inventory return removed',!server.includes('if(req.user.role!=="admin"&&!(["return"].includes(type)))'));
+check('manager passwords minimum 12 chars',server.includes("password.length<12")&&server.includes('at least 12 characters are required'));
+check('mechanic passwords minimum 10 chars',server.includes('password.length<10')&&server.includes('at least 10 characters are required'));
+check('password reset revokes sessions',server.includes('DELETE FROM auth_sessions WHERE user_id=$1')&&server.includes('sessionsRevoked:true'));
+
 const partsInsert=server.match(/INSERT INTO fullbay_import_parts\([\s\S]*?VALUES\(([^)]*)\)[\s\S]*?ON CONFLICT\(source_key\)/);
 if(partsInsert){const refs=[...partsInsert[1].matchAll(/\$(\d+)/g)].map(m=>Number(m[1]));const max=refs.length?Math.max(...refs):0;check('Fullbay v23.7.1 max parameter remains $22',max===22,`max=$${max}`);check('Fullbay v23.7.1 has no $23',!refs.includes(23));}else check('Fullbay inventory INSERT regression target found',false);
 
@@ -60,7 +79,7 @@ for(const name of ['customers','invoices','parts','procenter','trucksearch']){
  }
 }
 
-const runtime=['runtime_samsara_name_patch.mjs','runtime_samsara_realtime_patch.mjs','runtime_samsara_v251_patch.mjs','runtime_samsara_v252_patch.mjs','runtime_samsara_v253_patch.mjs','runtime_samsara_v254_patch.mjs','runtime_samsara_v255_patch.mjs','runtime_v256_procenter_recovery.mjs','runtime_v257_fault_codes_fix.mjs','runtime_v260_invoice_workspace_fix.mjs','runtime_v261_clean_invoice_print.mjs','runtime_v270_security_integrity_fix.mjs','runtime_v271_finish_cleanup.mjs','runtime_v272_sync_ghost_fix.mjs'];
+const runtime=['runtime_samsara_name_patch.mjs','runtime_samsara_realtime_patch.mjs','runtime_samsara_v251_patch.mjs','runtime_samsara_v252_patch.mjs','runtime_samsara_v253_patch.mjs','runtime_samsara_v254_patch.mjs','runtime_samsara_v255_patch.mjs','runtime_v256_procenter_recovery.mjs','runtime_v257_fault_codes_fix.mjs','runtime_v260_invoice_workspace_fix.mjs','runtime_v261_clean_invoice_print.mjs','runtime_v270_security_integrity_fix.mjs','runtime_v271_finish_cleanup.mjs','runtime_v272_sync_ghost_fix.mjs','runtime_v280_security_phase2.mjs'];
 for(const f of runtime)check(`runtime dependency exists: ${f}`,exists(f));
 check('runtime preparation centralized',String(pkg.scripts?.start||'').startsWith('npm run prepare-runtime &&')&&pkg.scripts?.['prepare-runtime-check']==='npm run prepare-runtime');
 check('start reaches server.js',String(pkg.scripts?.start||'').trim().endsWith('node server.js'),pkg.scripts?.start||'');
