@@ -6,15 +6,19 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   audit:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
+          package-manager-cache: false
       - name: Install dependencies
         run: |
           if [ -f package-lock.json ]; then
@@ -22,7 +26,7 @@ jobs:
           else
             npm install --no-audit --no-fund
           fi
-      - name: Block critical production dependency vulnerabilities
-        run: npm audit --omit=dev --audit-level=critical
+      - name: Block high or critical production dependency vulnerabilities
+        run: npm audit --omit=dev --audit-level=high
       - name: Run ITTR production checks
         run: npm run check
