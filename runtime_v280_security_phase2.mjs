@@ -67,8 +67,8 @@ s=s.replace('if(u?.password && String(u.password).length>=6){','if(u?.password &
 s=s.replaceAll('24.27.2',VERSION);
 fs.writeFileSync(serverPath,s,'utf8');
 
-// 9) Mechanics must not overwrite local admin/user/pro state when those keys are
-// intentionally omitted from their role-scoped /api/state response.
+// 9) Mechanics must not overwrite or retry admin/user/pro state when those keys
+// are intentionally omitted from their role-scoped /api/state response.
 for(const fp of ['index.html','public/index.html']){
  if(!fs.existsSync(fp))continue;
  let h=fs.readFileSync(fp,'utf8').replaceAll('24.27.2',VERSION);
@@ -76,6 +76,8 @@ for(const fp of ['index.html','public/index.html']){
 `USERS=fresh.users?.payload??(session?.role==='mechanic'?{}:USERS);\n state=fresh.shopflow?.payload||{workorders:[],issues:[]};\n PRO=fresh.pro?.payload??(session?.role==='mechanic'?{}:PRO);\n cloudVersions={users:Number(fresh.users?.version||0),shopflow:Number(fresh.shopflow?.version||0),pro:Number(fresh.pro?.version||0)};`);
  h=h.replace('function saveUsers(){localStorage.setItem("ittr_users_v1",JSON.stringify(USERS));queueCloudState("users",USERS)}','function saveUsers(){localStorage.setItem("ittr_users_v1",JSON.stringify(USERS));if(session?.role!=="mechanic")queueCloudState("users",USERS)}');
  h=h.replace('function savePro(){localStorage.setItem(PRO_KEY,JSON.stringify(PRO));queueCloudState("pro",PRO)}','function savePro(){localStorage.setItem(PRO_KEY,JSON.stringify(PRO));if(session?.role!=="mechanic")queueCloudState("pro",PRO)}');
+ h=h.replace('function queueCloudState(key,payload){persistQueuedState(key,payload);cloudPending.add(key);','function queueCloudState(key,payload){if(session?.role==="mechanic"&&key!=="shopflow"){removePersistedState(key);cloudPending.delete(key);updateSyncQueueBadge();return}persistQueuedState(key,payload);cloudPending.add(key);');
+ h=h.replace('for(const [key,item] of Object.entries(q)){cloudPending.add(key);updateSyncQueueBadge();','for(const [key,item] of Object.entries(q)){if(session?.role==="mechanic"&&key!=="shopflow"){removePersistedState(key);cloudPending.delete(key);continue}cloudPending.add(key);updateSyncQueueBadge();');
  fs.writeFileSync(fp,h,'utf8');
 }
 for(const fp of ['sw.js','public/sw.js'])if(fs.existsSync(fp)){let x=fs.readFileSync(fp,'utf8').replaceAll('24.27.2',VERSION);fs.writeFileSync(fp,x,'utf8')}
