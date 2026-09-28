@@ -4,7 +4,7 @@ Production shop-management PWA for **Iron Team Truck & Trailer Repair**.
 
 ## Current production line
 
-**v24.24.x** — Work orders, invoicing, customer/unit service history, parts and barcode inventory, Smart Vendor Receiving, mechanic workflows, AI assistance, Fullbay data tools, Samsara integration, offline/PWA support, and role-based administration.
+**v24.28.x** — Work orders, invoicing, customer/unit service history, parts and barcode inventory, Smart Vendor Receiving, mechanic workflows, AI assistance, Fullbay data tools, Samsara integration, offline/PWA support, multilingual mechanic UI, and role-based administration.
 
 ## Repository layout
 
@@ -16,17 +16,19 @@ Production shop-management PWA for **Iron Team Truck & Trailer Repair**.
 - `schema.sql` + numbered `*.sql` files — schema/migration history. **Never reset production PostgreSQL when deploying.**
 - `package.json` — Node runtime and scripts.
 - `railway.json` / `Procfile` — Railway deployment configuration.
-- `release_audit.mjs` — current regression/release audit.
+- `production_audit.mjs` — maintained production regression/security audit.
+- `release_audit.mjs` — compatibility entry point that runs the canonical full check pipeline.
 - `.env.example` — environment-variable template; real secrets must never be committed.
 
 ## Production rules
 
-1. Deploy from `main` only after release checks pass.
+1. Deploy from `main` only after `npm run check` passes.
 2. Do not commit `node_modules`, `.env`, ZIP packages, temporary files, browser-renamed duplicates such as `parts (4).html`, or old backup copies.
 3. Keep the Fullbay inventory-import PostgreSQL parameter fix intact; do not regress the guarded import query.
 4. Do not reset or recreate the Railway PostgreSQL database during application deployments.
-5. Treat `public/modules/` as production UI code. Avoid placing alternate module copies at repository root.
+5. Treat `public/modules/` as production UI code. Keep its required mirrored modules synchronized with `modules/`.
 6. Keep version identifiers consistent across frontend, backend `/api/build`, package metadata, PWA cache/version markers, and release audits.
+7. Use the normal startup command (`npm start`) so the required idempotent runtime preparation is applied before `server.js` starts.
 
 ## Main product areas
 
@@ -42,12 +44,26 @@ Production shop-management PWA for **Iron Team Truck & Trailer Repair**.
 
 ## Local validation
 
-Run the repository's normal checks before deployment:
+Install dependencies, then run the same maintained release path used by CI:
 
 ```bash
 npm run check
-node --check server.js
-node release_audit.mjs
 ```
 
-Railway starts the application with `node server.js`.
+For the compatibility audit command, use:
+
+```bash
+npm run audit
+```
+
+`npm run audit` delegates to the canonical full release check so the two audit paths cannot drift apart again.
+
+## Railway deployment
+
+Railway deploys the application with:
+
+```bash
+npm start
+```
+
+`npm start` runs the required runtime preparation and then launches `server.js`. Railway checks `/api/health` during deployment.
