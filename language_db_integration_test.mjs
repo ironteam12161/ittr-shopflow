@@ -1,4 +1,5 @@
 import {spawn} from 'node:child_process';
+import net from 'node:net';
 import pg from 'pg';
 
 if(process.env.ITTR_LANGUAGE_TEST_DB!=='1'){
@@ -9,11 +10,22 @@ const url=String(process.env.DATABASE_URL||'');
 if(!url)throw new Error('DATABASE_URL is required for language DB integration test');
 const {Pool}=pg;
 const db=new Pool({connectionString:url,ssl:false});
-const port=40500+Math.floor(Math.random()*500);
 const adminUser='ciadmin',adminPass='CI-Language-Admin-2026!',mechanicUser='langtest',mechanicPass='CI-Mechanic-2026!';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-let child=null,output='';
+let child=null,output='',port=0;
 
+async function getFreePort(){
+ return await new Promise((resolve,reject)=>{
+  const server=net.createServer();
+  server.unref();
+  server.once('error',reject);
+  server.listen({host:'127.0.0.1',port:0,exclusive:true},()=>{
+   const address=server.address();
+   const selected=typeof address==='object'&&address?Number(address.port):0;
+   server.close(err=>err?reject(err):resolve(selected));
+  });
+ });
+}
 async function request(path,{method='GET',token,body}={}){
  const r=await fetch(`http://127.0.0.1:${port}${path}`,{method,headers:{...(token?{Authorization:`Bearer ${token}`}:{ }),...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,cache:'no-store'});
  const text=await r.text();let data={};try{data=text?JSON.parse(text):{}}catch{data={raw:text}}
@@ -37,6 +49,8 @@ try{
    password_hash TEXT NOT NULL, role TEXT NOT NULL, permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
    email TEXT, active BOOLEAN DEFAULT TRUE, created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
  )`);
+ port=await getFreePort();
+ if(!port)throw new Error('Could not allocate a free port for language DB integration test');
  const env={...process.env,PORT:String(port),NODE_ENV:'test',BOOTSTRAP_ADMIN_USERNAME:adminUser,BOOTSTRAP_ADMIN_PASSWORD:adminPass,OPENAI_API_KEY:'',OPENROUTER_API_KEY:'',SAMSARA_API_TOKEN:''};
  child=spawn(process.execPath,['server.js'],{env,stdio:['ignore','pipe','pipe']});
  child.stdout.on('data',d=>{output+=d.toString();if(output.length>30000)output=output.slice(-30000)});
