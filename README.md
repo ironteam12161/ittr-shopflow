@@ -40,6 +40,8 @@ Production shop-management PWA for **Iron Team Truck & Trailer Repair**.
 
 **Parts:** Inventory, manufacturer/internal barcode scanning, physical inventory and Smart Vendor Receiving.
 
+**Inventory:** reserve on work order, take out of stock on invoice finalize.
+
 **Integrations & AI:** Fullbay import/history tools, Samsara fleet data and Workshop AI.
 
 ## Local validation
@@ -49,6 +51,8 @@ Install dependencies, then run the same maintained release path used by CI:
 ```bash
 npm run check
 ```
+
+`npm run check` intentionally runs runtime preparation twice before validation so every runtime patch must remain safe to re-run.
 
 Older instructions may still reference:
 
