@@ -70,14 +70,17 @@ check('manager passwords minimum 12 chars',server.includes("password.length<12")
 check('mechanic passwords minimum 10 chars',server.includes('password.length<10')&&server.includes('at least 10 characters are required'));
 check('password reset revokes sessions',server.includes('DELETE FROM auth_sessions WHERE user_id=$1')&&server.includes('sessionsRevoked:true'));
 
-// v24.28.1 mechanic language preference
+// v24.28.x mechanic language preference + deterministic switch
 check('self-service language preference endpoint exists',server.includes('app.patch("/api/auth/preferences",auth')&&server.includes('language_preference_changed'));
 check('language preference accepts only en/uk',server.includes('["en","uk"].includes(language)'));
 check('login session keeps account language',root.includes('language:d.user.language||localStorage.getItem("ittr_language")||"en"'));
 check('restore session keeps account language',root.includes('currentLanguage=session.language;localStorage.setItem("ittr_language",currentLanguage)'));
 check('role application prefers session language',root.includes('if(session?.language){\n   currentLanguage=session.language;'));
-check('language selector saves through self-service endpoint',root.includes('apiJSON("/api/auth/preferences",{method:"PATCH",body:{language:currentLanguage}})'));
-check('mechanic language change does not write shared users state',root.includes('if(session?.role!=="mechanic")saveUsers();'));
+check('language selector saves through self-service endpoint',root.includes('apiJSON("/api/auth/preferences",{method:"PATCH",body:{language:next}})'));
+check('language switch performs clean reload',root.includes('A clean reload is intentional: it rebuilds the UI from the English source')&&root.includes('location.reload();'));
+check('language switch rolls back on save failure',root.includes('session.language=priorSessionLanguage')&&root.includes('currentLanguage=previous'));
+check('language selector locked while preference saves',root.includes('selector.disabled=true')&&root.includes('selector.disabled=false'));
+check('language role-sync marker present',root.includes('ITTR_LANGUAGE_ROLE_SYNC'));
 
 const partsInsert=server.match(/INSERT INTO fullbay_import_parts\([\s\S]*?VALUES\(([^)]*)\)[\s\S]*?ON CONFLICT\(source_key\)/);
 if(partsInsert){const refs=[...partsInsert[1].matchAll(/\$(\d+)/g)].map(m=>Number(m[1]));const max=refs.length?Math.max(...refs):0;check('Fullbay v23.7.1 max parameter remains $22',max===22,`max=$${max}`);check('Fullbay v23.7.1 has no $23',!refs.includes(23));}else check('Fullbay inventory INSERT regression target found',false);
@@ -90,13 +93,15 @@ for(const name of ['customers','invoices','parts','procenter','trucksearch']){
  }
 }
 
-const runtime=['runtime_samsara_name_patch.mjs','runtime_samsara_realtime_patch.mjs','runtime_samsara_v251_patch.mjs','runtime_samsara_v252_patch.mjs','runtime_samsara_v253_patch.mjs','runtime_samsara_v254_patch.mjs','runtime_samsara_v255_patch.mjs','runtime_v256_procenter_recovery.mjs','runtime_v257_fault_codes_fix.mjs','runtime_v260_invoice_workspace_fix.mjs','runtime_v261_clean_invoice_print.mjs','runtime_v270_security_integrity_fix.mjs','runtime_v271_finish_cleanup.mjs','runtime_v272_sync_ghost_fix.mjs','runtime_v280_security_phase2.mjs','runtime_v281_mechanic_language_fix.mjs'];
+const runtime=['runtime_samsara_name_patch.mjs','runtime_samsara_realtime_patch.mjs','runtime_samsara_v251_patch.mjs','runtime_samsara_v252_patch.mjs','runtime_samsara_v253_patch.mjs','runtime_samsara_v254_patch.mjs','runtime_samsara_v255_patch.mjs','runtime_v256_procenter_recovery.mjs','runtime_v257_fault_codes_fix.mjs','runtime_v260_invoice_workspace_fix.mjs','runtime_v261_clean_invoice_print.mjs','runtime_v270_security_integrity_fix.mjs','runtime_v271_finish_cleanup.mjs','runtime_v272_sync_ghost_fix.mjs','runtime_v280_security_phase2.mjs','runtime_v281_mechanic_language_fix.mjs','runtime_v282_language_switch_reload_fix.mjs'];
 for(const f of runtime)check(`runtime dependency exists: ${f}`,exists(f));
 check('runtime preparation centralized',String(pkg.scripts?.start||'').startsWith('npm run prepare-runtime &&')&&pkg.scripts?.['prepare-runtime-check']==='npm run prepare-runtime');
 check('start reaches server.js',String(pkg.scripts?.start||'').trim().endsWith('node server.js'),pkg.scripts?.start||'');
 check('release check executes runtime preparation',String(pkg.scripts?.check||'').includes('npm run prepare-runtime-check'));
 check('startup smoke test exists',exists('smoke_test.mjs'));
 check('release check executes startup smoke test',String(pkg.scripts?.check||'').includes('node smoke_test.mjs'));
+check('dedicated language-switch audit exists',exists('language_switch_audit.mjs'));
+check('release check executes language-switch audit',String(pkg.scripts?.check||'').includes('node language_switch_audit.mjs'));
 check('audit command uses production audit',pkg.scripts?.audit==='node production_audit.mjs',pkg.scripts?.audit||'');
 
 const dupIds=[...root.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]).filter((x,i,a)=>a.indexOf(x)!==i);
