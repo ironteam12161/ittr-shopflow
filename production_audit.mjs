@@ -62,6 +62,8 @@ for(const f of runtime)check(`runtime dependency exists: ${f}`,exists(f));
 check('runtime preparation centralized',String(pkg.scripts?.start||'').startsWith('npm run prepare-runtime &&')&&pkg.scripts?.['prepare-runtime-check']==='npm run prepare-runtime');
 check('start reaches server.js',String(pkg.scripts?.start||'').trim().endsWith('node server.js'),pkg.scripts?.start||'');
 check('release check executes runtime preparation',String(pkg.scripts?.check||'').includes('npm run prepare-runtime-check'));
+check('startup smoke test exists',exists('smoke_test.mjs'));
+check('release check executes startup smoke test',String(pkg.scripts?.check||'').includes('node smoke_test.mjs'));
 check('audit command uses production audit',pkg.scripts?.audit==='node production_audit.mjs',pkg.scripts?.audit||'');
 
 const dupIds=[...root.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]).filter((x,i,a)=>a.indexOf(x)!==i);
