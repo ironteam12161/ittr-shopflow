@@ -16,8 +16,8 @@ Production shop-management PWA for **Iron Team Truck & Trailer Repair**.
 - `schema.sql` + numbered `*.sql` files — schema/migration history. **Never reset production PostgreSQL when deploying.**
 - `package.json` — Node runtime and scripts.
 - `railway.json` / `Procfile` — Railway deployment configuration.
-- `production_audit.mjs` — maintained production regression/security audit.
-- `release_audit.mjs` — compatibility entry point that runs the canonical full check pipeline.
+- `production_audit.mjs` — maintained production regression/security audit used by the release pipeline.
+- `release_audit.mjs` — compatibility entry point that delegates to the canonical full check pipeline.
 - `.env.example` — environment-variable template; real secrets must never be committed.
 
 ## Production rules
@@ -50,13 +50,13 @@ Install dependencies, then run the same maintained release path used by CI:
 npm run check
 ```
 
-For the compatibility audit command, use:
+Older instructions may still reference:
 
 ```bash
-npm run audit
+node release_audit.mjs
 ```
 
-`npm run audit` delegates to the canonical full release check so the two audit paths cannot drift apart again.
+That compatibility entry point now delegates to `npm run check`, so it cannot keep using a stale hard-coded release version.
 
 ## Railway deployment
 
