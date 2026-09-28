@@ -1,3 +1,3 @@
 # ITTR ShopFlow
 
-Security hardening in progress.
+This repository contains the ITTR ShopFlow application.
