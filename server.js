@@ -1964,65 +1964,87 @@ app.delete("/api/work-orders/:id/helpers/:username",auth,async(req,res,next)=>{
 });
 
 
+// ITTR_INVENTORY_RESERVE_FINALIZE_V1_WO_ADD
 app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/parts",auth,async(req,res,next)=>{
  const db=await requireDb().connect();
  try{
   const workOrderId=String(req.params.id),uid=String(req.params.taskUid||"");
-  const partNumber=String(req.body?.partNumber||"").trim().slice(0,120);
-  const description=String(req.body?.description||"").trim().slice(0,500);
-  const qty=Math.max(.01,Math.min(99999,Number(req.body?.qty||1)));
-  const inventoryPartId=req.body?.inventoryPartId?Number(req.body.inventoryPartId):null;
+  const partNumber=String(req.body?.partNumber||"").trim().slice(0,120),description=String(req.body?.description||"").trim().slice(0,500);
+  const qty=Math.max(.01,Math.min(99999,Number(req.body?.qty||1))),inventoryPartId=req.body?.inventoryPartId?Number(req.body.inventoryPartId):null;
   if(!partNumber&&!description&&!inventoryPartId)return res.status(400).json({error:"Enter or scan a part."});
   await db.query("BEGIN");
   const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
-  if(!q.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Shop data not found."});}
-  const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};
-  sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
-  const w=sf.workorders.find(x=>String(x?.id)===workOrderId);
-  if(!w){await db.query("ROLLBACK");return res.status(404).json({error:"Work order not found."});}
-  if(!mechanicOwnsWorkOrder(req.user,w)){await db.query("ROLLBACK");return res.status(403).json({error:"You do not have access to this work order."});}
-  if(String(w.status)==="Completed"){await db.query("ROLLBACK");return res.status(409).json({error:"Completed work orders are locked."});}
-  const matches=(Array.isArray(w.tasks)?w.tasks:[]).filter(t=>String(t?.uid||"")===uid);
-  if(matches.length!==1){await db.query("ROLLBACK");return res.status(409).json({error:"Task identity could not be resolved."});}
+  if(!q.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Shop data not found."})}
+  const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
+  const w=sf.workorders.find(x=>String(x?.id)===workOrderId);if(!w){await db.query("ROLLBACK");return res.status(404).json({error:"Work order not found."})}
+  if(req.user?.role!=="admin"&&!mechanicOwnsWorkOrder(req.user,w)){await db.query("ROLLBACK");return res.status(403).json({error:"You do not have access to this work order."})}
+  if(String(w.status)==="Completed"){await db.query("ROLLBACK");return res.status(409).json({error:"Completed work orders are locked."})}
+  const matches=(Array.isArray(w.tasks)?w.tasks:[]).filter(t=>String(t?.uid||"")===uid);if(matches.length!==1){await db.query("ROLLBACK");return res.status(409).json({error:"Task identity could not be resolved."})}
   const t=matches[0];t.parts=Array.isArray(t.parts)?t.parts:[];
   let inv=null,finalPartNumber=partNumber,finalDescription=description;
-  if(inventoryPartId){const ir=await db.query("SELECT * FROM fullbay_import_parts WHERE id=$1 FOR UPDATE",[inventoryPartId]);if(!ir.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Inventory part not found."})}inv=ir.rows[0];const before=Number(inv.quantity||0);if(before<qty){await db.query("ROLLBACK");return res.status(409).json({error:`Only ${before} ${inv.uom||""} in stock.`})}const after=before-qty;await db.query("UPDATE fullbay_import_parts SET quantity=$2::numeric,inventory_value=($2::numeric*coalesce(cost,0::numeric)),updated_at=now() WHERE id=$1",[inventoryPartId,after]);finalPartNumber=inv.part_number||partNumber;finalDescription=inv.description||description;await db.query(`INSERT INTO part_inventory_transactions(part_id,transaction_type,quantity_delta,quantity_before,quantity_after,work_order_id,task_uid,task_name,unit_number,customer_name,reference,username,metadata) VALUES($1,'used',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)`,[inventoryPartId,-qty,before,after,workOrderId,uid,String(t.t||""),String(w.unit||""),String(w.customer||""),`WO ${workOrderId}`,req.user.username,JSON.stringify({method:req.body?.method||"work_order"})]);}
-  const part={id:`part_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,partNumber:finalPartNumber,description:finalDescription,qty,inventoryPartId:inventoryPartId||null,unitCost:inv?.cost??null,unitPrice:inv?.price??null,sellTaxable:inv?.sell_taxable!==false,barcode:inv?await ensurePartBarcode(db,inventoryPartId):null,addedBy:req.user.username,addedAt:new Date().toISOString()};
-  t.parts.push(part);
-  w.history=Array.isArray(w.history)?w.history:[];w.history.push({type:"part_added",at:part.addedAt,by:req.user.username,task:t.t,partNumber,description,qty});
+  if(inventoryPartId){
+    const ir=await db.query("SELECT * FROM fullbay_import_parts WHERE id=$1 FOR UPDATE",[inventoryPartId]);if(!ir.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Inventory part not found."})}
+    inv=ir.rows[0];const onHand=stockNum(inv.quantity),allocated=Math.max(0,stockNum(inv.allocated)),available=onHand-allocated;
+    if(available<qty){
+      const refs=[];for(const ow of sf.workorders)for(const ot of (Array.isArray(ow?.tasks)?ow.tasks:[]))for(const op of (Array.isArray(ot?.parts)?ot.parts:[]))if(Number(op?.inventoryPartId)===inventoryPartId&&op?.stockMode==='reserve'&&stockNum(op?.reservedQty)>0)refs.push(String(ow.id));
+      const unique=[...new Set(refs)].slice(0,6),detail=unique.length?` Reserved for WO #${unique.join(', #')}.`:'';
+      await db.query("ROLLBACK");return res.status(409).json({error:`Only ${available} available (${allocated} reserved).${detail}`,available,reserved:allocated,reservedWorkOrders:unique});
+    }
+    const nextAllocated=allocated+qty;
+    await db.query("UPDATE fullbay_import_parts SET allocated=$2::numeric,updated_at=now() WHERE id=$1",[inventoryPartId,nextAllocated]);
+    finalPartNumber=inv.part_number||partNumber;finalDescription=inv.description||description;
+    await db.query(`INSERT INTO part_inventory_transactions(part_id,transaction_type,quantity_delta,quantity_before,quantity_after,work_order_id,task_uid,task_name,unit_number,customer_name,reference,reason,username,metadata)
+      VALUES($1,'reserve',0,$2::numeric,$2::numeric,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)`,[
+      inventoryPartId,onHand,workOrderId,uid,String(t.t||""),String(w.unit||""),String(w.customer||""),`WO ${workOrderId}`,'Reserved for work order',req.user.username,
+      JSON.stringify({method:req.body?.method||"work_order",reservedQty:qty,allocatedBefore:allocated,allocatedAfter:nextAllocated})
+    ]);
+  }
+  const part={id:`part_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,partNumber:finalPartNumber,description:finalDescription,qty,inventoryPartId:inventoryPartId||null,unitCost:inv?.cost??null,unitPrice:inv?.price??null,sellTaxable:inv?.sell_taxable!==false,barcode:inv?await ensurePartBarcode(db,inventoryPartId):null,stockMode:inventoryPartId?'reserve':null,reservedQty:inventoryPartId?qty:0,addedBy:req.user.username,addedAt:new Date().toISOString()};
+  t.parts.push(part);w.history=Array.isArray(w.history)?w.history:[];w.history.push({type:"part_added",at:part.addedAt,by:req.user.username,task:t.t,partNumber:finalPartNumber,description:finalDescription,qty,stockMode:part.stockMode});
   const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
-  await db.query("COMMIT");await audit(req.user.username,"task_part_added",{workOrderId,taskUid:uid,partId:part.id});
+  await db.query("COMMIT");await audit(req.user.username,"task_part_reserved",{workOrderId,taskUid:uid,partId:part.id,inventoryPartId,qty});
   res.json({ok:true,part,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
  }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
 });
+// ITTR_INVENTORY_RESERVE_FINALIZE_V1_WO_REMOVE
 app.delete("/api/work-orders/:id/tasks/by-uid/:taskUid/parts/:partId",auth,async(req,res,next)=>{
  const db=await requireDb().connect();
  try{
   const workOrderId=String(req.params.id),uid=String(req.params.taskUid||""),partId=String(req.params.partId||"");
-  await db.query("BEGIN");
-  const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
-  if(!q.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Shop data not found."});}
-  const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};
-  const w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===workOrderId);
-  if(!w){await db.query("ROLLBACK");return res.status(404).json({error:"Work order not found."});}
-  if(!mechanicOwnsWorkOrder(req.user,w)){await db.query("ROLLBACK");return res.status(403).json({error:"You do not have access to this work order."});}
-  if(String(w.status)==="Completed"){await db.query("ROLLBACK");return res.status(409).json({error:"Completed work orders are locked."});}
-  const t=(Array.isArray(w.tasks)?w.tasks:[]).find(x=>String(x?.uid||"")===uid);
-  if(!t){await db.query("ROLLBACK");return res.status(404).json({error:"Task not found."});}
-  t.parts=Array.isArray(t.parts)?t.parts:[];
-  const p=t.parts.find(x=>String(x?.id||"")===partId);
-  if(!p){await db.query("ROLLBACK");return res.status(404).json({error:"Part not found."});}
-  if(req.user.role!=="admin"&&String(p.addedBy||"").toLowerCase()!==String(req.user.username||"").toLowerCase()){
-    await db.query("ROLLBACK");return res.status(403).json({error:"Only the mechanic who added this part or an admin can remove it."});
+  await db.query("BEGIN");const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");if(!q.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Shop data not found."})}
+  const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]},w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===workOrderId);
+  if(!w){await db.query("ROLLBACK");return res.status(404).json({error:"Work order not found."})}if(String(w.status)==="Completed"){await db.query("ROLLBACK");return res.status(409).json({error:"Completed work orders are locked."})}
+  const t=(Array.isArray(w.tasks)?w.tasks:[]).find(x=>String(x?.uid||"")===uid);if(!t){await db.query("ROLLBACK");return res.status(404).json({error:"Task not found."})}
+  t.parts=Array.isArray(t.parts)?t.parts:[];const p=t.parts.find(x=>String(x?.id||"")===partId);if(!p){await db.query("ROLLBACK");return res.status(404).json({error:"Part not found."})}
+  if(req.user.role!=="admin"&&String(p.addedBy||"").toLowerCase()!==String(req.user.username||"").toLowerCase()){await db.query("ROLLBACK");return res.status(403).json({error:"Only the mechanic who added this part or an admin can remove it."})}
+  if(p.inventoryPartId){
+    const ir=await db.query("SELECT quantity,allocated FROM fullbay_import_parts WHERE id=$1 FOR UPDATE",[p.inventoryPartId]);
+    if(ir.rowCount){
+      const onHand=stockNum(ir.rows[0].quantity);
+      if(p.stockMode==='reserve'){
+        const reserved=Math.max(0,stockNum(p.reservedQty||p.qty)),beforeAllocated=Math.max(0,stockNum(ir.rows[0].allocated)),afterAllocated=Math.max(0,beforeAllocated-reserved);
+        await db.query("UPDATE fullbay_import_parts SET allocated=$2::numeric,updated_at=now() WHERE id=$1",[p.inventoryPartId,afterAllocated]);
+        await db.query(`INSERT INTO part_inventory_transactions(part_id,transaction_type,quantity_delta,quantity_before,quantity_after,work_order_id,task_uid,task_name,unit_number,customer_name,reference,reason,username,metadata)
+          VALUES($1,'release',0,$2::numeric,$2::numeric,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)`,[
+          p.inventoryPartId,onHand,workOrderId,uid,String(t.t||""),String(w.unit||""),String(w.customer||""),`WO ${workOrderId}`,'Removed reservation from work order',req.user.username,
+          JSON.stringify({originalPartId:partId,reservedQty:reserved,allocatedBefore:beforeAllocated,allocatedAfter:afterAllocated})
+        ]);
+      }else{
+        const qty=Math.max(0,stockNum(p.qty||1)),after=onHand+qty;
+        await db.query("UPDATE fullbay_import_parts SET quantity=$2::numeric,inventory_value=($2::numeric*coalesce(cost,0::numeric)),updated_at=now() WHERE id=$1",[p.inventoryPartId,after]);
+        await db.query(`INSERT INTO part_inventory_transactions(part_id,transaction_type,quantity_delta,quantity_before,quantity_after,work_order_id,task_uid,task_name,unit_number,customer_name,reference,reason,username,metadata)
+          VALUES($1,'returned',$2::numeric,$3::numeric,$4::numeric,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)`,[
+          p.inventoryPartId,qty,onHand,after,workOrderId,uid,String(t.t||""),String(w.unit||""),String(w.customer||""),`WO ${workOrderId}`,'Removed legacy pre-reservation part from work order',req.user.username,JSON.stringify({originalPartId:partId,legacyStockMode:true})
+        ]);
+      }
+    }
   }
-  if(p.inventoryPartId){const ir=await db.query("SELECT quantity FROM fullbay_import_parts WHERE id=$1 FOR UPDATE",[p.inventoryPartId]);if(ir.rowCount){const before=Number(ir.rows[0].quantity||0),qty=Number(p.qty||1),after=before+qty;await db.query("UPDATE fullbay_import_parts SET quantity=$2::numeric,inventory_value=($2::numeric*coalesce(cost,0::numeric)),updated_at=now() WHERE id=$1",[p.inventoryPartId,after]);await db.query(`INSERT INTO part_inventory_transactions(part_id,transaction_type,quantity_delta,quantity_before,quantity_after,work_order_id,task_uid,task_name,unit_number,customer_name,reference,reason,username,metadata) VALUES($1,'returned',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)`,[p.inventoryPartId,qty,before,after,workOrderId,uid,String(t.t||""),String(w.unit||""),String(w.customer||""),`WO ${workOrderId}`,"Removed from work order",req.user.username,JSON.stringify({originalPartId:partId})]);}}
   t.parts=t.parts.filter(x=>String(x?.id||"")!==partId);
   const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
-  await db.query("COMMIT");await audit(req.user.username,"task_part_removed",{workOrderId,taskUid:uid,partId});
+  await db.query("COMMIT");await audit(req.user.username,"task_part_removed",{workOrderId,taskUid:uid,partId,stockMode:p.stockMode||"legacy"});
   res.json({ok:true,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
  }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
 });
-
 app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/action",auth,async(req,res,next)=>{
  const db=await requireDb().connect();
  try{
@@ -2804,6 +2826,96 @@ app.post('/api/service-orders/:id/time-adjustment',auth,adminOnly,async(req,res,
 app.post('/api/service-orders/:id/to-invoice',auth,adminOnly,async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const so=(await db.query('SELECT * FROM service_orders WHERE id=$1::bigint FOR UPDATE',[req.params.id])).rows[0];if(!so){await db.query('ROLLBACK');return res.status(404).json({error:'Service order not found.'})}const existing=(await db.query("SELECT id FROM customer_invoices WHERE service_order_id=$1::bigint AND status<>'void'",[so.id])).rows[0];if(existing){await db.query('ROLLBACK');return res.json({ok:true,id:existing.id,existing:true})}const w=await completedWo(db,so.work_order_id);if(!w){await db.query('ROLLBACK');return res.status(404).json({error:'Source work order missing.'})}let cust=so.customer_id?(await db.query('SELECT * FROM fullbay_import_customers WHERE id=$1::bigint',[so.customer_id])).rows[0]:null;const num=await nextInvoiceNumber(db),rate=invoiceMoney(cust?.default_labor_rate||req.body?.laborRate||0),terms=String(cust?.credit_terms||'Due on Receipt'),days=/30/.test(terms)?30:/15/.test(terms)?15:/45/.test(terms)?45:0;const ins=await db.query(`INSERT INTO customer_invoices(invoice_number,work_order_id,service_order_id,customer_id,customer_name,unit_id,unit_number,vin,mileage,po_number,invoice_date,due_date,terms,tax_rate,created_by) VALUES($1,$2,$3::bigint,$4::bigint,$5,$6::bigint,$7,$8,$9::numeric,$10,CURRENT_DATE,CURRENT_DATE+$11::int,$12,$13::numeric,$14) RETURNING id`,[num,so.work_order_id,so.id,so.customer_id,so.customer_name,so.unit_id,so.unit_number,so.vin,so.mileage,so.po_number,days,terms,Number(req.body?.taxRate||0),req.user.username]);const iid=ins.rows[0].id;const adj=(await db.query(`SELECT DISTINCT ON (task_uid,mechanic_username) task_uid,mechanic_username,adjusted_hours FROM task_time_adjustments WHERE work_order_id=$1::text ORDER BY task_uid,mechanic_username,created_at DESC,id DESC`,[so.work_order_id])).rows,am=new Map(adj.map(a=>[`${a.task_uid}::${a.mechanic_username}`,Number(a.adjusted_hours||0)]));const raw=(await db.query(`SELECT task_uid,mechanic_username,sum(extract(epoch from (ended_at-started_at))/3600.0) h FROM task_time_sessions WHERE work_order_id=$1::text AND ended_at IS NOT NULL GROUP BY task_uid,mechanic_username`,[so.work_order_id])).rows;const hm=new Map();for(const r of raw){const h=am.has(`${r.task_uid}::${r.mechanic_username}`)?am.get(`${r.task_uid}::${r.mechanic_username}`):Number(r.h||0);hm.set(String(r.task_uid),(hm.get(String(r.task_uid))||0)+h)}let order=0;for(const t of (Array.isArray(w.tasks)?w.tasks:[])){const job=String(t.t||'Repair'),hours=Math.round((hm.get(String(t.uid||''))||0)*100)/100;const laborIns=await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,quantity,unit_price,unit_cost,taxable,line_total,parent_line_id) VALUES($1,$2,$3,$4,'labor',$5,$6::numeric,$7::numeric,0,false,$6::numeric*$7::numeric,NULL) RETURNING id`,[iid,++order,String(t.uid||''),job,job,hours,rate]);const laborId=laborIns.rows[0].id;for(const part of (Array.isArray(t.parts)?t.parts:[]))await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,part_number,quantity,unit_price,unit_cost,taxable,line_total,parent_line_id) VALUES($1,$2,$3,$4,'part',$5,$6,$7::numeric,$8::numeric,$9::numeric,$10::boolean,$7::numeric*$8::numeric,$11::bigint)`,[iid,++order,String(t.uid||''),job,String(part.description||part.partNumber||'Part'),String(part.partNumber||''),Number(part.qty||1),Number(part.unitPrice||0),Number(part.unitCost||0),part.sellTaxable!==false,laborId])}await recalcInvoice(db,iid);await db.query("UPDATE service_orders SET status='invoiced',updated_at=now() WHERE id=$1::bigint",[so.id]);await db.query('COMMIT');res.json({ok:true,id:iid})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
 
 // ---- v24.6 Professional Customer Invoicing ----
+// ITTR_INVENTORY_POSTING_HELPERS_V1
+function stockNum(v){const n=Number(v);return Number.isFinite(n)?n:0}
+function invoiceMeta(v){if(v&&typeof v==='object')return v;try{return JSON.parse(String(v||'{}'))||{}}catch{return {}}}
+function invoiceStockIsPosted(inv){return Boolean(inv?.stock_posted_at)}
+async function postInvoiceLineStock(db,inv,line,username,warnings=[],targetQty=null,reason='Invoice stock posting'){
+ if(!line?.inventory_part_id)return {posted:false};
+ const target=targetQty==null?Math.max(0,stockNum(line.quantity)):Math.max(0,stockNum(targetQty));
+ const posted=Math.max(0,stockNum(line.stock_posted_qty));
+ const delta=target-posted;
+ if(Math.abs(delta)<0.000001){
+   if(targetQty==null&&Math.abs(stockNum(line.stock_posted_qty)-target)>0.000001)await db.query('UPDATE customer_invoice_lines SET stock_posted_qty=$2::numeric WHERE id=$1::bigint',[line.id,target]);
+   return {posted:false,delta:0};
+ }
+ const pr=await db.query('SELECT id,part_number,description,quantity,allocated,cost FROM fullbay_import_parts WHERE id=$1::bigint FOR UPDATE',[line.inventory_part_id]);
+ if(!pr.rowCount)throw Object.assign(new Error('Linked inventory part no longer exists.'),{status:409,code:'INVENTORY_PART_MISSING'});
+ const p=pr.rows[0],before=stockNum(p.quantity),after=before-delta;
+ await db.query('UPDATE fullbay_import_parts SET quantity=$2::numeric,inventory_value=($2::numeric*coalesce(cost,0::numeric)),updated_at=now() WHERE id=$1::bigint',[p.id,after]);
+ const typ=delta>0?'invoice_sale':'invoice_return',qtyDelta=-delta;
+ await db.query(`INSERT INTO part_inventory_transactions(part_id,transaction_type,quantity_delta,quantity_before,quantity_after,work_order_id,task_uid,task_name,unit_number,customer_name,reference,reason,username,metadata)
+ VALUES($1,$2,$3::numeric,$4::numeric,$5::numeric,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb)`,[
+   p.id,typ,qtyDelta,before,after,String(inv?.work_order_id||''),String(line.job_uid||''),String(line.job_name||''),
+   String(inv?.unit_number||''),String(inv?.customer_name||''),String(inv?.invoice_number||''),reason,String(username||'system'),
+   JSON.stringify({invoiceId:Number(inv?.id||0)||null,invoiceNumber:String(inv?.invoice_number||''),lineId:Number(line.id||0)||null,postedBefore:posted,targetQty:target,inventoryPartId:Number(p.id)})
+ ]);
+ if(line?.id)await db.query('UPDATE customer_invoice_lines SET stock_posted_qty=$2::numeric WHERE id=$1::bigint',[line.id,target]);
+ line.stock_posted_qty=target;
+ if(after<0)warnings.push(`${p.part_number||p.description||'Part'}: on hand is ${after} after invoice ${inv?.invoice_number||''}.`);
+ return {posted:true,delta,after};
+}
+async function releaseInvoiceReservations(db,inv,lines,username){
+ if(!inv?.work_order_id)return {released:0,version:null};
+ const linked=(lines||[]).filter(l=>l?.inventory_part_id&&invoiceMeta(l.metadata).sourcePartId);
+ if(!linked.length)return {released:0,version:null};
+ const sq=await db.query("SELECT payload,version FROM app_state WHERE state_key='shopflow' FOR UPDATE");
+ if(!sq.rowCount)return {released:0,version:null};
+ const sf=sq.rows[0].payload&&typeof sq.rows[0].payload==='object'?sq.rows[0].payload:{workorders:[],issues:[]};
+ const w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===String(inv.work_order_id));
+ if(!w)return {released:0,version:null};
+ let released=0;
+ for(const line of linked){
+   const meta=invoiceMeta(line.metadata),sourcePartId=String(meta.sourcePartId||'');
+   let source=null,task=null;
+   for(const t of (Array.isArray(w.tasks)?w.tasks:[])){
+     const p=(Array.isArray(t.parts)?t.parts:[]).find(x=>String(x?.id||'')===sourcePartId);
+     if(p){source=p;task=t;break}
+   }
+   if(!source||source.stockMode!=='reserve')continue;
+   const qty=Math.max(0,stockNum(source.reservedQty));
+   if(qty<=0)continue;
+   const pr=await db.query('SELECT quantity,allocated FROM fullbay_import_parts WHERE id=$1::bigint FOR UPDATE',[line.inventory_part_id]);
+   if(!pr.rowCount)continue;
+   const beforeAllocated=Math.max(0,stockNum(pr.rows[0].allocated)),afterAllocated=Math.max(0,beforeAllocated-qty),onHand=stockNum(pr.rows[0].quantity);
+   await db.query('UPDATE fullbay_import_parts SET allocated=$2::numeric,updated_at=now() WHERE id=$1::bigint',[line.inventory_part_id,afterAllocated]);
+   await db.query(`INSERT INTO part_inventory_transactions(part_id,transaction_type,quantity_delta,quantity_before,quantity_after,work_order_id,task_uid,task_name,unit_number,customer_name,reference,reason,username,metadata)
+    VALUES($1,'release',0,$2::numeric,$2::numeric,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)`,[
+      line.inventory_part_id,onHand,String(inv.work_order_id),String(task?.uid||line.job_uid||''),String(task?.t||line.job_name||''),
+      String(w.unit||inv.unit_number||''),String(w.customer||inv.customer_name||''),String(inv.invoice_number||''),
+      'Reservation consumed by finalized invoice',String(username||'system'),
+      JSON.stringify({invoiceId:Number(inv.id)||null,invoiceNumber:String(inv.invoice_number||''),sourcePartId,reservedQty:qty,allocatedBefore:beforeAllocated,allocatedAfter:afterAllocated})
+   ]);
+   source.reservedQty=0;released++;
+ }
+ if(!released)return {released:0,version:Number(sq.rows[0].version||0)};
+ const uq=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version",[JSON.stringify(sf),String(username||'system')]);
+ return {released,version:Number(uq.rows[0]?.version||0)};
+}
+async function reconcileReservedInventoryAllocations(){
+ if(!pool)return;
+ const db=await pool.connect();
+ try{
+  await db.query('BEGIN');
+  const sr=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");
+  const sf=sr.rows[0]?.payload||{},wanted=new Map();
+  for(const w of (Array.isArray(sf.workorders)?sf.workorders:[]))for(const t of (Array.isArray(w?.tasks)?w.tasks:[]))for(const p of (Array.isArray(t?.parts)?t.parts:[])){
+    if(p?.stockMode!=='reserve'||!p?.inventoryPartId)continue;
+    const qty=Math.max(0,stockNum(p.reservedQty));
+    if(qty>0)wanted.set(Number(p.inventoryPartId),(wanted.get(Number(p.inventoryPartId))||0)+qty);
+  }
+  const rows=(await db.query('SELECT id,allocated FROM fullbay_import_parts FOR UPDATE')).rows;
+  let changed=0;
+  for(const row of rows){
+    const next=stockNum(wanted.get(Number(row.id))||0),cur=stockNum(row.allocated);
+    if(Math.abs(next-cur)<0.000001)continue;
+    await db.query('UPDATE fullbay_import_parts SET allocated=$2::numeric,updated_at=now() WHERE id=$1',[row.id,next]);changed++;
+  }
+  await db.query('COMMIT');
+  console.log(`ITTR inventory reservation reconciliation: ${changed} part(s) changed`);
+  try{await audit('system','inventory_reservations_reconciled',{changed,reservedParts:wanted.size})}catch(e){console.warn('inventory reconciliation audit warning:',e?.message||e)}
+ }catch(e){try{await db.query('ROLLBACK')}catch{};throw e}finally{db.release()}
+}
 function invoiceMoney(v){const n=Number(v);return Number.isFinite(n)?Math.round(n*100)/100:0}
 async function nextInvoiceNumber(db){const y=new Date().getFullYear();await db.query("SELECT pg_advisory_xact_lock($1::bigint)",[2460]);const q=await db.query("SELECT coalesce(max((regexp_match(invoice_number,$1))[1]::int),0)+1 n FROM customer_invoices WHERE invoice_number ~ $2",[`^IT-${y}-([0-9]+)$`,`^IT-${y}-[0-9]+$`]);return `IT-${y}-${String(Number(q.rows[0]?.n||1)).padStart(5,'0')}`}
 function invoiceLineDiscount(qty,unitPrice,type,value){const gross=Math.max(0,Number(qty||0))*Math.max(0,Number(unitPrice||0));const mode=String(type||'fixed')==='percent'?'percent':'fixed';const raw=Math.max(0,Number(value||0));return invoiceMoney(Math.min(gross,mode==='percent'?gross*Math.min(raw,100)/100:raw))}
@@ -2811,58 +2923,147 @@ async function recalcInvoice(db,id){const lr=await db.query(`SELECT coalesce(sum
 async function getInvoiceBundle(db,id){const inv=(await db.query(`SELECT i.*,c.dot_number AS customer_dot_number,c.address AS customer_address,c.city AS customer_city,c.state AS customer_state,c.postal_code AS customer_postal_code,c.billing_address AS customer_billing_address,c.billing_city AS customer_billing_city,c.billing_state AS customer_billing_state,c.billing_postal_code AS customer_billing_postal_code,c.email AS profile_customer_email FROM customer_invoices i LEFT JOIN fullbay_import_customers c ON c.id::text=i.customer_id::text WHERE i.id=$1::bigint`,[id])).rows[0];if(!inv)return null;const lines=(await db.query('SELECT * FROM customer_invoice_lines WHERE invoice_id=$1::bigint ORDER BY sort_order,id',[id])).rows;const payments=(await db.query('SELECT * FROM customer_invoice_payments WHERE invoice_id=$1::bigint ORDER BY paid_at,id',[id])).rows;return {invoice:inv,lines,payments}}
 app.get('/api/invoices',auth,managerPermission("invoices"),async(req,res,next)=>{try{const status=String(req.query.status||'').trim();const q=await requireDb().query(`SELECT * FROM customer_invoices WHERE ($1::text='' OR status=$1::text) ORDER BY invoice_date DESC,id DESC LIMIT 500`,[status]);res.json({items:q.rows})}catch(e){next(e)}});
 app.get('/api/invoices/:id',auth,managerPermission("invoices"),async(req,res,next)=>{try{const x=await getInvoiceBundle(requireDb(),req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});res.json(x)}catch(e){next(e)}});
-app.post('/api/invoices/from-work-order/:woId',auth,managerPermission("invoices"),async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const woId=String(req.params.woId);const ex=await db.query("SELECT id FROM customer_invoices WHERE work_order_id=$1::text AND status<>'void'",[woId]);if(ex.rowCount){await db.query('ROLLBACK');return res.json({ok:true,id:ex.rows[0].id,existing:true})}const sq=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");const sf=sq.rows[0]?.payload||{};const w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===woId);if(!w){await db.query('ROLLBACK');return res.status(404).json({error:'Work order not found.'})}if(String(w.status)!=='Completed'){await db.query('ROLLBACK');return res.status(409).json({error:'Complete the work order before creating its invoice.'})}let cust=null;if(w.customerId){cust=(await db.query('SELECT * FROM fullbay_import_customers WHERE id=$1::bigint',[w.customerId])).rows[0]||null}if(!cust&&w.customer){cust=(await db.query('SELECT * FROM fullbay_import_customers WHERE lower(customer_name)=lower($1::text) LIMIT 1',[w.customer])).rows[0]||null}const num=await nextInvoiceNumber(db),rate=invoiceMoney(cust?.default_labor_rate||req.body?.laborRate||0),terms=String(cust?.credit_terms||'Due on Receipt'),days=/30/.test(terms)?30:/15/.test(terms)?15:/45/.test(terms)?45:0;const ins=await db.query(`INSERT INTO customer_invoices(invoice_number,work_order_id,customer_id,customer_name,unit_number,vin,po_number,invoice_date,due_date,terms,tax_rate,created_by) VALUES($1,$2,$3::bigint,$4,$5,$6,$7,CURRENT_DATE,CURRENT_DATE+$8::int,$9,$10::numeric,$11) RETURNING id`,[num,woId,cust?.id||null,w.customer||cust?.customer_name||'Customer',w.unit||'',w.vin||'',w.poNumber||'',days,terms,Number(req.body?.taxRate||0),req.user.username]);const id=ins.rows[0].id;const sessions=(await db.query(`SELECT task_uid,sum(extract(epoch from (coalesce(ended_at,now())-started_at))/3600.0) hours FROM task_time_sessions WHERE work_order_id=$1::text AND ended_at IS NOT NULL GROUP BY task_uid`,[woId])).rows;const hm=new Map(sessions.map(x=>[String(x.task_uid),Number(x.hours||0)]));let order=0;for(const t of (Array.isArray(w.tasks)?w.tasks:[])){const job=String(t.t||'Repair'),hours=Math.round((hm.get(String(t.uid||''))||0)*100)/100;const laborIns=await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,quantity,unit_price,unit_cost,taxable,line_total,metadata,parent_line_id) VALUES($1,$2,$3,$4,'labor',$5,$6::numeric,$7::numeric,0,false,($6::numeric*$7::numeric),$8::jsonb,NULL) RETURNING id`,[id,++order,String(t.uid||''),job,job,hours,rate,JSON.stringify({outcome:t.outcome||'',note:t.outcomeNote||''})]);const laborId=laborIns.rows[0].id;for(const part of (Array.isArray(t.parts)?t.parts:[])){await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,part_number,quantity,unit_price,unit_cost,taxable,line_total,metadata,parent_line_id) VALUES($1,$2,$3,$4,'part',$5,$6,$7::numeric,$8::numeric,$9::numeric,$10::boolean,($7::numeric*$8::numeric),$11::jsonb,$12::bigint)`,[id,++order,String(t.uid||''),job,String(part.description||part.partNumber||'Part'),String(part.partNumber||''),Number(part.qty||1),Number(part.unitPrice||0),Number(part.unitCost||0),part.sellTaxable!==false,JSON.stringify({inventoryPartId:part.inventoryPartId||null,sourcePartId:part.id||null}),laborId])}}await recalcInvoice(db,id);await db.query('COMMIT');await audit(req.user.username,'invoice_created',{invoiceId:id,workOrderId:woId});res.json({ok:true,id})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
+// ITTR_INVENTORY_RESERVE_FINALIZE_V1_FROM_WO
+app.post('/api/invoices/from-work-order/:woId',auth,managerPermission("invoices"),async(req,res,next)=>{
+ const db=await requireDb().connect();
+ try{
+  await db.query('BEGIN');const woId=String(req.params.woId);
+  const ex=await db.query("SELECT id FROM customer_invoices WHERE work_order_id=$1::text AND status<>'void'",[woId]);if(ex.rowCount){await db.query('ROLLBACK');return res.json({ok:true,id:ex.rows[0].id,existing:true})}
+  const sq=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");const sf=sq.rows[0]?.payload||{},w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===woId);
+  if(!w){await db.query('ROLLBACK');return res.status(404).json({error:'Work order not found.'})}if(String(w.status)!=='Completed'){await db.query('ROLLBACK');return res.status(409).json({error:'Complete the work order before creating its invoice.'})}
+  let cust=null;if(w.customerId)cust=(await db.query('SELECT * FROM fullbay_import_customers WHERE id=$1::bigint',[w.customerId])).rows[0]||null;if(!cust&&w.customer)cust=(await db.query('SELECT * FROM fullbay_import_customers WHERE lower(customer_name)=lower($1::text) LIMIT 1',[w.customer])).rows[0]||null;
+  const num=await nextInvoiceNumber(db),rate=invoiceMoney(cust?.default_labor_rate||req.body?.laborRate||0),terms=String(cust?.credit_terms||'Due on Receipt'),days=/30/.test(terms)?30:/15/.test(terms)?15:/45/.test(terms)?45:0;
+  const ins=await db.query(`INSERT INTO customer_invoices(invoice_number,work_order_id,customer_id,customer_name,unit_number,vin,po_number,invoice_date,due_date,terms,tax_rate,created_by) VALUES($1,$2,$3::bigint,$4,$5,$6,$7,CURRENT_DATE,CURRENT_DATE+$8::int,$9,$10::numeric,$11) RETURNING id`,[num,woId,cust?.id||null,w.customer||cust?.customer_name||'Customer',w.unit||'',w.vin||'',w.poNumber||'',days,terms,Number(req.body?.taxRate||0),req.user.username]);
+  const id=ins.rows[0].id,sessions=(await db.query(`SELECT task_uid,sum(extract(epoch from (coalesce(ended_at,now())-started_at))/3600.0) hours FROM task_time_sessions WHERE work_order_id=$1::text AND ended_at IS NOT NULL GROUP BY task_uid`,[woId])).rows,hm=new Map(sessions.map(x=>[String(x.task_uid),Number(x.hours||0)]));let order=0;
+  for(const t of (Array.isArray(w.tasks)?w.tasks:[])){
+   const job=String(t.t||'Repair'),hours=Math.round((hm.get(String(t.uid||''))||0)*100)/100;
+   const labor=(await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,quantity,unit_price,unit_cost,taxable,line_total,metadata,parent_line_id) VALUES($1,$2,$3,$4,'labor',$5,$6::numeric,$7::numeric,0,false,$6::numeric*$7::numeric,$8::jsonb,NULL) RETURNING id`,[id,++order,String(t.uid||''),job,job,hours,rate,JSON.stringify({outcome:t.outcome||'',note:t.outcomeNote||''})])).rows[0];
+   for(const p of (Array.isArray(t.parts)?t.parts:[])){
+    const qty=Math.max(.01,stockNum(p.qty||1)),inventoryPartId=p.inventoryPartId?Number(p.inventoryPartId):null,legacyPosted=inventoryPartId&&p.stockMode!=='reserve'?qty:0;
+    await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,part_number,quantity,unit_price,unit_cost,taxable,line_total,metadata,parent_line_id,inventory_part_id,stock_posted_qty)
+      VALUES($1,$2,$3,$4,'part',$5,$6,$7::numeric,$8::numeric,$9::numeric,$10::boolean,$7::numeric*$8::numeric,$11::jsonb,$12::bigint,$13::bigint,$14::numeric)`,[
+      id,++order,String(t.uid||''),job,String(p.description||p.partNumber||'Part'),String(p.partNumber||''),qty,Number(p.unitPrice||0),Number(p.unitCost||0),p.sellTaxable!==false,
+      JSON.stringify({inventoryPartId,sourcePartId:p.id||null,workOrderId:woId,stockMode:p.stockMode||'legacy'}),labor.id,inventoryPartId,legacyPosted
+    ]);
+   }
+  }
+  await recalcInvoice(db,id);await db.query('COMMIT');await audit(req.user.username,'invoice_created',{invoiceId:id,workOrderId:woId});res.json({ok:true,id});
+ }catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}
+});
 app.post('/api/invoices',auth,managerPermission("invoices"),async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const b=req.body||{},num=await nextInvoiceNumber(db);let c=null;if(b.customerId)c=(await db.query('SELECT * FROM fullbay_import_customers WHERE id=$1::bigint',[b.customerId])).rows[0]||null;const terms=String(b.terms||c?.credit_terms||'Due on Receipt'),days=terms==='Net 60'?60:terms==='Net 30'?30:terms==='Net 15'?15:0,invoiceDate=b.invoiceDate||null,dueDate=b.dueDate||null;const q=await db.query(`INSERT INTO customer_invoices(invoice_number,customer_id,customer_name,unit_id,unit_number,vin,dot_number,mileage,po_number,invoice_date,due_date,terms,tax_rate,discount_type,discount_value,billing_address,billing_city,billing_state,billing_postal_code,customer_note,internal_note,created_by) VALUES($1,$2::bigint,$3,$4::bigint,$5,$6,$7,$8::numeric,$9,coalesce($10::date,CURRENT_DATE),coalesce($11::date,coalesce($10::date,CURRENT_DATE)+$12::int),$13,$14::numeric,'fixed',0,$15,$16,$17,$18,$19,$20,$21) RETURNING id`,[num,b.customerId||null,String(b.customerName||c?.customer_name||'Customer'),b.unitId||null,String(b.unitNumber||''),String(b.vin||''),String(b.dotNumber||c?.dot_number||''),Number(b.mileage||0)||null,String(b.poNumber||''),invoiceDate,dueDate,days,terms,Number(b.taxRate||0),c?.billing_address||c?.address||null,c?.billing_city||c?.city||null,c?.billing_state||c?.state||null,c?.billing_postal_code||c?.postal_code||null,String(b.customerNote||''),String(b.internalNote||''),req.user.username]);await recalcInvoice(db,q.rows[0].id);await db.query('COMMIT');res.json({ok:true,id:q.rows[0].id})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
 app.put('/api/invoices/:id',auth,managerPermission("invoices"),async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const id=req.params.id,cur=(await db.query('SELECT * FROM customer_invoices WHERE id=$1::bigint FOR UPDATE',[id])).rows[0];if(!cur){await db.query('ROLLBACK');return res.status(404).json({error:'Invoice not found.'})}if(!['draft','sent','partial'].includes(cur.status)){await db.query('ROLLBACK');return res.status(409).json({error:'Paid or void invoices are locked.'})}const b=req.body||{};let c=null;if(b.customerId)c=(await db.query('SELECT * FROM fullbay_import_customers WHERE id=$1::bigint',[b.customerId])).rows[0]||null;const discountType=['fixed','percent'].includes(String(b.discountType||''))?String(b.discountType):String(cur.discount_type||'fixed'),discountValue=Math.max(0,Number(b.discountValue??cur.discount_value??cur.discount??0));await db.query(`UPDATE customer_invoices SET customer_id=$2::bigint,customer_name=$3,unit_id=$4::bigint,unit_number=$5,vin=$6,dot_number=$7,po_number=$8,mileage=$9::numeric,invoice_date=$10::date,due_date=$11::date,terms=$12,tax_rate=$13::numeric,shop_supplies=$14::numeric,environmental_fee=$15::numeric,discount_type=$16,discount_value=$17::numeric,billing_address=$18,billing_city=$19,billing_state=$20,billing_postal_code=$21,customer_note=$22,internal_note=$23,fleet_tier=$24,updated_at=now() WHERE id=$1::bigint`,[id,b.customerId??cur.customer_id,String(b.customerName??c?.customer_name??cur.customer_name),b.unitId??cur.unit_id,String(b.unitNumber??cur.unit_number??''),String(b.vin??cur.vin??''),String(b.dotNumber??c?.dot_number??cur.dot_number??''),String(b.poNumber??cur.po_number??''),Number(b.mileage??cur.mileage??0)||null,b.invoiceDate||cur.invoice_date,b.dueDate||cur.due_date,String(b.terms??cur.terms??''),Number(b.taxRate??cur.tax_rate??0),Number(b.shopSupplies??cur.shop_supplies??0),Number(b.environmentalFee??cur.environmental_fee??0),discountType,discountValue,c?.billing_address||c?.address||cur.billing_address||null,c?.billing_city||c?.city||cur.billing_city||null,c?.billing_state||c?.state||cur.billing_state||null,c?.billing_postal_code||c?.postal_code||cur.billing_postal_code||null,String(b.customerNote??cur.customer_note??''),String(b.internalNote??cur.internal_note??''),String(['retail','preferred','national'].includes(String(b.fleetTier||'').toLowerCase())?String(b.fleetTier).toLowerCase():(cur.fleet_tier||'retail'))]);await recalcInvoice(db,id);await db.query('COMMIT');res.json({ok:true})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
-app.post('/api/invoices/:id/lines',auth,managerPermission("invoices"),async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const id=req.params.id,b=req.body||{},inv=(await db.query('SELECT status FROM customer_invoices WHERE id=$1::bigint FOR UPDATE',[id])).rows[0];if(!inv){await db.query('ROLLBACK');return res.status(404).json({error:'Invoice not found.'})}if(!['draft','sent','partial'].includes(inv.status)){await db.query('ROLLBACK');return res.status(409).json({error:'Invoice is locked.'})}const typ=['labor','part','fee','sublet','other'].includes(b.lineType)?b.lineType:'other';let parentLineId=b.parentLineId?Number(b.parentLineId):null,jobUid=String(b.jobUid||''),jobName=String(b.jobName||'');if(parentLineId){const p=(await db.query(`SELECT id,job_uid,job_name FROM customer_invoice_lines WHERE id=$1::bigint AND invoice_id=$2::bigint AND line_type='labor'`,[parentLineId,id])).rows[0];if(!p){await db.query('ROLLBACK');return res.status(409).json({error:'Parent labor operation not found.'})}jobUid=String(p.job_uid||'');jobName=String(p.job_name||'');if(typ==='labor')parentLineId=null}const qty=Math.max(0,Number(b.quantity||0)),price=Math.max(0,Number(b.unitPrice||0)),discountType=String(b.discountType||'fixed')==='percent'?'percent':'fixed',discountValue=Math.max(0,Number(b.discountValue??b.discount??0)),discount=invoiceLineDiscount(qty,price,discountType,discountValue);const q=await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,part_number,quantity,unit_price,unit_cost,taxable,discount,discount_type,discount_value,line_total,parent_line_id) VALUES($1::bigint,(SELECT coalesce(max(sort_order),0)+1 FROM customer_invoice_lines WHERE invoice_id=$1::bigint),$2,$3,$4,$5,$6,$7::numeric,$8::numeric,$9::numeric,$10::boolean,$11::numeric,$12,$13::numeric,greatest(0,$7::numeric*$8::numeric-$11::numeric),$14::bigint) RETURNING id`,[id,jobUid,jobName,typ,String(b.description??''),String(b.partNumber||''),qty,price,Number(b.unitCost||0),b.taxable===true,discount,discountType,discountValue,parentLineId]);await recalcInvoice(db,id);await db.query('COMMIT');res.json({ok:true,id:q.rows[0].id})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
-app.put('/api/invoices/:id/lines/:lineId',auth,managerPermission("invoices"),async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const b=req.body||{},id=req.params.id;const inv=(await db.query('SELECT status FROM customer_invoices WHERE id=$1::bigint FOR UPDATE',[id])).rows[0];if(!inv||!['draft','sent','partial'].includes(inv.status)){await db.query('ROLLBACK');return res.status(409).json({error:'Invoice is locked or missing.'})}const typ=['labor','part','fee','sublet','other'].includes(b.lineType)?b.lineType:'other';let parentLineId=typ==='labor'?null:(b.parentLineId?Number(b.parentLineId):null),jobName=String(b.jobName||''),jobUid=String(b.jobUid||'');if(parentLineId){const p=(await db.query(`SELECT job_uid,job_name FROM customer_invoice_lines WHERE id=$1::bigint AND invoice_id=$2::bigint AND line_type='labor'`,[parentLineId,id])).rows[0];if(!p){await db.query('ROLLBACK');return res.status(409).json({error:'Parent labor operation not found.'})}jobName=String(p.job_name||jobName);jobUid=String(p.job_uid||jobUid)}const qty=Math.max(0,Number(b.quantity||0)),price=Math.max(0,Number(b.unitPrice||0)),discountType=String(b.discountType||'fixed')==='percent'?'percent':'fixed',discountValue=Math.max(0,Number(b.discountValue??b.discount??0)),discount=invoiceLineDiscount(qty,price,discountType,discountValue);await db.query(`UPDATE customer_invoice_lines SET job_uid=$3,job_name=$4,line_type=$5,description=$6,part_number=$7,quantity=$8::numeric,unit_price=$9::numeric,unit_cost=$10::numeric,taxable=$11::boolean,discount=$12::numeric,discount_type=$13,discount_value=$14::numeric,line_total=greatest(0,$8::numeric*$9::numeric-$12::numeric),parent_line_id=$15::bigint WHERE id=$2::bigint AND invoice_id=$1::bigint`,[id,req.params.lineId,jobUid,jobName,typ,String(b.description||''),String(b.partNumber||''),qty,price,Number(b.unitCost||0),b.taxable===true,discount,discountType,discountValue,parentLineId]);await recalcInvoice(db,id);await db.query('COMMIT');res.json({ok:true})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
-app.delete('/api/invoices/:id/lines/:lineId',auth,managerPermission("invoices"),async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const inv=(await db.query('SELECT status FROM customer_invoices WHERE id=$1::bigint FOR UPDATE',[req.params.id])).rows[0];if(!inv||!['draft','sent','partial'].includes(inv.status)){await db.query('ROLLBACK');return res.status(409).json({error:'Invoice is locked or missing.'})}const target=(await db.query('SELECT line_type FROM customer_invoice_lines WHERE id=$1::bigint AND invoice_id=$2::bigint',[req.params.lineId,req.params.id])).rows[0];if(target?.line_type==='labor')await db.query('DELETE FROM customer_invoice_lines WHERE parent_line_id=$1::bigint AND invoice_id=$2::bigint',[req.params.lineId,req.params.id]);await db.query('DELETE FROM customer_invoice_lines WHERE id=$1::bigint AND invoice_id=$2::bigint',[req.params.lineId,req.params.id]);await recalcInvoice(db,req.params.id);await db.query('COMMIT');res.json({ok:true})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
-
+// ITTR_INVENTORY_RESERVE_FINALIZE_V1_LINE_POST
+app.post('/api/invoices/:id/lines',auth,managerPermission("invoices"),async(req,res,next)=>{
+ const db=await requireDb().connect();
+ try{
+  await db.query('BEGIN');const id=req.params.id,b=req.body||{},inv=(await db.query('SELECT * FROM customer_invoices WHERE id=$1::bigint FOR UPDATE',[id])).rows[0];
+  if(!inv){await db.query('ROLLBACK');return res.status(404).json({error:'Invoice not found.'})}if(!['draft','sent','partial'].includes(inv.status)){await db.query('ROLLBACK');return res.status(409).json({error:'Invoice is locked.'})}
+  const typ=['labor','part','fee','sublet','other'].includes(b.lineType)?b.lineType:'other';let parentLineId=b.parentLineId?Number(b.parentLineId):null,jobUid=String(b.jobUid||''),jobName=String(b.jobName||'');
+  if(parentLineId){const p=(await db.query(`SELECT id,job_uid,job_name FROM customer_invoice_lines WHERE id=$1::bigint AND invoice_id=$2::bigint AND line_type='labor'`,[parentLineId,id])).rows[0];if(!p){await db.query('ROLLBACK');return res.status(409).json({error:'Parent labor operation not found.'})}jobUid=String(p.job_uid||'');jobName=String(p.job_name||'');if(typ==='labor')parentLineId=null}
+  const qty=Math.max(0,Number(b.quantity||0)),price=Math.max(0,Number(b.unitPrice||0)),discountType=String(b.discountType||'fixed')==='percent'?'percent':'fixed',discountValue=Math.max(0,Number(b.discountValue??b.discount??0)),discount=invoiceLineDiscount(qty,price,discountType,discountValue),inventoryPartId=typ==='part'&&b.inventoryPartId?Number(b.inventoryPartId):null;
+  const q=await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,part_number,quantity,unit_price,unit_cost,taxable,discount,discount_type,discount_value,line_total,parent_line_id,inventory_part_id,stock_posted_qty,metadata)
+    VALUES($1::bigint,(SELECT coalesce(max(sort_order),0)+1 FROM customer_invoice_lines WHERE invoice_id=$1::bigint),$2,$3,$4,$5,$6,$7::numeric,$8::numeric,$9::numeric,$10::boolean,$11::numeric,$12,$13::numeric,greatest(0,$7::numeric*$8::numeric-$11::numeric),$14::bigint,$15::bigint,0,$16::jsonb) RETURNING *`,[
+    id,jobUid,jobName,typ,String(b.description??''),String(b.partNumber||''),qty,price,Number(b.unitCost||0),b.taxable===true,discount,discountType,discountValue,parentLineId,inventoryPartId,
+    JSON.stringify(inventoryPartId?{inventoryPartId,sourcePartId:b.sourcePartId||null,workOrderId:inv.work_order_id||null}:{})
+  ]);
+  const warnings=[];if(invoiceStockIsPosted(inv)&&inventoryPartId)await postInvoiceLineStock(db,inv,q.rows[0],req.user.username,warnings,null,'Part line added after invoice finalization');
+  await recalcInvoice(db,id);await db.query('COMMIT');res.json({ok:true,id:q.rows[0].id,warnings});
+ }catch(e){try{await db.query('ROLLBACK')}catch{}if(e?.status)return res.status(e.status).json({error:e.message,code:e.code});next(e)}finally{db.release()}
+});
+// ITTR_INVENTORY_RESERVE_FINALIZE_V1_LINE_PUT
+app.put('/api/invoices/:id/lines/:lineId',auth,managerPermission("invoices"),async(req,res,next)=>{
+ const db=await requireDb().connect();
+ try{
+  await db.query('BEGIN');const b=req.body||{},id=req.params.id,inv=(await db.query('SELECT * FROM customer_invoices WHERE id=$1::bigint FOR UPDATE',[id])).rows[0];
+  if(!inv||!['draft','sent','partial'].includes(inv.status)){await db.query('ROLLBACK');return res.status(409).json({error:'Invoice is locked or missing.'})}
+  const old=(await db.query('SELECT * FROM customer_invoice_lines WHERE id=$1::bigint AND invoice_id=$2::bigint FOR UPDATE',[req.params.lineId,id])).rows[0];if(!old){await db.query('ROLLBACK');return res.status(404).json({error:'Invoice line not found.'})}
+  const typ=['labor','part','fee','sublet','other'].includes(b.lineType)?b.lineType:'other';let parentLineId=typ==='labor'?null:(b.parentLineId?Number(b.parentLineId):null),jobName=String(b.jobName||''),jobUid=String(b.jobUid||'');
+  if(parentLineId){const p=(await db.query(`SELECT job_uid,job_name FROM customer_invoice_lines WHERE id=$1::bigint AND invoice_id=$2::bigint AND line_type='labor'`,[parentLineId,id])).rows[0];if(!p){await db.query('ROLLBACK');return res.status(409).json({error:'Parent labor operation not found.'})}jobName=String(p.job_name||jobName);jobUid=String(p.job_uid||jobUid)}
+  const qty=Math.max(0,Number(b.quantity||0)),price=Math.max(0,Number(b.unitPrice||0)),discountType=String(b.discountType||'fixed')==='percent'?'percent':'fixed',discountValue=Math.max(0,Number(b.discountValue??b.discount??0)),discount=invoiceLineDiscount(qty,price,discountType,discountValue),newInventoryPartId=typ==='part'?(b.inventoryPartId?Number(b.inventoryPartId):null):null,warnings=[];
+  if(invoiceStockIsPosted(inv)&&old.inventory_part_id&&Number(old.inventory_part_id)!==Number(newInventoryPartId||0))await postInvoiceLineStock(db,inv,old,req.user.username,warnings,0,'Invoice line inventory link changed');
+  const keepPosted=Number(old.inventory_part_id||0)===Number(newInventoryPartId||0)?Math.max(0,stockNum(old.stock_posted_qty)):0;
+  const meta={...invoiceMeta(old.metadata)};if(newInventoryPartId)meta.inventoryPartId=newInventoryPartId;else delete meta.inventoryPartId;
+  await db.query(`UPDATE customer_invoice_lines SET job_uid=$3,job_name=$4,line_type=$5,description=$6,part_number=$7,quantity=$8::numeric,unit_price=$9::numeric,unit_cost=$10::numeric,taxable=$11::boolean,discount=$12::numeric,discount_type=$13,discount_value=$14::numeric,line_total=greatest(0,$8::numeric*$9::numeric-$12::numeric),parent_line_id=$15::bigint,inventory_part_id=$16::bigint,stock_posted_qty=$17::numeric,metadata=$18::jsonb WHERE id=$2::bigint AND invoice_id=$1::bigint`,[
+    id,req.params.lineId,jobUid,jobName,typ,String(b.description||''),String(b.partNumber||''),qty,price,Number(b.unitCost||0),b.taxable===true,discount,discountType,discountValue,parentLineId,newInventoryPartId,keepPosted,JSON.stringify(meta)
+  ]);
+  const fresh=(await db.query('SELECT * FROM customer_invoice_lines WHERE id=$1::bigint',[req.params.lineId])).rows[0];if(invoiceStockIsPosted(inv)&&fresh?.inventory_part_id)await postInvoiceLineStock(db,inv,fresh,req.user.username,warnings,null,'Invoice line edited after finalization');
+  await recalcInvoice(db,id);await db.query('COMMIT');res.json({ok:true,warnings});
+ }catch(e){try{await db.query('ROLLBACK')}catch{}if(e?.status)return res.status(e.status).json({error:e.message,code:e.code});next(e)}finally{db.release()}
+});
+// ITTR_INVENTORY_RESERVE_FINALIZE_V1_LINE_DELETE
+app.delete('/api/invoices/:id/lines/:lineId',auth,managerPermission("invoices"),async(req,res,next)=>{
+ const db=await requireDb().connect();
+ try{
+  await db.query('BEGIN');const id=req.params.id,inv=(await db.query('SELECT * FROM customer_invoices WHERE id=$1::bigint FOR UPDATE',[id])).rows[0];
+  if(!inv||!['draft','sent','partial'].includes(inv.status)){await db.query('ROLLBACK');return res.status(409).json({error:'Invoice is locked or missing.'})}
+  const target=(await db.query('SELECT * FROM customer_invoice_lines WHERE id=$1::bigint AND invoice_id=$2::bigint FOR UPDATE',[req.params.lineId,id])).rows[0];if(!target){await db.query('ROLLBACK');return res.status(404).json({error:'Invoice line not found.'})}
+  const rows=target.line_type==='labor'?(await db.query('SELECT * FROM customer_invoice_lines WHERE invoice_id=$1::bigint AND (id=$2::bigint OR parent_line_id=$2::bigint) ORDER BY id FOR UPDATE',[id,req.params.lineId])).rows:[target],warnings=[];
+  if(invoiceStockIsPosted(inv))for(const line of rows)if(line.inventory_part_id&&stockNum(line.stock_posted_qty)>0)await postInvoiceLineStock(db,inv,line,req.user.username,warnings,0,'Invoice line deleted after finalization');
+  if(target.line_type==='labor')await db.query('DELETE FROM customer_invoice_lines WHERE parent_line_id=$1::bigint AND invoice_id=$2::bigint',[req.params.lineId,id]);
+  await db.query('DELETE FROM customer_invoice_lines WHERE id=$1::bigint AND invoice_id=$2::bigint',[req.params.lineId,id]);await recalcInvoice(db,id);await db.query('COMMIT');res.json({ok:true,warnings});
+ }catch(e){try{await db.query('ROLLBACK')}catch{}if(e?.status)return res.status(e.status).json({error:e.message,code:e.code});next(e)}finally{db.release()}
+});
+// ITTR_INVENTORY_RESERVE_FINALIZE_V1_SYNC_WO
 app.post('/api/invoices/:id/sync-work-order',auth,managerPermission("invoices"),async(req,res,next)=>{
  const db=await requireDb().connect();
  try{
-  await db.query('BEGIN');
-  const id=req.params.id,inv=(await db.query('SELECT * FROM customer_invoices WHERE id=$1::bigint FOR UPDATE',[id])).rows[0];
-  if(!inv){await db.query('ROLLBACK');return res.status(404).json({error:'Invoice not found.'})}
-  if(!['draft','sent','partial'].includes(inv.status)){await db.query('ROLLBACK');return res.status(409).json({error:'Paid or void invoices cannot be synchronized.'})}
-  const sq=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'"),sf=sq.rows[0]?.payload||{},all=Array.isArray(sf.workorders)?sf.workorders:[];
-  const requested=String(req.body?.workOrderId||inv.work_order_id||'').trim();
-  const w=all.find(x=>String(x?.id)===requested);
-  if(!w){await db.query('ROLLBACK');return res.status(404).json({error:'Select or link a valid work order first.'})}
-  if(inv.unit_number&&w.unit&&String(inv.unit_number).trim().toLowerCase()!==String(w.unit).trim().toLowerCase()){await db.query('ROLLBACK');return res.status(409).json({error:`WO #${requested} belongs to Unit ${w.unit}, not Unit ${inv.unit_number}.`})}
-  const sessions=(await db.query(`SELECT task_uid,sum(extract(epoch from (coalesce(ended_at,now())-started_at))/3600.0) hours FROM task_time_sessions WHERE work_order_id=$1::text GROUP BY task_uid`,[requested])).rows;
-  const hm=new Map(sessions.map(x=>[String(x.task_uid),Number(x.hours||0)]));
-  const existing=(await db.query('SELECT job_uid,line_type,unit_price,unit_cost,part_number FROM customer_invoice_lines WHERE invoice_id=$1::bigint',[id])).rows;
-  const laborRateByUid=new Map(existing.filter(x=>x.line_type==='labor').map(x=>[String(x.job_uid||''),Number(x.unit_price||0)]));
-  const partPriceByNumber=new Map(existing.filter(x=>x.line_type==='part').map(x=>[String(x.part_number||'').toLowerCase(),{price:Number(x.unit_price||0),cost:Number(x.unit_cost||0)}]));
-  const defaultRate=Number((await db.query('SELECT default_labor_rate FROM fullbay_import_customers WHERE id::text=$1::text LIMIT 1',[inv.customer_id])).rows[0]?.default_labor_rate||0)||115;
+  await db.query('BEGIN');const id=req.params.id,inv=(await db.query('SELECT * FROM customer_invoices WHERE id=$1::bigint FOR UPDATE',[id])).rows[0];
+  if(!inv){await db.query('ROLLBACK');return res.status(404).json({error:'Invoice not found.'})}if(!['draft','sent','partial'].includes(inv.status)){await db.query('ROLLBACK');return res.status(409).json({error:'Invoice is locked.'})}
+  const requested=String(req.body?.workOrderId||inv.work_order_id||'').trim();if(!requested){await db.query('ROLLBACK');return res.status(400).json({error:'Work Order is required.'})}
+  const sq=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");const sf=sq.rows[0]?.payload||{},w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===requested);if(!w){await db.query('ROLLBACK');return res.status(404).json({error:'Work order not found.'})}
+  const oldParts=(await db.query("SELECT * FROM customer_invoice_lines WHERE invoice_id=$1::bigint AND line_type='part' FOR UPDATE",[id])).rows;
+  const oldMap=new Map();for(const l of oldParts){const m=invoiceMeta(l.metadata),key=`${Number(l.inventory_part_id||m.inventoryPartId||0)}|${String(m.sourcePartId||'')}`;if(!oldMap.has(key))oldMap.set(key,[]);oldMap.get(key).push(l)}
+  const desiredKeys=new Set();for(const t of (Array.isArray(w.tasks)?w.tasks:[]))for(const p of (Array.isArray(t.parts)?t.parts:[]))desiredKeys.add(`${Number(p.inventoryPartId||0)}|${String(p.id||'')}`);
+  const warnings=[];if(invoiceStockIsPosted(inv))for(const l of oldParts){const m=invoiceMeta(l.metadata),key=`${Number(l.inventory_part_id||m.inventoryPartId||0)}|${String(m.sourcePartId||'')}`;if(!desiredKeys.has(key)&&l.inventory_part_id&&stockNum(l.stock_posted_qty)>0)await postInvoiceLineStock(db,inv,l,req.user.username,warnings,0,'Removed by finalized Work Order sync')}
   await db.query('DELETE FROM customer_invoice_lines WHERE invoice_id=$1::bigint',[id]);
-  let order=0,jobs=0,parts=0,hoursTotal=0;
+  const sessions=(await db.query(`SELECT task_uid,sum(extract(epoch from (coalesce(ended_at,now())-started_at))/3600.0) hours FROM task_time_sessions WHERE work_order_id=$1::text AND ended_at IS NOT NULL GROUP BY task_uid`,[requested])).rows,hm=new Map(sessions.map(x=>[String(x.task_uid),Number(x.hours||0)]));
+  const rate=Number(req.body?.laborRate||0)||Number((await db.query('SELECT default_labor_rate FROM fullbay_import_customers WHERE id::text=$1::text',[inv.customer_id||'0'])).rows[0]?.default_labor_rate||0);let order=0,jobs=0,parts=0,hoursTotal=0,newPartLines=[];
   for(const t of (Array.isArray(w.tasks)?w.tasks:[])){
-   if(t?.deleted===true)continue;
-   const uid=String(t.uid||''),job=String(t.t||t.description||'Repair'),hours=Math.round(Math.max(0,hm.get(uid)||Number(t.hours||0)||0)*100)/100,rate=laborRateByUid.get(uid)||defaultRate;
-   hoursTotal+=hours;jobs++;
-   const labor=(await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,quantity,unit_price,unit_cost,taxable,line_total,metadata,parent_line_id) VALUES($1,$2,$3,$4,'labor',$5,$6::numeric,$7::numeric,0,false,$6::numeric*$7::numeric,$8::jsonb,NULL) RETURNING id`,
-    [id,++order,uid,job,job,hours,rate,JSON.stringify({syncedFromWorkOrder:requested,outcome:t.outcome||'',note:t.outcomeNote||'',status:t.done?'completed':t.paused?'paused':'active'})])).rows[0];
+   const uid=String(t.uid||''),job=String(t.t||'Repair'),hours=Math.round((hm.get(uid)||0)*100)/100;hoursTotal+=hours;jobs++;
+   const labor=(await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,quantity,unit_price,unit_cost,taxable,line_total,metadata,parent_line_id) VALUES($1,$2,$3,$4,'labor',$5,$6::numeric,$7::numeric,0,false,$6::numeric*$7::numeric,$8::jsonb,NULL) RETURNING id`,[id,++order,uid,job,job,hours,rate,JSON.stringify({syncedFromWorkOrder:requested,outcome:t.outcome||'',note:t.outcomeNote||'',status:t.done?'completed':t.paused?'paused':'active'})])).rows[0];
    for(const p of (Array.isArray(t.parts)?t.parts:[])){
-    const pn=String(p.partNumber||''),prior=partPriceByNumber.get(pn.toLowerCase())||{},cost=Math.max(0,Number(p.unitCost??prior.cost??0)),price=Math.max(0,Number(p.unitPrice??prior.price??0));
-    await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,part_number,quantity,unit_price,unit_cost,taxable,line_total,metadata,parent_line_id) VALUES($1,$2,$3,$4,'part',$5,$6,$7::numeric,$8::numeric,$9::numeric,$10::boolean,$7::numeric*$8::numeric,$11::jsonb,$12::bigint)`,
-      [id,++order,uid,job,String(p.description||pn||'Part'),pn,Math.max(.01,Number(p.qty||1)),price,cost,p.sellTaxable!==false,JSON.stringify({syncedFromWorkOrder:requested,inventoryPartId:p.inventoryPartId||null}),labor.id]);
-    parts++;
+    const inventoryPartId=p.inventoryPartId?Number(p.inventoryPartId):null,qty=Math.max(.01,stockNum(p.qty||1)),key=`${Number(inventoryPartId||0)}|${String(p.id||'')}`,priorList=oldMap.get(key)||[],prior=priorList.shift()||null;
+    const carried=prior?Math.max(0,stockNum(prior.stock_posted_qty)):(inventoryPartId&&p.stockMode!=='reserve'?qty:0),cost=Math.max(0,Number(p.unitCost||0)),price=Math.max(0,Number(p.unitPrice||0));
+    const row=(await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,part_number,quantity,unit_price,unit_cost,taxable,line_total,metadata,parent_line_id,inventory_part_id,stock_posted_qty)
+      VALUES($1,$2,$3,$4,'part',$5,$6,$7::numeric,$8::numeric,$9::numeric,$10::boolean,$7::numeric*$8::numeric,$11::jsonb,$12::bigint,$13::bigint,$14::numeric) RETURNING *`,[
+      id,++order,uid,job,String(p.description||p.partNumber||'Part'),String(p.partNumber||''),qty,price,cost,p.sellTaxable!==false,
+      JSON.stringify({syncedFromWorkOrder:requested,inventoryPartId,sourcePartId:p.id||null,workOrderId:requested,stockMode:p.stockMode||'legacy'}),labor.id,inventoryPartId,carried
+    ])).rows[0];newPartLines.push(row);parts++;
    }
   }
-  await db.query('UPDATE customer_invoices SET work_order_id=$2,updated_at=now() WHERE id=$1::bigint',[id,requested]);
-  await recalcInvoice(db,id);await db.query('COMMIT');
-  await audit(req.user.username,'invoice_synced_from_work_order',{invoiceId:id,workOrderId:requested,jobs,parts,hours:hoursTotal});
-  res.json({ok:true,workOrderId:requested,jobs,parts,hours:Math.round(hoursTotal*100)/100,status:w.status||''});
- }catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}
+  const currentInv={...inv,work_order_id:requested};if(invoiceStockIsPosted(inv)){for(const l of newPartLines)if(l.inventory_part_id)await postInvoiceLineStock(db,currentInv,l,req.user.username,warnings,null,'Finalized invoice Work Order sync');await releaseInvoiceReservations(db,currentInv,newPartLines,req.user.username)}
+  await db.query('UPDATE customer_invoices SET work_order_id=$2,updated_at=now() WHERE id=$1::bigint',[id,requested]);await recalcInvoice(db,id);await db.query('COMMIT');
+  await audit(req.user.username,'invoice_work_order_synced',{invoiceId:id,workOrderId:requested,jobs,parts,hours:hoursTotal,stockPosted:invoiceStockIsPosted(inv)});res.json({ok:true,workOrderId:requested,jobs,parts,hours:hoursTotal,warnings});
+ }catch(e){try{await db.query('ROLLBACK')}catch{}if(e?.status)return res.status(e.status).json({error:e.message,code:e.code});next(e)}finally{db.release()}
 });
-
-// ITTR v24.27.0 invoice finalize integrity
-app.post('/api/invoices/:id/finalize',auth,managerPermission("invoices"),async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const before=(await db.query('SELECT * FROM customer_invoices WHERE id=$1::bigint FOR UPDATE',[req.params.id])).rows[0];if(!before){await db.query('ROLLBACK');return res.status(404).json({error:'Invoice not found.'})}if(['void','paid'].includes(String(before.status||'').toLowerCase())){await db.query('ROLLBACK');return res.status(409).json({error:'Paid or void invoices are locked and cannot be reopened.'})}const inv=await recalcInvoice(db,req.params.id);if(invoiceMoney(inv.total)<=0){await db.query('ROLLBACK');return res.status(409).json({error:'Invoice total must be greater than zero.'})}await db.query("UPDATE customer_invoices SET status=CASE WHEN amount_paid>0 THEN 'partial' ELSE 'sent' END,finalized_at=coalesce(finalized_at,now()),sent_at=coalesce(sent_at,now()),updated_at=now() WHERE id=$1::bigint",[req.params.id]);await db.query('COMMIT');await audit(req.user.username,'invoice_finalized',{invoiceId:req.params.id});res.json({ok:true})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
-// ITTR v24.27.0 payment idempotency guard
+// ITTR_INVENTORY_RESERVE_FINALIZE_V1_FINALIZE
+app.post('/api/invoices/:id/finalize',auth,managerPermission("invoices"),async(req,res,next)=>{
+ const db=await requireDb().connect();
+ try{
+  await db.query('BEGIN');const id=req.params.id,before=(await db.query('SELECT * FROM customer_invoices WHERE id=$1::bigint FOR UPDATE',[id])).rows[0];
+  if(!before){await db.query('ROLLBACK');return res.status(404).json({error:'Invoice not found.'})}if(['void','paid'].includes(String(before.status||'').toLowerCase())){await db.query('ROLLBACK');return res.status(409).json({error:'Paid or void invoices are locked and cannot be reopened.'})}
+  const inv=await recalcInvoice(db,id);if(invoiceMoney(inv.total)<=0){await db.query('ROLLBACK');return res.status(409).json({error:'Invoice total must be greater than zero.'})}
+  const lines=(await db.query("SELECT * FROM customer_invoice_lines WHERE invoice_id=$1::bigint AND line_type='part' ORDER BY id FOR UPDATE",[id])).rows,warnings=[];
+  for(const line of lines)if(line.inventory_part_id)await postInvoiceLineStock(db,inv,line,req.user.username,warnings,null,'Invoice finalized');
+  const released=await releaseInvoiceReservations(db,inv,lines,req.user.username);
+  const uq=await db.query("UPDATE customer_invoices SET status=CASE WHEN amount_paid>0 THEN 'partial' ELSE 'sent' END,finalized_at=coalesce(finalized_at,now()),sent_at=coalesce(sent_at,now()),stock_posted_at=coalesce(stock_posted_at,now()),updated_at=now() WHERE id=$1::bigint RETURNING stock_posted_at",[id]);
+  await db.query('COMMIT');await audit(req.user.username,'invoice_finalized',{invoiceId:id,invoiceNumber:inv.invoice_number,warnings:warnings.length,reservationsReleased:released.released});
+  res.json({ok:true,warnings,stockPostedAt:uq.rows[0]?.stock_posted_at||null});
+ }catch(e){try{await db.query('ROLLBACK')}catch{}if(e?.status)return res.status(e.status).json({error:e.message,code:e.code});next(e)}finally{db.release()}
+});
 app.post('/api/invoices/:id/payments',auth,managerPermission("invoices"),async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const id=req.params.id,amount=invoiceMoney(req.body?.amount);if(amount<=0){await db.query('ROLLBACK');return res.status(400).json({error:'Payment amount must be greater than zero.'})}const inv=(await db.query('SELECT * FROM customer_invoices WHERE id=$1::bigint FOR UPDATE',[id])).rows[0];if(!inv||inv.status==='void'){await db.query('ROLLBACK');return res.status(409).json({error:'Invoice is missing or void.'})}if(String(inv.status||'').toLowerCase()==='paid'||invoiceMoney(inv.balance_due)<=0.009){await db.query('ROLLBACK');return res.status(409).json({error:'This invoice is already paid.'})}if(amount>invoiceMoney(inv.balance_due)+.01){await db.query('ROLLBACK');return res.status(409).json({error:'Payment cannot exceed the balance due.'})}const method=String(req.body?.method||'Other').trim().slice(0,80),reference=String(req.body?.reference||'').trim().slice(0,160),note=String(req.body?.note||'').replace(/[<>]/g,'').slice(0,2000);const dup=await db.query("SELECT id FROM customer_invoice_payments WHERE invoice_id=$1::bigint AND amount=$2::numeric AND lower(coalesce(method,''))=lower($3) AND coalesce(reference,'')=$4 AND received_by=$5 AND paid_at>now()-interval '15 seconds' LIMIT 1",[id,amount,method,reference,req.user.username]);if(dup.rowCount){await db.query('ROLLBACK');return res.status(409).json({error:'This payment was already recorded. Refresh the invoice before trying again.',code:'DUPLICATE_PAYMENT'})}await db.query('INSERT INTO customer_invoice_payments(invoice_id,amount,method,reference,note,paid_at,received_by) VALUES($1::bigint,$2::numeric,$3,$4,$5,coalesce($6::timestamptz,now()),$7)',[id,amount,method,reference,note,req.body?.paidAt||null,req.user.username]);await db.query('UPDATE customer_invoices SET amount_paid=amount_paid+$2::numeric,updated_at=now() WHERE id=$1::bigint',[id,amount]);await recalcInvoice(db,id);await db.query('COMMIT');await audit(req.user.username,'invoice_payment',{invoiceId:id,amount,method});res.json({ok:true})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
-app.post('/api/invoices/:id/void',auth,managerPermission("invoices"),async(req,res,next)=>{try{const q=await requireDb().query("UPDATE customer_invoices SET status='void',updated_at=now() WHERE id=$1::bigint AND amount_paid=0 RETURNING id",[req.params.id]);if(!q.rowCount)return res.status(409).json({error:'Paid invoices cannot be voided until payments are reconciled.'});res.json({ok:true})}catch(e){next(e)}});
+// ITTR_INVENTORY_RESERVE_FINALIZE_V1_VOID
+app.post('/api/invoices/:id/void',auth,managerPermission("invoices"),async(req,res,next)=>{
+ const db=await requireDb().connect();
+ try{
+  await db.query('BEGIN');const id=req.params.id,inv=(await db.query('SELECT * FROM customer_invoices WHERE id=$1::bigint FOR UPDATE',[id])).rows[0];
+  if(!inv){await db.query('ROLLBACK');return res.status(404).json({error:'Invoice not found.'})}if(stockNum(inv.amount_paid)>0){await db.query('ROLLBACK');return res.status(409).json({error:'Paid invoices cannot be voided until payments are reconciled.'})}
+  const lines=(await db.query("SELECT * FROM customer_invoice_lines WHERE invoice_id=$1::bigint AND line_type='part' ORDER BY id FOR UPDATE",[id])).rows,warnings=[];
+  for(const line of lines)if(line.inventory_part_id&&stockNum(line.stock_posted_qty)>0)await postInvoiceLineStock(db,inv,line,req.user.username,warnings,0,'Invoice voided');
+  await db.query("UPDATE customer_invoices SET status='void',updated_at=now() WHERE id=$1::bigint",[id]);await db.query('COMMIT');await audit(req.user.username,'invoice_voided',{invoiceId:id,invoiceNumber:inv.invoice_number});
+  res.json({ok:true,warnings});
+ }catch(e){try{await db.query('ROLLBACK')}catch{}if(e?.status)return res.status(e.status).json({error:e.message,code:e.code});next(e)}finally{db.release()}
+});
 app.delete('/api/invoices/:id',auth,ownerOnly,async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const inv=(await db.query('SELECT * FROM customer_invoices WHERE id=$1::bigint FOR UPDATE',[req.params.id])).rows[0];if(!inv){await db.query('ROLLBACK');return res.status(404).json({error:'Invoice not found.'})}if(String(req.body?.confirmInvoiceNumber||'')!==String(inv.invoice_number)){await db.query('ROLLBACK');return res.status(400).json({error:'Type the exact invoice number to permanently delete it.'})}const snapshot=await getInvoiceBundle(db,req.params.id);await db.query('DELETE FROM customer_invoice_payments WHERE invoice_id=$1::bigint',[req.params.id]);await db.query('DELETE FROM customer_invoice_lines WHERE invoice_id=$1::bigint',[req.params.id]);await db.query('DELETE FROM customer_invoices WHERE id=$1::bigint',[req.params.id]);await db.query('COMMIT');await audit(req.user.username,'invoice_permanently_deleted',{invoiceNumber:inv.invoice_number,customer:inv.customer_name,total:inv.total,status:inv.status,hadPayments:(snapshot?.payments||[]).length});res.json({ok:true})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
 app.get('/api/invoices/:id/pdf',auth,managerPermission("invoices"),async(req,res,next)=>{
  try{
@@ -3398,6 +3599,7 @@ app.get("*splat",(req,res)=>{
 });
 
 initDb()
+  .then(()=>reconcileReservedInventoryAllocations())
   .then(()=>ensurePartsSearchPerformance())
   .then(()=>migrateLegacyFindingPhotosAtStartup())
   .then(()=>repairTaskUidsAtStartup())
