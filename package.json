@@ -13,19 +13,19 @@
   "dependencies": {
     "express": "5.1.0",
     "openai": "5.0.0",
-    "multer": "2.0.2",
+    "multer": "2.4.0",
     "dotenv": "16.4.7",
     "pg": "8.16.3",
     "bcryptjs": "3.0.2",
     "helmet": "8.1.0",
-    "express-rate-limit": "8.1.0",
-    "@aws-sdk/client-s3": "3.883.0",
-    "@aws-sdk/s3-request-presigner": "3.883.0",
-    "sharp": "0.34.3",
+    "express-rate-limit": "8.7.0",
+    "@aws-sdk/client-s3": "3.1141.0",
+    "@aws-sdk/s3-request-presigner": "3.1141.0",
+    "sharp": "0.35.5",
     "pdfkit": "0.17.2",
     "bwip-js": "4.5.1",
     "html5-qrcode": "2.3.8",
-    "ws": "8.18.3"
+    "ws": "8.22.0"
   },
   "engines": {
     "node": ">=20"
