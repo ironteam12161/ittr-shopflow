@@ -49,13 +49,13 @@ check('offline queue stores base server version',root.includes('baseVersion:Numb
 check('offline replay uses queued base version',root.includes('item?.baseVersion'));
 check('manager cannot trigger legacy browser import',root.includes('remoteEmpty && localHasData && session?.role==="admin"'));
 
-// v24.28.0 security phase 2
+// v24.28.x security phase 2
 check('CSP enabled',server.includes('contentSecurityPolicy:{directives:{')&&!server.includes('contentSecurityPolicy:false'));
 check('frame embedding blocked',server.includes('frameAncestors:["\'none\'"]'));
 check('browser permissions policy present',server.includes('Permissions-Policy'));
 check('AI limiter present',server.includes('const aiLimiter=rateLimit')&&server.includes('app.use("/api/ai",aiLimiter)'));
 check('upload limiter present',server.includes('const uploadLimiter=rateLimit')&&server.includes('app.use("/api/ai/import",uploadLimiter)'));
-check('mechanic state reads are role-scoped',server.includes('ITTR v24.28.0 role-scoped state reader')&&server.includes("req.user?.role==='mechanic'")&&server.includes('mechanicOwnsWorkOrder(req.user,w)'));
+check('mechanic state reads are role-scoped',server.includes('role-scoped state reader')&&server.includes("req.user?.role==='mechanic'")&&server.includes('mechanicOwnsWorkOrder(req.user,w)'));
 check('mechanic cannot cloud-save users',root.includes('if(session?.role!=="mechanic")queueCloudState("users",USERS)'));
 check('mechanic cannot cloud-save pro state',root.includes('if(session?.role!=="mechanic")queueCloudState("pro",PRO)'));
 check('generic mechanic queue blocks administrative state',root.includes('session?.role==="mechanic"&&key!=="shopflow"'));
