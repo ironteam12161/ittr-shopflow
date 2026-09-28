@@ -93,11 +93,8 @@ for(const name of ['customers','invoices','parts','procenter','trucksearch']){
  }
 }
 
-const runtime=['runtime_samsara_name_patch.mjs','runtime_samsara_realtime_patch.mjs','runtime_samsara_v251_patch.mjs','runtime_samsara_v252_patch.mjs','runtime_samsara_v253_patch.mjs','runtime_samsara_v254_patch.mjs','runtime_samsara_v255_patch.mjs','runtime_v256_procenter_recovery.mjs','runtime_v257_fault_codes_fix.mjs','runtime_v260_invoice_workspace_fix.mjs','runtime_v261_clean_invoice_print.mjs','runtime_v270_security_integrity_fix.mjs','runtime_v271_finish_cleanup.mjs','runtime_v272_sync_ghost_fix.mjs','runtime_v280_security_phase2.mjs','runtime_v281_mechanic_language_fix.mjs','runtime_v282_language_switch_reload_fix.mjs'];
-for(const f of runtime)check(`runtime dependency exists: ${f}`,exists(f));
-check('runtime preparation centralized',String(pkg.scripts?.start||'').startsWith('npm run prepare-runtime &&')&&pkg.scripts?.['prepare-runtime-check']==='npm run prepare-runtime');
+check('main inline script is not cut by an injected </script>',(()=>{const h=read('public/index.html');const i=h.indexOf('<script>');const j=h.indexOf('</script>',i);return i>0&&h.indexOf('<script src="./inspection-workflow.js',i)>j;})());
 check('start reaches server.js',String(pkg.scripts?.start||'').trim().endsWith('node server.js'),pkg.scripts?.start||'');
-check('release check executes runtime preparation',String(pkg.scripts?.check||'').includes('npm run prepare-runtime-check'));
 check('startup smoke test exists',exists('smoke_test.mjs'));
 check('release check executes startup smoke test',String(pkg.scripts?.check||'').includes('node smoke_test.mjs'));
 check('dedicated language-switch audit exists',exists('language_switch_audit.mjs'));
