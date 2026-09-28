@@ -58,6 +58,8 @@ check('upload limiter present',server.includes('const uploadLimiter=rateLimit')&
 check('mechanic state reads are role-scoped',server.includes('ITTR v24.28.0 role-scoped state reader')&&server.includes("req.user?.role==='mechanic'")&&server.includes('mechanicOwnsWorkOrder(req.user,w)'));
 check('mechanic cannot cloud-save users',root.includes('if(session?.role!=="mechanic")queueCloudState("users",USERS)'));
 check('mechanic cannot cloud-save pro state',root.includes('if(session?.role!=="mechanic")queueCloudState("pro",PRO)'));
+check('generic mechanic queue blocks administrative state',root.includes('session?.role==="mechanic"&&key!=="shopflow"'));
+check('mechanic stale administrative queue is discarded',root.includes('removePersistedState(key);cloudPending.delete(key);continue'));
 check('Fullbay customer directory management-only',server.includes('app.get("/api/fullbay/customers",auth,managerPermission("customers")'));
 check('Fullbay customer profile management-only',server.includes('app.get("/api/fullbay/customers/:id",auth,managerPermission("customers")'));
 check('full backup owner-only',server.includes('app.get("/api/admin/backup",auth,ownerOnly'));
