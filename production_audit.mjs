@@ -9,6 +9,8 @@ const pkg=JSON.parse(read('package.json'));
 const server=read('server.js');
 const root=read('index.html');
 const pub=read('public/index.html');
+const sw=exists('public/sw.js')?read('public/sw.js'):'';
+const swRoot=exists('sw.js')?read('sw.js'):'';
 
 check('package version present',/^24\.\d+\.\d+$/.test(pkg.version),pkg.version);
 check('production server exists',server.length>10000,server.length);
@@ -24,7 +26,16 @@ check('Fullbay customers import preserved',server.includes('/api/fullbay/import/
 check('Fullbay parts import preserved',server.includes('/api/fullbay/import/parts'));
 check('Fullbay history import preserved',server.includes('/api/fullbay/import/service-history'));
 
-// v24.27.0 critical security/data-integrity regression checks.
+check('runtime build identity uses package version',server.includes('const ITTR_APP_VERSION=String(process.env.npm_package_version')&&server.includes('frontendExpected:ITTR_APP_VERSION'));
+check('legacy 24.24.5 identity removed from runtime server',!server.includes('24.24.5'));
+check('legacy 24.24.5 identity removed from frontend',!root.includes('24.24.5'));
+check('frontend release identity current',root.includes(pkg.version),pkg.version);
+check('service worker version current',sw.includes(`v${pkg.version}`)&&sw.includes(`ittr-shopflow-v${pkg.version}`));
+check('root/public service worker synchronized',sw&&sw===swRoot);
+check('service worker uses network-first critical app code',sw.includes("u.pathname.startsWith('/modules/')")&&sw.includes("fetch(request,{cache:'no-store'})"));
+check('service worker and modules served no-store',server.includes('filePath.endsWith("sw.js")')&&server.includes('filePath.endsWith("manifest.webmanifest")')&&server.includes('filePath.endsWith("invoice-workspace.css")'));
+check('legacy unsafe sync queue is quarantined',root.includes('function quarantineUnsafeLegacySyncQueue(){')&&root.includes('ittr_sync_queue_quarantine_v1'));
+
 check('state writes require current server version',server.includes('STATE_VERSION_REQUIRED')&&server.includes('STATE_VERSION_CONFLICT'));
 check('mechanic whole-state replacement blocked',server.includes('Mechanics cannot replace shared administrative state.'));
 check('legacy local import is owner-only',server.includes('app.post("/api/state/import-local",auth,ownerOnly'));
@@ -46,8 +57,9 @@ for(const name of ['customers','invoices','parts','procenter','trucksearch']){
  }
 }
 
-const runtime=['runtime_samsara_name_patch.mjs','runtime_samsara_realtime_patch.mjs','runtime_samsara_v251_patch.mjs','runtime_samsara_v252_patch.mjs','runtime_samsara_v253_patch.mjs','runtime_samsara_v254_patch.mjs','runtime_samsara_v255_patch.mjs','runtime_v256_procenter_recovery.mjs','runtime_v257_fault_codes_fix.mjs','runtime_v260_invoice_workspace_fix.mjs','runtime_v261_clean_invoice_print.mjs','runtime_v270_security_integrity_fix.mjs'];
+const runtime=['runtime_samsara_name_patch.mjs','runtime_samsara_realtime_patch.mjs','runtime_samsara_v251_patch.mjs','runtime_samsara_v252_patch.mjs','runtime_samsara_v253_patch.mjs','runtime_samsara_v254_patch.mjs','runtime_samsara_v255_patch.mjs','runtime_v256_procenter_recovery.mjs','runtime_v257_fault_codes_fix.mjs','runtime_v260_invoice_workspace_fix.mjs','runtime_v261_clean_invoice_print.mjs','runtime_v270_security_integrity_fix.mjs','runtime_v271_finish_cleanup.mjs'];
 for(const f of runtime)check(`runtime dependency exists: ${f}`,exists(f));
+check('runtime preparation centralized',String(pkg.scripts?.start||'').startsWith('npm run prepare-runtime &&')&&pkg.scripts?.['prepare-runtime-check']==='npm run prepare-runtime');
 check('start reaches server.js',String(pkg.scripts?.start||'').trim().endsWith('node server.js'),pkg.scripts?.start||'');
 check('release check executes runtime preparation',String(pkg.scripts?.check||'').includes('npm run prepare-runtime-check'));
 check('audit command uses production audit',pkg.scripts?.audit==='node production_audit.mjs',pkg.scripts?.audit||'');
