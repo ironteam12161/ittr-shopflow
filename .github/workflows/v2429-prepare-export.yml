@@ -1,0 +1,24 @@
+name: v24.29 prepare export
+on:
+  push:
+    branches: [ittr-v24-29-full-upload]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --no-audit --no-fund
+      - run: npm run prepare-runtime
+      - run: |
+          rm -rf node_modules .git
+          tar -czf /tmp/prepared.tgz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: v2429-prepared-source
+          path: /tmp/prepared.tgz
+          retention-days: 1
