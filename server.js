@@ -1,3 +1,4 @@
+// ITTR v24.28.4 runtime identity hardening
 import express from "express";
 import http from "http";
 import {WebSocketServer,WebSocket} from "ws";
@@ -51,7 +52,18 @@ const aiProvider=String(process.env.AI_PROVIDER||"auto").trim().toLowerCase();
 const openRouterModel=String(process.env.OPENROUTER_MODEL||"google/gemini-2.5-flash-lite").trim()||"google/gemini-2.5-flash-lite";
 const openRouterInvoiceModel=String(process.env.OPENROUTER_INVOICE_MODEL||"google/gemini-2.5-flash-lite").trim()||"google/gemini-2.5-flash-lite";
 const openRouterInvoiceFallbackModel=String(process.env.OPENROUTER_INVOICE_FALLBACK_MODEL||"google/gemini-2.5-flash").trim()||"google/gemini-2.5-flash";
-const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATABASE_URL,ssl:isProd?{rejectUnauthorized:false}:undefined}):null;
+function ittrDbSsl(url){
+ try{
+  const u=new URL(url),mode=(u.searchParams.get("sslmode")||process.env.PGSSLMODE||"").toLowerCase();
+  if(mode==="disable")return false;
+  if(mode)return {rejectUnauthorized:false};
+  const host=u.hostname.toLowerCase();
+  // Railway's private network (*.railway.internal) and local databases do not speak SSL.
+  if(host.endsWith(".railway.internal")||host==="localhost"||host==="127.0.0.1"||host==="::1")return false;
+ }catch(_){}
+ return isProd?{rejectUnauthorized:false}:false;
+}
+const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATABASE_URL,ssl:ittrDbSsl(process.env.DATABASE_URL)}):null;
 
 const r2Bucket=String(process.env.R2_BUCKET_NAME||"").trim();
 const r2Endpoint=String(process.env.R2_ENDPOINT||"").trim();
@@ -87,9 +99,28 @@ async function putFindingPhoto({buffer,findingId,workOrderId,uploader,originalNa
 
 app.set("trust proxy",1);
 app.use(helmet({
- contentSecurityPolicy:false, // Inline legacy UI handlers still require a CSP migration before strict enforcement.
+ contentSecurityPolicy:{directives:{
+  defaultSrc:["'self'"],
+  baseUri:["'self'"],
+  objectSrc:["'none'"],
+  frameAncestors:["'none'"],
+  formAction:["'self'"],
+  scriptSrc:["'self'","'unsafe-inline'","blob:"],
+  scriptSrcAttr:["'unsafe-inline'"],
+  styleSrc:["'self'","'unsafe-inline'"],
+  imgSrc:["'self'","data:","blob:","https:"],
+  fontSrc:["'self'","data:"],
+  connectSrc:["'self'","https:","wss:"],
+  workerSrc:["'self'","blob:"],
+  mediaSrc:["'self'","blob:","https:"]
+ }},
  crossOriginEmbedderPolicy:false
 }));
+app.use((req,res,next)=>{
+ res.setHeader("Permissions-Policy","camera=(self), microphone=(self), geolocation=(), payment=(), usb=(), browsing-topics=()");
+ res.setHeader("X-Permitted-Cross-Domain-Policies","none");
+ next();
+});
 app.use(express.json({limit:"3mb"}));
 
 // ITTR v24.16.1 hardened frontend path:
@@ -104,7 +135,7 @@ app.use(express.static(publicDir,{
  dotfiles:"deny",
  fallthrough:true,
  setHeaders:(res,filePath)=>{
-  if(filePath.endsWith("index.html") || filePath.includes(`${path.sep}modules${path.sep}`)){
+  if(filePath.endsWith("index.html") || filePath.endsWith("sw.js") || filePath.endsWith("manifest.webmanifest") || filePath.endsWith("invoice-workspace.css") || filePath.includes(`${path.sep}modules${path.sep}`)){
    res.setHeader("Cache-Control","no-store, no-cache, must-revalidate, proxy-revalidate");
    res.setHeader("Pragma","no-cache");
    res.setHeader("Expires","0");
@@ -122,11 +153,19 @@ const loginLimiter=rateLimit({
  message:{error:"Too many login attempts. Please try again later."}
 });
 app.use("/api/auth",authLimiter);
+const aiLimiter=rateLimit({windowMs:60*1000,max:24,standardHeaders:true,legacyHeaders:false,message:{error:"Too many AI requests. Please wait a moment and try again."}});
+const uploadLimiter=rateLimit({windowMs:60*1000,max:20,standardHeaders:true,legacyHeaders:false,message:{error:"Too many uploads. Please wait a moment and try again."}});
+app.use("/api/ai",aiLimiter);
+app.use("/api/translate",aiLimiter);
+app.use("/api/transcribe",aiLimiter);
+app.use("/api/ai/import",uploadLimiter);
+app.use("/api/manuals",uploadLimiter);
+app.use("/api/findings",uploadLimiter);
 
 function requireDb(){if(!pool){const e=new Error("DATABASE_URL is not configured. Add PostgreSQL to the deployment and set DATABASE_URL.");e.code="DB_NOT_CONFIGURED";throw e;}return pool;}
 function hashToken(t){return crypto.createHash("sha256").update(t).digest("hex")}
 function cleanUsername(v){return String(v||"").trim().toLowerCase().replace(/[^a-z0-9._-]/g,"").slice(0,64)}
-function publicUser(row){return {username:row.username,role:row.role,display:row.display_name||row.username,language:row.language||"en",email:row.email||"",permissions:row.permissions||{}}}
+function publicUser(row){return {username:row.username,role:row.role,display:row.display_name||row.username,language:["uk","ua"].includes(String(row.language||"").toLowerCase())?"uk":"en",email:row.email||"",permissions:row.permissions||{}}}
 
 async function initDb(){
  if(!pool){console.warn("ITTR: DATABASE_URL missing. Cloud state/auth unavailable.");return;}
@@ -139,6 +178,8 @@ async function initDb(){
  );
  ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS permissions JSONB NOT NULL DEFAULT '{}'::jsonb;
  ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS email TEXT;
+ ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS language TEXT DEFAULT 'en';
+ UPDATE auth_users SET language=CASE WHEN lower(coalesce(language,'')) IN ('uk','ua') THEN 'uk' ELSE 'en' END WHERE language IS NULL OR lower(coalesce(language,'')) NOT IN ('en','uk');
  DO $$ DECLARE c text; BEGIN SELECT conname INTO c FROM pg_constraint WHERE conrelid='auth_users'::regclass AND contype='c' AND pg_get_constraintdef(oid) ILIKE '%role%'; IF c IS NOT NULL THEN EXECUTE format('ALTER TABLE auth_users DROP CONSTRAINT %I',c); END IF; EXCEPTION WHEN others THEN NULL; END $$;
  DO $$ BEGIN ALTER TABLE auth_users ADD CONSTRAINT auth_users_role_check CHECK(role IN ('admin','manager','mechanic')); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
  CREATE TABLE IF NOT EXISTS workshop_manuals(
@@ -305,7 +346,28 @@ async function initDb(){
  ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS customer_email TEXT;
  ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS payment_url TEXT;
  ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS fleet_tier TEXT NOT NULL DEFAULT 'retail';
- ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS samsara_vehicle_id TEXT;
+ -- ITTR v24.28.4 early customer_units bootstrap
+ CREATE TABLE IF NOT EXISTS customer_units(
+   id BIGSERIAL PRIMARY KEY,
+   customer_id BIGINT REFERENCES fullbay_import_customers(id) ON DELETE SET NULL,
+   customer_name TEXT,
+   unit_number TEXT NOT NULL,
+   vin TEXT,
+   year TEXT,
+   make TEXT,
+   model TEXT,
+   plate TEXT,
+   mileage BIGINT,
+   engine TEXT,
+   transmission TEXT,
+   notes TEXT,
+   source TEXT DEFAULT 'manual',
+   created_at TIMESTAMPTZ DEFAULT now(),
+   updated_at TIMESTAMPTZ DEFAULT now()
+ );
+ CREATE INDEX IF NOT EXISTS idx_customer_units_unit ON customer_units(lower(unit_number));
+ CREATE INDEX IF NOT EXISTS idx_customer_units_customer ON customer_units(customer_id);
+  ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS samsara_vehicle_id TEXT;
  ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS samsara_synced_at TIMESTAMPTZ;
  ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS samsara_driver_name TEXT;
  ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS samsara_location TEXT;
@@ -326,6 +388,39 @@ async function initDb(){
  ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS billing_state TEXT;
  ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS billing_postal_code TEXT;
  UPDATE customer_invoices SET discount_type='fixed',discount_value=coalesce(discount,0) WHERE discount_value IS NULL OR (discount_value=0 AND coalesce(discount,0)<>0);
+ -- ITTR_INVENTORY_POSTING_SCHEMA_V1
+ ALTER TABLE customer_invoice_lines ADD COLUMN IF NOT EXISTS inventory_part_id BIGINT;
+ ALTER TABLE customer_invoice_lines ADD COLUMN IF NOT EXISTS stock_posted_qty NUMERIC NOT NULL DEFAULT 0;
+ ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS stock_posted_at TIMESTAMPTZ;
+ CREATE INDEX IF NOT EXISTS idx_customer_invoice_lines_inventory_part ON customer_invoice_lines(inventory_part_id) WHERE inventory_part_id IS NOT NULL;
+ DO $backfill$
+ BEGIN
+   IF NOT EXISTS(SELECT 1 FROM schema_migrations WHERE migration_key='v285_invoice_inventory_backfill') THEN
+     UPDATE customer_invoice_lines
+       SET inventory_part_id=NULLIF(metadata->>'inventoryPartId','')::bigint
+       WHERE inventory_part_id IS NULL AND coalesce(metadata->>'inventoryPartId','') ~ '^[0-9]+$';
+     UPDATE customer_invoice_lines
+       SET stock_posted_qty=quantity
+       WHERE inventory_part_id IS NOT NULL;
+     UPDATE customer_invoices i
+       SET stock_posted_at=coalesce(i.finalized_at,i.sent_at,i.updated_at,now())
+       WHERE i.status IN ('sent','partial','paid')
+         AND EXISTS(SELECT 1 FROM customer_invoice_lines l WHERE l.invoice_id=i.id AND l.inventory_part_id IS NOT NULL);
+     INSERT INTO schema_migrations(migration_key) VALUES('v285_invoice_inventory_backfill') ON CONFLICT DO NOTHING;
+   END IF;
+ END $backfill$;
+ DO $ittr$
+ DECLARE c record;
+ BEGIN
+   FOR c IN
+     SELECT conname FROM pg_constraint
+     WHERE conrelid='part_inventory_transactions'::regclass
+       AND contype='c'
+       AND pg_get_constraintdef(oid) ILIKE '%transaction_type%'
+   LOOP
+     EXECUTE format('ALTER TABLE part_inventory_transactions DROP CONSTRAINT %I',c.conname);
+   END LOOP;
+ END $ittr$;
  CREATE INDEX IF NOT EXISTS idx_customer_invoice_lines_parent ON customer_invoice_lines(invoice_id,parent_line_id,sort_order,id);
  UPDATE customer_invoice_lines c
  SET parent_line_id=(
@@ -739,7 +834,7 @@ app.post("/api/fullbay/import/customer-units",auth,managerPermission("customers"
  await client.query("INSERT INTO fullbay_import_log(import_type,source_file,rows_received,rows_imported,rows_skipped,username) VALUES('customer_units',$1,$2,$3,$4,$5)",[String(req.file.originalname||"CustomersUnits.csv"),rows.length,units+updated,skipped,req.user.username]);await client.query("COMMIT");
  res.json({ok:true,rows:rows.length,customersCreated:customers,unitsCreated:units,unitsUpdated:updated,skipped});
  }catch(e){await client.query("ROLLBACK");throw e}finally{client.release()}
-}catch(e){console.error('[Samsara all units]',e);res.status(500).json({ok:false,error:'Could not load ITTR units',detail:e.message||String(e),build:'24.24.5'})}});
+}catch(e){console.error('[Samsara all units]',e);res.status(500).json({ok:false,error:'Could not load ITTR units',detail:e.message||String(e),build:'24.28.4'})}});
 
 app.post("/api/fullbay/import/repair-orders",auth,managerPermission("customers"),upload.single("file"),async(req,res,next)=>{try{
  if(!req.file)return res.status(400).json({error:"Choose repairOrders.csv first."});
@@ -876,13 +971,13 @@ app.get("/api/fullbay/service-orders/:so",auth,async(req,res,next)=>{try{
  res.json({order:{source:"fullbay",serviceOrder:first.service_order,invoice:rows.map(x=>x.invoice_number).find(Boolean)||null,po:rows.map(x=>x.po_number).find(Boolean)||null,customerId:first.customer_id,customer:first.customer_name,unit:first.unit_number,vin:first.vin,status:first.unit_status,unitType:first.unit_type,unitSubtype:first.unit_subtype,completedAt:rows.map(x=>x.action_completed_at).filter(Boolean).sort().pop()||null,mileage:Math.max(0,...rows.map(x=>Number(x.unit_miles||0))),leadTech:rows.map(x=>x.lead_tech).find(Boolean)||"",technicians:[...new Set(rows.map(x=>x.tech).filter(Boolean))],hours:sum("hours"),laborAmount:sum("labor_amount"),partAmount:sum("part_amount"),totalAmount:sum("total_amount"),actions:used.map(x=>({action:x.action_number,complaint:x.complaint,correction:x.actual_correction,hours:Number(x.hours||0),laborAmount:Number(x.labor_amount||0),partAmount:Number(x.part_amount||0),totalAmount:Number(x.total_amount||0),tech:x.tech||x.lead_tech||"",component:x.component||"",system:x.system||"",parts:Array.isArray(x.raw?.aiParts)?x.raw.aiParts:[],labor:Array.isArray(x.raw?.aiLabor)?x.raw.aiLabor:[],sourceFile:x.source_file||""}))}});
 }catch(e){next(e)}});
 
-app.get("/api/fullbay/customers",auth,async(req,res,next)=>{try{
+app.get("/api/fullbay/customers",auth,managerPermission("customers"),async(req,res,next)=>{try{
  const q=String(req.query.q||"").trim(),limit=Math.min(200,Math.max(1,Number(req.query.limit)||50)),offset=Math.max(0,Number(req.query.offset)||0),like=`%${q}%`;
  const r=await requireDb().query(`SELECT id,fullbay_id,customer_name,active,created_fullbay,customer_group,phone,secondary_phone,dot_number,external_id,address,city,state,postal_code,country,assigned_shop,taxable,tax_exempt_number,credit_terms,credit_limit,billing_contact,payment_method,default_labor_rate,price_level,access_method,billing_address,billing_city,billing_state,billing_postal_code,ext_accounting,updated_at FROM fullbay_import_customers WHERE $1='' OR customer_name ILIKE $2 OR coalesce(phone,'') ILIKE $2 OR coalesce(secondary_phone,'') ILIKE $2 OR coalesce(dot_number,'') ILIKE $2 OR coalesce(city,'') ILIKE $2 ORDER BY active DESC NULLS LAST,customer_name LIMIT $3 OFFSET $4`,[q,like,limit,offset]);
  const c=await requireDb().query(`SELECT count(*)::int n FROM fullbay_import_customers WHERE $1='' OR customer_name ILIKE $2 OR coalesce(phone,'') ILIKE $2 OR coalesce(secondary_phone,'') ILIKE $2 OR coalesce(dot_number,'') ILIKE $2 OR coalesce(city,'') ILIKE $2`,[q,like]);res.json({items:r.rows,total:c.rows[0].n,limit,offset});
 }catch(e){next(e)}});
 
-app.get("/api/fullbay/customers/:id",auth,async(req,res,next)=>{try{const r=await requireDb().query(`SELECT * FROM fullbay_import_customers WHERE id=$1`,[req.params.id]);if(!r.rowCount)return res.status(404).json({error:"Customer not found."});const item=r.rows[0];delete item.raw?.['Portal Code'];res.json({item});}catch(e){next(e)}});
+app.get("/api/fullbay/customers/:id",auth,managerPermission("customers"),async(req,res,next)=>{try{const r=await requireDb().query(`SELECT * FROM fullbay_import_customers WHERE id=$1`,[req.params.id]);if(!r.rowCount)return res.status(404).json({error:"Customer not found."});const item=r.rows[0];delete item.raw?.['Portal Code'];res.json({item});}catch(e){next(e)}});
 
 function partBarcodeForId(id){return `ITTR-P-${String(id).padStart(6,"0")}`}
 async function ensurePartBarcode(db,id){const r=await db.query("SELECT id,internal_barcode FROM fullbay_import_parts WHERE id=$1",[id]);if(!r.rowCount)return null;let code=r.rows[0].internal_barcode;if(!code){code=partBarcodeForId(id);await db.query("UPDATE fullbay_import_parts SET internal_barcode=$2,updated_at=now() WHERE id=$1",[id,code])}return code}
@@ -890,7 +985,7 @@ function vendorKey(v){return String(v||'').trim().toLowerCase().replace(/^https?
 function prettyVendor(v){let x=String(v||'').trim().replace(/^https?:\/\//i,'').replace(/^www\./i,'').replace(/\/.*$/,'').replace(/\.(com|net|org|us|co)$/i,'').replace(/[._-]+/g,' ').replace(/([a-z0-9])(trucks|truck|parts)$/i,'$1 $2').trim();if(!x)return '';return x.split(/\s+/).map(w=>w.length<=4?w.toUpperCase():w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ')}
 async function resolveVendor(db,raw,create=true){const original=String(raw||'').trim();if(!original)return '';const key=vendorKey(original);const r=await db.query(`SELECT canonical_name,aliases FROM parts_vendors WHERE active IS DISTINCT FROM FALSE ORDER BY canonical_name`);for(const row of r.rows){const vals=[row.canonical_name,...(Array.isArray(row.aliases)?row.aliases:[])];if(vals.some(v=>vendorKey(v)===key))return row.canonical_name}const imported=await db.query(`SELECT vendor,count(*)::int n FROM fullbay_import_parts WHERE vendor IS NOT NULL AND trim(vendor)<>'' GROUP BY vendor ORDER BY n DESC`);for(const row of imported.rows){if(vendorKey(row.vendor)===key){const name=prettyVendor(row.vendor);if(create)await db.query(`INSERT INTO parts_vendors(canonical_name,aliases) VALUES($1,$2::jsonb) ON CONFLICT(canonical_name) DO UPDATE SET aliases=(SELECT jsonb_agg(DISTINCT x) FROM jsonb_array_elements_text(parts_vendors.aliases || EXCLUDED.aliases) x)`,[name,JSON.stringify([original,row.vendor])]);return name}}const name=prettyVendor(original);if(create&&name)await db.query(`INSERT INTO parts_vendors(canonical_name,aliases,website_domain) VALUES($1,$2::jsonb,$3) ON CONFLICT(canonical_name) DO UPDATE SET aliases=(SELECT jsonb_agg(DISTINCT x) FROM jsonb_array_elements_text(parts_vendors.aliases || EXCLUDED.aliases) x),updated_at=now()`,[name,JSON.stringify([original]),/\.[a-z]{2,}$/i.test(original)?original.replace(/^https?:\/\//i,'').replace(/^www\./i,'').split('/')[0]:null]);return name}
 app.get('/api/parts/vendors',auth,async(req,res,next)=>{try{const db=requireDb();const imported=await db.query(`SELECT vendor,count(*)::int n FROM fullbay_import_parts WHERE vendor IS NOT NULL AND trim(vendor)<>'' GROUP BY vendor ORDER BY n DESC`);for(const x of imported.rows.slice(0,100)){await resolveVendor(db,x.vendor,true)}const r=await db.query(`SELECT id,canonical_name,aliases,website_domain,active FROM parts_vendors WHERE active IS DISTINCT FROM FALSE ORDER BY canonical_name`);res.json({items:r.rows})}catch(e){next(e)}});
-app.post('/api/parts/vendors/resolve',auth,async(req,res,next)=>{try{const db=requireDb();const canonical=await resolveVendor(db,req.body?.vendor,true);res.json({canonical})}catch(e){next(e)}});
+app.post('/api/parts/vendors/resolve',auth,managerPermission("inventory"),async(req,res,next)=>{try{const db=requireDb();const canonical=await resolveVendor(db,req.body?.vendor,true);res.json({canonical})}catch(e){next(e)}});
 app.post('/api/parts',auth,managerPermission("inventory"),async(req,res,next)=>{try{const db=requireDb(),b=req.body||{},pn=String(b.partNumber||'').trim();if(!pn)return res.status(400).json({error:'Part number is required.'});const vendor=await resolveVendor(db,b.vendor,true);const key='manual:'+crypto.createHash('sha256').update(pn.toLowerCase()+'|'+Date.now()).digest('hex').slice(0,24);const qty=Math.max(0,Number(b.quantity||0));const r=await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,quantity,cost,price,location,vendor,min_qty,max_qty,reorder_point,manufacturer,category,purchase_taxable,sell_taxable,purchase_tax_rate,source_file,raw) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'ITTR Manual',$17::jsonb) RETURNING *`,[key,pn,String(b.description||'').trim()||null,qty,Number(b.cost||0),Number(b.price||0),String(b.location||'').trim()||null,vendor||null,Number(b.minQty||0),Number(b.maxQty||0),Number(b.reorderPoint??b.minQty??0),String(b.manufacturer||'').trim()||null,String(b.category||'').trim()||null,b.purchaseTaxable!==false,b.sellTaxable!==false,Number(b.purchaseTaxRate||0),JSON.stringify({createdManually:true})]);const x=r.rows[0];x.internal_barcode=await ensurePartBarcode(db,x.id);if(qty>0)await db.query(`INSERT INTO part_inventory_transactions(part_id,transaction_type,quantity_delta,quantity_before,quantity_after,reference,reason,username) VALUES($1,'initial_stock',$2,0,$2,'Manual part creation','Initial stock', $3)`,[x.id,qty,req.user.username]);await audit(req.user.username,'part_created',{partId:x.id,partNumber:pn});res.json({ok:true,item:x})}catch(e){next(e)}});
 app.get("/api/parts/summary",auth,async(req,res,next)=>{try{const db=requireDb();const r=await db.query(`SELECT count(*)::int total,count(*) FILTER (WHERE coalesce(quantity,0)<=0)::int out_of_stock,count(*) FILTER (WHERE coalesce(quantity,0)>0 AND coalesce(quantity,0)<=coalesce(reorder_point,min_qty,0) AND coalesce(reorder_point,min_qty,0)>0)::int low_stock,coalesce(sum(coalesce(inventory_value,coalesce(quantity,0)*coalesce(cost,0))),0)::numeric inventory_value,coalesce(sum(coalesce(on_order,0)),0)::numeric on_order FROM fullbay_import_parts`);res.json(r.rows[0])}catch(e){next(e)}});
 app.get("/api/parts",auth,async(req,res,next)=>{try{
@@ -950,7 +1045,7 @@ app.post("/api/parts/inventory-count/:sessionId/cancel",auth,managerPermission("
 app.get("/api/parts/:id",auth,async(req,res,next)=>{try{const db=requireDb();const r=await db.query(`SELECT *,coalesce(quantity,0)-coalesce(allocated,0) available FROM fullbay_import_parts WHERE id=$1`,[req.params.id]);if(!r.rowCount)return res.status(404).json({error:"Part not found."});r.rows[0].internal_barcode=await ensurePartBarcode(db,r.rows[0].id);const tx=await db.query("SELECT * FROM part_inventory_transactions WHERE part_id=$1 ORDER BY created_at DESC LIMIT 100",[req.params.id]);res.json({item:r.rows[0],transactions:tx.rows})}catch(e){next(e)}});
 app.get("/api/parts/:id/barcode.svg",auth,async(req,res,next)=>{try{const db=requireDb(),code=await ensurePartBarcode(db,req.params.id);if(!code)return res.status(404).send("Part not found");const svg=bwipjs.toSVG({bcid:"code128",text:code,scale:3,height:12,includetext:false});res.type("image/svg+xml").send(svg)}catch(e){next(e)}});
 app.patch("/api/parts/:id",auth,managerPermission("inventory"),async(req,res,next)=>{try{const db=requireDb(),cur=await db.query("SELECT * FROM fullbay_import_parts WHERE id=$1",[req.params.id]);if(!cur.rowCount)return res.status(404).json({error:"Part not found."});const c=cur.rows[0],aliases=Array.isArray(req.body?.barcodeAliases)?req.body.barcodeAliases.map(x=>String(x||"").trim()).filter(Boolean).slice(0,20):(Array.isArray(c.barcode_aliases)?c.barcode_aliases:[]);const val=(k,old)=>Object.prototype.hasOwnProperty.call(req.body||{},k)?String(req.body[k]??"").trim()||null:old,num=(k,old)=>Object.prototype.hasOwnProperty.call(req.body||{},k)?(Number.isFinite(Number(req.body[k]))?Number(req.body[k]):null):old;const vendorRaw=val("vendor",c.vendor),vendor=vendorRaw?await resolveVendor(db,vendorRaw,true):null;const bool=(k,old)=>Object.prototype.hasOwnProperty.call(req.body||{},k)?Boolean(req.body[k]):old;const vals=[val("location",c.location),vendor,num("minQty",c.min_qty),num("maxQty",c.max_qty),num("reorderPoint",c.reorder_point),JSON.stringify(aliases),num("price",c.price),bool("purchaseTaxable",c.purchase_taxable),bool("sellTaxable",c.sell_taxable),num("purchaseTaxRate",c.purchase_tax_rate),req.params.id];const r=await db.query(`UPDATE fullbay_import_parts SET location=$1,vendor=$2,min_qty=$3,max_qty=$4,reorder_point=$5,barcode_aliases=$6::jsonb,price=$7,purchase_taxable=$8,sell_taxable=$9,purchase_tax_rate=$10,updated_at=now() WHERE id=$11 RETURNING *`,vals);await audit(req.user.username,"part_profile_updated",{partId:req.params.id});res.json({ok:true,item:r.rows[0]})}catch(e){next(e)}});
-app.post("/api/parts/:id/transaction",auth,async(req,res,next)=>{const db=await requireDb().connect();try{const type=String(req.body?.type||"").toLowerCase(),qty=Math.abs(Number(req.body?.qty||0));if(!qty||qty>999999)return res.status(400).json({error:"Enter a valid quantity."});if(!["receive","return","adjust_add","adjust_remove"].includes(type))return res.status(400).json({error:"Unsupported inventory transaction."});if(req.user.role!=="admin"&&!(["return"].includes(type)))return res.status(403).json({error:"Admin access required."});const delta=["receive","return","adjust_add"].includes(type)?qty:-qty;await db.query("BEGIN");const r=await db.query("SELECT * FROM fullbay_import_parts WHERE id=$1 FOR UPDATE",[req.params.id]);if(!r.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Part not found."})}const before=Number(r.rows[0].quantity||0),after=before+delta;if(after<0){await db.query("ROLLBACK");return res.status(409).json({error:`Only ${before} in stock.`})}await db.query("UPDATE fullbay_import_parts SET quantity=$2::numeric,inventory_value=($2::numeric*coalesce(cost,0::numeric)),updated_at=now() WHERE id=$1",[req.params.id,after]);await db.query(`INSERT INTO part_inventory_transactions(part_id,transaction_type,quantity_delta,quantity_before,quantity_after,reference,reason,username,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,[req.params.id,type,delta,before,after,String(req.body?.reference||"").trim()||null,String(req.body?.reason||"").trim()||null,req.user.username,JSON.stringify({method:req.body?.method||"manual"})]);await db.query("COMMIT");await audit(req.user.username,"inventory_transaction",{partId:req.params.id,type,delta});res.json({ok:true,quantity:after})}catch(e){try{await db.query("ROLLBACK")}catch{}next(e)}finally{db.release()}});
+app.post("/api/parts/:id/transaction",auth,managerPermission("inventory"),async(req,res,next)=>{const db=await requireDb().connect();try{const type=String(req.body?.type||"").toLowerCase(),qty=Math.abs(Number(req.body?.qty||0));if(!qty||qty>999999)return res.status(400).json({error:"Enter a valid quantity."});if(!["receive","return","adjust_add","adjust_remove"].includes(type))return res.status(400).json({error:"Unsupported inventory transaction."});const delta=["receive","return","adjust_add"].includes(type)?qty:-qty;await db.query("BEGIN");const r=await db.query("SELECT * FROM fullbay_import_parts WHERE id=$1 FOR UPDATE",[req.params.id]);if(!r.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Part not found."})}const before=Number(r.rows[0].quantity||0),after=before+delta;if(after<0){await db.query("ROLLBACK");return res.status(409).json({error:`Only ${before} in stock.`})}await db.query("UPDATE fullbay_import_parts SET quantity=$2::numeric,inventory_value=($2::numeric*coalesce(cost,0::numeric)),updated_at=now() WHERE id=$1",[req.params.id,after]);await db.query(`INSERT INTO part_inventory_transactions(part_id,transaction_type,quantity_delta,quantity_before,quantity_after,reference,reason,username,metadata) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,[req.params.id,type,delta,before,after,String(req.body?.reference||"").trim()||null,String(req.body?.reason||"").trim()||null,req.user.username,JSON.stringify({method:req.body?.method||"manual"})]);await db.query("COMMIT");await audit(req.user.username,"inventory_transaction",{partId:req.params.id,type,delta});res.json({ok:true,quantity:after})}catch(e){try{await db.query("ROLLBACK")}catch{}next(e)}finally{db.release()}});
 app.get("/api/fullbay/parts",auth,async(req,res,next)=>{try{
  const q=String(req.query.q||"").trim(),limit=Math.min(200,Math.max(1,Number(req.query.limit)||50)),offset=Math.max(0,Number(req.query.offset)||0),like=`%${q}%`;
  const r=await requireDb().query(`SELECT id,part_number,description,status,uom,quantity,allocated,cost,price,min_qty,max_qty,location,vendor,track_quantity,category,cost_floor,inventory_value,inventory_balance,manufacturer,notes,updated_at FROM fullbay_import_parts WHERE $1='' OR coalesce(part_number,'') ILIKE $2 OR coalesce(description,'') ILIKE $2 OR coalesce(vendor,'') ILIKE $2 OR coalesce(manufacturer,'') ILIKE $2 OR coalesce(category,'') ILIKE $2 ORDER BY CASE WHEN lower(coalesce(part_number,'')) LIKE lower($3) THEN 0 ELSE 1 END,part_number NULLS LAST,description LIMIT $4 OFFSET $5`,[q,like,`${q}%`,limit,offset]);
@@ -1190,7 +1285,7 @@ app.get("/api/smart-search",auth,adminOnly,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
- const out={ok:false,version:"24.24.5",tables:{},columns:{},counts:{},sync:null,error:""};
+ const out={ok:false,version:"24.28.4",tables:{},columns:{},counts:{},sync:null,error:""};
  try{
   const db=requireDb();
   for(const table of ["fullbay_import_customers","customer_units"]){const t=await db.query("SELECT to_regclass($1) AS name",[`public.${table}`]);out.tables[table]=Boolean(t.rows[0]?.name)}
@@ -1224,7 +1319,7 @@ async function reconcileDuplicateImportedCustomers(){
 }
 
 
-// ===== v24.24.5: Samsara production authentication + unit sync =====
+// ===== v24.28.4: Samsara production authentication + unit sync =====
 const SAMSARA_API_BASE='https://api.samsara.com';
 function getSamsaraToken(){
  let token=String(process.env.SAMSARA_API_TOKEN||'').trim();
@@ -1256,24 +1351,34 @@ app.get('/api/samsara/status',auth,managerPermission('customers'),async(req,res)
  try{const s=await samsaraRequest('/fleet/vehicles');res.json({configured:true,connected:true,vehiclesOnFirstPage:(s.data||[]).length})}
  catch(e){res.status(e.status||502).json({configured:true,connected:false,error:e.message})}
 });
-app.get('/api/samsara/fleet',auth,managerPermission('customers'),async(req,res,next)=>{
+app.get('/api/samsara/fleet',auth,managerPermission('customers'),async(req,res)=>{
  try{
-  const [vehicles,stats,drivers]=await Promise.all([
-   samsaraPaged('/fleet/vehicles'),
-   samsaraPaged('/fleet/vehicles/stats',{types:'gps,engineStates,obdOdometerMeters'}),
-   samsaraPaged('/fleet/drivers')
+  const vehicles=await samsaraPaged('/fleet/vehicles'),warnings=[];
+  async function opt(label,path,params){try{return await samsaraPaged(path,params)}catch(e){console.warn('[Samsara '+label+']',e?.status||'',e?.message||e);warnings.push({source:label,status:Number(e?.status)||null,message:e?.message||String(e)});return []}}
+  const now=new Date(),startTime=new Date(now.getTime()-7*86400000).toISOString(),endTime=now.toISOString();
+  const [gpsStats,odoStats,diagStats,drivers,assignments]=await Promise.all([
+   opt('GPS / ECU speed','/fleet/vehicles/stats',{types:'gps,ecuSpeedMph'}),
+   opt('Mileage / engine hours','/fleet/vehicles/stats',{types:'obdOdometerMeters,obdEngineSeconds'}),
+   opt('Fault codes','/fleet/vehicles/stats',{types:'faultCodes'}),
+   opt('Drivers','/fleet/drivers'),
+   opt('Driver assignments','/fleet/driver-vehicle-assignments',{filterBy:'vehicles',startTime,endTime})
   ]);
-  const sm=new Map(stats.map(x=>[String(x.id),x])),dm=new Map(drivers.map(x=>[String(x.id),x]));
-  const items=vehicles.map(v=>{const st=sm.get(String(v.id))||{},gps=st.gps||null;
-   const did=String(v.staticAssignedDriver?.id||v.driver?.id||''),driver=dm.get(did)||v.staticAssignedDriver||v.driver||null;
-   return {id:v.id,name:v.name||'',vin:v.vin||'',serial:v.serial||'',make:v.make||'',model:v.model||'',year:v.year||'',licensePlate:v.licensePlate||'',externalIds:v.externalIds||{},
-    driver:driver?{id:driver.id,name:driver.name||''}:null,
-    gps:gps?{time:gps.time||'',latitude:gps.latitude,longitude:gps.longitude,headingDegrees:gps.headingDegrees,speedMilesPerHour:gps.speedMilesPerHour,location:gps.reverseGeo?.formattedLocation||''}:null,
-    engineState:st.engineStates?.value??st.engineStates??null,odometerMeters:st.obdOdometerMeters?.value??st.obdOdometerMeters??null};
-  });
-  res.json({items,updatedAt:new Date().toISOString()});
- }catch(e){next(e)}
+  const by=rows=>new Map(rows.map(x=>[String(x.id||x.vehicle?.id||''),x]));
+  const gm=by(gpsStats),om=by(odoStats),xm=by(diagStats),dm=new Map(drivers.map(d=>[String(d.id),d])),am=new Map();
+  for(const a of assignments){const vid=String(a.vehicleId||a.vehicle?.id||''),did=String(a.driverId||a.driver?.id||'');if(!vid||!did)continue;const t=Date.parse(a.assignedAtTime||a.startTime||0)||0,p=am.get(vid);if(!p||t>=p.t)am.set(vid,{driverId:did,t,type:a.assignmentType||a.type||''})}
+  const last=x=>Array.isArray(x)?(x[x.length-1]||null):x;
+  const num=x=>{const z=last(x),v=Number(z?.value??z);return Number.isFinite(v)?v:null};
+  const reading=x=>last(x?.faultCodes)||null;
+  const j1939=r=>{const root=r?.value??r??{},j=root.j1939?.diagnosticTroubleCodes??root.j1939?.dtcs??root.j1939??root.diagnosticTroubleCodes??root.activeDiagnosticTroubleCodes??[];return Array.isArray(j)?j:[]};
+  const items=vehicles.map(v=>{const id=String(v.id),g=gm.get(id)||{},o=om.get(id)||{},x=xm.get(id)||{},gps=last(g.gps),ecu=num(g.ecuSpeedMph),obd=num(o.obdOdometerMeters),sec=num(o.obdEngineSeconds),fr=reading(x),faults=j1939(fr),as=am.get(id),did=String(as?.driverId||v.staticAssignedDriver?.id||v.driver?.id||''),driver=dm.get(did)||v.staticAssignedDriver||v.driver||null,gpsSp=Number(gps?.speedMilesPerHour);const speed=ecu!=null?ecu:(Number.isFinite(gpsSp)?gpsSp:null);return{id:v.id,name:v.name||'',vin:v.vin||'',make:v.make||'',model:v.model||'',year:v.year||'',licensePlate:v.licensePlate||'',driver:driver?{id:driver.id||did,name:driver.name||[driver.firstName,driver.lastName].filter(Boolean).join(' '),phone:driver.phone||'',assignmentType:as?.type||''}:null,engineModel:v.engineModel||v.engine?.model||v.attributes?.engineModel||v.attributes?.engineType||'',gps:gps?{time:gps.time||gps.timestamp||'',latitude:gps.latitude,longitude:gps.longitude,headingDegrees:gps.headingDegrees,speedMilesPerHour:Number.isFinite(gpsSp)?gpsSp:null,reverseGeo:gps.reverseGeo||null,location:gps.reverseGeo?.formattedLocation||gps.address||gps.formattedLocation||''}:null,gpsSpeedMph:{value:speed,time:last(g.ecuSpeedMph)?.time||gps?.time||''},odometerMiles:obd==null?null:Math.round(obd/160.9344)/10,odometerSource:obd==null?'':'ECU/OBD',engineHours:sec==null?null:Math.round(sec/360)/10,faultCount:faults.length,faultCodes:fr,hasDiagnosticData:!!fr};});
+  res.set('Cache-Control','no-store');res.json({ok:true,items,updatedAt:new Date().toISOString(),warnings});
+ }catch(e){console.error('[Samsara fleet v24.25.5]',e);res.status(Number(e?.status)||500).json({ok:false,error:'Samsara vehicle list failed',detail:e?.message||String(e),build:'24.25.5'})}
 });
+
+app.get('/api/samsara/vehicle-faults',auth,async(req,res)=>{
+ try{const vehicleId=String(req.query.vehicleId||'').trim();if(!vehicleId)return res.status(400).json({ok:false,error:'vehicleId is required'});const rows=await samsaraPaged('/fleet/vehicles/stats',{types:'faultCodes',vehicleIds:vehicleId}),row=rows.find(r=>String(r.id||r.vehicle?.id||'')===vehicleId)||rows[0]||null,reading=Array.isArray(row?.faultCodes)?row.faultCodes[row.faultCodes.length-1]:row?.faultCodes||null,root=reading?.value??reading??{},j=root.j1939?.diagnosticTroubleCodes??root.j1939?.dtcs??root.j1939??root.diagnosticTroubleCodes??root.activeDiagnosticTroubleCodes??[],arr=Array.isArray(j)?j:[],faults=arr.map(z=>({spn:z.spnId??z.suspectParameterNumber??z.spn?.id??z.spn??null,fmi:z.fmiId??z.failureModeIdentifier??z.fmi?.id??z.fmi??null,description:z.spnDescription??z.fmiDescription??z.vendorDtcDescription??z.description??z.name??z.label??z.faultDescription??'',occurrenceCount:z.occurrenceCount??z.count??null,sourceAddress:z.sourceAddress??null,active:z.active!==false})).filter(z=>z.spn!=null||z.fmi!=null||z.description);res.set('Cache-Control','no-store');res.json({ok:true,vehicleId,time:reading?.time||reading?.timestamp||'',count:faults.length,faults,hasDiagnosticData:!!reading,raw:reading});}catch(e){res.status(Number(e?.status)||500).json({ok:false,error:'Unable to load Samsara fault codes',detail:e?.message||String(e),build:'24.25.5'})}
+});
+
 function samsaraNormVin(v){return String(v||'').trim().toUpperCase().replace(/[^A-Z0-9]/g,'')}
 function samsaraNormUnit(v){return String(v||'').trim().toLowerCase().replace(/[^a-z0-9]/g,'')}
 function samsaraSnapshot(v){const g=v?.location||v?.gps||{},d=v?.driver||v?.staticAssignedDriver||{};return{id:String(v?.id||''),name:String(v?.name||''),vin:samsaraNormVin(v?.vin),unit:String(v?.name||''),plate:String(v?.licensePlate||v?.licensePlateNumber||''),make:String(v?.make||''),model:String(v?.model||''),year:String(v?.year||''),driverName:String(d?.name||v?.driverName||''),location:String(g?.formattedLocation||g?.address||''),latitude:Number(g?.latitude??g?.lat??0)||null,longitude:Number(g?.longitude??g?.lng??0)||null,speedMph:Number(g?.speedMilesPerHour??g?.speedMph??0)||null,ignition:String(v?.engineState?.value||v?.engineState||v?.ignitionStatus||''),lastSeen:String(g?.time||g?.timestamp||v?.updatedAtTime||'')||null}}
@@ -1282,10 +1387,10 @@ async function samsaraMatchData(db){const vehicles=await samsaraAllVehicles(),un
 
 
 async function ensureSamsaraUnitSyncSchema(db){const defs=[['samsara_vehicle_id','TEXT'],['samsara_synced_at','TIMESTAMPTZ'],['samsara_driver_name','TEXT'],['samsara_location','TEXT'],['samsara_latitude','DOUBLE PRECISION'],['samsara_longitude','DOUBLE PRECISION'],['samsara_speed_mph','DOUBLE PRECISION'],['samsara_ignition_status','TEXT'],['samsara_last_seen_at','TIMESTAMPTZ']];for(const [n,t] of defs)await db.query(`ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS ${n} ${t}`);await db.query(`CREATE INDEX IF NOT EXISTS idx_customer_units_samsara_vehicle_id ON customer_units(samsara_vehicle_id)`)}
-app.get('/api/samsara/diagnostics',auth,managerPermission('customers'),async(req,res)=>{const out={ok:false,build:'24.24.5',env:{databaseUrlPresent:!!String(process.env.DATABASE_URL||'').trim(),samsaraTokenPresent:samsaraTokenPresent()},database:{ok:false,reason:null},schema:{ok:false,missing:[],reason:null},samsara:{ok:false,httpStatus:null,vehicleCount:0,reason:null}};let db=null;try{db=requireDb();await db.query('SELECT 1 AS ok');out.database.ok=true}catch(e){out.database.reason=e?.message||String(e)}if(out.database.ok)try{await ensureSamsaraUnitSyncSchema(db);const q=await db.query(`SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='customer_units'`);const h=new Set(q.rows.map(x=>x.column_name)),n=['id','customer_id','unit_number','vin','samsara_vehicle_id','samsara_synced_at','samsara_driver_name','samsara_location','samsara_latitude','samsara_longitude','samsara_speed_mph','samsara_ignition_status','samsara_last_seen_at'];out.schema.missing=n.filter(x=>!h.has(x));out.schema.ok=!out.schema.missing.length}catch(e){out.schema.reason=e?.message||String(e)}if(!out.env.samsaraTokenPresent)out.samsara.reason='SAMSARA_API_TOKEN is not visible to this running Railway service.';else try{const v=await samsaraAllVehicles();out.samsara.ok=true;out.samsara.httpStatus=200;out.samsara.vehicleCount=Array.isArray(v)?v.length:0}catch(e){out.samsara.httpStatus=Number(e?.status||e?.statusCode||e?.response?.status)||null;out.samsara.reason=e?.message||String(e)}out.ok=out.env.databaseUrlPresent&&out.env.samsaraTokenPresent&&out.database.ok&&out.schema.ok&&out.samsara.ok;res.set('Cache-Control','no-store');res.json(out)});
-app.get('/api/samsara/integration-status',auth,managerPermission('customers'),async(req,res)=>{res.set('Cache-Control','no-store');res.json({ok:true,build:'24.24.5',databaseUrlPresent:!!String(process.env.DATABASE_URL||'').trim(),samsaraTokenPresent:samsaraTokenPresent(),unitSync:true})});
-app.get('/api/samsara/unit-sync/preview',auth,managerPermission('customers'),async(req,res,next)=>{try{const db=requireDb();await ensureSamsaraUnitSyncSchema(db);const d=await samsaraMatchData(db),items=d.vehicles.map(x=>{const m=d.match(x);return{...m.v,matchMethod:m.method,matchStatus:m.a.length===1?'matched':m.a.length>1?'ambiguous':'unmatched',matches:m.a.map(u=>({id:u.id,customer:u.customer_name,unit:u.unit_number,vin:u.vin}))}});res.json({ok:true,totalSamsara:items.length,totalIttr:d.units.length,matched:items.filter(x=>x.matchStatus==='matched').length,ambiguous:items.filter(x=>x.matchStatus==='ambiguous').length,unmatched:items.filter(x=>x.matchStatus==='unmatched').length,items})}catch(e){console.error('[Samsara preview]',e);res.status(Number(e.status)||500).json({ok:false,error:'Samsara preview failed',detail:e.message||String(e),build:'24.24.5'})}});
-app.post('/api/samsara/unit-sync',auth,managerPermission('customers'),async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');await ensureSamsaraUnitSyncSchema(db);const d=await samsaraMatchData(db);let linked=0,updated=0,ambiguous=0,unmatched=0;for(const raw of d.vehicles){const m=d.match(raw),v=m.v;if(m.a.length!==1){m.a.length>1?ambiguous++:unmatched++;continue}const u=m.a[0];await db.query(`UPDATE customer_units SET samsara_vehicle_id=$2,samsara_synced_at=now(),samsara_driver_name=nullif($3,''),samsara_location=nullif($4,''),samsara_latitude=$5,samsara_longitude=$6,samsara_speed_mph=$7,samsara_ignition_status=nullif($8,''),samsara_last_seen_at=CASE WHEN $9::text IS NULL OR $9::text='' THEN samsara_last_seen_at ELSE $9::timestamptz END WHERE id=$1::bigint`,[u.id,v.id,v.driverName,v.location,v.latitude,v.longitude,v.speedMph,v.ignition,v.lastSeen]);updated++;if(m.method!=='linked')linked++}await db.query('COMMIT');await audit(req.user.username,'samsara_units_synced',{vehicles:d.vehicles.length,linked,updated,ambiguous,unmatched});res.json({ok:true,total:d.vehicles.length,linked,updated,ambiguous,unmatched})}catch(e){try{await db.query('ROLLBACK')}catch{}console.error('[Samsara sync]',e);res.status(Number(e.status)||500).json({ok:false,error:'Samsara sync failed',detail:e.message||String(e),build:'24.24.5'})}finally{db.release()}});
+app.get('/api/samsara/diagnostics',auth,managerPermission('customers'),async(req,res)=>{const out={ok:false,build:'24.28.4',env:{databaseUrlPresent:!!String(process.env.DATABASE_URL||'').trim(),samsaraTokenPresent:samsaraTokenPresent()},database:{ok:false,reason:null},schema:{ok:false,missing:[],reason:null},samsara:{ok:false,httpStatus:null,vehicleCount:0,reason:null}};let db=null;try{db=requireDb();await db.query('SELECT 1 AS ok');out.database.ok=true}catch(e){out.database.reason=e?.message||String(e)}if(out.database.ok)try{await ensureSamsaraUnitSyncSchema(db);const q=await db.query(`SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='customer_units'`);const h=new Set(q.rows.map(x=>x.column_name)),n=['id','customer_id','unit_number','vin','samsara_vehicle_id','samsara_synced_at','samsara_driver_name','samsara_location','samsara_latitude','samsara_longitude','samsara_speed_mph','samsara_ignition_status','samsara_last_seen_at'];out.schema.missing=n.filter(x=>!h.has(x));out.schema.ok=!out.schema.missing.length}catch(e){out.schema.reason=e?.message||String(e)}if(!out.env.samsaraTokenPresent)out.samsara.reason='SAMSARA_API_TOKEN is not visible to this running Railway service.';else try{const v=await samsaraAllVehicles();out.samsara.ok=true;out.samsara.httpStatus=200;out.samsara.vehicleCount=Array.isArray(v)?v.length:0}catch(e){out.samsara.httpStatus=Number(e?.status||e?.statusCode||e?.response?.status)||null;out.samsara.reason=e?.message||String(e)}out.ok=out.env.databaseUrlPresent&&out.env.samsaraTokenPresent&&out.database.ok&&out.schema.ok&&out.samsara.ok;res.set('Cache-Control','no-store');res.json(out)});
+app.get('/api/samsara/integration-status',auth,managerPermission('customers'),async(req,res)=>{res.set('Cache-Control','no-store');res.json({ok:true,build:'24.28.4',databaseUrlPresent:!!String(process.env.DATABASE_URL||'').trim(),samsaraTokenPresent:samsaraTokenPresent(),unitSync:true})});
+app.get('/api/samsara/unit-sync/preview',auth,managerPermission('customers'),async(req,res,next)=>{try{const db=requireDb();await ensureSamsaraUnitSyncSchema(db);const d=await samsaraMatchData(db),items=d.vehicles.map(x=>{const m=d.match(x);return{...m.v,matchMethod:m.method,matchStatus:m.a.length===1?'matched':m.a.length>1?'ambiguous':'unmatched',matches:m.a.map(u=>({id:u.id,customer:u.customer_name,unit:u.unit_number,vin:u.vin}))}});res.json({ok:true,totalSamsara:items.length,totalIttr:d.units.length,matched:items.filter(x=>x.matchStatus==='matched').length,ambiguous:items.filter(x=>x.matchStatus==='ambiguous').length,unmatched:items.filter(x=>x.matchStatus==='unmatched').length,items})}catch(e){console.error('[Samsara preview]',e);res.status(Number(e.status)||500).json({ok:false,error:'Samsara preview failed',detail:e.message||String(e),build:'24.28.4'})}});
+app.post('/api/samsara/unit-sync',auth,managerPermission('customers'),async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');await ensureSamsaraUnitSyncSchema(db);const d=await samsaraMatchData(db);let linked=0,updated=0,ambiguous=0,unmatched=0;for(const raw of d.vehicles){const m=d.match(raw),v=m.v;if(m.a.length!==1){m.a.length>1?ambiguous++:unmatched++;continue}const u=m.a[0];await db.query(`UPDATE customer_units SET samsara_vehicle_id=$2,samsara_synced_at=now(),samsara_driver_name=nullif($3,''),samsara_location=nullif($4,''),samsara_latitude=$5,samsara_longitude=$6,samsara_speed_mph=$7,samsara_ignition_status=nullif($8,''),samsara_last_seen_at=CASE WHEN $9::text IS NULL OR $9::text='' THEN samsara_last_seen_at ELSE $9::timestamptz END WHERE id=$1::bigint`,[u.id,v.id,v.driverName,v.location,v.latitude,v.longitude,v.speedMph,v.ignition,v.lastSeen]);updated++;if(m.method!=='linked')linked++}await db.query('COMMIT');await audit(req.user.username,'samsara_units_synced',{vehicles:d.vehicles.length,linked,updated,ambiguous,unmatched});res.json({ok:true,total:d.vehicles.length,linked,updated,ambiguous,unmatched})}catch(e){try{await db.query('ROLLBACK')}catch{}console.error('[Samsara sync]',e);res.status(Number(e.status)||500).json({ok:false,error:'Samsara sync failed',detail:e.message||String(e),build:'24.28.4'})}finally{db.release()}});
 app.get('/api/samsara/all-units',auth,managerPermission('customers'),async(req,res,next)=>{try{const db=requireDb();await ensureSamsaraUnitSyncSchema(db);const q=await db.query(`SELECT u.id,u.customer_id,u.unit_number,u.vin,u.year,u.make,u.model,u.plate,u.mileage,u.samsara_vehicle_id,u.samsara_synced_at,u.samsara_driver_name,u.samsara_location,u.samsara_speed_mph,u.samsara_ignition_status,u.samsara_last_seen_at,c.customer_name AS customer_name FROM customer_units u LEFT JOIN fullbay_import_customers c ON c.id=u.customer_id ORDER BY c.customer_name,u.unit_number`);res.json({ok:true,items:q.rows.map(x=>({...x,samsaraStatus:x.samsara_vehicle_id?'connected':'not_connected'}))})}catch(e){next(e)}});
 
 app.get('/api/samsara/vehicle/:id/history',auth,managerPermission('customers'),async(req,res,next)=>{
@@ -1391,7 +1496,7 @@ app.post('/api/customers/merge',auth,ownerOnly,async(req,res,next)=>{
  }catch(e){try{await db.query('ROLLBACK')}catch{};next(e)}finally{db.release()}
 });
 
-// v24.24.5 — safe cleanup of incomplete imported Fullbay service history only.
+// v24.28.4 — safe cleanup of incomplete imported Fullbay service history only.
 app.get('/api/fullbay/history/import-audit',auth,ownerOnly,async(req,res,next)=>{
  try{
   const db=requireDb();
@@ -1410,8 +1515,10 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
   res.json({ok:true,deleted:deleted.rowCount,customersPreserved:true,unitsPreserved:true,invoicesPreserved:true,workOrdersPreserved:true});
  }catch(e){next(e)}
 });
-app.get("/api/build",(req,res)=>res.json({frontendExpected:"24.24.5",backend:"24.24.5",build:"ITTR-24.24.5-PRINT-LEGAL-PART-LOOKUP-20260914"}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:"24.24.5",photoStorageConfigured:r2Configured})});
+// ITTR v24.28.4 runtime identity hardening
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.28.4");
+app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-FINAL-HARDENING-20260928`}));
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
@@ -1423,38 +1530,83 @@ app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 app.post("/api/auth/logout",auth,async(req,res,next)=>{try{await requireDb().query("DELETE FROM auth_sessions WHERE token_hash=$1",[hashToken(req.sessionToken)]);res.json({ok:true})}catch(e){next(e)}});
 app.get("/api/auth/me",auth,(req,res)=>res.json({user:publicUser(req.user)}));
-
-app.get("/api/state",auth,async(req,res,next)=>{try{const q=await requireDb().query("SELECT state_key,payload,version,updated_at FROM app_state ORDER BY state_key");const d={};for(const r of q.rows)d[r.state_key]={payload:r.payload,version:Number(r.version),updatedAt:r.updated_at};res.json(d)}catch(e){next(e)}});
-app.put("/api/state/:key",auth,async(req,res,next)=>{try{
- const key=String(req.params.key);
- if(!["users","shopflow","pro"].includes(key))return res.status(400).json({error:"Invalid state key"});
- const payload=req.body?.payload;
- if(payload===undefined)return res.status(400).json({error:"payload required"});
- const expectedVersion=Number(req.body?.expectedVersion||0);
- let q;
- if(expectedVersion>0){
-   q=await requireDb().query(
-     "UPDATE app_state SET payload=$2::jsonb,version=version+1,updated_at=now(),updated_by=$3 WHERE state_key=$1 AND version=$4 RETURNING version,updated_at",
-     [key,JSON.stringify(payload),req.user.username,expectedVersion]
-   );
-   if(!q.rowCount){
-     const cur=await requireDb().query("SELECT version FROM app_state WHERE state_key=$1",[key]);
-     return res.status(409).json({
-       error:"This data changed on another device before your save. The newer server copy was protected. Refresh and try again.",
-       code:"VERSION_CONFLICT",
-       currentVersion:Number(cur.rows[0]?.version||0)
-     });
-   }
- }else{
-   q=await requireDb().query(
-     "UPDATE app_state SET payload=$2::jsonb,version=version+1,updated_at=now(),updated_by=$3 WHERE state_key=$1 RETURNING version,updated_at",
-     [key,JSON.stringify(payload),req.user.username]
-   );
- }
- await audit(req.user.username,"state_save",{key,expectedVersion});
- if(key==="shopflow")broadcastShopStatus("shopflow_changed",{by:req.user.username,version:Number(q.rows[0].version)});
- res.json({ok:true,version:Number(q.rows[0].version),updatedAt:q.rows[0].updated_at});
+// ITTR v24.28.4 self-service language preference
+app.patch("/api/auth/preferences",auth,async(req,res,next)=>{try{
+ const language=String(req.body?.language||"").trim().toLowerCase();
+ if(!["en","uk"].includes(language))return res.status(400).json({error:"Supported languages are en and uk."});
+ const q=await requireDb().query("UPDATE auth_users SET language=$2,updated_at=now() WHERE id=$1 RETURNING *",[req.user.id,language]);
+ if(!q.rowCount)return res.status(404).json({error:"User account not found."});
+ await audit(req.user.username,"language_preference_changed",{language});
+ res.json({ok:true,user:publicUser(q.rows[0])});
 }catch(e){next(e)}});
+
+// ITTR v24.28.4 role-scoped state reader
+app.get("/api/state",auth,async(req,res,next)=>{try{
+ const db=requireDb();
+ if(req.user?.role==='mechanic'){
+  const q=await db.query("SELECT state_key,payload,version,updated_at FROM app_state WHERE state_key='shopflow'");
+  const r=q.rows[0];if(!r)return res.json({});
+  const sf=(r.payload&&typeof r.payload==='object')?r.payload:{workorders:[],issues:[]};
+  const workorders=(Array.isArray(sf.workorders)?sf.workorders:[]).filter(w=>mechanicOwnsWorkOrder(req.user,w));
+  const ids=new Set(workorders.map(w=>String(w?.id||'')));
+  const issues=(Array.isArray(sf.issues)?sf.issues:[]).filter(i=>ids.has(String(i?.wo||'')));
+  return res.json({shopflow:{payload:{...sf,workorders,issues},version:Number(r.version),updatedAt:r.updated_at}});
+ }
+ const q=await db.query("SELECT state_key,payload,version,updated_at FROM app_state ORDER BY state_key");const d={};for(const r of q.rows)d[r.state_key]={payload:r.payload,version:Number(r.version),updatedAt:r.updated_at};res.json(d);
+}catch(e){next(e)}});
+// ITTR v24.27.0 state integrity hardening
+app.put("/api/state/:key",auth,async(req,res,next)=>{
+ const db=await requireDb().connect();
+ try{
+  const key=String(req.params.key);
+  if(!["users","shopflow","pro"].includes(key)){db.release();return res.status(400).json({error:"Invalid state key"})}
+  if(key==="users"&&req.user?.role!=="admin"){db.release();return res.status(403).json({error:"Owner/Admin access required."})}
+  if(key==="pro"&&!['admin','manager'].includes(req.user?.role)){db.release();return res.status(403).json({error:"Manager access required."})}
+  if(req.user?.role==="mechanic"&&key!=="shopflow"){db.release();return res.status(403).json({error:"Mechanics cannot replace shared administrative state."})}
+  const payload=req.body?.payload;if(payload===undefined){db.release();return res.status(400).json({error:"payload required"})}
+  const expectedVersion=Number(req.body?.expectedVersion||0);
+  if(!Number.isInteger(expectedVersion)||expectedVersion<=0){db.release();return res.status(409).json({error:"A current server version is required before saving. Refresh first to protect newer shop data.",code:"STATE_VERSION_REQUIRED"})}
+  await db.query('BEGIN');
+  const curQ=await db.query("SELECT payload,version FROM app_state WHERE state_key=$1 FOR UPDATE",[key]);
+  if(!curQ.rowCount){await db.query('ROLLBACK');db.release();return res.status(404).json({error:"State record not found."})}
+  const currentVersion=Number(curQ.rows[0].version||0);
+  if(currentVersion!==expectedVersion){await db.query('ROLLBACK');db.release();return res.status(409).json({error:"This data changed on another device before your save. The newer server copy was protected. Refresh and try again.",serverVersion:currentVersion,code:"STATE_VERSION_CONFLICT"})}
+  let nextPayload=payload;
+  if(req.user?.role==="mechanic"){
+    const current=(curQ.rows[0].payload&&typeof curQ.rows[0].payload==='object')?curQ.rows[0].payload:{workorders:[],issues:[]};
+    const incoming=(payload&&typeof payload==='object')?payload:{workorders:[],issues:[]};
+    const clean=(v,depth=0)=>{if(depth>10)return null;if(typeof v==='string')return v.replace(/[<>]/g,'').slice(0,20000);if(Array.isArray(v))return v.slice(0,5000).map(x=>clean(x,depth+1));if(v&&typeof v==='object'){const o={};for(const [k,x] of Object.entries(v)){if(['__proto__','prototype','constructor'].includes(k))continue;o[k]=clean(x,depth+1)}return o}return v};
+    const currentW=Array.isArray(current.workorders)?current.workorders:[],incomingW=Array.isArray(incoming.workorders)?incoming.workorders:[];
+    const incomingById=new Map(incomingW.map(w=>[String(w?.id||''),w]));
+    const ownedIds=new Set(currentW.filter(w=>mechanicOwnsWorkOrder(req.user,w)).map(w=>String(w?.id||'')));
+    const protectedKeys=['id','unit','customer','customerId','unitRecordId','vin','dotNumber','year','make','model','plate','mechanic','helpers','priority','parking','unitType','truckHere','date','time','createdAt','createdBy','createdVia'];
+    const workorders=currentW.map(old=>{
+      if(!ownedIds.has(String(old?.id||'')))return old;
+      const proposed=incomingById.get(String(old?.id||''));if(!proposed)return old;
+      const merged=clean(proposed);for(const k of protectedKeys)merged[k]=old[k];
+      const oldHistory=Array.isArray(old.history)?old.history:[],newHistory=Array.isArray(merged.history)?merged.history:[];
+      merged.history=[...oldHistory,...newHistory.slice(oldHistory.length).map(x=>clean(x))];
+      if(Array.isArray(merged.tasks)){const oldTasks=new Map((Array.isArray(old.tasks)?old.tasks:[]).map(t=>[String(t?.uid||''),t]));merged.tasks=merged.tasks.map(t=>{const prior=oldTasks.get(String(t?.uid||''));if(!prior||!prior.findingId)return t;return {...t,findingId:prior.findingId,source:prior.source,findingDecision:prior.findingDecision,approvalChangedAt:prior.approvalChangedAt,approvalChangedBy:prior.approvalChangedBy,cancelled:prior.cancelled,declinedAt:prior.declinedAt,declinedBy:prior.declinedBy}})}
+      return merged;
+    });
+    const currentI=Array.isArray(current.issues)?current.issues:[],incomingI=Array.isArray(incoming.issues)?incoming.issues:[];
+    const incomingIssues=new Map(incomingI.map(i=>[String(i?.id||''),i]));
+    const existingIds=new Set(currentI.map(i=>String(i?.id||'')));
+    const issues=currentI.map(old=>{
+      if(!ownedIds.has(String(old?.wo||'')))return old;const proposed=incomingIssues.get(String(old?.id||''));if(!proposed)return old;const x=clean(proposed);
+      for(const k of ['id','wo','createdAt','created','mechanic','approval','adminNote','decisionAt','decisionBy','convertedToTask'])x[k]=old[k];return x;
+    });
+    for(const proposed of incomingI){const id=String(proposed?.id||'');if(existingIds.has(id)||!ownedIds.has(String(proposed?.wo||'')))continue;const x=clean(proposed);x.mechanic=req.user.username;x.approval='Waiting for Customer';x.adminNote='';x.decisionAt='';x.decisionBy='';x.convertedToTask=false;issues.push(x)}
+    nextPayload={...current,workorders,issues};
+  }
+  const q=await db.query("UPDATE app_state SET payload=$2::jsonb,version=version+1,updated_at=now(),updated_by=$3 WHERE state_key=$1 AND version=$4 RETURNING version,updated_at",[key,JSON.stringify(nextPayload),req.user.username,expectedVersion]);
+  if(!q.rowCount){await db.query('ROLLBACK');db.release();return res.status(409).json({error:"This data changed before the save completed. Refresh and try again.",code:"STATE_VERSION_CONFLICT"})}
+  await db.query('COMMIT');
+  await audit(req.user.username,"state_save",{key,expectedVersion,role:req.user?.role});
+  if(key==="shopflow")broadcastShopStatus("shopflow_changed",{by:req.user.username,version:Number(q.rows[0].version)});
+  db.release();res.json({ok:true,version:Number(q.rows[0].version),updatedAt:q.rows[0].updated_at});
+ }catch(e){try{await db.query('ROLLBACK')}catch(_){};db.release();next(e)}
+});
 
 
 function taskRunning(task){
@@ -1704,24 +1856,32 @@ app.post("/api/work-orders/self-start",auth,async(req,res,next)=>{
  const db=await requireDb().connect();
  try{
   const b=req.body||{},customer=String(b.customer||"").trim(),unit=String(b.unit||"").trim(),vin=cleanVin(b.vin||""),dotNumber=cleanUsdot(b.dotNumber||""),jobs=Array.isArray(b.jobs)?b.jobs.map(x=>String(x||"").trim()).filter(Boolean):[];
-  if(!customer||!unit||!jobs.length||(!vin&&!dotNumber))return res.status(400).json({error:"Customer, unit, at least one job, and VIN or USDOT are required."});
+  // ITTR_INSPECTION_OPTIONAL_IDENTITY
+  if(!unit){b.unit=vin?`VIN-${vin}`:`WALKIN-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;b.unitGenerated=true}
+  if(!jobs.length||(!vin&&!dotNumber&&!unit))return res.status(400).json({error:"At least one job and VIN, USDOT, or unit number are required. Customer/company and unit number may be left blank when VIN or USDOT identifies the walk-in."});
   if(vin&&!vinCoreValid(vin))return res.status(400).json({error:"VIN must be 17 characters and cannot contain I, O, or Q.",code:"VIN_INVALID"});
+  const inspectionRequired=b.inspectionRequired===true||String(b.inspectionRequired||"").toLowerCase()==="true";
+  const inspectionType=inspectionRequired?String(b.inspectionType||"").trim().toLowerCase():"";
+  const inspectionSubtype=inspectionRequired?String(b.inspectionSubtype||"").trim().toLowerCase():"";
+  if(inspectionRequired&&!(["truck","trailer"].includes(inspectionType)))return res.status(400).json({error:"Choose Truck or Trailer inspection."});
+  if(inspectionRequired&&inspectionType==="trailer"&&!(["dry_van","reefer","conestoga"].includes(inspectionSubtype)))return res.status(400).json({error:"Choose Dry Van, Reefer, or Conestoga trailer inspection."});
   await db.query("BEGIN");
 
   const customerResolved=await resolveSelfStartCustomer(db,b,req.user);
-  if(!customerResolved.row)throw Object.assign(new Error("Customer could not be resolved."),{status:400});
-  const unitResolved=await resolveSelfStartUnit(db,b,customerResolved.row);
-  if(!unitResolved.row)throw Object.assign(new Error("Unit could not be resolved."),{status:400});
-
-  const customerRow=customerResolved.row,unitRow=unitResolved.row;
+  const customerRow=customerResolved.row||{id:"",customer_name:"",dot_number:dotNumber||""};
+  const unitResolved=await resolveSelfStartUnit(db,b,customerRow);
+  if(!unitResolved.row)throw Object.assign(new Error("Vehicle could not be resolved."),{status:400});
+  const unitRow=unitResolved.row;
   const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
   if(!q.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Shop data not found."});}
   const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
   const numericIds=sf.workorders.map(x=>Number(x?.id)).filter(Number.isFinite);const id=(numericIds.length?Math.max(...numericIds):1000)+1;const now=new Date();
   const w={
     id,
-    unit:unitRow.unit_number||unit,
-    customer:customerRow.customer_name||customer,
+    unit:unitRow.unit_number||String(b.unit||unit||""),
+    unitGenerated:Boolean(b.unitGenerated),
+    customer:customerRow.customer_name||customer||"Walk-in / Unknown",
+    customerUnknown:!String(customerRow.customer_name||customer||"").trim(),
     customerId:String(customerRow.id||""),
     unitRecordId:String(unitRow.id||""),
     vin:unitRow.vin||vin,
@@ -1736,6 +1896,7 @@ app.post("/api/work-orders/self-start",auth,async(req,res,next)=>{
     unitType:"customer",truckHere:true,status:"Open",notes:String(b.notes||""),
     arrivedAt:now.toISOString(),arrivedBy:req.user.username,createdAt:now.toISOString(),createdBy:req.user.username,
     createdVia:"mechanic_self_start",outcomeWorkflowVersion:1,
+    inspection:inspectionRequired?{required:true,type:inspectionType,subtype:inspectionType==="trailer"?inspectionSubtype:"",status:"Not Started",currentSection:0,results:{},requestedAt:now.toISOString(),requestedBy:req.user.username}:{required:false,type:"",subtype:"",status:"Not Required",currentSection:0,results:{}},
     history:[{
       type:"mechanic_self_start",at:now.toISOString(),by:req.user.username,byDisplay:req.user.display_name||req.user.username,
       customerCreated:Boolean(customerResolved.created),unitCreated:Boolean(unitResolved.created),
@@ -1904,7 +2065,7 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/action",auth,async(req,res,
      if(task.done || String(task.taskOutcome||"")==="completed"){
        await db.query("ROLLBACK");return res.status(409).json({error:"This task is already completed."});
      }
-     const another=w.tasks.findIndex(t=>String(t?.uid||"")!==uid && taskRunning(t) && taskRunningMechanic(t,w)===String(req.user.username||"").toLowerCase());
+     const another=(Array.isArray(sf.workorders)?sf.workorders:[]).findIndex(ow=>(Array.isArray(ow?.tasks)?ow.tasks:[]).some(t=>!(String(ow?.id||'')===workOrderId&&String(t?.uid||'')===uid)&&taskRunning(t)&&taskRunningMechanic(t,ow)===String(req.user.username||'').toLowerCase()));
      if(another!==-1){
        await db.query("ROLLBACK");return res.status(409).json({error:"Pause or complete your current task before starting another one."});
      }
@@ -2118,7 +2279,7 @@ app.get("/api/admin/productivity",auth,adminOnly,async(req,res,next)=>{try{
   res.json({ok:true,start:start.toISOString(),end:end.toISOString(),mechanic:mechanic||"all",sessions});
 }catch(e){next(e)}});
 
-app.get("/api/admin/backup",auth,adminOnly,async(req,res,next)=>{try{
+app.get("/api/admin/backup",auth,ownerOnly,async(req,res,next)=>{try{
   const states=await requireDb().query("SELECT state_key,payload,version,updated_at,updated_by FROM app_state ORDER BY state_key");
   const users=await requireDb().query("SELECT username,display_name,role,language,active,created_at,updated_at FROM auth_users ORDER BY username");
   const sessions=await requireDb().query("SELECT work_order_id,task_index,task_uid,task_name,mechanic_username,started_at,ended_at,end_reason,pause_reason,pause_note FROM task_time_sessions ORDER BY started_at");
@@ -2546,13 +2707,13 @@ app.post("/api/findings/:id/decision",auth,adminOnly,async(req,res,next)=>{
  }finally{db.release();}
 });
 
-app.post("/api/state/import-local",auth,adminOnly,async(req,res,next)=>{try{
+app.post("/api/state/import-local",auth,ownerOnly,async(req,res,next)=>{try{
  const users=req.body?.users||{},shopflow=req.body?.shopflow||{workorders:[],issues:[]},pro=req.body?.pro||{};
  const sanitized={};
  for(const [username0,u] of Object.entries(users)){
    const username=cleanUsername(username0);if(!username)continue;
    sanitized[username]={...u};delete sanitized[username].password;
-   if(u?.password && String(u.password).length>=6){
+   if(u?.password && String(u.password).length>=12){
      const h=await bcrypt.hash(String(u.password),12),role=u.role==="admin"?"admin":"mechanic";
      await pool.query(`INSERT INTO auth_users(username,display_name,password_hash,role,language,active) VALUES($1,$2,$3,$4,$5,true)
        ON CONFLICT(username) DO UPDATE SET display_name=EXCLUDED.display_name,password_hash=EXCLUDED.password_hash,role=EXCLUDED.role,language=EXCLUDED.language,active=true,updated_at=now()`,[username,u.display||username,h,role,u.language||"en"]);
@@ -2565,17 +2726,17 @@ app.post("/api/state/import-local",auth,adminOnly,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/staff",auth,managerPermission("employees"),async(req,res,next)=>{try{const q=await requireDb().query("SELECT username,display_name,role,email,permissions,language,active,created_at FROM auth_users ORDER BY role,display_name");res.json({items:q.rows.map(publicUser)})}catch(e){next(e)}});
-app.post("/api/admin/managers",auth,ownerOnly,async(req,res,next)=>{try{const username=cleanUsername(req.body?.username),display=String(req.body?.display||'').trim(),email=String(req.body?.email||'').trim(),password=String(req.body?.password||''),permissions=req.body?.permissions&&typeof req.body.permissions==='object'?req.body.permissions:{};if(!username||!display||password.length<8)return res.status(400).json({error:'Username, name and password of at least 8 characters are required.'});const hash=await bcrypt.hash(password,12);await requireDb().query("INSERT INTO auth_users(username,display_name,password_hash,role,email,permissions) VALUES($1,$2,$3,'manager',$4,$5::jsonb)",[username,display,hash,email||null,JSON.stringify(permissions)]);await audit(req.user.username,'manager_created',{username,permissions});res.json({ok:true})}catch(e){if(e?.code==='23505')return res.status(409).json({error:'That username already exists.'});next(e)}});
+app.post("/api/admin/managers",auth,ownerOnly,async(req,res,next)=>{try{const username=cleanUsername(req.body?.username),display=String(req.body?.display||'').trim(),email=String(req.body?.email||'').trim(),password=String(req.body?.password||''),permissions=req.body?.permissions&&typeof req.body.permissions==='object'?req.body.permissions:{};if(!username||!display||password.length<12)return res.status(400).json({error:'Username, name and password of at least 12 characters are required.'});const hash=await bcrypt.hash(password,12);await requireDb().query("INSERT INTO auth_users(username,display_name,password_hash,role,email,permissions) VALUES($1,$2,$3,'manager',$4,$5::jsonb)",[username,display,hash,email||null,JSON.stringify(permissions)]);await audit(req.user.username,'manager_created',{username,permissions});res.json({ok:true})}catch(e){if(e?.code==='23505')return res.status(409).json({error:'That username already exists.'});next(e)}});
 app.put("/api/admin/managers/:username",auth,ownerOnly,async(req,res,next)=>{try{const username=cleanUsername(req.params.username),permissions=req.body?.permissions&&typeof req.body.permissions==='object'?req.body.permissions:{},display=String(req.body?.display||'').trim(),email=String(req.body?.email||'').trim();const q=await requireDb().query("UPDATE auth_users SET display_name=coalesce(nullif($2,''),display_name),email=nullif($3,''),permissions=$4::jsonb,updated_at=now() WHERE username=$1 AND role='manager' RETURNING *",[username,display,email,JSON.stringify(permissions)]);if(!q.rowCount)return res.status(404).json({error:'Manager not found.'});await audit(req.user.username,'manager_permissions_updated',{username,permissions});res.json({user:publicUser(q.rows[0])})}catch(e){next(e)}});
 app.delete("/api/admin/managers/:username",auth,ownerOnly,async(req,res,next)=>{try{const q=await requireDb().query("DELETE FROM auth_users WHERE username=$1 AND role='manager' RETURNING username",[cleanUsername(req.params.username)]);if(!q.rowCount)return res.status(404).json({error:'Manager not found.'});await audit(req.user.username,'manager_deleted',{username:req.params.username});res.json({ok:true})}catch(e){next(e)}});
 app.post("/api/admin/users",auth,managerPermission("employees"),async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),display=String(req.body?.display||"").trim(),password=String(req.body?.password||"");
- if(!username||!display||password.length<6)return res.status(400).json({error:"Username, display name, and password of at least 6 characters are required."});
+ if(!username||!display||password.length<10)return res.status(400).json({error:"Username, display name, and password of at least 10 characters are required."});
  const h=await bcrypt.hash(password,12);
  await pool.query("INSERT INTO auth_users(username,display_name,password_hash,role) VALUES($1,$2,$3,'mechanic')",[username,display,h]);
  await audit(req.user.username,"mechanic_created",{username});res.json({user:{username,display,role:"mechanic"}});
 }catch(e){if(e?.code==="23505")return res.status(409).json({error:"That username already exists."});next(e)}});
-app.patch("/api/admin/users/:username/password",auth,managerPermission("employees"),async(req,res,next)=>{try{const username=cleanUsername(req.params.username),password=String(req.body?.password||"");if(password.length<6)return res.status(400).json({error:"Password must be at least 6 characters."});const h=await bcrypt.hash(password,12);const q=await pool.query("UPDATE auth_users SET password_hash=$2,updated_at=now() WHERE username=$1 AND role='mechanic' RETURNING username",[username,h]);if(!q.rowCount)return res.status(404).json({error:"Mechanic account not found."});await audit(req.user.username,"mechanic_password_changed",{username});res.json({ok:true})}catch(e){next(e)}});
+app.patch("/api/admin/users/:username/password",auth,managerPermission("employees"),async(req,res,next)=>{try{const username=cleanUsername(req.params.username),password=String(req.body?.password||"");if(password.length<10)return res.status(400).json({error:"Password must be at least 10 characters."});const h=await bcrypt.hash(password,12);const q=await pool.query("UPDATE auth_users SET password_hash=$2,updated_at=now() WHERE username=$1 AND role='mechanic' RETURNING id,username",[username,h]);if(!q.rowCount)return res.status(404).json({error:"Mechanic account not found."});await pool.query("DELETE FROM auth_sessions WHERE user_id=$1",[q.rows[0].id]);await audit(req.user.username,"mechanic_password_changed",{username,sessionsRevoked:true});res.json({ok:true})}catch(e){next(e)}});
 app.delete("/api/admin/users/:username",auth,managerPermission("employees"),async(req,res,next)=>{try{const username=cleanUsername(req.params.username);const q=await pool.query("DELETE FROM auth_users WHERE username=$1 AND role='mechanic' RETURNING username",[username]);if(!q.rowCount)return res.status(404).json({error:"Mechanic account not found."});await audit(req.user.username,"mechanic_deleted",{username});res.json({ok:true})}catch(e){next(e)}});
 
 function parseAiJson(text){let t=String(text||'').trim();t=t.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');return JSON.parse(t)}
@@ -2697,8 +2858,10 @@ app.post('/api/invoices/:id/sync-work-order',auth,managerPermission("invoices"),
  }catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}
 });
 
-app.post('/api/invoices/:id/finalize',auth,managerPermission("invoices"),async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const inv=await recalcInvoice(db,req.params.id);if(!inv){await db.query('ROLLBACK');return res.status(404).json({error:'Invoice not found.'})}if(invoiceMoney(inv.total)<=0){await db.query('ROLLBACK');return res.status(409).json({error:'Invoice total must be greater than zero.'})}await db.query("UPDATE customer_invoices SET status=CASE WHEN amount_paid>0 THEN 'partial' ELSE 'sent' END,finalized_at=coalesce(finalized_at,now()),sent_at=coalesce(sent_at,now()),updated_at=now() WHERE id=$1::bigint",[req.params.id]);await db.query('COMMIT');res.json({ok:true})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
-app.post('/api/invoices/:id/payments',auth,managerPermission("invoices"),async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const id=req.params.id,amount=invoiceMoney(req.body?.amount);if(amount<=0){await db.query('ROLLBACK');return res.status(400).json({error:'Payment amount must be greater than zero.'})}const inv=(await db.query('SELECT * FROM customer_invoices WHERE id=$1::bigint FOR UPDATE',[id])).rows[0];if(!inv||inv.status==='void'){await db.query('ROLLBACK');return res.status(409).json({error:'Invoice is missing or void.'})}if(amount>invoiceMoney(inv.balance_due)+.01){await db.query('ROLLBACK');return res.status(409).json({error:'Payment cannot exceed the balance due.'})}await db.query(`INSERT INTO customer_invoice_payments(invoice_id,amount,method,reference,note,paid_at,received_by) VALUES($1::bigint,$2::numeric,$3,$4,$5,coalesce($6::timestamptz,now()),$7)`,[id,amount,String(req.body?.method||'Other'),String(req.body?.reference||''),String(req.body?.note||''),req.body?.paidAt||null,req.user.username]);await db.query('UPDATE customer_invoices SET amount_paid=amount_paid+$2::numeric,updated_at=now() WHERE id=$1::bigint',[id,amount]);await recalcInvoice(db,id);await db.query('COMMIT');await audit(req.user.username,'invoice_payment',{invoiceId:id,amount,method:req.body?.method});res.json({ok:true})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
+// ITTR v24.27.0 invoice finalize integrity
+app.post('/api/invoices/:id/finalize',auth,managerPermission("invoices"),async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const before=(await db.query('SELECT * FROM customer_invoices WHERE id=$1::bigint FOR UPDATE',[req.params.id])).rows[0];if(!before){await db.query('ROLLBACK');return res.status(404).json({error:'Invoice not found.'})}if(['void','paid'].includes(String(before.status||'').toLowerCase())){await db.query('ROLLBACK');return res.status(409).json({error:'Paid or void invoices are locked and cannot be reopened.'})}const inv=await recalcInvoice(db,req.params.id);if(invoiceMoney(inv.total)<=0){await db.query('ROLLBACK');return res.status(409).json({error:'Invoice total must be greater than zero.'})}await db.query("UPDATE customer_invoices SET status=CASE WHEN amount_paid>0 THEN 'partial' ELSE 'sent' END,finalized_at=coalesce(finalized_at,now()),sent_at=coalesce(sent_at,now()),updated_at=now() WHERE id=$1::bigint",[req.params.id]);await db.query('COMMIT');await audit(req.user.username,'invoice_finalized',{invoiceId:req.params.id});res.json({ok:true})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
+// ITTR v24.27.0 payment idempotency guard
+app.post('/api/invoices/:id/payments',auth,managerPermission("invoices"),async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const id=req.params.id,amount=invoiceMoney(req.body?.amount);if(amount<=0){await db.query('ROLLBACK');return res.status(400).json({error:'Payment amount must be greater than zero.'})}const inv=(await db.query('SELECT * FROM customer_invoices WHERE id=$1::bigint FOR UPDATE',[id])).rows[0];if(!inv||inv.status==='void'){await db.query('ROLLBACK');return res.status(409).json({error:'Invoice is missing or void.'})}if(String(inv.status||'').toLowerCase()==='paid'||invoiceMoney(inv.balance_due)<=0.009){await db.query('ROLLBACK');return res.status(409).json({error:'This invoice is already paid.'})}if(amount>invoiceMoney(inv.balance_due)+.01){await db.query('ROLLBACK');return res.status(409).json({error:'Payment cannot exceed the balance due.'})}const method=String(req.body?.method||'Other').trim().slice(0,80),reference=String(req.body?.reference||'').trim().slice(0,160),note=String(req.body?.note||'').replace(/[<>]/g,'').slice(0,2000);const dup=await db.query("SELECT id FROM customer_invoice_payments WHERE invoice_id=$1::bigint AND amount=$2::numeric AND lower(coalesce(method,''))=lower($3) AND coalesce(reference,'')=$4 AND received_by=$5 AND paid_at>now()-interval '15 seconds' LIMIT 1",[id,amount,method,reference,req.user.username]);if(dup.rowCount){await db.query('ROLLBACK');return res.status(409).json({error:'This payment was already recorded. Refresh the invoice before trying again.',code:'DUPLICATE_PAYMENT'})}await db.query('INSERT INTO customer_invoice_payments(invoice_id,amount,method,reference,note,paid_at,received_by) VALUES($1::bigint,$2::numeric,$3,$4,$5,coalesce($6::timestamptz,now()),$7)',[id,amount,method,reference,note,req.body?.paidAt||null,req.user.username]);await db.query('UPDATE customer_invoices SET amount_paid=amount_paid+$2::numeric,updated_at=now() WHERE id=$1::bigint',[id,amount]);await recalcInvoice(db,id);await db.query('COMMIT');await audit(req.user.username,'invoice_payment',{invoiceId:id,amount,method});res.json({ok:true})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
 app.post('/api/invoices/:id/void',auth,managerPermission("invoices"),async(req,res,next)=>{try{const q=await requireDb().query("UPDATE customer_invoices SET status='void',updated_at=now() WHERE id=$1::bigint AND amount_paid=0 RETURNING id",[req.params.id]);if(!q.rowCount)return res.status(409).json({error:'Paid invoices cannot be voided until payments are reconciled.'});res.json({ok:true})}catch(e){next(e)}});
 app.delete('/api/invoices/:id',auth,ownerOnly,async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const inv=(await db.query('SELECT * FROM customer_invoices WHERE id=$1::bigint FOR UPDATE',[req.params.id])).rows[0];if(!inv){await db.query('ROLLBACK');return res.status(404).json({error:'Invoice not found.'})}if(String(req.body?.confirmInvoiceNumber||'')!==String(inv.invoice_number)){await db.query('ROLLBACK');return res.status(400).json({error:'Type the exact invoice number to permanently delete it.'})}const snapshot=await getInvoiceBundle(db,req.params.id);await db.query('DELETE FROM customer_invoice_payments WHERE invoice_id=$1::bigint',[req.params.id]);await db.query('DELETE FROM customer_invoice_lines WHERE invoice_id=$1::bigint',[req.params.id]);await db.query('DELETE FROM customer_invoices WHERE id=$1::bigint',[req.params.id]);await db.query('COMMIT');await audit(req.user.username,'invoice_permanently_deleted',{invoiceNumber:inv.invoice_number,customer:inv.customer_name,total:inv.total,status:inv.status,hadPayments:(snapshot?.payments||[]).length});res.json({ok:true})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
 app.get('/api/invoices/:id/pdf',auth,managerPermission("invoices"),async(req,res,next)=>{
@@ -3161,7 +3324,7 @@ app.post('/api/ai/import/commit-history',auth,managerPermission('customers'),asy
 }catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
 app.post('/api/ai/import/commit-invoice',auth,managerPermission('invoices'),async(req,res,next)=>{const db=await requireDb().connect();try{const d=req.body?.draft||{};if(!Array.isArray(d.services)||!d.services.length)return res.status(400).json({error:'No service lines were detected. Review the import first.'});await db.query('BEGIN');const customerId=Number(d.matches?.customer?.id||0)||null,unitId=Number(d.matches?.unit?.id||0)||null,num=await nextInvoiceNumber(db),terms=String(d.terms||'Due on Receipt'),days=/60/.test(terms)?60:/30/.test(terms)?30:/15/.test(terms)?15:0;const q=await db.query(`INSERT INTO customer_invoices(invoice_number,customer_id,customer_name,unit_id,unit_number,vin,dot_number,mileage,po_number,invoice_date,due_date,terms,tax_rate,internal_note,created_by) VALUES($1,$2::bigint,$3,$4::bigint,$5,$6,$7,$8::numeric,$9,coalesce($10::date,CURRENT_DATE),coalesce($11::date,coalesce($10::date,CURRENT_DATE)+$12::int),$13,0,$14,$15) RETURNING id`,[num,customerId,String(d.customerName||d.matches?.customer?.name||'Legacy Customer'),unitId,String(d.unitNumber||d.matches?.unit?.unitNumber||''),String(d.vin||d.matches?.unit?.vin||''),String(d.usdot||d.matches?.customer?.dotNumber||''),Number(d.mileage||0)||null,String(d.poNumber||''),d.invoiceDate||null,d.dueDate||null,days,terms,`AI imported from legacy ${d.documentType||'invoice'}${d.sourceNumber?` · Source ${d.sourceNumber}`:''}. Review before finalizing.`,req.user.username]);const iid=q.rows[0].id;let order=0;for(const svc of d.services){const job=String(svc.description||'Legacy Service').slice(0,500);const labors=Array.isArray(svc.labor)&&svc.labor.length?svc.labor:[{description:job,hours:0,rate:0,taxable:false}];let parent=null;for(const l of labors){const qty=Math.max(0,Number(l.hours||0)),price=Math.max(0,Number(l.rate||0));const x=await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,quantity,unit_price,unit_cost,taxable,line_total,parent_line_id) VALUES($1,$2,$3,$4,'labor',$5,$6::numeric,$7::numeric,0,$8::boolean,$6::numeric*$7::numeric,NULL) RETURNING id`,[iid,++order,crypto.randomUUID(),job,String(l.description||job),qty,price,l.taxable===true]);if(!parent)parent=x.rows[0].id}for(const part of Array.isArray(svc.parts)?svc.parts:[]){const qty=Math.max(0,Number(part.quantity||0)),price=Math.max(0,Number(part.unitPrice||0));await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_name,line_type,description,part_number,quantity,unit_price,unit_cost,taxable,line_total,parent_line_id) VALUES($1,$2,$3,'part',$4,$5,$6::numeric,$7::numeric,0,$8::boolean,$6::numeric*$7::numeric,$9::bigint)`,[iid,++order,job,String(part.description||part.partNumber||'Part'),String(part.partNumber||''),qty,price,part.taxable!==false,parent])}}
  await recalcInvoice(db,iid);await db.query('COMMIT');await audit(req.user.username,'ai_legacy_invoice_committed',{invoiceId:iid,sourceNumber:d.sourceNumber||'',services:d.services.length});res.json({ok:true,id:iid})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
-app.post('/api/ai/copilot/action',auth,async(req,res)=>{try{const message=String(req.body?.message||'').trim();if(!message)return res.status(400).json({error:'message required'});const m=message.toLowerCase();let action=null;if(/\b(open|go to|show)\b.*\binvoice/.test(m))action={type:'navigate',view:'invoices',label:'Open Invoices'};else if(/\b(open|go to|show)\b.*\b(parts|inventory)\b/.test(m))action={type:'navigate',view:'parts',label:'Open Parts'};else if(/\b(open|go to|show)\b.*\bcustomer/.test(m))action={type:'navigate',view:'customers',label:'Open Customers'};else if(/\b(open|go to|show)\b.*\b(work order|work orders)\b/.test(m))action={type:'navigate',view:'workorders',label:'Open Work Orders'};else if(/\b(check|audit|diagnos|bug|lag|slow|error)/.test(m)){const db=requireDb();const build={frontend:'24.24.5',backend:'24.24.5'};const auditRows=(await db.query('SELECT action,created_at FROM server_audit ORDER BY id DESC LIMIT 40')).rows;action={type:'diagnostic',label:'ShopFlow diagnostic',report:{build,online:true,recentAuditEvents:auditRows.length,checks:['API route available','Database query successful','Copilot action layer responding'],note:'Runtime browser performance and failed requests are captured by the client diagnostic snapshot when available.'}}}res.json({ok:true,action})}catch(e){return aiErrorResponse(res,e,'Copilot action failed')}});
+app.post('/api/ai/copilot/action',auth,async(req,res)=>{try{const message=String(req.body?.message||'').trim();if(!message)return res.status(400).json({error:'message required'});const m=message.toLowerCase();let action=null;if(/\b(open|go to|show)\b.*\binvoice/.test(m))action={type:'navigate',view:'invoices',label:'Open Invoices'};else if(/\b(open|go to|show)\b.*\b(parts|inventory)\b/.test(m))action={type:'navigate',view:'parts',label:'Open Parts'};else if(/\b(open|go to|show)\b.*\bcustomer/.test(m))action={type:'navigate',view:'customers',label:'Open Customers'};else if(/\b(open|go to|show)\b.*\b(work order|work orders)\b/.test(m))action={type:'navigate',view:'workorders',label:'Open Work Orders'};else if(/\b(check|audit|diagnos|bug|lag|slow|error)/.test(m)){const db=requireDb();const build={frontend:'24.28.4',backend:'24.28.4'};const auditRows=(await db.query('SELECT action,created_at FROM server_audit ORDER BY id DESC LIMIT 40')).rows;action={type:'diagnostic',label:'ShopFlow diagnostic',report:{build,online:true,recentAuditEvents:auditRows.length,checks:['API route available','Database query successful','Copilot action layer responding'],note:'Runtime browser performance and failed requests are captured by the client diagnostic snapshot when available.'}}}res.json({ok:true,action})}catch(e){return aiErrorResponse(res,e,'Copilot action failed')}});
 
 app.post("/api/ai/shop-chat",auth,async(req,res)=>{try{
  const question=String(req.body?.message||'').trim();if(!question)return res.status(400).json({error:'message required'});if(question.length>3000)return res.status(400).json({error:'Message is too long.'});
@@ -3240,5 +3403,5 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
-  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v24.24.5 Online running on port ${port}`))})
+  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v24.28.4 Online running on port ${port}`))})
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

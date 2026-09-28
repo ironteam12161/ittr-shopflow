@@ -954,3 +954,12 @@ body.invoiceWorkspaceMode textarea{box-sizing:border-box!important;max-width:100
  body.invoiceWorkspaceMode .invoiceWarrantyNotice,
  body.invoiceWorkspaceMode .invoiceLegalBlock{break-inside:avoid!important;page-break-inside:avoid!important}
 }
+
+/* ITTR v24.26.2 clean invoice print */
+@media print{
+  /* Chrome suppresses its URL/date header/footer when the page itself owns the full sheet. */
+  @page{size:letter;margin:0!important}
+  html,body{margin:0!important;padding:0!important;background:#fff!important}
+  #invoiceModal{inset:0!important;margin:0!important;padding:0!important}
+  #invoiceModal .modalbox{box-sizing:border-box!important;width:100%!important;min-height:100vh!important;margin:0!important;padding:.45in!important}
+}
