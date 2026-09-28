@@ -1,0 +1,41 @@
+/* ITTR mechanic inspection workflow — tablet/phone first */
+.inspectionChoiceGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0}
+.inspectionChoiceBtn{min-height:58px;border:2px solid #d0d5dd;background:#fff;color:#344054;border-radius:12px;font-weight:850;padding:10px 12px}
+.inspectionChoiceBtn.active{border-color:#175cd3;background:#eff8ff;color:#175cd3}
+.inspectionChoiceBtn.good.active{border-color:#079455;background:#ecfdf3;color:#067647}
+.inspectionChoiceBtn.warn.active{border-color:#dc6803;background:#fff7ed;color:#b54708}
+.inspectionStartSummary{margin-top:12px;padding:12px;border:1px solid #d0d5dd;border-radius:12px;background:#f9fafb}
+.inspectionCard{margin:12px 0;border:1px solid #d0d5dd;border-radius:14px;padding:14px;background:#fff}
+.inspectionCard.required{border-color:#84adff;background:#f5f8ff}
+.inspectionCard.completed{border-color:#75e0a7;background:#f6fef9}
+.inspectionBadge{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:850;background:#eef2f7;color:#344054}
+.inspectionBadge.progress{background:#fff7ed;color:#b54708}.inspectionBadge.done{background:#ecfdf3;color:#067647}
+.inspectionModal .modalbox{max-width:1050px}
+.inspectionHeaderMeta{display:flex;gap:8px;flex-wrap:wrap;margin-top:5px}
+.inspectionProgressTrack{height:10px;border-radius:999px;background:#eaecf0;overflow:hidden;margin:12px 0 6px}
+.inspectionProgressFill{height:100%;background:#175cd3;width:0;transition:width .18s ease}
+.inspectionProgressText{font-size:13px;color:#667085}
+.inspectionSectionTitle{font-size:20px;font-weight:900;margin:16px 0 10px}
+.inspectionItem{border:1px solid #eaecf0;border-radius:13px;padding:13px;margin:9px 0;background:#fff}
+.inspectionItemLabel{font-size:15px;font-weight:800;line-height:1.35;margin-bottom:9px}
+.inspectionStatusGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
+.inspectionStatusBtn{min-height:46px;background:#f2f4f7;color:#344054;border:2px solid transparent;padding:8px 5px;border-radius:10px;font-size:13px;font-weight:850}
+.inspectionStatusBtn.ok.active{background:#ecfdf3;color:#067647;border-color:#12b76a}
+.inspectionStatusBtn.attention.active{background:#fff7ed;color:#b54708;border-color:#f79009}
+.inspectionStatusBtn.repair.active{background:#fef3f2;color:#b42318;border-color:#f04438}
+.inspectionStatusBtn.na.active{background:#eef2f7;color:#344054;border-color:#98a2b3}
+.inspectionNote{margin-top:9px;width:100%;min-height:46px;padding:9px 10px;border:1px solid #d0d5dd;border-radius:9px;font:inherit}
+.inspectionNav{position:sticky;bottom:-16px;background:#fff;border-top:1px solid #eaecf0;margin:18px -14px -16px;padding:12px 14px calc(12px + env(safe-area-inset-bottom));display:flex;gap:8px;z-index:6}
+.inspectionNav button{flex:1;min-height:50px}
+.inspectionHistoryEntry{border-left:4px solid #175cd3;padding:9px 11px;margin:8px 0;background:#f9fafb;border-radius:8px}
+.inspectionFinding{padding:7px 0;border-bottom:1px solid #eaecf0}.inspectionFinding:last-child{border-bottom:0}
+@media(max-width:760px){
+ .inspectionChoiceGrid{grid-template-columns:1fr 1fr}
+ .inspectionModal{padding:0!important}
+ .inspectionModal .modalbox{width:100%;max-width:none;min-height:100dvh;max-height:100dvh;margin:0;border-radius:0;overflow:auto}
+ .inspectionStatusGrid{grid-template-columns:1fr 1fr}
+ .inspectionStatusBtn{min-height:52px;font-size:14px}
+ .inspectionItem{padding:12px}
+ .inspectionSectionTitle{font-size:18px}
+}
+@media(max-width:420px){.inspectionChoiceGrid{grid-template-columns:1fr}.inspectionStatusGrid{grid-template-columns:1fr 1fr}}
