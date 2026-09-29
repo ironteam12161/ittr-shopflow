@@ -168,6 +168,8 @@ body.invoiceWorkspaceMode>header,body.invoiceWorkspaceMode>#onlineBetaBar,body.i
 body.invoiceWorkspaceMode #invoiceModal{display:block!important;position:fixed!important;inset:0!important;background:#f5f7fb!important;z-index:1200!important;padding:0!important;overflow:hidden!important}
 body.invoiceWorkspaceMode #invoiceModal .invoiceWorkspaceBox{position:relative!important;margin:0!important;width:100vw!important;max-width:none!important;height:100dvh!important;max-height:none!important;border-radius:0!important;box-shadow:none!important;padding:0!important;background:#f5f7fb!important;overflow:auto!important}
 body.invoiceWorkspaceMode #invoiceModal .x{position:fixed!important;right:18px!important;top:14px!important;z-index:1300!important;width:42px!important;height:42px!important;border-radius:12px!important;background:#fff!important;color:#344054!important;border:1px solid #d0d5dd!important;box-shadow:0 4px 16px rgba(16,24,40,.12)!important}
+/* Action dialogs opened from the full-screen invoice must sit above its 1200/1300 layers. */
+body.invoiceWorkspaceMode #invoiceEmailModal{z-index:1400!important}
 body.invoiceWorkspaceMode #invoiceEditor{width:min(1880px,100%);margin:0 auto;padding:20px 28px 48px}
 body.invoiceWorkspaceMode .invoiceEditorGrid{grid-template-columns:minmax(0,1fr) 320px!important;gap:18px!important;align-items:start}
 body.invoiceWorkspaceMode .invoiceTotals{position:sticky!important;top:18px!important}

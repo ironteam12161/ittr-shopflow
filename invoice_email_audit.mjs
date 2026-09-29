@@ -20,10 +20,14 @@ assert.match(migration,/CREATE TABLE IF NOT EXISTS invoice_email_deliveries/);
 assert.match(migration,/idempotency_key TEXT UNIQUE NOT NULL/);
 
 const ui=fs.readFileSync('public/index.html','utf8');
+const invoiceWorkspaceCss=fs.readFileSync('public/invoice-workspace.css','utf8');
 assert.match(ui,/Send invoice/,'invoice email review dialog missing');
 assert.match(ui,/Attach invoice PDF/,'invoice attachment control missing');
 assert.match(ui,/invEmailSubject/,'editable invoice email subject missing');
 assert.match(ui,/invEmailCc/,'invoice CC recipient control missing');
 assert.match(ui,/crypto\?\.randomUUID/,'client request id missing');
+assert.match(ui,/id="invoiceEmailButton"/,'invoice email launch button needs a stable loading-state target');
+assert.match(ui,/Opening email…/,'invoice email launch must provide immediate feedback');
+assert.match(invoiceWorkspaceCss,/body\.invoiceWorkspaceMode #invoiceEmailModal\{z-index:1400!important\}/,'invoice email dialog must render above the full-screen invoice workspace');
 
 console.log('Invoice email audit: review UI, branded payment email, PDF attachment, delivery audit, and idempotency passed');
