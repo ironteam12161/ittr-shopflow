@@ -44,25 +44,29 @@ function inspectionEnglish(raw){
 }
 
 const PHRASES=[
-  [/\bзаміна\s+масла\b/giu,'oil change'],
-  [/\bзаміна\s+оливи\b/giu,'oil change'],
-  [/\bзаміна\s+фільтр(?:а|ів)?\b/giu,'filter replacement'],
-  [/\bдіагностика\b/giu,'diagnostic'],
-  [/\bремонт\b/giu,'repair'],
-  [/\bперевірка\b/giu,'inspection'],
-  [/\bшини\b/giu,'tires'],
-  [/\bпротектор\b/giu,'tread'],
-  [/\bпошкодження\b/giu,'damage'],
-  [/\bтиск\b/giu,'pressure'],
-  [/\bколодки\b/giu,'brake linings'],
-  [/\bбарабани\b/giu,'drums'],
-  [/\bбарабан\b/giu,'drum'],
-  [/\bротори\b/giu,'rotors'],
-  [/\bротор\b/giu,'rotor'],
-  [/\bліва\b/giu,'left'],
-  [/\bліва сторона\b/giu,'left side'],
-  [/\bправа\b/giu,'right'],
-  [/\bправа сторона\b/giu,'right side']
+  [/заміна\s+масла/giu,'oil change'],
+  [/заміна\s+оливи/giu,'oil change'],
+  [/заміна\s+фільтр(?:а|ів)?/giu,'filter replacement'],
+  [/діагностика/giu,'diagnostic'],
+  [/перевірка/giu,'inspection'],
+  [/ліва\s+сторона/giu,'left side'],
+  [/права\s+сторона/giu,'right side'],
+  [/передні\s+шини/giu,'steer tires'],
+  [/ведуча\s+вісь\s+1/giu,'drive axle 1'],
+  [/ведуча\s+вісь\s+2/giu,'drive axle 2'],
+  [/передня\s+вісь/giu,'steer axle'],
+  [/шини/giu,'tires'],
+  [/протектор/giu,'tread'],
+  [/пошкодження/giu,'damage'],
+  [/тиск/giu,'pressure'],
+  [/колодки/giu,'brake linings'],
+  [/барабани/giu,'drums'],
+  [/барабан/giu,'drum'],
+  [/ротори/giu,'rotors'],
+  [/ротор/giu,'rotor'],
+  [/ремонт/giu,'repair'],
+  [/ліва/giu,'left'],
+  [/права/giu,'right']
 ];
 
 export function invoiceEnglishText(value,fallback='Repair / service'){
