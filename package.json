@@ -1,13 +1,13 @@
 {
   "name": "ittr-shopflow-online",
-  "version": "24.30.0",
+  "version": "24.31.0",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "node prepare_invoice_pdf_fix.mjs && node server.js",
     "audit": "node production_audit.mjs",
     "smoke": "node smoke_test.mjs",
-    "check": "node prepare_invoice_pdf_fix.mjs && node --check server.js && node --check prepare_invoice_pdf_fix.mjs && node --check .github/scripts/apply-invoice-pdf-fix.mjs && node --check invoice_customer_text.mjs && node --check invoice_pdf_audit.mjs && node --check smoke_test.mjs && node --check language_switch_audit.mjs && node --check language_db_integration_test.mjs && node --check inventory_invoice_integration_test.mjs && node --check inspection_workflow_audit.mjs && node --check public/inspection-workflow.js && node --check frontend_check.js && node --check modules/invoices.js && node --check modules/trucksearch.js && node --check modules/parts.js && node --check modules/customers.js && node --check modules/procenter.js && node production_audit.mjs && node inspection_workflow_audit.mjs && node invoice_pdf_audit.mjs && node language_switch_audit.mjs && node language_db_integration_test.mjs && node inventory_invoice_integration_test.mjs && node smoke_test.mjs"
+    "check": "node prepare_invoice_pdf_fix.mjs && node --check server.js && node --check prepare_invoice_pdf_fix.mjs && node --check .github/scripts/apply-invoice-pdf-fix.mjs && node --check invoice_customer_text.mjs && node --check invoice_pdf_audit.mjs && node --check smoke_test.mjs && node --check language_switch_audit.mjs && node --check language_db_integration_test.mjs && node --check inventory_invoice_integration_test.mjs && node --check operations_lifecycle_integration_test.mjs && node --check inspection_workflow_audit.mjs && node --check public/inspection-workflow.js && node --check frontend_check.js && node --check modules/invoices.js && node --check modules/trucksearch.js && node --check modules/parts.js && node --check modules/customers.js && node --check modules/procenter.js && node production_audit.mjs && node inspection_workflow_audit.mjs && node invoice_pdf_audit.mjs && node language_switch_audit.mjs && node language_db_integration_test.mjs && node inventory_invoice_integration_test.mjs && node operations_lifecycle_integration_test.mjs && node smoke_test.mjs"
   },
   "dependencies": {
     "express": "5.1.0",
