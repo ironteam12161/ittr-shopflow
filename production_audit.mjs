@@ -100,6 +100,13 @@ check('all PDFs use Unicode fonts',server.includes('class PDFDocument extends PD
 check('PDF footers never create blank pages',!/switchToPage\(i\);(?!doc\.page\.margins\.bottom=0)/.test(server));
 check('labor-time adjustment needs no reason',!server.includes("Reason for labor-time adjustment is required.")&&!root.includes("Reason for changing completed mechanic time (required)"));
 check('inventory reset is owner-only and confirmed',server.includes('/api/parts/inventory/reset-to-zero')&&server.includes('Type RESET to confirm.')&&server.includes("transaction_type,quantity_delta,quantity_before,quantity_after,reference,reason,username,metadata) VALUES($1,'inventory_reset'"));
+check('shop state loader reads query rows (truck/customer history sync)',server.includes(`const rows=(await requireDb().query("SELECT state_key,payload FROM app_state WHERE state_key IN ('shopflow','pro')")).rows;`));
+check('service order to invoice keeps the inventory link',/INSERT INTO customer_invoice_lines\(invoice_id,sort_order,job_uid,job_name,line_type,description,part_number,quantity,unit_price,unit_cost,taxable,line_total,parent_line_id,inventory_part_id,metadata\)/.test(server));
+check('deleting an invoice returns posted stock',server.includes("Invoice ${inv.invoice_number} deleted")&&server.includes('serviceOrderReopened'));
+check('partial core returns stay owed',server.includes('to=left>0?"outstanding":"returned"')&&server.includes("x.owed_quantity=openQ"));
+check('core returns support date and attachments',server.includes('/api/inventory/cores/:id/attachments')&&server.includes('CORE_ATTACHMENT_TYPES')&&root.includes('function openCoreReturn('));
+check('truck profile has an Inspections tab',root.includes('vehicleTab_inspections')&&root.includes('function vehicleInspectionsMarkup('));
+check('work order PDF page breaks continue from the current line',!server.includes('ensure(135);y=doc.y=Math.max(doc.y,y)'));
 check('start reaches server.js',String(pkg.scripts?.start||'').trim().endsWith('node server.js'),pkg.scripts?.start||'');
 check('startup smoke test exists',exists('smoke_test.mjs'));
 check('release check executes startup smoke test',String(pkg.scripts?.check||'').includes('node smoke_test.mjs'));
