@@ -1076,6 +1076,41 @@ app.post("/api/parts/:id/barcodes",auth,managerPermission("inventory"),async(req
 app.get("/api/parts/inventory-count/current",auth,managerPermission("inventory"),async(req,res,next)=>{try{const db=requireDb();const r=await db.query(`SELECT s.*,count(l.id)::int scanned_parts,count(l.id) FILTER (WHERE l.counted_qty<>l.system_qty)::int variances FROM inventory_count_sessions s LEFT JOIN inventory_count_lines l ON l.session_id=s.id WHERE s.status='open' GROUP BY s.id ORDER BY s.started_at DESC LIMIT 1`);res.json({session:r.rows[0]||null})}catch(e){next(e)}});
 // ITTR v24.30.0 — start a physical inventory from zero. Owner/admin only, typed confirmation,
 // blocked while a count is open. Every change is written to part history, nothing is deleted.
+// v24.33.0 one-time inventory repair (owner only, preview first).
+// A) parts sold on invoices that were deleted before v24.32 and never returned to stock.
+// B) reservations still held by work orders that are already on an invoice.
+async function inventoryRepairPlan(db){
+ const sales=(await db.query(`SELECT t.part_id,t.reference,p.part_number,p.description,
+   sum(CASE WHEN t.transaction_type='invoice_sale' THEN -t.quantity_delta ELSE 0 END) sold,
+   sum(CASE WHEN t.transaction_type='invoice_return' THEN t.quantity_delta ELSE 0 END) returned
+  FROM part_inventory_transactions t JOIN fullbay_import_parts p ON p.id=t.part_id
+  WHERE t.transaction_type IN ('invoice_sale','invoice_return') AND coalesce(t.reference,'')<>''
+    AND NOT EXISTS (SELECT 1 FROM customer_invoices i WHERE i.invoice_number=t.reference AND i.status<>'void')
+  GROUP BY t.part_id,t.reference,p.part_number,p.description`)).rows
+  .map(r=>({partId:Number(r.part_id),invoice:r.reference,partNumber:r.part_number,description:r.description,qty:Math.round((stockNum(r.sold)-stockNum(r.returned))*1000)/1000})).filter(r=>r.qty>0);
+ const sq=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");const sf=sq.rows[0]?.payload||{};
+ const invoicedWo=new Set((await db.query("SELECT DISTINCT work_order_id FROM customer_invoices WHERE status<>'void' AND work_order_id IS NOT NULL")).rows.map(r=>String(r.work_order_id)));
+ const stuck=[];
+ for(const w of (Array.isArray(sf.workorders)?sf.workorders:[])){if(!invoicedWo.has(String(w?.id)))continue;
+  for(const t of (Array.isArray(w?.tasks)?w.tasks:[]))for(const p of (Array.isArray(t?.parts)?t.parts:[]))if(p?.stockMode==='reserve'&&stockNum(p.reservedQty)>0)stuck.push({workOrderId:String(w.id),unit:w.unit||'',taskUid:t.uid,partId:Number(p.inventoryPartId),partNumber:p.partNumber||'',qty:stockNum(p.reservedQty)})}
+ return {deletedInvoiceSales:sales,stuckReservations:stuck,sf};
+}
+app.get("/api/inventory/repair/preview",auth,ownerOnly,async(req,res,next)=>{try{const {deletedInvoiceSales,stuckReservations}=await inventoryRepairPlan(requireDb());res.json({deletedInvoiceSales,stuckReservations})}catch(e){next(e)}});
+app.post("/api/inventory/repair/apply",auth,ownerOnly,async(req,res,next)=>{const db=await requireDb().connect();try{
+ await db.query("BEGIN");await db.query("SELECT pg_advisory_xact_lock($1::bigint)",[24330]);
+ const plan=await inventoryRepairPlan(db);let returned=0,released=0;
+ for(const r of plan.deletedInvoiceSales){const pr=await db.query("SELECT quantity,cost FROM fullbay_import_parts WHERE id=$1 FOR UPDATE",[r.partId]);if(!pr.rowCount)continue;const before=stockNum(pr.rows[0].quantity),after=before+r.qty;
+  await db.query("UPDATE fullbay_import_parts SET quantity=$2::numeric,inventory_value=($2::numeric*coalesce(cost,0::numeric)),updated_at=now() WHERE id=$1",[r.partId,after]);
+  await db.query(`INSERT INTO part_inventory_transactions(part_id,transaction_type,quantity_delta,quantity_before,quantity_after,reference,reason,username,metadata) VALUES($1,'invoice_return',$2::numeric,$3::numeric,$4::numeric,$5,$6,$7,$8::jsonb)`,[r.partId,r.qty,before,after,r.invoice,`Repair: invoice ${r.invoice} was deleted but stock was not returned`,req.user.username,JSON.stringify({inventoryRepair:"v24.33"})]);returned++}
+ if(plan.stuckReservations.length){const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");const sf=q.rows[0]?.payload||{};const keys=new Set(plan.stuckReservations.map(x=>`${x.workOrderId}|${x.taskUid}|${x.partId}`));
+  for(const w of (Array.isArray(sf.workorders)?sf.workorders:[]))for(const t of (Array.isArray(w?.tasks)?w.tasks:[]))for(const p of (Array.isArray(t?.parts)?t.parts:[]))if(keys.has(`${String(w.id)}|${t.uid}|${Number(p.inventoryPartId)}`)&&p.stockMode==='reserve'&&stockNum(p.reservedQty)>0){p.reservedQty=0;p.stockMode='invoiced';p.releasedAt=new Date().toISOString();p.releasedBy=`${req.user.username} (inventory repair)`;released++}
+  await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow'",[JSON.stringify(sf),req.user.username])}
+ await db.query("COMMIT");
+ await reconcileReservedInventoryAllocations();
+ await audit(req.user.username,"inventory_repair_applied",{returned,released,sales:plan.deletedInvoiceSales,reservations:plan.stuckReservations});
+ try{broadcastShopStatus("shopflow_changed",{by:req.user.username})}catch(_){}
+ res.json({ok:true,returned,released});
+}catch(e){try{await db.query("ROLLBACK")}catch(_){};next(e)}finally{db.release()}});
 app.post("/api/parts/inventory/reset-to-zero",auth,async(req,res,next)=>{
  if(req.user?.role!=="admin")return res.status(403).json({error:"Only the owner/admin can reset inventory."});
  if(String(req.body?.confirm||"").trim().toUpperCase()!=="RESET")return res.status(400).json({error:'Type RESET to confirm.'});
@@ -1648,7 +1683,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.32.0");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.33.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-OPERATIONS-LIFECYCLE-20260929`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 

@@ -100,6 +100,8 @@ check('all PDFs use Unicode fonts',server.includes('class PDFDocument extends PD
 check('PDF footers never create blank pages',!/switchToPage\(i\);(?!doc\.page\.margins\.bottom=0)/.test(server));
 check('labor-time adjustment needs no reason',!server.includes("Reason for labor-time adjustment is required.")&&!root.includes("Reason for changing completed mechanic time (required)"));
 check('inventory reset is owner-only and confirmed',server.includes('/api/parts/inventory/reset-to-zero')&&server.includes('Type RESET to confirm.')&&server.includes("transaction_type,quantity_delta,quantity_before,quantity_after,reference,reason,username,metadata) VALUES($1,'inventory_reset'"));
+check('cores screen has a button on the Parts page',read('public/modules/parts.html').includes('onclick="openCoreReport()"'));
+check('owner-only inventory repair with preview',server.includes('/api/inventory/repair/preview')&&server.includes('app.post("/api/inventory/repair/apply",auth,ownerOnly'));
 check('shop state loader reads query rows (truck/customer history sync)',server.includes(`const rows=(await requireDb().query("SELECT state_key,payload FROM app_state WHERE state_key IN ('shopflow','pro')")).rows;`));
 check('service order to invoice keeps the inventory link',/INSERT INTO customer_invoice_lines\(invoice_id,sort_order,job_uid,job_name,line_type,description,part_number,quantity,unit_price,unit_cost,taxable,line_total,parent_line_id,inventory_part_id,metadata\)/.test(server));
 check('deleting an invoice returns posted stock',server.includes("Invoice ${inv.invoice_number} deleted")&&server.includes('serviceOrderReopened'));
