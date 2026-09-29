@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 
-const read=p=>fs.readFileSync(p,'utf8');
+const read=p=>fs.readFileSync(p,'utf8').replace(/\r\n/g,'\n');
 const exists=p=>fs.existsSync(p);
 const results=[];
 const check=(name,ok,detail='')=>results.push({name,ok:!!ok,detail:String(detail||'')});

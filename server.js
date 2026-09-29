@@ -355,6 +355,24 @@ async function initDb(){
    amount NUMERIC NOT NULL CHECK(amount>0), method TEXT, reference TEXT, note TEXT, paid_at TIMESTAMPTZ DEFAULT now(), received_by TEXT NOT NULL
  );
  CREATE INDEX IF NOT EXISTS idx_customer_invoice_payments_invoice ON customer_invoice_payments(invoice_id,paid_at DESC);
+ CREATE TABLE IF NOT EXISTS invoice_email_deliveries(
+   id BIGSERIAL PRIMARY KEY,
+   invoice_id BIGINT,
+   invoice_number TEXT NOT NULL,
+   to_addresses JSONB NOT NULL DEFAULT '[]'::jsonb,
+   cc_addresses JSONB NOT NULL DEFAULT '[]'::jsonb,
+   subject TEXT NOT NULL,
+   attach_pdf BOOLEAN NOT NULL DEFAULT TRUE,
+   provider TEXT NOT NULL DEFAULT 'resend',
+   provider_message_id TEXT,
+   status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','sent','failed')),
+   idempotency_key TEXT UNIQUE NOT NULL,
+   error_message TEXT,
+   created_by TEXT NOT NULL,
+   created_at TIMESTAMPTZ DEFAULT now(),
+   sent_at TIMESTAMPTZ
+ );
+ CREATE INDEX IF NOT EXISTS idx_invoice_email_deliveries_invoice ON invoice_email_deliveries(invoice_id,created_at DESC);
 
  ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS mileage NUMERIC;
  ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS unit_id BIGINT;
@@ -3901,21 +3919,31 @@ ${pay}
 <tr><td style="padding:16px 28px 22px;font-size:12px;color:#64748b;border-top:1px solid #e2e8f0">${escHtml(shop.name)} · ${escHtml(shop.address1)}, ${escHtml(shop.address2)}${shop.phone?` · ${escHtml(shop.phone)}`:''}<br>After tire or wheel service, wheel nuts must be re-torqued after 50 miles of driving.</td></tr>
 </table></td></tr></table></body></html>`}
 app.get('/api/invoices/:id/email-draft',auth,managerPermission("invoices"),async(req,res,next)=>{try{const x=await getInvoiceBundle(requireDb(),req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const d=invoiceEmailDefaults(x.invoice);res.json({...d,to:d.to||x.invoice.profile_customer_email||'',configured:Boolean(resendKey&&invoiceFromEmail),from:invoiceFromEmail,hasPaymentLink:Boolean(x.invoice.payment_url),lastSentAt:x.invoice.email_sent_at||null})}catch(e){next(e)}});
-app.post('/api/invoices/:id/email',auth,managerPermission("invoices"),async(req,res,next)=>{try{
+app.post('/api/invoices/:id/email',auth,managerPermission("invoices"),async(req,res,next)=>{let deliveryId=null;try{
  if(!resendKey||!invoiceFromEmail)return res.status(503).json({error:'Email is not configured. Add RESEND_API_KEY and INVOICE_FROM_EMAIL in Railway.'});
- const x=await getInvoiceBundle(requireDb(),req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const i=x.invoice,def=invoiceEmailDefaults(i);
- const list=v=>String(v||'').split(/[,;\s]+/).map(e=>e.trim()).filter(Boolean);const emailOk=e=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
+ const db=requireDb(),x=await getInvoiceBundle(db,req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const i=x.invoice,def=invoiceEmailDefaults(i);
+ const list=v=>String(v||'').split(/[,;\s]+/).map(e=>e.trim().toLowerCase()).filter(Boolean);const emailOk=e=>e.length<=254&&/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
  const to=list(req.body?.to||req.body?.email||def.to||i.profile_customer_email),cc=list(req.body?.cc);
  if(!to.length)return res.status(400).json({error:'Customer email is required.'});const bad=[...to,...cc].find(e=>!emailOk(e));if(bad)return res.status(400).json({error:`"${bad}" is not a valid email address.`});
  if(to.length+cc.length>10)return res.status(400).json({error:'Too many recipients.'});
- const subject=String(req.body?.subject||def.subject).slice(0,200),message=String(req.body?.message||def.message).slice(0,5000);
- const attachments=req.body?.attachPdf===false?[]:[{filename:`${String(i.invoice_number).replace(/[^A-Za-z0-9_-]/g,'_')}.pdf`,content:(await invoicePdfBuffer(x)).toString('base64')}];
+ const subject=String(req.body?.subject||def.subject).replace(/[\r\n]+/g,' ').trim().slice(0,200),message=String(req.body?.message||def.message).slice(0,5000),attachPdf=req.body?.attachPdf!==false;
+ if(!subject)return res.status(400).json({error:'Email subject is required.'});
+ const requestId=String(req.body?.requestId||crypto.randomUUID()).replace(/[^A-Za-z0-9_-]/g,'').slice(0,80)||crypto.randomUUID(),idempotencyKey=`invoice-${i.id}-${requestId}`;
+ const prior=(await db.query('SELECT id,status,provider_message_id,to_addresses,cc_addresses FROM invoice_email_deliveries WHERE idempotency_key=$1',[idempotencyKey])).rows[0];
+ if(prior?.status==='sent')return res.json({ok:true,id:prior.provider_message_id,to:prior.to_addresses||to,cc:prior.cc_addresses||cc,duplicate:true});
+ const delivery=(await db.query(`INSERT INTO invoice_email_deliveries(invoice_id,invoice_number,to_addresses,cc_addresses,subject,attach_pdf,idempotency_key,status,created_by)
+  VALUES($1::bigint,$2,$3::jsonb,$4::jsonb,$5,$6::boolean,$7,'pending',$8)
+  ON CONFLICT(idempotency_key) DO UPDATE SET to_addresses=excluded.to_addresses,cc_addresses=excluded.cc_addresses,subject=excluded.subject,attach_pdf=excluded.attach_pdf,status='pending',error_message=NULL
+  RETURNING id`,[i.id,i.invoice_number,JSON.stringify(to),JSON.stringify(cc),subject,attachPdf,idempotencyKey,req.user.username])).rows[0];
+ deliveryId=delivery.id;
+ const attachments=attachPdf?[{filename:`${String(i.invoice_number).replace(/[^A-Za-z0-9_-]/g,'_')}.pdf`,content:(await invoicePdfBuffer(x)).toString('base64')}]:[];
  const shop=shopProfile(),replyTo=String(process.env.INVOICE_REPLY_TO||shop.email||'').trim();
- const rr=await fetch(String(process.env.RESEND_API_URL||'https://api.resend.com/emails'),{method:'POST',headers:{Authorization:`Bearer ${resendKey}`,'Content-Type':'application/json'},body:JSON.stringify({from:invoiceFromEmail,to,cc:cc.length?cc:undefined,reply_to:replyTo||undefined,subject,html:invoiceEmailHtml(i,message),text:message,attachments})});
- const d=await rr.json().catch(()=>({}));if(!rr.ok)throw Object.assign(new Error(d?.message||'Email could not be sent.'),{status:502});
- await requireDb().query("UPDATE customer_invoices SET customer_email=$2,email_sent_at=now(),updated_at=now() WHERE id=$1::bigint",[i.id,to[0]]);
- await audit(req.user.username,'invoice_emailed',{invoiceId:i.id,invoiceNumber:i.invoice_number,to,cc,subject,attachedPdf:attachments.length>0,resendId:d.id});res.json({ok:true,id:d.id,to,cc});
-}catch(e){if(e?.status)return res.status(e.status).json({error:e.message});next(e)}});
+ const rr=await fetch(String(process.env.RESEND_API_URL||'https://api.resend.com/emails'),{method:'POST',headers:{Authorization:`Bearer ${resendKey}`,'Content-Type':'application/json','Idempotency-Key':idempotencyKey},body:JSON.stringify({from:invoiceFromEmail,to,cc:cc.length?cc:undefined,reply_to:replyTo||undefined,subject,html:invoiceEmailHtml(i,message),text:message,attachments,tags:[{name:'document',value:'invoice'},{name:'invoice_id',value:String(i.id)}]})});
+ const d=await rr.json().catch(()=>({}));if(!rr.ok){const reason=String(d?.message||'Email could not be sent.').slice(0,500);await db.query("UPDATE invoice_email_deliveries SET status='failed',error_message=$2 WHERE id=$1::bigint",[deliveryId,reason]);await audit(req.user.username,'invoice_email_failed',{invoiceId:i.id,invoiceNumber:i.invoice_number,to,cc,deliveryId,error:reason});return res.status(502).json({error:reason})}
+ await db.query("UPDATE invoice_email_deliveries SET status='sent',provider_message_id=$2,sent_at=now(),error_message=NULL WHERE id=$1::bigint",[deliveryId,d.id||null]);
+ await db.query("UPDATE customer_invoices SET customer_email=$2,email_sent_at=now(),updated_at=now() WHERE id=$1::bigint",[i.id,to[0]]);
+ await audit(req.user.username,'invoice_emailed',{invoiceId:i.id,invoiceNumber:i.invoice_number,to,cc,subject,attachedPdf:attachments.length>0,resendId:d.id,deliveryId});res.json({ok:true,id:d.id,to,cc});
+}catch(e){if(deliveryId){try{await requireDb().query("UPDATE invoice_email_deliveries SET status='failed',error_message=$2 WHERE id=$1::bigint",[deliveryId,String(e?.message||'Email failed').slice(0,500)])}catch{}}if(e?.status)return res.status(e.status).json({error:e.message});next(e)}});
 const memoryCache=new Map();
 function aiErrorResponse(res,err,fallback){
  console.error("AI ERROR:",err?.status,err?.code,err?.message);

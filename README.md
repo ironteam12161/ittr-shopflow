@@ -71,3 +71,14 @@ npm start
 ```
 
 `npm start` runs the required runtime preparation and then launches `server.js`. Railway checks `/api/health` during deployment.
+
+### Resend invoice email
+
+1. Add the shop's sending domain in Resend and publish the exact SPF and DKIM records shown there. Add DMARC as recommended, then wait for **Verified**.
+2. Create a sending-only Resend API key and store it in Railway as `RESEND_API_KEY`.
+3. Set `INVOICE_FROM_EMAIL` to a friendly sender on that verified domain, for example `Iron Team Truck & Trailer Repair <invoices@your-domain.com>`.
+4. Set `INVOICE_REPLY_TO` to the monitored shop inbox. The `SHOP_*` variables in `.env.example` control the PDF and email branding.
+5. Deploy normally without resetting PostgreSQL. Startup creates the additive `invoice_email_deliveries` audit table if needed.
+6. Send one invoice to a shop-controlled mailbox and confirm the branded message, payment button, and PDF attachment before sending to customers.
+
+Never commit the Resend API key or a production `.env` file.
