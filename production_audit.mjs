@@ -100,6 +100,9 @@ check('all PDFs use Unicode fonts',server.includes('class PDFDocument extends PD
 check('PDF footers never create blank pages',!/switchToPage\(i\);(?!doc\.page\.margins\.bottom=0)/.test(server));
 check('labor-time adjustment needs no reason',!server.includes("Reason for labor-time adjustment is required.")&&!root.includes("Reason for changing completed mechanic time (required)"));
 check('inventory reset is owner-only and confirmed',server.includes('/api/parts/inventory/reset-to-zero')&&server.includes('Type RESET to confirm.')&&server.includes("transaction_type,quantity_delta,quantity_before,quantity_after,reference,reason,username,metadata) VALUES($1,'inventory_reset'"));
+check('Workshop AI v2 uses role-safe lookups with conversation memory',fs.existsSync('shop_assistant.mjs')&&server.includes('runShopAssistant(')&&root.includes('history:shopAiHistory.slice(-8)')&&fs.readFileSync('shop_assistant.mjs','utf8').includes("!/^MANAGERS ONLY/.test(t.description)"));
+check('keyword shortcuts no longer hijack real questions',server.includes("const shortCmd=m.length<=40")&&!server.includes("/\\b(check|audit|diagnos|bug|lag|slow|error)/.test(m)"));
+check('main search finds parts and invoices',server.includes('Smart search parts warning')&&root.includes('<div class="smartResultType">Part</div>'));
 check('cores screen has a button on the Parts page',read('public/modules/parts.html').includes('onclick="openCoreReport()"'));
 check('owner-only inventory repair with preview',server.includes('/api/inventory/repair/preview')&&server.includes('app.post("/api/inventory/repair/apply",auth,ownerOnly'));
 check('shop state loader reads query rows (truck/customer history sync)',server.includes(`const rows=(await requireDb().query("SELECT state_key,payload FROM app_state WHERE state_key IN ('shopflow','pro')")).rows;`));
