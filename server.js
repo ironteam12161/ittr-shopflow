@@ -1516,7 +1516,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.28.4");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.29.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-FINAL-HARDENING-20260928`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
@@ -2728,6 +2728,156 @@ app.post("/api/findings/:id/decision",auth,adminOnly,async(req,res,next)=>{
    next(e);
  }finally{db.release();}
 });
+
+
+// ITTR v24.29.0 inspection report PDF + add inspection repairs to the work order
+import("./public/inspection-checklist.js").catch(e=>console.error("[inspection checklist]",e.message));
+const INSPECTION_FONT_DIR=path.join(__dirname,"assets","fonts");
+const INSPECTION_FLAG_STATUSES=new Set(["repair","attention"]);
+function inspectionChecklist(){return globalThis.ITTRInspectionChecklist||null}
+function inspectionItemsFor(w){const c=inspectionChecklist();return c?c.itemsFor(w?.inspection||{}):[]}
+function inspectionItemLabel(w,itemId){
+ const item=inspectionItemsFor(w).find(x=>x.id===itemId);if(item)return item.label;
+ const f=(Array.isArray(w?.inspection?.findings)?w.inspection.findings:[]).find(x=>String(x?.id)===itemId);
+ return f?String(f.label||itemId):"";
+}
+function inspectionTaskText(label,note){const n=String(note||"").trim();return `Inspection: ${String(label||"").trim()}${n?` — ${n}`:""}`.slice(0,1000)}
+function canManageInspectionRepairs(user,w){return ["admin","manager"].includes(user?.role)||mechanicOwnsWorkOrder(user,w)}
+function shopflowForUser(user,sf){
+ if(user?.role!=="mechanic")return sf;
+ const workorders=(Array.isArray(sf.workorders)?sf.workorders:[]).filter(w=>mechanicOwnsWorkOrder(user,w));
+ const ids=new Set(workorders.map(w=>String(w?.id||"")));
+ return {...sf,workorders,issues:(Array.isArray(sf.issues)?sf.issues:[]).filter(i=>ids.has(String(i?.wo||"")))};
+}
+
+app.post("/api/work-orders/:id/inspection/items/:itemId/add-to-work-order",auth,async(req,res,next)=>{
+ const db=await requireDb().connect();
+ try{
+  const workOrderId=String(req.params.id),itemId=String(req.params.itemId||"").slice(0,120);
+  await db.query("BEGIN");
+  const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
+  if(!q.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Shop state not found."})}
+  const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};
+  sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
+  const w=sf.workorders.find(x=>String(x?.id)===workOrderId);
+  if(!w){await db.query("ROLLBACK");return res.status(404).json({error:"Work order not found."})}
+  if(!canManageInspectionRepairs(req.user,w)){await db.query("ROLLBACK");return res.status(403).json({error:"You do not have access to this work order."})}
+  if(["Completed","Invoiced","Closed"].includes(String(w.status||""))){await db.query("ROLLBACK");return res.status(409).json({error:"This work order is already completed. Reopen it before adding repairs."})}
+  const result=w.inspection?.results?.[itemId];
+  if(!result||!INSPECTION_FLAG_STATUSES.has(String(result.status||""))){await db.query("ROLLBACK");return res.status(409).json({error:"Only inspection items marked Repair or Attention can be added. If you just marked it, wait for the inspection to save and try again."})}
+  const label=inspectionItemLabel(w,itemId);
+  if(!label){await db.query("ROLLBACK");return res.status(404).json({error:"Inspection item not found."})}
+  w.tasks=Array.isArray(w.tasks)?w.tasks:[];
+  let task=w.tasks.find(t=>String(t?.inspectionItemId||"")===itemId&&!t?.cancelled);
+  const already=Boolean(task);
+  const now=new Date().toISOString(),by=req.user.username,role=req.user.role;
+  if(!task){
+   task={uid:`wo-${workOrderId}-insp-${itemId}-${crypto.randomBytes(4).toString("hex")}`,
+    t:inspectionTaskText(label,result.note),done:false,startedAt:"",stoppedAt:"",elapsedMs:0,completedAt:"",
+    source:"inspection",inspectionItemId:itemId,inspectionStatus:String(result.status),
+    addedBy:by,addedByRole:role,addedAt:now,taskOutcome:"",outcomeNote:"",outcomeAt:"",outcomeBy:"",
+    paused:false,pausedAt:"",pauseReason:"",pauseNote:"",cancelled:false};
+   w.tasks.push(task);
+   result.addedToWorkOrder={taskUid:task.uid,by,role,at:now};
+   w.history=Array.isArray(w.history)?w.history:[];
+   w.history.push({at:now,by,type:"inspection_repair_added",text:`Added from inspection by ${by}${role==="mechanic"?" (mechanic)":""}: ${label}`,itemId});
+  }
+  const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version",[JSON.stringify(sf),by]);
+  await db.query("COMMIT");
+  const version=Number(u.rows[0].version);
+  await audit(by,"inspection_repair_added",{workOrderId,itemId,taskUid:task.uid,already,role});
+  broadcastShopStatus("shopflow_changed",{by,version});
+  res.json({ok:true,already,taskUid:task.uid,version,shopflow:shopflowForUser(req.user,sf)});
+ }catch(e){try{await db.query("ROLLBACK")}catch(_){};next(e)}finally{db.release()}
+});
+
+app.get("/api/work-orders/:id/inspection/pdf",auth,async(req,res,next)=>{try{
+ const workOrderId=String(req.params.id),db=requireDb();
+ const q=await db.query("SELECT state_key,payload FROM app_state WHERE state_key IN ('shopflow','pro')");
+ const states=Object.fromEntries(q.rows.map(r=>[r.state_key,r.payload]));
+ const sf=states.shopflow&&typeof states.shopflow==="object"?states.shopflow:{workorders:[]};
+ const pro=states.pro&&typeof states.pro==="object"?states.pro:{vehicles:[]};
+ const w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===workOrderId);
+ if(!w)return res.status(404).json({error:"Work order not found."});
+ if(!canManageInspectionRepairs(req.user,w))return res.status(403).json({error:"You do not have access to this work order."});
+ const insp=w.inspection||{};
+ if(!insp.required||!insp.type)return res.status(409).json({error:"This work order has no inspection."});
+ if(!inspectionChecklist())return res.status(503).json({error:"Inspection checklist is still loading. Try again in a moment."});
+ const pv=(Array.isArray(pro.vehicles)?pro.vehicles:[]).find(v=>String(v?.unit||"").toLowerCase()===String(w.unit||"").toLowerCase())||{};
+ const veh={unit:w.unitGenerated?"":(w.unit||""),vin:w.vin||pv.vin||"",ymm:[w.year||pv.year,w.make||pv.make,w.model||pv.model].filter(Boolean).join(" "),plate:w.plate||pv.plate||"",mileage:w.mileage||pv.mileage||"",customer:w.customer||pv.customer||""};
+ const results=insp.results&&typeof insp.results==="object"?insp.results:{};
+ const sections=inspectionChecklist().sectionsFor(insp);
+ const all=sections.flatMap(s=>s.items.map(it=>({...it,section:s.title,r:results[it.id]||{}})));
+ const count=k=>all.filter(x=>x.r.status===k).length;
+ const repairs=all.filter(x=>x.r.status==="repair"),attention=all.filter(x=>x.r.status==="attention");
+ const typeText=insp.type==="truck"?"Truck":`Trailer${insp.subtype?` · ${({dry_van:"Dry Van",reefer:"Reefer",conestoga:"Conestoga"})[insp.subtype]||insp.subtype}`:""}`;
+ const fmtDate=v=>{const d=new Date(v||"");return isNaN(d)?"":d.toLocaleString("en-US",{timeZone:process.env.SHOP_TIMEZONE||"America/Chicago",year:"numeric",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})};
+
+ const doc=new PDFDocument({size:"LETTER",margin:36,bufferPages:true,info:{Title:`ITTR Inspection WO ${workOrderId}`}});
+ doc.registerFont("R",path.join(INSPECTION_FONT_DIR,"DejaVuSans.ttf"));
+ doc.registerFont("B",path.join(INSPECTION_FONT_DIR,"DejaVuSans-Bold.ttf"));
+ const L=36,W=doc.page.width-72,BOTTOM=doc.page.height-50;
+ const COLORS={repair:"#b42318",attention:"#b54708",ok:"#067647",na:"#667085"};
+ const LABEL={repair:"REPAIR",attention:"ATTENTION",ok:"OK",na:"N/A"};
+ let y=36;
+ const ensure=h=>{if(y+h>BOTTOM){doc.addPage();y=36}};
+ const band=(title,color="#202833")=>{ensure(26);doc.rect(L,y,W,20).fill(color);doc.fillColor("#fff").font("B").fontSize(9.5).text(title,L+7,y+5,{width:W-14});y+=26};
+
+ const logo=path.join(__dirname,"public","assets","iron-team-logo.png");
+ try{doc.image(logo,L,y,{fit:[70,50]})}catch(_){}
+ doc.fillColor("#111").font("B").fontSize(15).text("IRON TEAM TRUCK & TRAILER REPAIR",L+80,y+4,{width:W-80});
+ doc.font("B").fontSize(12).fillColor("#344054").text(`Vehicle Inspection Report — ${typeText}`,L+80,y+24,{width:W-80});
+ y+=62;
+ const infoRows=[["Work order",`#${workOrderId}`],["Customer",veh.customer],["Unit",veh.unit],["VIN",veh.vin],["Vehicle",veh.ymm],["Plate",veh.plate],["Mileage",veh.mileage?String(veh.mileage):""],["Inspected by",insp.completedBy||w.mechanic||""],["Completed",insp.status==="Completed"?fmtDate(insp.completedAt):`Not completed (${insp.status||"Not Started"})`]].filter(r=>r[1]);
+ const colW=W/2;infoRows.forEach((r,i)=>{const x=L+(i%2)*colW,yy=y+Math.floor(i/2)*17;doc.font("B").fontSize(8).fillColor("#667085").text(r[0].toUpperCase(),x,yy,{width:95});doc.font("R").fontSize(9).fillColor("#111").text(String(r[1]),x+98,yy-1,{width:colW-104,height:14,ellipsis:true})});
+ y+=Math.ceil(infoRows.length/2)*17+8;
+ const chips=[["repair",count("repair")],["attention",count("attention")],["ok",count("ok")],["na",count("na")]];
+ const cw=(W-18)/4;chips.forEach(([k,n],i)=>{const x=L+i*(cw+6);doc.roundedRect(x,y,cw,34,4).fill(k==="repair"&&n?"#fef3f2":k==="attention"&&n?"#fffaeb":"#f2f4f7");doc.fillColor(COLORS[k]).font("B").fontSize(16).text(String(n),x,y+3,{width:cw,align:"center"});doc.font("R").fontSize(7.5).text(LABEL[k],x,y+22,{width:cw,align:"center"})});
+ y+=46;
+
+ const flagged=(title,list,color)=>{
+  if(!list.length)return;band(`${title} (${list.length})`,color);
+  for(const x of list){
+   const added=x.r.addedToWorkOrder;const note=String(x.r.note||"").trim();
+   const status=added?`✓ Added to work order by ${added.by}${added.role==="mechanic"?" (mechanic)":""}`:"Not yet added to work order";
+   doc.font("B").fontSize(9.5);const hL=doc.heightOfString(x.label,{width:W-16});doc.font("R").fontSize(8.5);const hN=note?doc.heightOfString(`Mechanic note: ${note}`,{width:W-16}):0;
+   const h=hL+hN+26;ensure(h);
+   doc.rect(L,y,3,h-6).fill(color);
+   doc.fillColor("#111").font("B").fontSize(9.5).text(x.label,L+10,y,{width:W-16});let yy=y+hL+2;
+   if(note){doc.fillColor("#344054").font("R").fontSize(8.5).text(`Mechanic note: ${note}`,L+10,yy,{width:W-16});yy+=hN+2}
+   doc.fillColor(added?"#067647":"#667085").font("R").fontSize(7.5).text(`${x.section}  ·  ${status}`,L+10,yy,{width:W-16});
+   y+=h;
+  }
+  y+=4;
+ };
+ flagged("NEEDS REPAIR",repairs,COLORS.repair);
+ flagged("NEEDS ATTENTION",attention,COLORS.attention);
+ if(!repairs.length&&!attention.length){ensure(24);doc.fillColor("#067647").font("B").fontSize(10).text("No repair or attention items were found.",L,y);y+=24}
+
+ doc.addPage();y=36;
+ doc.fillColor("#111").font("B").fontSize(12).text("Full inspection checklist",L,y);y+=22;
+ for(const s of sections){
+  band(s.title);
+  for(const it of s.items){
+   const r=results[it.id]||{},st=r.status||"",note=String(r.note||"").trim();
+   doc.font("R").fontSize(8.5);const text=note?`${it.label}\n   ${note}`:it.label;const hh=Math.max(14,doc.heightOfString(text,{width:W-90}))+4;
+   ensure(hh);
+   doc.fillColor(st?COLORS[st]:"#98a2b3").font("B").fontSize(8).text(st?LABEL[st]:"—",L,y,{width:78});
+   doc.fillColor("#111").font("R").fontSize(8.5).text(it.label,L+84,y,{width:W-90});
+   if(note)doc.fillColor("#475467").fontSize(8).text(note,L+96,doc.y,{width:W-102});
+   y+=hh;doc.moveTo(L,y-2).lineTo(L+W,y-2).lineWidth(0.4).strokeColor("#eaecf0").stroke();
+  }
+  y+=6;
+ }
+ const pages=doc.bufferedPageRange();
+ for(let i=0;i<pages.count;i++){doc.switchToPage(i);doc.page.margins.bottom=0;doc.font("R").fontSize(7).fillColor("#98a2b3").text(`ITTR ShopFlow · Inspection · WO #${workOrderId} · Page ${i+1} of ${pages.count}`,L,doc.page.height-32,{width:W,align:"center",lineBreak:false})}
+ const safe=String(veh.unit||veh.vin||workOrderId).replace(/[^A-Za-z0-9_-]+/g,"-").slice(0,40);
+ res.setHeader("Content-Type","application/pdf");
+ res.setHeader("Content-Disposition",`attachment; filename="ITTR-Inspection-WO${workOrderId}-${safe}.pdf"`);
+ res.setHeader("Cache-Control","no-store");
+ doc.pipe(res);doc.end();
+ await audit(req.user.username,"inspection_pdf",{workOrderId});
+}catch(e){next(e)}});
 
 app.post("/api/state/import-local",auth,ownerOnly,async(req,res,next)=>{try{
  const users=req.body?.users||{},shopflow=req.body?.shopflow||{workorders:[],issues:[]},pro=req.body?.pro||{};
