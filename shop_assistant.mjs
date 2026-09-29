@@ -42,12 +42,14 @@ export const ASSISTANT_TOOLS = [
   { name: 'work_orders', description: 'List work orders, filtered by status (open, completed, all), mechanic username, unit number or customer name.', parameters: { type: 'object', properties: { status: { type: 'string', enum: ['open', 'completed', 'all'] }, mechanic: { type: 'string' }, unit: { type: 'string' }, customer: { type: 'string' } } } },
   { name: 'work_order_details', description: 'Full details of one work order: jobs, who worked on them, parts, inspection results and notes.', parameters: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
   { name: 'search_repair_history', description: 'Search ALL repair history across every truck (Fullbay history and ITTR invoices) for a repair, part or complaint, e.g. "DPF cleaning", "turbo", "air leak". Use when no single truck is given.', parameters: { type: 'object', properties: { text: { type: 'string' }, since_days: { type: 'integer' } }, required: ['text'] } },
+  { name: 'manual_search', description: 'Search the shop\'s workshop manuals (OEM service manuals, wiring diagrams, torque charts) page by page. Returns matching pages with manual title, page number and a text snippet. Use for torque specs, tightening sequences, clearances, fluid capacities, procedures and wiring/diagram questions. Search with English technical terms.', parameters: { type: 'object', properties: { query: { type: 'string', description: 'English technical terms, e.g. "wheel nut torque", "cylinder head bolt torque sequence", "ABS modulator wiring"' }, unit_id: { type: 'string', description: 'optional unit_id from find_truck to prefer manuals for that make/model' }, manual_id: { type: 'string' } }, required: ['query'] } },
+  { name: 'manual_read', description: 'Read up to 6 specific pages of one manual (text, tables and diagrams) and answer a question from them. Use after manual_search, with the best matching pages (you may add the next page if a table or procedure continues).', parameters: { type: 'object', properties: { manual_id: { type: 'string' }, pages: { type: 'array', items: { type: 'integer' } }, question: { type: 'string' } }, required: ['manual_id', 'pages', 'question'] } },
   { name: 'search_customers', description: 'MANAGERS ONLY. Find a customer by name, phone, email or DOT number; returns contact details and how many trucks they have.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
   { name: 'invoices', description: 'MANAGERS ONLY. Find invoices by customer, unit or invoice number, or list unpaid invoices.', parameters: { type: 'object', properties: { query: { type: 'string' }, unpaid_only: { type: 'boolean' } } } },
   { name: 'cores_owed', description: 'MANAGERS ONLY. Cores still owed back to vendors (quantity and dollar amount), optionally for one vendor or part.', parameters: { type: 'object', properties: { query: { type: 'string' } } } },
 ];
 
-export function createAssistantTools({ db, who, getShopflow, findManuals }) {
+export function createAssistantTools({ db, who, getShopflow, searchManuals, readManual }) {
   let sfCache = null;
   const sf = async () => (sfCache ||= (await getShopflow()) || {});
   const allWo = async () => (Array.isArray((await sf()).workorders) ? (await sf()).workorders : []).filter(w => w && typeof w === 'object');
@@ -171,11 +173,16 @@ export function createAssistantTools({ db, who, getShopflow, findManuals }) {
       return { coresOwed: rows.reduce((a, x) => a + x.owed, 0), value: Math.round(rows.reduce((a, x) => a + x.value, 0) * 100) / 100, items: rows };
     },
 
-    async workshop_manuals({ unit_id, topic }) {
-      if (!findManuals) return { note: 'No workshop manual library is configured.' };
+    async manual_search({ query, unit_id = '', manual_id = '' }) {
+      if (!searchManuals) return { note: 'No workshop manual library is configured.' };
       const u = unit_id ? (await db.query('SELECT * FROM customer_units WHERE id::text=$1', [String(unit_id)])).rows[0] : null;
-      const m = await findManuals(u, String(topic || ''));
-      return { manuals: (m || []).slice(0, 5).map(x => ({ title: x.title, category: x.category, source: x.source_name, vehicle: [x.year_from, x.year_to, x.make, x.model, x.engine].filter(Boolean).join(' ') })) };
+      const hits = await searchManuals({ query, unit: u, manualId: manual_id || null });
+      if (!hits.length) return { found: 0, note: 'No manual page matches. The shop may not have uploaded a manual that covers this — say so and recommend the OEM source.' };
+      return { found: hits.length, pages: hits };
+    },
+    async manual_read({ manual_id, pages = [], question = '' }) {
+      if (!readManual) return { note: 'Manual reading is not available.' };
+      return await readManual({ manualId: manual_id, pages, question });
     },
   };
 }
@@ -189,7 +196,8 @@ HOW TO WORK:
 - For stock questions use search_parts and report available = on hand minus reserved, plus shelf location.
 - If several trucks or parts match, list them briefly and ask which one.
 - Remember the earlier messages in this conversation ("it", "that truck", "the same part").
-- For technical procedures you may give general professional guidance, but exact torque values and specs only from a verified manual — otherwise say a manual is needed.
+- TORQUE / SPECS / PROCEDURES / WIRING: call manual_search (English terms; pass unit_id when a truck is known), then manual_read on the best 1–4 pages. Give the exact value with units and cite it as: Manual title, page N. Never give a torque or spec from memory; if no manual page has it, say the shop library does not have it yet and name the OEM source to check (e.g. Detroit DDCSP, Cummins QuickServe, PACCAR/Freightliner service site, Eaton, Meritor, Bendix).
+- Safety-critical values (wheel nuts, brakes, steering, suspension, fifth wheel): always quote exactly as written in the manual, including sequences and re-torque notes.
 - You cannot change records. If the user asks you to add a part, create or close a work order, tell them exactly where to do it in ShopFlow.
 - ${who.manager ? 'This user is a manager: customers, invoices, prices and cores are allowed.' : 'This user is a mechanic: do not reveal prices, invoice totals or customer contact details; if asked, say a manager can see that.'}
 STYLE: Short, practical, mechanic-friendly. Lead with the answer. Use short bullets for lists. Mention work order, invoice or service-order numbers and dates so the user can find the record. No filler.`;
