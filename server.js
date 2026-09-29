@@ -16,6 +16,9 @@ import sharp from "sharp";
 import PDFKitDocument from "pdfkit";
 import {invoiceEnglishText,invoiceDateText} from "./invoice_customer_text.mjs";
 import {runShopAssistant,createAssistantTools,assistantRole} from "./shop_assistant.mjs";
+import {renderCustomerDocumentPdf,shopProfile} from "./invoice_pdf.mjs";
+import {extractPdfPages,slicePdf,manualSearchTerms} from "./manual_library.mjs";
+import os from "os";
 import bwipjs from "bwip-js";
 import {S3Client,PutObjectCommand,GetObjectCommand,DeleteObjectCommand,HeadBucketCommand} from "@aws-sdk/client-s3";
 import {getSignedUrl} from "@aws-sdk/s3-request-presigner";
@@ -684,6 +687,14 @@ async function initDb(){
   // Keep production upgrades additive and idempotent. This file is also usable by
   // operators who apply migrations separately before a deploy.
   await pool.query(fs.readFileSync(path.join(__dirname,"030_customer_inspection_purchasing_cores.sql"),"utf8"));
+  await pool.query(`ALTER TABLE workshop_manuals ADD COLUMN IF NOT EXISTS page_count INTEGER;
+   ALTER TABLE workshop_manuals ADD COLUMN IF NOT EXISTS index_status TEXT;
+   ALTER TABLE workshop_manuals ADD COLUMN IF NOT EXISTS index_error TEXT;
+   ALTER TABLE workshop_manuals ADD COLUMN IF NOT EXISTS indexed_at TIMESTAMPTZ;
+   CREATE TABLE IF NOT EXISTS workshop_manual_files(manual_id BIGINT PRIMARY KEY REFERENCES workshop_manuals(id) ON DELETE CASCADE, data BYTEA NOT NULL);
+   CREATE TABLE IF NOT EXISTS workshop_manual_pages(manual_id BIGINT NOT NULL REFERENCES workshop_manuals(id) ON DELETE CASCADE, page_no INTEGER NOT NULL, text TEXT NOT NULL DEFAULT '',
+    tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', coalesce(text,''))) STORED, PRIMARY KEY(manual_id,page_no));
+   CREATE INDEX IF NOT EXISTS idx_workshop_manual_pages_tsv ON workshop_manual_pages USING GIN(tsv);`);
   await pool.query(`ALTER TABLE part_core_events ADD COLUMN IF NOT EXISTS effective_date DATE;
    CREATE TABLE IF NOT EXISTS part_core_attachments(
     id BIGSERIAL PRIMARY KEY,
@@ -1690,7 +1701,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.34.0");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.36.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-OPERATIONS-LIFECYCLE-20260929`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
@@ -3516,6 +3527,11 @@ app.get('/api/invoices/:id/pdf',auth,managerPermission("invoices"),async(req,res
   const db=requireDb(),x=await getInvoiceBundle(db,req.params.id);
   if(!x)return res.status(404).json({error:'Invoice not found.'});
   const i=x.invoice,rawLines=Array.isArray(x.lines)?x.lines:[],lines=rawLines.filter(l=>l.line_type==='labor'||String(l.part_number||'').trim()||String(l.description||'').trim()||Number(l.unit_price||0)!==0||Number(l.quantity||0)!==1).map(l=>({...l,description:invoiceEnglishText(l.description,l.line_type==='part'?'Part / material':'Repair / service'),job_name:invoiceEnglishText(l.job_name||'','Repair / service')}));
+  if(String(process.env.INVOICE_PDF_V2||'on').toLowerCase()!=='off'){
+   const pdf=await invoicePdfBuffer(x);
+   res.setHeader('Content-Type','application/pdf');res.setHeader('Content-Disposition',`${req.query.inline?'inline':'attachment'}; filename="${String(i.invoice_number).replace(/[^A-Za-z0-9_-]/g,'_')}.pdf"`);res.setHeader('Cache-Control','private, no-store');
+   return res.send(pdf);
+  }
   res.setHeader('Content-Type','application/pdf');
   res.setHeader('Content-Disposition',`attachment; filename="${String(i.invoice_number).replace(/[^A-Za-z0-9_-]/g,'_')}.pdf"`);
   res.setHeader('Cache-Control','private, no-store');
@@ -3862,7 +3878,44 @@ const stripeSecret=String(process.env.STRIPE_SECRET_KEY||'').trim();
 const resendKey=String(process.env.RESEND_API_KEY||'').trim();
 const invoiceFromEmail=String(process.env.INVOICE_FROM_EMAIL||'').trim();
 app.post('/api/invoices/:id/payment-link',auth,managerPermission("invoices"),async(req,res,next)=>{try{if(!stripeSecret)return res.status(503).json({error:'Stripe is not configured. Add STRIPE_SECRET_KEY in Railway.'});const x=await getInvoiceBundle(requireDb(),req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const i=x.invoice,amount=Math.round(Number(i.balance_due||0)*100);if(amount<50)return res.status(409).json({error:'Invoice has no payable balance.'});const base=String(process.env.APP_PUBLIC_URL||'').replace(/\/$/,'');const p=new URLSearchParams();p.set('mode','payment');p.set('success_url',`${base}/?payment=success&invoice=${encodeURIComponent(i.invoice_number)}`);p.set('cancel_url',`${base}/?payment=cancel&invoice=${encodeURIComponent(i.invoice_number)}`);p.set('line_items[0][price_data][currency]','usd');p.set('line_items[0][price_data][product_data][name]',`Invoice ${i.invoice_number}`);p.set('line_items[0][price_data][unit_amount]',String(amount));p.set('line_items[0][quantity]','1');p.set('metadata[invoice_id]',String(i.id));p.set('metadata[invoice_number]',String(i.invoice_number));const rr=await fetch('https://api.stripe.com/v1/checkout/sessions',{method:'POST',headers:{Authorization:`Bearer ${stripeSecret}`,'Content-Type':'application/x-www-form-urlencoded'},body:p});const d=await rr.json();if(!rr.ok)throw new Error(d?.error?.message||'Stripe checkout could not be created.');await requireDb().query('UPDATE customer_invoices SET payment_url=$2,stripe_session_id=$3,updated_at=now() WHERE id=$1::bigint',[i.id,d.url,d.id]);await audit(req.user.username,'invoice_payment_link_created',{invoiceId:i.id});res.json({ok:true,url:d.url})}catch(e){next(e)}});
-app.post('/api/invoices/:id/email',auth,managerPermission("invoices"),async(req,res,next)=>{try{if(!resendKey||!invoiceFromEmail)return res.status(503).json({error:'Email is not configured. Add RESEND_API_KEY and INVOICE_FROM_EMAIL in Railway.'});const x=await getInvoiceBundle(requireDb(),req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const i=x.invoice,to=String(req.body?.email||i.customer_email||'').trim();if(!to)return res.status(400).json({error:'Customer email is required.'});const pay=i.payment_url?`<p><a href="${String(i.payment_url).replace(/"/g,'')}" style="display:inline-block;background:#155eef;color:white;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:700">Pay Invoice Securely</a></p>`:'';const html=`<div style="font-family:Arial,sans-serif;max-width:640px"><h2>Iron Team Truck & Trailer Repair</h2><p>Invoice <b>${i.invoice_number}</b> for Unit <b>${i.unit_number||'—'}</b> is ready.</p><p>Total: <b>$${Number(i.total||0).toFixed(2)}</b><br>Balance due: <b>$${Number(i.balance_due||0).toFixed(2)}</b></p>${pay}<p>Please contact the shop with any questions.</p><hr><p style="font-size:12px"><b>Parts Warranty:</b> We are responsible for handling eligible warranty claims on parts supplied and installed by Iron Team Truck & Trailer Repair, subject to the applicable manufacturer warranty and shop terms.</p><p style="font-size:12px"><b>Tire / Wheel Safety:</b> After tire or wheel service, wheel fasteners / lug nuts must be checked and re-torqued after approximately 50 miles of driving. Please return to our shop for this safety check.</p></div>`;const rr=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${resendKey}`,'Content-Type':'application/json'},body:JSON.stringify({from:invoiceFromEmail,to:[to],subject:`Invoice ${i.invoice_number} — Iron Team Truck & Trailer Repair`,html})});const d=await rr.json();if(!rr.ok)throw new Error(d?.message||'Email could not be sent.');await requireDb().query('UPDATE customer_invoices SET customer_email=$2,email_sent_at=now(),updated_at=now() WHERE id=$1::bigint',[i.id,to]);await audit(req.user.username,'invoice_emailed',{invoiceId:i.id,to});res.json({ok:true,id:d.id})}catch(e){next(e)}});
+function invoicePdfLines(x){return (Array.isArray(x.lines)?x.lines:[]).filter(l=>l.line_type==='labor'||String(l.part_number||'').trim()||String(l.description||'').trim()||Number(l.unit_price||0)!==0||Number(l.quantity||0)!==1).map(l=>({...l,description:invoiceEnglishText(l.description,l.line_type==='part'?'Part / material':'Repair / service'),job_name:invoiceEnglishText(l.job_name||'','Repair / service')}))}
+async function invoicePdfBuffer(x){
+ return renderCustomerDocumentPdf({PDFDocument,kind:'INVOICE',invoice:{...x.invoice,customer_note:invoiceEnglishText(x.invoice.customer_note||'','')},lines:invoicePdfLines(x),payments:x.payments||[],shop:shopProfile(),logoPath:path.join(__dirname,"public","assets","iron-team-logo.png"),text:v=>String(v??''),dateText:v=>{if(!v)return '';try{return invoiceDateText(v)}catch(_){return String(v).slice(0,10)}}});
+}
+function invoiceEmailDefaults(i){const shop=shopProfile(),bal=Number(i.balance_due??i.total??0),due=i.due_date?invoiceDateText(i.due_date):'on receipt';
+ return {to:String(i.customer_email||''),subject:`Invoice ${i.invoice_number} from ${shop.name}${i.unit_number?` — Unit ${i.unit_number}`:''}`,
+  message:`Hello${i.customer_name?` ${String(i.customer_name).split(/\s+/).slice(0,3).join(' ')}`:''},\n\nThank you for choosing ${shop.name}. Your invoice ${i.invoice_number}${i.unit_number?` for Unit ${i.unit_number}`:''} is attached.\n\n${bal>0.004?`Balance due: $${bal.toFixed(2)} (due ${due}).`:'This invoice is paid in full — thank you!'}\n\nIf you have any questions, just reply to this email${shop.phone?` or call us at ${shop.phone}`:''}.\n\nThank you,\n${shop.name}`}}
+function escHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function invoiceEmailHtml(i,message){const shop=shopProfile(),bal=Number(i.balance_due??i.total??0),accent=String(process.env.SHOP_ACCENT_COLOR||'#c2410c'),logo=process.env.APP_PUBLIC_URL?`${String(process.env.APP_PUBLIC_URL).replace(/\/$/,'')}/assets/iron-team-logo.png`:'';
+ const pay=i.payment_url&&bal>0.004?`<tr><td style="padding:8px 28px 4px"><a href="${escHtml(i.payment_url)}" style="display:block;text-align:center;background:${accent};color:#fff;padding:14px 18px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px">View &amp; Pay Invoice</a></td></tr>`:'';
+ return `<!doctype html><html><body style="margin:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#0f172a"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 0"><tr><td align="center">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0">
+<tr><td style="background:#0f172a;padding:18px 28px">${logo?`<img src="${logo}" alt="" height="44" style="vertical-align:middle;margin-right:12px">`:''}<span style="color:#fff;font-size:18px;font-weight:700;vertical-align:middle">${escHtml(shop.name)}</span></td></tr>
+<tr><td style="height:4px;background:${accent}"></td></tr>
+<tr><td style="padding:24px 28px 8px;font-size:15px;line-height:1.55">${escHtml(message).replace(/\n/g,'<br>')}</td></tr>
+<tr><td style="padding:8px 28px 16px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px"><tr>
+<td style="padding:14px 16px;font-size:13px;color:#64748b">Invoice<br><b style="color:#0f172a;font-size:15px">${escHtml(i.invoice_number)}</b></td>
+<td style="padding:14px 16px;font-size:13px;color:#64748b">${i.unit_number?`Unit<br><b style="color:#0f172a;font-size:15px">${escHtml(i.unit_number)}</b>`:''}</td>
+<td style="padding:14px 16px;font-size:13px;color:#64748b;text-align:right">${bal>0.004?'Amount due':'Total'}<br><b style="color:${bal>0.004?accent:'#047857'};font-size:20px">$${(bal>0.004?bal:Number(i.total||0)).toFixed(2)}</b></td></tr></table></td></tr>
+${pay}
+<tr><td style="padding:16px 28px 22px;font-size:12px;color:#64748b;border-top:1px solid #e2e8f0">${escHtml(shop.name)} · ${escHtml(shop.address1)}, ${escHtml(shop.address2)}${shop.phone?` · ${escHtml(shop.phone)}`:''}<br>After tire or wheel service, wheel nuts must be re-torqued after 50 miles of driving.</td></tr>
+</table></td></tr></table></body></html>`}
+app.get('/api/invoices/:id/email-draft',auth,managerPermission("invoices"),async(req,res,next)=>{try{const x=await getInvoiceBundle(requireDb(),req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const d=invoiceEmailDefaults(x.invoice);res.json({...d,to:d.to||x.invoice.profile_customer_email||'',configured:Boolean(resendKey&&invoiceFromEmail),from:invoiceFromEmail,hasPaymentLink:Boolean(x.invoice.payment_url),lastSentAt:x.invoice.email_sent_at||null})}catch(e){next(e)}});
+app.post('/api/invoices/:id/email',auth,managerPermission("invoices"),async(req,res,next)=>{try{
+ if(!resendKey||!invoiceFromEmail)return res.status(503).json({error:'Email is not configured. Add RESEND_API_KEY and INVOICE_FROM_EMAIL in Railway.'});
+ const x=await getInvoiceBundle(requireDb(),req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const i=x.invoice,def=invoiceEmailDefaults(i);
+ const list=v=>String(v||'').split(/[,;\s]+/).map(e=>e.trim()).filter(Boolean);const emailOk=e=>/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
+ const to=list(req.body?.to||req.body?.email||def.to||i.profile_customer_email),cc=list(req.body?.cc);
+ if(!to.length)return res.status(400).json({error:'Customer email is required.'});const bad=[...to,...cc].find(e=>!emailOk(e));if(bad)return res.status(400).json({error:`"${bad}" is not a valid email address.`});
+ if(to.length+cc.length>10)return res.status(400).json({error:'Too many recipients.'});
+ const subject=String(req.body?.subject||def.subject).slice(0,200),message=String(req.body?.message||def.message).slice(0,5000);
+ const attachments=req.body?.attachPdf===false?[]:[{filename:`${String(i.invoice_number).replace(/[^A-Za-z0-9_-]/g,'_')}.pdf`,content:(await invoicePdfBuffer(x)).toString('base64')}];
+ const shop=shopProfile(),replyTo=String(process.env.INVOICE_REPLY_TO||shop.email||'').trim();
+ const rr=await fetch(String(process.env.RESEND_API_URL||'https://api.resend.com/emails'),{method:'POST',headers:{Authorization:`Bearer ${resendKey}`,'Content-Type':'application/json'},body:JSON.stringify({from:invoiceFromEmail,to,cc:cc.length?cc:undefined,reply_to:replyTo||undefined,subject,html:invoiceEmailHtml(i,message),text:message,attachments})});
+ const d=await rr.json().catch(()=>({}));if(!rr.ok)throw Object.assign(new Error(d?.message||'Email could not be sent.'),{status:502});
+ await requireDb().query("UPDATE customer_invoices SET customer_email=$2,email_sent_at=now(),updated_at=now() WHERE id=$1::bigint",[i.id,to[0]]);
+ await audit(req.user.username,'invoice_emailed',{invoiceId:i.id,invoiceNumber:i.invoice_number,to,cc,subject,attachedPdf:attachments.length>0,resendId:d.id});res.json({ok:true,id:d.id,to,cc});
+}catch(e){if(e?.status)return res.status(e.status).json({error:e.message});next(e)}});
 const memoryCache=new Map();
 function aiErrorResponse(res,err,fallback){
  console.error("AI ERROR:",err?.status,err?.code,err?.message);
@@ -3919,9 +3972,60 @@ async function manualPdfAsk(manual,system,user){
  const r=await requireOpenRouterClient().chat.completions.create({model:openRouterModel,messages:[{role:'user',content}],temperature:0.1,max_tokens:2200,plugins:[{id:'file-parser',pdf:{engine:'cloudflare-ai'}}]});
  return String(r.choices?.[0]?.message?.content||'').trim();
 }
-app.get('/api/manuals',auth,async(req,res,next)=>{try{const q=await requireDb().query(`SELECT id,title,make,model,year_from,year_to,engine,category,source_name,source_url,original_name,size_bytes,active,created_by,created_at FROM workshop_manuals WHERE active=true ORDER BY updated_at DESC,id DESC`);res.json({items:q.rows})}catch(e){next(e)}});
-app.post('/api/manuals',auth,adminOnly,upload.single('manual'),async(req,res,next)=>{try{const title=String(req.body?.title||'').trim(),make=String(req.body?.make||'').trim(),model=String(req.body?.model||'').trim(),engine=String(req.body?.engine||'').trim(),category=String(req.body?.category||'service_manual').trim(),sourceName=String(req.body?.sourceName||'').trim(),sourceUrl=String(req.body?.sourceUrl||'').trim(),yearFrom=Number(req.body?.yearFrom||0)||null,yearTo=Number(req.body?.yearTo||0)||null;if(!title)return res.status(400).json({error:'Manual title is required.'});let key=null,name=null,mime=null,size=0;if(req.file){if(req.file.mimetype!=='application/pdf')return res.status(415).json({error:'Workshop manual upload must be a PDF.'});key=`manuals/${Date.now()}-${crypto.randomUUID()}.pdf`;await requireR2().send(new PutObjectCommand({Bucket:r2Bucket,Key:key,Body:req.file.buffer,ContentType:'application/pdf',CacheControl:'private, max-age=3600'}));name=req.file.originalname||'manual.pdf';mime='application/pdf';size=req.file.size||req.file.buffer.length}const q=await requireDb().query(`INSERT INTO workshop_manuals(title,make,model,year_from,year_to,engine,category,source_name,source_url,r2_key,original_name,mime_type,size_bytes,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,[title,make||null,model||null,yearFrom,yearTo,engine||null,category,sourceName||null,sourceUrl||null,key,name,mime,size,req.user.username]);await audit(req.user.username,'workshop_manual_added',{id:q.rows[0].id,title});res.json({item:q.rows[0]})}catch(e){next(e)}});
-app.get('/api/manuals/:id/open',auth,async(req,res,next)=>{try{const q=await requireDb().query('SELECT * FROM workshop_manuals WHERE id=$1::bigint AND active=true',[req.params.id]);if(!q.rowCount)return res.status(404).json({error:'Manual not found.'});const m=q.rows[0];if(m.r2_key){const url=await getSignedUrl(requireR2(),new GetObjectCommand({Bucket:r2Bucket,Key:m.r2_key}),{expiresIn:900});return res.json({url,title:m.title})}if(m.source_url)return res.json({url:m.source_url,title:m.title});res.status(404).json({error:'This manual has no document or source link.'})}catch(e){next(e)}});
+app.get('/api/manuals',auth,async(req,res,next)=>{try{const q=await requireDb().query(`SELECT id,title,make,model,year_from,year_to,engine,category,source_name,source_url,original_name,size_bytes,active,created_by,created_at,page_count,index_status,index_error,indexed_at FROM workshop_manuals WHERE active=true ORDER BY updated_at DESC,id DESC`);res.json({items:q.rows})}catch(e){next(e)}});
+const manualUpload=multer({storage:multer.diskStorage({destination:os.tmpdir(),filename:(req,file,cb)=>cb(null,`ittr-manual-${Date.now()}-${crypto.randomUUID()}.pdf`)}),limits:{fileSize:250*1024*1024}});
+const MANUAL_DB_MAX=150*1024*1024;
+async function getManualBytes(db,m){
+ if(m?.r2_key){const obj=await requireR2().send(new GetObjectCommand({Bucket:r2Bucket,Key:m.r2_key}));return Buffer.from(await obj.Body.transformToByteArray())}
+ const f=(await db.query("SELECT data FROM workshop_manual_files WHERE manual_id=$1::bigint",[m.id])).rows[0];return f?Buffer.from(f.data):null;
+}
+let manualIndexQueue=Promise.resolve();
+function queueManualIndex(id){manualIndexQueue=manualIndexQueue.then(()=>indexWorkshopManual(id)).catch(e=>console.error("[manual index]",e?.message));return manualIndexQueue}
+async function indexWorkshopManual(id){
+ const db=requireDb();const m=(await db.query("SELECT * FROM workshop_manuals WHERE id=$1::bigint",[id])).rows[0];if(!m)return;
+ await db.query("UPDATE workshop_manuals SET index_status='indexing',index_error=NULL WHERE id=$1",[id]);
+ try{const bytes=await getManualBytes(db,m);if(!bytes){await db.query("UPDATE workshop_manuals SET index_status='no_file' WHERE id=$1",[id]);return}
+  const {totalPages,pages}=await extractPdfPages(bytes);
+  await db.query("DELETE FROM workshop_manual_pages WHERE manual_id=$1",[id]);
+  for(let k=0;k<pages.length;k+=150){const chunk=pages.slice(k,k+150),vals=[],params=[];chunk.forEach((t,n)=>{params.push(id,k+n+1,t.slice(0,60000));vals.push(`($${params.length-2},$${params.length-1},$${params.length})`)});await db.query(`INSERT INTO workshop_manual_pages(manual_id,page_no,text) VALUES ${vals.join(",")}`,params)}
+  const textChars=pages.reduce((a,t)=>a+t.length,0),status=textChars<totalPages*40?"no_text":"indexed";
+  await db.query("UPDATE workshop_manuals SET index_status=$2,page_count=$3,indexed_at=now(),index_error=$4 WHERE id=$1",[id,status,totalPages,status==="no_text"?"This PDF is scanned images without text. Search cannot read it; export a text PDF or run OCR first.":null]);
+ }catch(e){await db.query("UPDATE workshop_manuals SET index_status='failed',index_error=$2 WHERE id=$1",[id,String(e?.message||e).slice(0,300)])}
+}
+async function searchManualPages(db,{query,unit=null,manualId=null,limit=8}){
+ const terms=[...new Set(manualSearchTerms(query).toLowerCase().replace(/[^a-z0-9\s-]/g," ").split(/\s+/).filter(w=>w.length>=2&&!["the","and","for","what","how","is","of","on","to","in","a"].includes(w)))].slice(0,14);
+ if(!terms.length)return [];
+ const tsq=terms.map(t=>t.replace(/-/g,"")).filter(Boolean).join(" | ");
+ const params=[tsq],where=["p.tsv @@ to_tsquery('english',$1)","m.active=true"];
+ if(manualId){params.push(String(manualId));where.push(`m.id::text=$${params.length}`)}
+ else if(unit){params.push(String(unit.make||""),String(unit.model||""));where.push(`(coalesce(m.make,'')='' OR $${params.length-1}='' OR lower($${params.length-1}) LIKE '%'||lower(m.make)||'%' OR lower(m.make) LIKE '%'||lower($${params.length-1})||'%')`);}
+ const r=await db.query(`SELECT m.id manual_id,m.title,m.make,m.model,m.engine,m.category,p.page_no,ts_rank_cd(p.tsv,to_tsquery('english',$1)) rank,ts_headline('english',p.text,to_tsquery('english',$1),'MaxWords=45,MinWords=15,MaxFragments=2') snippet
+  FROM workshop_manual_pages p JOIN workshop_manuals m ON m.id=p.manual_id WHERE ${where.join(" AND ")} ORDER BY rank DESC LIMIT ${Math.min(12,Math.max(1,Number(limit)||8))}`,params);
+ return r.rows.map(x=>({manual_id:String(x.manual_id),manual:x.title,vehicle:[x.make,x.model,x.engine].filter(Boolean).join(" "),page:x.page_no,snippet:String(x.snippet||"").replace(/<\/?b>/g,"*").replace(/\s+/g," ").slice(0,400)}));
+}
+async function readManualPages(db,{manualId,pages,question,chatClient,model}){
+ const m=(await db.query("SELECT * FROM workshop_manuals WHERE id=$1::bigint AND active=true",[manualId])).rows[0];if(!m)return {error:"Manual not found."};
+ const bytes=await getManualBytes(db,m);if(!bytes)return {error:"This manual has no PDF stored."};
+ const slice=await slicePdf(bytes,Array.isArray(pages)?pages:[pages]);if(!slice)return {error:`Pages must be between 1 and ${m.page_count||"the last page"}.`};
+ const r=await chatClient.chat.completions.create({model,temperature:0,max_tokens:1200,messages:[{role:"user",content:[{type:"text",text:`These are pages ${slice.pages.join(", ")} of the workshop manual "${m.title}" (${[m.make,m.model,m.engine].filter(Boolean).join(" ")}). The attached PDF contains ONLY those pages, in that order. Answer the question using only what is on these pages. Quote exact values with units (torque in lb-ft and N·m if both shown, sequence steps, angles). For diagrams describe the relevant circuit/pins/connectors exactly as shown. Always say which page (use the original page numbers above). If the answer is not on these pages, say so.\n\nQuestion: ${question}`},{type:"file",file:{filename:`${String(m.original_name||"manual").replace(/\.pdf$/i,"")}-p${slice.pages.join("-")}.pdf`,file_data:`data:application/pdf;base64,${slice.bytes.toString("base64")}`}}]}]});
+ return {manual:m.title,pages:slice.pages,answer:String(r.choices?.[0]?.message?.content||"").trim(),usage:r.usage||null};
+}
+app.post('/api/manuals',auth,adminOnly,manualUpload.single('manual'),async(req,res,next)=>{const tmp=req.file?.path;try{
+ const b=req.body||{},title=String(b.title||'').trim(),make=String(b.make||'').trim(),model=String(b.model||'').trim(),engine=String(b.engine||'').trim(),category=String(b.category||'service_manual').trim(),sourceName=String(b.sourceName||'').trim(),sourceUrl=String(b.sourceUrl||'').trim(),yearFrom=Number(b.yearFrom||0)||null,yearTo=Number(b.yearTo||0)||null;
+ if(!title)return res.status(400).json({error:'Manual title is required.'});
+ let key=null,name=null,mime=null,size=0,dbBytes=null;
+ if(req.file){const head=Buffer.alloc(5);const fd=fs.openSync(tmp,'r');fs.readSync(fd,head,0,5,0);fs.closeSync(fd);if(req.file.mimetype!=='application/pdf'||head.toString()!=='%PDF-')return res.status(415).json({error:'Workshop manual upload must be a PDF.'});
+  name=req.file.originalname||'manual.pdf';mime='application/pdf';size=req.file.size;
+  if(r2Configured){key=`manuals/${Date.now()}-${crypto.randomUUID()}.pdf`;await requireR2().send(new PutObjectCommand({Bucket:r2Bucket,Key:key,Body:fs.createReadStream(tmp),ContentLength:size,ContentType:'application/pdf',CacheControl:'private, max-age=3600'}))}
+  else{if(size>MANUAL_DB_MAX)return res.status(413).json({error:'Without cloud file storage (R2) manuals up to 150 MB can be stored. Split the PDF or set up R2 in Railway.'});dbBytes=fs.readFileSync(tmp)}}
+ const q=await requireDb().query(`INSERT INTO workshop_manuals(title,make,model,year_from,year_to,engine,category,source_name,source_url,r2_key,original_name,mime_type,size_bytes,created_by,index_status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,[title,make||null,model||null,yearFrom,yearTo,engine||null,category,sourceName||null,sourceUrl||null,key,name,mime,size,req.user.username,req.file?'queued':null]);
+ if(dbBytes)await requireDb().query("INSERT INTO workshop_manual_files(manual_id,data) VALUES($1,$2)",[q.rows[0].id,dbBytes]);
+ if(req.file)queueManualIndex(q.rows[0].id);
+ await audit(req.user.username,'workshop_manual_added',{id:q.rows[0].id,title,storage:key?'r2':dbBytes?'database':'link'});res.json({item:q.rows[0]});
+}catch(e){next(e)}finally{if(tmp)fs.promises.unlink(tmp).catch(()=>{})}});
+app.post('/api/manuals/:id/reindex',auth,adminOnly,async(req,res,next)=>{try{const q=await requireDb().query("UPDATE workshop_manuals SET index_status='queued' WHERE id=$1::bigint RETURNING id",[req.params.id]);if(!q.rowCount)return res.status(404).json({error:'Manual not found.'});queueManualIndex(req.params.id);res.json({ok:true})}catch(e){next(e)}});
+app.get('/api/manuals/:id/file',auth,async(req,res,next)=>{try{const m=(await requireDb().query('SELECT * FROM workshop_manuals WHERE id=$1::bigint AND active=true',[req.params.id])).rows[0];if(!m)return res.status(404).json({error:'Manual not found.'});const bytes=await getManualBytes(requireDb(),m);if(!bytes)return res.status(404).json({error:'No PDF stored.'});res.setHeader('Content-Type','application/pdf');res.setHeader('Content-Disposition',`inline; filename="${String(m.original_name||'manual.pdf').replace(/"/g,'')}"`);res.setHeader('Cache-Control','private, no-store');res.send(bytes)}catch(e){next(e)}});
+app.get('/api/manuals/:id/open',auth,async(req,res,next)=>{try{const q=await requireDb().query('SELECT * FROM workshop_manuals WHERE id=$1::bigint AND active=true',[req.params.id]);if(!q.rowCount)return res.status(404).json({error:'Manual not found.'});const m=q.rows[0];if(m.r2_key){const url=await getSignedUrl(requireR2(),new GetObjectCommand({Bucket:r2Bucket,Key:m.r2_key}),{expiresIn:900});return res.json({url,title:m.title})}if(!m.r2_key&&(await requireDb().query('SELECT 1 FROM workshop_manual_files WHERE manual_id=$1',[m.id])).rowCount)return res.json({url:`/api/manuals/${m.id}/file`,title:m.title,authRequired:true});if(m.source_url)return res.json({url:m.source_url,title:m.title});res.status(404).json({error:'This manual has no document or source link.'})}catch(e){next(e)}});
 app.delete('/api/manuals/:id',auth,ownerOnly,async(req,res,next)=>{try{const q=await requireDb().query('DELETE FROM workshop_manuals WHERE id=$1::bigint RETURNING id,title,r2_key',[req.params.id]);if(!q.rowCount)return res.status(404).json({error:'Manual not found.'});if(q.rows[0].r2_key){try{await requireR2().send(new DeleteObjectCommand({Bucket:r2Bucket,Key:q.rows[0].r2_key}))}catch{}}await audit(req.user.username,'workshop_manual_deleted',{id:q.rows[0].id,title:q.rows[0].title});res.json({ok:true})}catch(e){next(e)}});
 function pmServiceIntent(q){
  return /\b(pm(?:\s+service)?|preventive\s+maintenance|oil(?:\s+change|\s+service)?|engine\s+oil|lube|lubrication|grease|filter(?:s)?)\b/i.test(String(q||''));
@@ -4012,11 +4116,11 @@ app.post("/api/ai/shop-chat",auth,async(req,res)=>{try{
  // ITTR Workshop AI v2 — the model looks up only what it needs. Falls back to the classic path on any provider error.
  {const chatFn=assistantChatFn();if(chatFn&&String(process.env.AI_ASSISTANT_V2||'on').toLowerCase()!=='off'){try{
   const db2=requireDb(),who=assistantRole(req.user),explicitUnit=String(req.body?.unit||'').trim();
-  const tools=createAssistantTools({db:db2,who,getShopflow:async()=>(await db2.query("SELECT payload FROM app_state WHERE state_key='shopflow'")).rows[0]?.payload||{},findManuals:(u,q)=>findWorkshopManuals(db2,u,q)});
+  const tools=createAssistantTools({db:db2,who,getShopflow:async()=>(await db2.query("SELECT payload FROM app_state WHERE state_key='shopflow'")).rows[0]?.payload||{},searchManuals:a=>searchManualPages(db2,a),readManual:a=>{const pv=selectedAIProvider(),cc=pv==='openrouter'?openRouterClient:client;return cc?readManualPages(db2,{...a,chatClient:cc,model:assistantModelName()}):{error:'AI provider not configured.'}}});
   const today=new Date().toLocaleDateString('en-CA',{timeZone:process.env.SHOP_TIMEZONE||'America/Chicago'});
   const out=await runShopAssistant({question,history:Array.isArray(req.body?.history)?req.body.history:[],who,tools,chat:chatFn,today,extraContext:explicitUnit?`The user selected unit ${explicitUnit} in the unit box.`:''});
   if(out.answer){
-   const label={shop_status:'Live shop status',find_truck:'Vehicle records',truck_history:'Truck history (ITTR + Fullbay)',search_parts:'Parts inventory',work_orders:'Work orders',work_order_details:'Work order details',search_repair_history:'Repair history search',search_customers:'Customers',invoices:'Invoices',cores_owed:'Cores owed',workshop_manuals:'Workshop manuals'};
+   const label={shop_status:'Live shop status',find_truck:'Vehicle records',truck_history:'Truck history (ITTR + Fullbay)',search_parts:'Parts inventory',work_orders:'Work orders',work_order_details:'Work order details',search_repair_history:'Repair history search',search_customers:'Customers',invoices:'Invoices',cores_owed:'Cores owed',workshop_manuals:'Workshop manuals',manual_search:'Workshop manuals',manual_read:'Workshop manual pages'};
    const sources=[...new Set(out.used)].map(t=>({type:t,label:label[t]||t}));
    try{await audit(req.user.username,'ai_chat',{v:2,model:assistantModelName(),tools:out.used,promptTokens:out.usage.prompt,completionTokens:out.usage.completion,rounds:out.usage.rounds})}catch(_){}
    return res.json({result:out.answer,sources,usage:out.usage,assistant:'v2'});
@@ -4099,5 +4203,6 @@ initDb()
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
   .then(()=>repairWorkOrderNumberCollisions())
+  .then(async()=>{try{const q=await pool.query("SELECT id FROM workshop_manuals WHERE active=true AND (index_status IS NULL OR index_status IN ('queued','indexing')) AND (r2_key IS NOT NULL OR EXISTS(SELECT 1 FROM workshop_manual_files f WHERE f.manual_id=workshop_manuals.id))");for(const r of q.rows)queueManualIndex(r.id)}catch(e){console.error('[manual index startup]',e?.message)}})
   .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v24.28.4 Online running on port ${port}`))})
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

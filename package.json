@@ -1,29 +1,31 @@
 {
   "name": "ittr-shopflow-online",
-  "version": "24.34.0",
+  "version": "24.36.0",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "node server.js",
     "audit": "node production_audit.mjs",
     "smoke": "node smoke_test.mjs",
-    "check": "node --check server.js && node --check shop_assistant.mjs && node --check invoice_customer_text.mjs && node --check invoice_pdf_audit.mjs && node --check smoke_test.mjs && node --check language_switch_audit.mjs && node --check language_db_integration_test.mjs && node --check inventory_invoice_integration_test.mjs && node --check operations_lifecycle_integration_test.mjs && node --check inspection_workflow_audit.mjs && node --check public/inspection-workflow.js && node --check frontend_check.js && node --check modules/invoices.js && node --check modules/trucksearch.js && node --check modules/parts.js && node --check modules/customers.js && node --check modules/procenter.js && node production_audit.mjs && node inspection_workflow_audit.mjs && node invoice_pdf_audit.mjs && node language_switch_audit.mjs && node language_db_integration_test.mjs && node inventory_invoice_integration_test.mjs && node operations_lifecycle_integration_test.mjs && node smoke_test.mjs"
+    "check": "node --check server.js && node --check shop_assistant.mjs && node --check manual_library.mjs && node --check invoice_pdf.mjs && node --check invoice_customer_text.mjs && node --check invoice_pdf_audit.mjs && node --check smoke_test.mjs && node --check language_switch_audit.mjs && node --check language_db_integration_test.mjs && node --check inventory_invoice_integration_test.mjs && node --check operations_lifecycle_integration_test.mjs && node --check inspection_workflow_audit.mjs && node --check public/inspection-workflow.js && node --check frontend_check.js && node --check modules/invoices.js && node --check modules/trucksearch.js && node --check modules/parts.js && node --check modules/customers.js && node --check modules/procenter.js && node production_audit.mjs && node inspection_workflow_audit.mjs && node invoice_pdf_audit.mjs && node language_switch_audit.mjs && node language_db_integration_test.mjs && node inventory_invoice_integration_test.mjs && node operations_lifecycle_integration_test.mjs && node smoke_test.mjs"
   },
   "dependencies": {
-    "express": "5.1.0",
-    "openai": "5.0.0",
-    "multer": "2.4.0",
-    "dotenv": "16.4.7",
-    "pg": "8.16.3",
-    "bcryptjs": "3.0.2",
-    "helmet": "8.1.0",
-    "express-rate-limit": "8.7.0",
     "@aws-sdk/client-s3": "3.1141.0",
     "@aws-sdk/s3-request-presigner": "3.1141.0",
-    "sharp": "0.35.5",
-    "pdfkit": "0.17.2",
+    "bcryptjs": "3.0.2",
     "bwip-js": "4.5.1",
+    "dotenv": "16.4.7",
+    "express": "5.1.0",
+    "express-rate-limit": "8.7.0",
+    "helmet": "8.1.0",
     "html5-qrcode": "2.3.8",
+    "multer": "2.4.0",
+    "openai": "5.0.0",
+    "pdf-lib": "^1.17.1",
+    "pdfkit": "0.17.2",
+    "pg": "8.16.3",
+    "sharp": "0.35.5",
+    "unpdf": "^1.8.1",
     "ws": "8.22.0"
   },
   "engines": {
