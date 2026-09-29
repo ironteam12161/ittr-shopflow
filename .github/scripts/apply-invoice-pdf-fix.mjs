@@ -1,7 +1,10 @@
 import fs from 'fs';
 
 const file='server.js';
-let s=fs.readFileSync(file,'utf8');
+// Match anchors consistently on Windows and Linux. The repository stores source
+// with LF endings, but a Windows checkout may materialize CRLF before this
+// one-time release preparation runs.
+let s=fs.readFileSync(file,'utf8').replace(/\r\n/g,'\n');
 function once(oldText,newText,label){
   const i=s.indexOf(oldText);
   if(i<0)throw new Error(`Patch anchor missing: ${label}`);
