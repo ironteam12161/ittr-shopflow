@@ -12,7 +12,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import pg from "pg";
 import sharp from "sharp";
-import PDFDocument from "pdfkit";
+import PDFKitDocument from "pdfkit";
 import bwipjs from "bwip-js";
 import {S3Client,PutObjectCommand,GetObjectCommand,DeleteObjectCommand,HeadBucketCommand} from "@aws-sdk/client-s3";
 import {getSignedUrl} from "@aws-sdk/s3-request-presigner";
@@ -39,6 +39,20 @@ const photoUpload=multer({
 });
 const __filename=fileURLToPath(import.meta.url);
 const __dirname=path.dirname(__filename);
+// ITTR v24.30.0 — every PDF uses Unicode fonts so Ukrainian (and any other) text prints correctly.
+// Code that asks for "Helvetica" gets DejaVu Sans Condensed, which has almost the same width.
+const PDF_FONT_DIR=path.join(__dirname,"assets","fonts");
+class PDFDocument extends PDFKitDocument{
+ constructor(options){
+  super(options);
+  const f=n=>path.join(PDF_FONT_DIR,n);
+  this.registerFont("Helvetica",f("DejaVuSansCondensed.ttf"));
+  this.registerFont("Helvetica-Bold",f("DejaVuSansCondensed-Bold.ttf"));
+  this.registerFont("Helvetica-Oblique",f("DejaVuSansCondensed.ttf"));
+  this.registerFont("Helvetica-BoldOblique",f("DejaVuSansCondensed-Bold.ttf"));
+  this.font("Helvetica");
+ }
+}
 const port=Number(process.env.PORT||3000);
 const isProd=process.env.NODE_ENV==="production";
 
@@ -1027,6 +1041,28 @@ app.post("/api/parts/:id/barcodes",auth,managerPermission("inventory"),async(req
 }catch(e){next(e)}});
 
 app.get("/api/parts/inventory-count/current",auth,managerPermission("inventory"),async(req,res,next)=>{try{const db=requireDb();const r=await db.query(`SELECT s.*,count(l.id)::int scanned_parts,count(l.id) FILTER (WHERE l.counted_qty<>l.system_qty)::int variances FROM inventory_count_sessions s LEFT JOIN inventory_count_lines l ON l.session_id=s.id WHERE s.status='open' GROUP BY s.id ORDER BY s.started_at DESC LIMIT 1`);res.json({session:r.rows[0]||null})}catch(e){next(e)}});
+// ITTR v24.30.0 — start a physical inventory from zero. Owner/admin only, typed confirmation,
+// blocked while a count is open. Every change is written to part history, nothing is deleted.
+app.post("/api/parts/inventory/reset-to-zero",auth,async(req,res,next)=>{
+ if(req.user?.role!=="admin")return res.status(403).json({error:"Only the owner/admin can reset inventory."});
+ if(String(req.body?.confirm||"").trim().toUpperCase()!=="RESET")return res.status(400).json({error:'Type RESET to confirm.'});
+ const db=await requireDb().connect();
+ try{
+  await db.query("BEGIN");
+  const open=await db.query("SELECT id FROM inventory_count_sessions WHERE status='open' LIMIT 1");
+  if(open.rowCount){await db.query("ROLLBACK");return res.status(409).json({error:"Finish or cancel the open inventory count first."})}
+  const parts=await db.query("SELECT id,quantity FROM fullbay_import_parts WHERE coalesce(quantity,0)<>0 FOR UPDATE");
+  const ref=`Inventory reset ${new Date().toISOString().slice(0,10)}`;
+  for(const p of parts.rows){
+   const before=stockNum(p.quantity);
+   await db.query("UPDATE fullbay_import_parts SET quantity=0,inventory_value=0,updated_at=now() WHERE id=$1",[p.id]);
+   await db.query(`INSERT INTO part_inventory_transactions(part_id,transaction_type,quantity_delta,quantity_before,quantity_after,reference,reason,username,metadata) VALUES($1,'inventory_reset',$2,$3,0,$4,$5,$6,$7::jsonb)`,[p.id,-before,before,ref,String(req.body?.reason||"Start physical inventory from zero").slice(0,300),req.user.username,JSON.stringify({resetToZero:true})]);
+  }
+  await db.query("COMMIT");
+  await audit(req.user.username,"inventory_reset_to_zero",{parts:parts.rowCount});
+  res.json({ok:true,partsReset:parts.rowCount});
+ }catch(e){try{await db.query("ROLLBACK")}catch(_){};next(e)}finally{db.release()}
+});
 app.post("/api/parts/inventory-count",auth,managerPermission("inventory"),async(req,res,next)=>{try{const db=requireDb();const open=await db.query(`SELECT * FROM inventory_count_sessions WHERE status='open' ORDER BY started_at DESC LIMIT 1`);if(open.rowCount)return res.json({ok:true,session:open.rows[0],existing:true});const mode=String(req.body?.mode||'each')==='shelf'?'shelf':'each';const r=await db.query(`INSERT INTO inventory_count_sessions(status,mode,notes,started_by) VALUES('open',$1,$2,$3) RETURNING *`,[mode,String(req.body?.notes||'').trim()||null,req.user.username]);await audit(req.user.username,'inventory_count_started',{sessionId:r.rows[0].id,mode});res.json({ok:true,session:r.rows[0]})}catch(e){next(e)}});
 app.get("/api/parts/inventory-count/:sessionId",auth,managerPermission("inventory"),async(req,res,next)=>{try{const db=requireDb();const sr=await db.query('SELECT * FROM inventory_count_sessions WHERE id=$1',[req.params.sessionId]);if(!sr.rowCount)return res.status(404).json({error:'Inventory count session not found.'});const lr=await db.query(`SELECT l.*,p.part_number,p.description,p.location,p.internal_barcode,p.barcode_aliases FROM inventory_count_lines l JOIN fullbay_import_parts p ON p.id=l.part_id WHERE l.session_id=$1 ORDER BY l.updated_at DESC,l.id DESC`,[req.params.sessionId]);res.json({session:sr.rows[0],lines:lr.rows})}catch(e){next(e)}});
 app.post("/api/parts/inventory-count/:sessionId/scan",auth,managerPermission("inventory"),async(req,res,next)=>{try{
@@ -1516,7 +1552,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.29.0");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.30.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-FINAL-HARDENING-20260928`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
@@ -1875,7 +1911,7 @@ app.post("/api/work-orders/self-start",auth,async(req,res,next)=>{
   const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
   if(!q.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Shop data not found."});}
   const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
-  const numericIds=sf.workorders.map(x=>Number(x?.id)).filter(Number.isFinite);const id=(numericIds.length?Math.max(...numericIds):1000)+1;const now=new Date();
+  const id=(await highestUsedWorkOrderId(db,sf))+1;sf.lastWorkOrderId=id;const now=new Date();
   const w={
     id,
     unit:unitRow.unit_number||String(b.unit||unit||""),
@@ -1981,14 +2017,16 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/parts",auth,async(req,res,n
   if(String(w.status)==="Completed"){await db.query("ROLLBACK");return res.status(409).json({error:"Completed work orders are locked."})}
   const matches=(Array.isArray(w.tasks)?w.tasks:[]).filter(t=>String(t?.uid||"")===uid);if(matches.length!==1){await db.query("ROLLBACK");return res.status(409).json({error:"Task identity could not be resolved."})}
   const t=matches[0];t.parts=Array.isArray(t.parts)?t.parts:[];
-  let inv=null,finalPartNumber=partNumber,finalDescription=description;
+  let stockWarning="",inv=null,finalPartNumber=partNumber,finalDescription=description;
   if(inventoryPartId){
     const ir=await db.query("SELECT * FROM fullbay_import_parts WHERE id=$1 FOR UPDATE",[inventoryPartId]);if(!ir.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Inventory part not found."})}
     inv=ir.rows[0];const onHand=stockNum(inv.quantity),allocated=Math.max(0,stockNum(inv.allocated)),available=onHand-allocated;
     if(available<qty){
+      // v24.30.0: never block the mechanic — the part is on the truck. Reserve it and flag the shortage
+      // so the manager sees it (stock can go negative until the next count or receiving).
       const refs=[];for(const ow of sf.workorders)for(const ot of (Array.isArray(ow?.tasks)?ow.tasks:[]))for(const op of (Array.isArray(ot?.parts)?ot.parts:[]))if(Number(op?.inventoryPartId)===inventoryPartId&&op?.stockMode==='reserve'&&stockNum(op?.reservedQty)>0)refs.push(String(ow.id));
-      const unique=[...new Set(refs)].slice(0,6),detail=unique.length?` Reserved for WO #${unique.join(', #')}.`:'';
-      await db.query("ROLLBACK");return res.status(409).json({error:`Only ${available} available (${allocated} reserved).${detail}`,available,reserved:allocated,reservedWorkOrders:unique});
+      const unique=[...new Set(refs)].slice(0,6),detail=unique.length?` Also reserved for WO #${unique.join(', #')}.`:'';
+      stockWarning=`Low stock: ${inv.part_number||'this part'} shows ${Math.max(0,available)} available (${allocated} reserved). Added anyway — the manager will see the shortage.${detail}`;
     }
     const nextAllocated=allocated+qty;
     await db.query("UPDATE fullbay_import_parts SET allocated=$2::numeric,updated_at=now() WHERE id=$1",[inventoryPartId,nextAllocated]);
@@ -2002,8 +2040,8 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/parts",auth,async(req,res,n
   const part={id:`part_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,partNumber:finalPartNumber,description:finalDescription,qty,inventoryPartId:inventoryPartId||null,unitCost:inv?.cost??null,unitPrice:inv?.price??null,sellTaxable:inv?.sell_taxable!==false,barcode:inv?await ensurePartBarcode(db,inventoryPartId):null,stockMode:inventoryPartId?'reserve':null,reservedQty:inventoryPartId?qty:0,addedBy:req.user.username,addedAt:new Date().toISOString()};
   t.parts.push(part);w.history=Array.isArray(w.history)?w.history:[];w.history.push({type:"part_added",at:part.addedAt,by:req.user.username,task:t.t,partNumber:finalPartNumber,description:finalDescription,qty,stockMode:part.stockMode});
   const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
-  await db.query("COMMIT");await audit(req.user.username,"task_part_reserved",{workOrderId,taskUid:uid,partId:part.id,inventoryPartId,qty});
-  res.json({ok:true,part,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
+  await db.query("COMMIT");await audit(req.user.username,"task_part_reserved",{workOrderId,taskUid:uid,partId:part.id,inventoryPartId,qty,stockWarning:stockWarning||undefined});
+  res.json({ok:true,stockWarning:stockWarning||undefined,part,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
  }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
 });
 // ITTR_INVENTORY_RESERVE_FINALIZE_V1_WO_REMOVE
@@ -2220,7 +2258,7 @@ app.get("/api/work-orders/:id/pdf",auth,async(req,res,next)=>{try{
  field("CUSTOMER / COMPANY",w.customer||vehicle.customer,L,y,272);field("PARKING",w.parking,L+272,y,90);field("PRIORITY",w.priority,L+362,y,90);field("STATUS",w.status,L+452,y,92);y+=36;
  y=band("REPAIR / SERVICE & PARTS",y);
  const cols=[28,176,100,38,62,140], heads=["#","DESCRIPTION OF REPAIR / SERVICE","PART NUMBER","QTY","LABOR","MECHANIC / RESULT"];
- let x=L;heads.forEach((h,i)=>{box(x,y,cols[i],24);doc.fillColor("#111").font("Helvetica-Bold").fontSize(7).text(h,x+3,y+7,{width:cols[i]-6,align:i===0?"center":"left"});x+=cols[i]});y+=24;
+ let x=L;heads.forEach((h,i)=>{box(x,y,cols[i],24);doc.fillColor("#111").font("Helvetica-Bold").fontSize(7).text(h,x+3,y+7,{width:cols[i]-6,align:i===0?"center":"left"});x+=cols[i]});y+=24;doc.y=y;
  (Array.isArray(w.tasks)?w.tasks:[]).forEach((t,i)=>{
    const ts=sessions.filter(s=>String(s.task_uid||"")===String(t.uid||""));
    const labor=ts.reduce((a,s)=>a+ms(s.started_at,s.ended_at),0);
@@ -2233,10 +2271,11 @@ app.get("/api/work-orders/:id/pdf",auth,async(req,res,next)=>{try{
      const pn=safe(p.partNumber);
      const partDesc=pi===0&&p.description?`\nPart: ${safe(p.description)}`:"";
      const mechResult=pi===0?`${mechanics}\n${result}${t.outcomeNote?` — ${safe(t.outcomeNote)}`:""}`:"";
-     const h=Math.max(38, 14+Math.max(desc.length/28,pn.length/15,mechResult.length/24)*7);
      x=L;
      const vals=[pi===0?String(i+1):"",desc+partDesc,pn,p.qty?String(p.qty):"",pi===0?duration(labor):"",mechResult];
-     vals.forEach((v,ci)=>{box(x,y,cols[ci],h);doc.fillColor("#222").font(ci===1&&pi===0?"Helvetica-Bold":"Helvetica").fontSize(7.5).text(v,x+3,y+5,{width:cols[ci]-6,height:h-8,ellipsis:true});x+=cols[ci]});
+     const h=Math.max(30,...vals.map((v,ci)=>{doc.font(ci===1&&pi===0?"Helvetica-Bold":"Helvetica").fontSize(7.5);return doc.heightOfString(String(v||" "),{width:cols[ci]-6})+12}));
+     if(y+h>doc.page.height-60){doc.addPage();y=doc.y=36}
+     vals.forEach((v,ci)=>{box(x,y,cols[ci],h);doc.fillColor("#222").font(ci===1&&pi===0?"Helvetica-Bold":"Helvetica").fontSize(7.5).text(v,x+3,y+5,{width:cols[ci]-6});x+=cols[ci]});
      y+=h;doc.y=y;
    });
  });
@@ -2252,7 +2291,7 @@ app.get("/api/work-orders/:id/pdf",auth,async(req,res,next)=>{try{
  const notes=`Initial notes: ${safe(w.notes)||"—"}\nCompletion notes: ${safe(w.completionNotes)||"—"}\nFuture repair / next visit: ${safe(w.futureNotes)||"—"}${w.revisitMiles?`\nRecommended recheck mileage: ${safe(w.revisitMiles)} miles`:""}`;
  box(L,y,W,78);doc.fillColor("#222").font("Helvetica").fontSize(8.5).text(notes,L+6,y+7,{width:W-12,height:66});y+=88;
  field("PRIMARY MECHANIC",mech(w.mechanic),L,y,180);field("HELPER MECHANICS",(Array.isArray(w.helpers)?w.helpers:[]).map(mech).join(", ")||"—",L+180,y,220);field("COMPLETED BY",mech(w.completedBy),L+400,y,144);doc.y=y+36;
- const pages=doc.bufferedPageRange();for(let i=0;i<pages.count;i++){doc.switchToPage(i);doc.font("Helvetica").fontSize(6.8).fillColor("#777").text(`ITTR ShopFlow · Work Order #${workOrderId} · Page ${i+1} of ${pages.count}`,L,756,{width:W,align:"center"})}
+ const pages=doc.bufferedPageRange();for(let i=0;i<pages.count;i++){doc.switchToPage(i);doc.page.margins.bottom=0;doc.font("Helvetica").fontSize(6.8).fillColor("#777").text(`ITTR ShopFlow · Work Order #${workOrderId} · Page ${i+1} of ${pages.count}`,L,756,{width:W,align:"center"})}
  doc.end();
 }catch(e){next(e)}});
 
@@ -2969,11 +3008,66 @@ app.get("/api/parts/:id/cost-history",auth,managerPermission("inventory"),async(
 
 // ---- v24.6.1 Service Order Review + audited labor adjustment ----
 async function nextServiceOrderNumber(db){const y=new Date().getFullYear();await db.query("SELECT pg_advisory_xact_lock($1::bigint)",[2461]);const q=await db.query("SELECT coalesce(max((regexp_match(service_order_number,$1))[1]::int),0)+1 n FROM service_orders WHERE service_order_number ~ $2",[`^SO-${y}-([0-9]+)$`,`^SO-${y}-[0-9]+$`]);return `SO-${y}-${String(Number(q.rows[0]?.n||1)).padStart(5,'0')}`}
+// ITTR v24.30.0 — work-order numbers are never reused. Every table that remembers a work-order
+// number is consulted, so a deleted or cleared work order can never hand its number (and its old
+// service order, invoice, labor and stock history) to a new truck.
+const WO_LINKED_TABLES=["task_time_sessions","task_time_adjustments","service_orders","customer_invoices","part_inventory_transactions","finding_photos"];
+async function highestUsedWorkOrderId(db,sf){
+ let max=1000;
+ for(const w of (Array.isArray(sf?.workorders)?sf.workorders:[])){const n=Number(w?.id);if(Number.isInteger(n)&&n>max)max=n}
+ const last=Number(sf?.lastWorkOrderId);if(Number.isInteger(last)&&last>max)max=last;
+ for(const t of WO_LINKED_TABLES){
+  try{const r=await db.query(`SELECT max((work_order_id)::bigint) m FROM ${t} WHERE work_order_id ~ '^[0-9]{1,15}$'`);const n=Number(r.rows[0]?.m);if(Number.isFinite(n)&&n>max)max=n}catch(_){/* table may not exist yet */}
+ }
+ return max;
+}
+function woNorm(v){return String(v??"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"")}
+function woCreatedMs(w){const c=Date.parse(w?.createdAt||"");if(Number.isFinite(c))return c;const d=Date.parse(`${w?.date||""} ${w?.time||""}`.trim());return Number.isFinite(d)?d:NaN}
+function serviceOrderBelongsToOtherVehicle(so,w){
+ const unitA=woNorm(so?.unit_number),unitB=woNorm(w?.unitGenerated?"":w?.unit),custA=woNorm(so?.customer_name),custB=woNorm(w?.customer);
+ const vinA=woNorm(so?.vin),vinB=woNorm(w?.vin);
+ const differs=(unitA&&unitB&&unitA!==unitB)||(vinA&&vinB&&vinA!==vinB)||(custA&&custB&&custA!==custB);
+ if(!differs)return false;
+ const created=woCreatedMs(w),soAt=Date.parse(so?.created_at||"");
+ if(Number.isFinite(created)&&Number.isFinite(soAt)&&soAt>created)return false; // made for this WO, then the WO was edited
+ return true;
+}
+// Move an old service order (and its invoice, labor and stock rows that don't belong to the current
+// work order's jobs) to a separate "old" key. Nothing is deleted; old invoices stay intact.
+async function retireStaleWorkOrderLinks(db,woId,so,w,by){
+ const key=`${woId}-old-${so.id}`;
+ const uids=(Array.isArray(w?.tasks)?w.tasks:[]).map(t=>String(t?.uid||"")).filter(Boolean);
+ await db.query("UPDATE service_orders SET work_order_id=$2,updated_at=now() WHERE id=$1::bigint",[so.id,key]);
+ await db.query("UPDATE customer_invoices SET work_order_id=$2 WHERE service_order_id=$1::bigint",[so.id,key]);
+ const moved={};
+ for(const t of ["task_time_sessions","task_time_adjustments","part_inventory_transactions"]){
+  try{const r=await db.query(`UPDATE ${t} SET work_order_id=$2 WHERE work_order_id=$1 AND task_uid IS NOT NULL AND NOT (task_uid = ANY($3::text[]))`,[String(woId),key,uids]);moved[t]=r.rowCount}catch(e){moved[t]=`skipped: ${e.message}`}
+ }
+ await audit(by||"system","work_order_number_collision_repaired",{workOrderId:String(woId),oldServiceOrderId:String(so.id),oldServiceOrderNumber:so.service_order_number,movedTo:key,moved,oldUnit:so.unit_number,oldCustomer:so.customer_name,currentUnit:w?.unit,currentCustomer:w?.customer});
+ return key;
+}
+async function repairWorkOrderNumberCollisions(){
+ if(!pool)return;
+ const db=await pool.connect();
+ try{
+  const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");const sf=q.rows[0]?.payload||{};
+  const byId=new Map((Array.isArray(sf.workorders)?sf.workorders:[]).map(w=>[String(w?.id),w]));
+  const sos=(await db.query("SELECT * FROM service_orders WHERE work_order_id ~ '^[0-9]{1,15}$'")).rows;
+  let fixed=0;
+  for(const so of sos){const w=byId.get(String(so.work_order_id));if(!w||!serviceOrderBelongsToOtherVehicle(so,w))continue;await db.query("BEGIN");try{await retireStaleWorkOrderLinks(db,so.work_order_id,so,w,"system");await db.query("COMMIT");fixed++}catch(e){await db.query("ROLLBACK");console.error("[WO number repair]",e.message)}}
+  if(fixed)console.log(`ITTR repaired ${fixed} reused work-order number link(s)`);
+ }catch(e){console.error("[WO number repair]",e.message)}finally{db.release()}
+}
+app.get("/api/work-orders/next-id",auth,async(req,res,next)=>{try{
+ if(!["admin","manager"].includes(req.user?.role))return res.status(403).json({error:"Manager access required."});
+ const db=requireDb();const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");
+ res.json({id:(await highestUsedWorkOrderId(db,q.rows[0]?.payload||{}))+1});
+}catch(e){next(e)}});
 async function completedWo(db,woId){const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");const sf=q.rows[0]?.payload||{};return (Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===String(woId))||null}
-app.post('/api/service-orders/from-work-order/:woId',auth,adminOnly,async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const woId=String(req.params.woId),w=await completedWo(db,woId);if(!w){await db.query('ROLLBACK');return res.status(404).json({error:'Work order not found.'})}if(String(w.status)!=='Completed'){await db.query('ROLLBACK');return res.status(409).json({error:'Complete the work order before creating the service order.'})}let ex=(await db.query('SELECT id FROM service_orders WHERE work_order_id=$1::text',[woId])).rows[0];if(ex){await db.query('ROLLBACK');return res.json({ok:true,id:ex.id,existing:true})}let unit=null;if(w.unitRecordId)unit=(await db.query('SELECT * FROM customer_units WHERE id=$1::bigint',[w.unitRecordId])).rows[0]||null;if(!unit&&w.unit)unit=(await db.query('SELECT * FROM customer_units WHERE unit_number=$1::text ORDER BY updated_at DESC LIMIT 1',[String(w.unit)])).rows[0]||null;const n=await nextServiceOrderNumber(db);const ins=await db.query(`INSERT INTO service_orders(service_order_number,work_order_id,customer_id,customer_name,unit_id,unit_number,vin,mileage,po_number,created_by) VALUES($1,$2,$3::bigint,$4,$5::bigint,$6,$7,$8::numeric,$9,$10) RETURNING id`,[n,woId,w.customerId||unit?.customer_id||null,w.customer||unit?.customer_name||'',unit?.id||w.unitRecordId||null,w.unit||unit?.unit_number||'',w.vin||unit?.vin||'',Number(w.mileage||unit?.mileage||0)||null,w.poNumber||'',req.user.username]);await db.query('COMMIT');res.json({ok:true,id:ins.rows[0].id})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
-app.get('/api/service-orders/:id',auth,adminOnly,async(req,res,next)=>{try{const db=requireDb(),so=(await db.query('SELECT * FROM service_orders WHERE id=$1::bigint',[req.params.id])).rows[0];if(!so)return res.status(404).json({error:'Service order not found.'});const w=await completedWo(db,so.work_order_id);if(!w)return res.status(404).json({error:'Source work order not found.'});const raw=(await db.query(`SELECT task_uid,task_name,mechanic_username,sum(extract(epoch from (ended_at-started_at))/3600.0) original_hours FROM task_time_sessions WHERE work_order_id=$1::text AND ended_at IS NOT NULL GROUP BY task_uid,task_name,mechanic_username ORDER BY task_name,mechanic_username`,[so.work_order_id])).rows;const adj=(await db.query(`SELECT DISTINCT ON (task_uid,mechanic_username) task_uid,mechanic_username,adjusted_hours,original_hours,reason,adjusted_by,created_at FROM task_time_adjustments WHERE work_order_id=$1::text ORDER BY task_uid,mechanic_username,created_at DESC,id DESC`,[so.work_order_id])).rows;const am=new Map(adj.map(a=>[`${a.task_uid}::${a.mechanic_username}`,a]));const sessions=raw.map(r=>({...r,original_hours:Number(r.original_hours||0),adjusted_hours:Number(am.get(`${r.task_uid}::${r.mechanic_username}`)?.adjusted_hours??r.original_hours),adjustment:am.get(`${r.task_uid}::${r.mechanic_username}`)||null}));res.json({serviceOrder:so,workOrder:w,sessions})}catch(e){next(e)}});
-app.post('/api/service-orders/:id/time-adjustment',auth,adminOnly,async(req,res,next)=>{try{const db=requireDb(),so=(await db.query('SELECT * FROM service_orders WHERE id=$1::bigint',[req.params.id])).rows[0];if(!so||so.status!=='review')return res.status(409).json({error:'Service order is locked or missing.'});const b=req.body||{},hours=Number(b.adjustedHours),reason=String(b.reason||'').trim();if(!Number.isFinite(hours)||hours<0)return res.status(400).json({error:'Adjusted hours must be zero or greater.'});if(reason.length<3)return res.status(400).json({error:'Reason for labor-time adjustment is required.'});const orig=(await db.query(`SELECT coalesce(sum(extract(epoch from (ended_at-started_at))/3600.0),0) h FROM task_time_sessions WHERE work_order_id=$1::text AND task_uid=$2::text AND mechanic_username=$3::text AND ended_at IS NOT NULL`,[so.work_order_id,String(b.taskUid||''),String(b.mechanic||'')])).rows[0]?.h||0;await db.query(`INSERT INTO task_time_adjustments(work_order_id,task_uid,mechanic_username,adjusted_hours,original_hours,reason,adjusted_by) VALUES($1,$2,$3,$4::numeric,$5::numeric,$6,$7)`,[so.work_order_id,String(b.taskUid||''),String(b.mechanic||''),hours,Number(orig),reason,req.user.username]);await audit(req.user.username,'labor_time_adjusted',{workOrderId:so.work_order_id,taskUid:b.taskUid,mechanic:b.mechanic,originalHours:Number(orig),adjustedHours:hours,reason});res.json({ok:true})}catch(e){next(e)}});
-app.post('/api/service-orders/:id/to-invoice',auth,adminOnly,async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const so=(await db.query('SELECT * FROM service_orders WHERE id=$1::bigint FOR UPDATE',[req.params.id])).rows[0];if(!so){await db.query('ROLLBACK');return res.status(404).json({error:'Service order not found.'})}const existing=(await db.query("SELECT id FROM customer_invoices WHERE service_order_id=$1::bigint AND status<>'void'",[so.id])).rows[0];if(existing){await db.query('ROLLBACK');return res.json({ok:true,id:existing.id,existing:true})}const w=await completedWo(db,so.work_order_id);if(!w){await db.query('ROLLBACK');return res.status(404).json({error:'Source work order missing.'})}let cust=so.customer_id?(await db.query('SELECT * FROM fullbay_import_customers WHERE id=$1::bigint',[so.customer_id])).rows[0]:null;const num=await nextInvoiceNumber(db),rate=invoiceMoney(cust?.default_labor_rate||req.body?.laborRate||0),terms=String(cust?.credit_terms||'Due on Receipt'),days=/30/.test(terms)?30:/15/.test(terms)?15:/45/.test(terms)?45:0;const ins=await db.query(`INSERT INTO customer_invoices(invoice_number,work_order_id,service_order_id,customer_id,customer_name,unit_id,unit_number,vin,mileage,po_number,invoice_date,due_date,terms,tax_rate,created_by) VALUES($1,$2,$3::bigint,$4::bigint,$5,$6::bigint,$7,$8,$9::numeric,$10,CURRENT_DATE,CURRENT_DATE+$11::int,$12,$13::numeric,$14) RETURNING id`,[num,so.work_order_id,so.id,so.customer_id,so.customer_name,so.unit_id,so.unit_number,so.vin,so.mileage,so.po_number,days,terms,Number(req.body?.taxRate||0),req.user.username]);const iid=ins.rows[0].id;const adj=(await db.query(`SELECT DISTINCT ON (task_uid,mechanic_username) task_uid,mechanic_username,adjusted_hours FROM task_time_adjustments WHERE work_order_id=$1::text ORDER BY task_uid,mechanic_username,created_at DESC,id DESC`,[so.work_order_id])).rows,am=new Map(adj.map(a=>[`${a.task_uid}::${a.mechanic_username}`,Number(a.adjusted_hours||0)]));const raw=(await db.query(`SELECT task_uid,mechanic_username,sum(extract(epoch from (ended_at-started_at))/3600.0) h FROM task_time_sessions WHERE work_order_id=$1::text AND ended_at IS NOT NULL GROUP BY task_uid,mechanic_username`,[so.work_order_id])).rows;const hm=new Map();for(const r of raw){const h=am.has(`${r.task_uid}::${r.mechanic_username}`)?am.get(`${r.task_uid}::${r.mechanic_username}`):Number(r.h||0);hm.set(String(r.task_uid),(hm.get(String(r.task_uid))||0)+h)}let order=0;for(const t of (Array.isArray(w.tasks)?w.tasks:[])){const job=String(t.t||'Repair'),hours=Math.round((hm.get(String(t.uid||''))||0)*100)/100;const laborIns=await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,quantity,unit_price,unit_cost,taxable,line_total,parent_line_id) VALUES($1,$2,$3,$4,'labor',$5,$6::numeric,$7::numeric,0,false,$6::numeric*$7::numeric,NULL) RETURNING id`,[iid,++order,String(t.uid||''),job,job,hours,rate]);const laborId=laborIns.rows[0].id;for(const part of (Array.isArray(t.parts)?t.parts:[]))await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,part_number,quantity,unit_price,unit_cost,taxable,line_total,parent_line_id) VALUES($1,$2,$3,$4,'part',$5,$6,$7::numeric,$8::numeric,$9::numeric,$10::boolean,$7::numeric*$8::numeric,$11::bigint)`,[iid,++order,String(t.uid||''),job,String(part.description||part.partNumber||'Part'),String(part.partNumber||''),Number(part.qty||1),Number(part.unitPrice||0),Number(part.unitCost||0),part.sellTaxable!==false,laborId])}await recalcInvoice(db,iid);await db.query("UPDATE service_orders SET status='invoiced',updated_at=now() WHERE id=$1::bigint",[so.id]);await db.query('COMMIT');res.json({ok:true,id:iid})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
+app.post('/api/service-orders/from-work-order/:woId',auth,adminOnly,async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const woId=String(req.params.woId),w=await completedWo(db,woId);if(!w){await db.query('ROLLBACK');return res.status(404).json({error:'Work order not found.'})}if(String(w.status)!=='Completed'){await db.query('ROLLBACK');return res.status(409).json({error:'Complete the work order before creating the service order.'})}let ex=(await db.query('SELECT * FROM service_orders WHERE work_order_id=$1::text',[woId])).rows[0];if(ex&&serviceOrderBelongsToOtherVehicle(ex,w)){await retireStaleWorkOrderLinks(db,woId,ex,w,req.user.username);ex=null}if(ex){await db.query('ROLLBACK');return res.json({ok:true,id:ex.id,existing:true})}let unit=null;if(w.unitRecordId)unit=(await db.query('SELECT * FROM customer_units WHERE id=$1::bigint',[w.unitRecordId])).rows[0]||null;if(!unit&&w.unit)unit=(await db.query('SELECT * FROM customer_units WHERE unit_number=$1::text ORDER BY updated_at DESC LIMIT 1',[String(w.unit)])).rows[0]||null;const n=await nextServiceOrderNumber(db);const ins=await db.query(`INSERT INTO service_orders(service_order_number,work_order_id,customer_id,customer_name,unit_id,unit_number,vin,mileage,po_number,created_by) VALUES($1,$2,$3::bigint,$4,$5::bigint,$6,$7,$8::numeric,$9,$10) RETURNING id`,[n,woId,w.customerId||unit?.customer_id||null,w.customer||unit?.customer_name||'',unit?.id||w.unitRecordId||null,w.unit||unit?.unit_number||'',w.vin||unit?.vin||'',Number(w.mileage||unit?.mileage||0)||null,w.poNumber||'',req.user.username]);await db.query('COMMIT');res.json({ok:true,id:ins.rows[0].id})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
+app.get('/api/service-orders/:id',auth,adminOnly,async(req,res,next)=>{try{const db=requireDb(),so=(await db.query('SELECT * FROM service_orders WHERE id=$1::bigint',[req.params.id])).rows[0];if(!so)return res.status(404).json({error:'Service order not found.'});const w=await completedWo(db,so.work_order_id);if(!w)return res.status(404).json({error:'Source work order not found.'});const raw=(await db.query(`SELECT task_uid,task_name,mechanic_username,sum(extract(epoch from (ended_at-started_at))/3600.0) original_hours FROM task_time_sessions WHERE work_order_id=$1::text AND ended_at IS NOT NULL GROUP BY task_uid,task_name,mechanic_username ORDER BY task_name,mechanic_username`,[so.work_order_id])).rows;const adj=(await db.query(`SELECT DISTINCT ON (task_uid,mechanic_username) task_uid,mechanic_username,adjusted_hours,original_hours,reason,adjusted_by,created_at FROM task_time_adjustments WHERE work_order_id=$1::text ORDER BY task_uid,mechanic_username,created_at DESC,id DESC`,[so.work_order_id])).rows;const am=new Map(adj.map(a=>[`${a.task_uid}::${a.mechanic_username}`,a]));const sessions=raw.map(r=>({...r,original_hours:Number(r.original_hours||0),adjusted_hours:Number(am.get(`${r.task_uid}::${r.mechanic_username}`)?.adjusted_hours??r.original_hours),adjustment:am.get(`${r.task_uid}::${r.mechanic_username}`)||null}));const seen=new Set(raw.map(r=>`${r.task_uid}::${r.mechanic_username}`));for(const a of adj){const k=`${a.task_uid}::${a.mechanic_username}`;if(seen.has(k))continue;sessions.push({task_uid:a.task_uid,task_name:'',mechanic_username:a.mechanic_username,original_hours:0,adjusted_hours:Number(a.adjusted_hours||0),adjustment:a})}res.json({serviceOrder:so,workOrder:w,sessions})}catch(e){next(e)}});
+app.post('/api/service-orders/:id/time-adjustment',auth,adminOnly,async(req,res,next)=>{try{const db=requireDb(),so=(await db.query('SELECT * FROM service_orders WHERE id=$1::bigint',[req.params.id])).rows[0];if(!so||so.status!=='review')return res.status(409).json({error:'Service order is locked or missing.'});const b=req.body||{},hours=Number(b.adjustedHours),reason=String(b.reason||'').trim();if(!Number.isFinite(hours)||hours<0)return res.status(400).json({error:'Adjusted hours must be zero or greater.'});if(hours>200)return res.status(400).json({error:'Adjusted hours look too high (over 200).'});if(!String(b.taskUid||'').trim()||!String(b.mechanic||'').trim())return res.status(400).json({error:'Choose the job and mechanic.'});const reasonText=reason||'Adjusted by '+req.user.username;const orig=(await db.query(`SELECT coalesce(sum(extract(epoch from (ended_at-started_at))/3600.0),0) h FROM task_time_sessions WHERE work_order_id=$1::text AND task_uid=$2::text AND mechanic_username=$3::text AND ended_at IS NOT NULL`,[so.work_order_id,String(b.taskUid||''),String(b.mechanic||'')])).rows[0]?.h||0;await db.query(`INSERT INTO task_time_adjustments(work_order_id,task_uid,mechanic_username,adjusted_hours,original_hours,reason,adjusted_by) VALUES($1,$2,$3,$4::numeric,$5::numeric,$6,$7)`,[so.work_order_id,String(b.taskUid||''),String(b.mechanic||'').trim().toLowerCase(),hours,Number(orig),reasonText,req.user.username]);await audit(req.user.username,'labor_time_adjusted',{workOrderId:so.work_order_id,taskUid:b.taskUid,mechanic:b.mechanic,originalHours:Number(orig),adjustedHours:hours,reason:reasonText});res.json({ok:true})}catch(e){next(e)}});
+app.post('/api/service-orders/:id/to-invoice',auth,adminOnly,async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const so=(await db.query('SELECT * FROM service_orders WHERE id=$1::bigint FOR UPDATE',[req.params.id])).rows[0];if(!so){await db.query('ROLLBACK');return res.status(404).json({error:'Service order not found.'})}const existing=(await db.query("SELECT id FROM customer_invoices WHERE service_order_id=$1::bigint AND status<>'void'",[so.id])).rows[0];if(existing){await db.query('ROLLBACK');return res.json({ok:true,id:existing.id,existing:true})}const w=await completedWo(db,so.work_order_id);if(!w){await db.query('ROLLBACK');return res.status(404).json({error:'Source work order missing.'})}let cust=so.customer_id?(await db.query('SELECT * FROM fullbay_import_customers WHERE id=$1::bigint',[so.customer_id])).rows[0]:null;const num=await nextInvoiceNumber(db),rate=invoiceMoney(cust?.default_labor_rate||req.body?.laborRate||0),terms=String(cust?.credit_terms||'Due on Receipt'),days=/30/.test(terms)?30:/15/.test(terms)?15:/45/.test(terms)?45:0;const ins=await db.query(`INSERT INTO customer_invoices(invoice_number,work_order_id,service_order_id,customer_id,customer_name,unit_id,unit_number,vin,mileage,po_number,invoice_date,due_date,terms,tax_rate,created_by) VALUES($1,$2,$3::bigint,$4::bigint,$5,$6::bigint,$7,$8,$9::numeric,$10,CURRENT_DATE,CURRENT_DATE+$11::int,$12,$13::numeric,$14) RETURNING id`,[num,so.work_order_id,so.id,so.customer_id,so.customer_name,so.unit_id,so.unit_number,so.vin,so.mileage,so.po_number,days,terms,Number(req.body?.taxRate||0),req.user.username]);const iid=ins.rows[0].id;const adj=(await db.query(`SELECT DISTINCT ON (task_uid,mechanic_username) task_uid,mechanic_username,adjusted_hours FROM task_time_adjustments WHERE work_order_id=$1::text ORDER BY task_uid,mechanic_username,created_at DESC,id DESC`,[so.work_order_id])).rows,am=new Map(adj.map(a=>[`${a.task_uid}::${a.mechanic_username}`,Number(a.adjusted_hours||0)]));const raw=(await db.query(`SELECT task_uid,mechanic_username,sum(extract(epoch from (ended_at-started_at))/3600.0) h FROM task_time_sessions WHERE work_order_id=$1::text AND ended_at IS NOT NULL GROUP BY task_uid,mechanic_username`,[so.work_order_id])).rows;const hm=new Map();for(const r of raw){const h=am.has(`${r.task_uid}::${r.mechanic_username}`)?am.get(`${r.task_uid}::${r.mechanic_username}`):Number(r.h||0);hm.set(String(r.task_uid),(hm.get(String(r.task_uid))||0)+h)}{const seenRaw=new Set(raw.map(r=>`${r.task_uid}::${r.mechanic_username}`));for(const a of adj){const k=`${a.task_uid}::${a.mechanic_username}`;if(seenRaw.has(k))continue;hm.set(String(a.task_uid),(hm.get(String(a.task_uid))||0)+Number(a.adjusted_hours||0))}}let order=0;for(const t of (Array.isArray(w.tasks)?w.tasks:[])){const job=String(t.t||'Repair'),hours=Math.round((hm.get(String(t.uid||''))||0)*100)/100;const laborIns=await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,quantity,unit_price,unit_cost,taxable,line_total,parent_line_id) VALUES($1,$2,$3,$4,'labor',$5,$6::numeric,$7::numeric,0,false,$6::numeric*$7::numeric,NULL) RETURNING id`,[iid,++order,String(t.uid||''),job,job,hours,rate]);const laborId=laborIns.rows[0].id;for(const part of (Array.isArray(t.parts)?t.parts:[]))await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,part_number,quantity,unit_price,unit_cost,taxable,line_total,parent_line_id) VALUES($1,$2,$3,$4,'part',$5,$6,$7::numeric,$8::numeric,$9::numeric,$10::boolean,$7::numeric*$8::numeric,$11::bigint)`,[iid,++order,String(t.uid||''),job,String(part.description||part.partNumber||'Part'),String(part.partNumber||''),Number(part.qty||1),Number(part.unitPrice||0),Number(part.unitCost||0),part.sellTaxable!==false,laborId])}await recalcInvoice(db,iid);await db.query("UPDATE service_orders SET status='invoiced',updated_at=now() WHERE id=$1::bigint",[so.id]);await db.query('COMMIT');res.json({ok:true,id:iid})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
 
 // ---- v24.6 Professional Customer Invoicing ----
 // ITTR_INVENTORY_POSTING_HELPERS_V1
@@ -3755,5 +3849,6 @@ initDb()
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
+  .then(()=>repairWorkOrderNumberCollisions())
   .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v24.28.4 Online running on port ${port}`))})
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

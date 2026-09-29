@@ -94,6 +94,12 @@ for(const name of ['customers','invoices','parts','procenter','trucksearch']){
 }
 
 check('main inline script is not cut by an injected </script>',(()=>{const h=read('public/index.html');const i=h.indexOf('<script>');const j=h.indexOf('</script>',i);return i>0&&h.indexOf('<script src="./inspection-workflow.js',i)>j;})());
+check('work-order numbers are never reused',server.includes('async function highestUsedWorkOrderId')&&server.includes('/api/work-orders/next-id')&&root.includes('await nextWorkOrderId()')&&!server.includes('Math.max(...numericIds):1000'));
+check('reused work-order number links are repaired',server.includes('repairWorkOrderNumberCollisions()')&&server.includes('serviceOrderBelongsToOtherVehicle(ex,w)'));
+check('all PDFs use Unicode fonts',server.includes('class PDFDocument extends PDFKitDocument')&&fs.existsSync('assets/fonts/DejaVuSansCondensed.ttf')&&fs.existsSync('assets/fonts/DejaVuSansCondensed-Bold.ttf'));
+check('PDF footers never create blank pages',!/switchToPage\(i\);(?!doc\.page\.margins\.bottom=0)/.test(server));
+check('labor-time adjustment needs no reason',!server.includes("Reason for labor-time adjustment is required.")&&!root.includes("Reason for changing completed mechanic time (required)"));
+check('inventory reset is owner-only and confirmed',server.includes('/api/parts/inventory/reset-to-zero')&&server.includes('Type RESET to confirm.')&&server.includes("transaction_type,quantity_delta,quantity_before,quantity_after,reference,reason,username,metadata) VALUES($1,'inventory_reset'"));
 check('start reaches server.js',String(pkg.scripts?.start||'').trim().endsWith('node server.js'),pkg.scripts?.start||'');
 check('startup smoke test exists',exists('smoke_test.mjs'));
 check('release check executes startup smoke test',String(pkg.scripts?.check||'').includes('node smoke_test.mjs'));
