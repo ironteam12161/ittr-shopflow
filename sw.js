@@ -1,6 +1,6 @@
-// ITTR ShopFlow v24.28.4 production PWA service worker
-const CACHE='ittr-shopflow-v24.28.4';
-const SHELL=['/','/index.html','/manifest.webmanifest','/invoice-workspace.css','/modules/invoices.html','/modules/invoices.js','/modules/parts.html','/modules/parts.js','/modules/procenter.html','/modules/procenter.js','/modules/customers.html','/modules/customers.js','/modules/trucksearch.html','/modules/trucksearch.js','/inspection-workflow.css','/inspection-workflow.js','/assets/iron-team-logo.png'];
+// ITTR ShopFlow v24.29.0 production PWA service worker
+const CACHE='ittr-shopflow-v24.29.0';
+const SHELL=['/','/index.html','/manifest.webmanifest','/invoice-workspace.css','/modules/invoices.html','/modules/invoices.js','/modules/parts.html','/modules/parts.js','/modules/procenter.html','/modules/procenter.js','/modules/customers.html','/modules/customers.js','/modules/trucksearch.html','/modules/trucksearch.js','/inspection-workflow.css','/inspection-workflow.js','/inspection-checklist.js','/assets/iron-team-logo.png'];
 
 self.addEventListener('install',event=>event.waitUntil(
   caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())
@@ -27,7 +27,7 @@ self.addEventListener('fetch',event=>{
   const u=new URL(r.url);
   if(u.origin!==location.origin||u.pathname.startsWith('/api/'))return;
 
-  const critical=r.mode==='navigate'||u.pathname==='/'||u.pathname==='/index.html'||u.pathname.startsWith('/modules/')||u.pathname==='/invoice-workspace.css'||u.pathname==='/inspection-workflow.css'||u.pathname==='/inspection-workflow.js'||u.pathname==='/manifest.webmanifest';
+  const critical=r.mode==='navigate'||u.pathname==='/'||u.pathname==='/index.html'||u.pathname.startsWith('/modules/')||u.pathname==='/invoice-workspace.css'||u.pathname==='/inspection-workflow.css'||u.pathname==='/inspection-workflow.js'||u.pathname==='/inspection-checklist.js'||u.pathname==='/manifest.webmanifest';
   if(critical){
     const cacheKey=r.mode==='navigate'?'/index.html':r;
     event.respondWith(networkFirst(r,cacheKey));
