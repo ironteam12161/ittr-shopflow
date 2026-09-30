@@ -194,7 +194,7 @@ export async function resetData(db, scopes, username) {
 
 // ---------------------------------------------------------------- routes
 export function registerComplianceRoutes(app, deps) {
-  const { auth, ownerOnly, adminOnly, requireDb, audit, shopProfile, lookupFmcsaCarrier, samsaraPaged, samsaraConfigured } = deps;
+  const { auth, ownerOnly, adminOnly, requireDb, audit, shopProfile, lookupFmcsaCarrier, searchFmcsaCarriersByName, samsaraPaged, samsaraConfigured } = deps;
   const read = h => async (req, res, next) => { try { res.json(await h(requireDb(), req, res)); } catch (e) { if (e?.status) return res.status(e.status).json({ error: e.message, code: e.code }); next(e); } };
   const tx = h => async (req, res, next) => { const db = await requireDb().connect(); try { await db.query('BEGIN'); const out = await h(db, req); await db.query('COMMIT'); res.json(out); } catch (e) { try { await db.query('ROLLBACK'); } catch {} if (e?.status) return res.status(e.status).json({ error: e.message, code: e.code }); next(e); } finally { db.release(); } };
   const fail = (s, m) => { throw Object.assign(new Error(m), { status: s }); };
@@ -208,12 +208,13 @@ export function registerComplianceRoutes(app, deps) {
       WHERE ($1='' OR coalesce(carrier_name,'') ILIKE '%'||$1||'%' OR coalesce(vin,'') ILIKE '%'||$1||'%' OR coalesce(unit_number,'') ILIKE '%'||$1||'%') ORDER BY id DESC LIMIT 300`, [q])).rows };
   }));
   app.get('/api/annual-inspections/lookup', auth, adminOnly, read(async (db, req) => {
-    const q = str(req.query.q, 100); if (q.length < 2) return { customers: [], fmcsa: null };
+    const q = str(req.query.q, 100), digits = q.replace(/\D/g, ''), isDot = /^\d{3,8}$/.test(q.replace(/\s/g, ''));
+    if (q.length < 2) return { customers: [], carriers: [] };
     const customers = (await db.query(`SELECT id,customer_name,dot_number,coalesce(nullif(billing_address,''),address) address,coalesce(nullif(billing_city,''),city) city,coalesce(nullif(billing_state,''),state) state,coalesce(nullif(billing_postal_code,''),postal_code) postal_code
-      FROM fullbay_import_customers WHERE deleted_at IS NULL AND (customer_name ILIKE '%'||$1||'%' OR regexp_replace(coalesce(dot_number,''),'\\D','','g')=regexp_replace($1,'\\D','','g')) ORDER BY customer_name LIMIT 8`, [q])).rows;
-    let fmcsa = null, fmcsaError = '';
-    if (/^\d{3,8}$/.test(q.replace(/\D/g, '')) && q.replace(/\D/g, '').length === q.replace(/\s/g, '').length) { try { fmcsa = await lookupFmcsaCarrier(q); } catch (e) { fmcsaError = e.message; } }
-    return { customers, fmcsa, fmcsaError };
+      FROM fullbay_import_customers WHERE deleted_at IS NULL AND (customer_name ILIKE '%'||$1||'%' OR ($2<>'' AND regexp_replace(coalesce(dot_number,''),'\\D','','g')=$2)) ORDER BY customer_name LIMIT 8`, [q, isDot ? digits : ''])).rows;
+    let carriers = [], fmcsaError = '';
+    try { carriers = isDot ? [await lookupFmcsaCarrier(digits)] : (q.length >= 3 && searchFmcsaCarriersByName ? await searchFmcsaCarriersByName(q) : []); } catch (e) { fmcsaError = e.message; }
+    return { customers, carriers, fmcsaError };
   }));
   app.get('/api/annual-inspections/units', auth, adminOnly, read(async (db, req) => ({ items: (await db.query(`SELECT id,unit_number,vin,plate,year,make,model FROM customer_units WHERE ($1::bigint IS NULL OR customer_id=$1::bigint) AND ($2='' OR unit_number ILIKE '%'||$2||'%' OR coalesce(vin,'') ILIKE '%'||$2||'%') ORDER BY unit_number LIMIT 50`, [req.query.customerId || null, str(req.query.q, 60)])).rows })));
   const docValues = (b, preview = false) => { const template = INSPECTION_TEMPLATES[b?.template] ? b.template : null; if (!template) fail(400, 'Pick the truck or trailer form.'); const f = cleanInspectionFields(b.fields); if (!f.carrierName && !preview) fail(400, 'Motor carrier name is required.'); return { template, f }; };
