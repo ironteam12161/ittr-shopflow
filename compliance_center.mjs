@@ -1,127 +1,60 @@
 // ITTR ShopFlow v24.39.0 compliance center:
-//  - Annual vehicle inspection reports (49 CFR 396.17/396.21) with printable PDF
+//  - Annual inspection documents: the shop's own truck/trailer forms, filled in and printed
 //  - Fleet PM / CARB / recurring maintenance tracking (miles from Samsara, alerts by email)
 //  - Owner "start fresh" reset of test data, with a snapshot kept for recovery
 import crypto from 'node:crypto';
+import { PDFDocument as PdfLibDocument, StandardFonts, rgb } from 'pdf-lib';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { getSetting } from './finance_center.mjs';
 import { alertEmailHtml, sendResendEmail } from './email_templates.mjs';
 
-// ---------------------------------------------------------------- annual inspection items (49 CFR 396, Appendix G)
-export const INSPECTION_SECTIONS = Object.freeze([
-  ['1', 'BRAKE SYSTEM', [['a', 'Service Brakes'], ['b', 'Parking Brake System'], ['c', 'Brake Drums or Rotors'], ['d', 'Brake Hose'], ['e', 'Brake Tubing'], ['f', 'Low Pressure Warning Device'], ['g', 'Tractor Protection Valve'], ['h', 'Air Compressor'], ['i', 'Electric Brakes'], ['j', 'Hydraulic Brakes'], ['k', 'Vacuum Systems']]],
-  ['2', 'COUPLING DEVICES', [['a', 'Fifth Wheels'], ['b', 'Pintle Hooks'], ['c', 'Drawbar/Towbar Eye'], ['d', 'Drawbar/Towbar Tongue'], ['e', 'Safety Devices'], ['f', 'Saddle-Mounts']]],
-  ['3', 'EXHAUST SYSTEM', [['a', 'Any exhaust system determined to be leaking at a point forward of or directly below the driver/sleeper compartment.'], ['b', 'A bus exhaust system leaking or discharging to the atmosphere in violation of standards (1), (2) or (3).'], ['c', 'No part of the exhaust system of any motor vehicle shall be so located as would be likely to result in burning, charring, or damaging the electrical wiring, the fuel supply, or any combustible part of the motor vehicle.']]],
-  ['4', 'FUEL SYSTEM', [['a', 'Visible leak'], ['b', 'Fuel tank filler cap missing'], ['c', 'Fuel tank securely attached']]],
-  ['5', 'LIGHTING DEVICES', [['a', 'All lighting devices and reflectors required by Section 393 shall be operable.']]],
-  ['6', 'SAFE LOADING', [['a', 'Part(s) of vehicle or condition of loading such that the spare tire or any part of the load or dunnage can fall onto the roadway.'], ['b', 'Protection against shifting cargo']]],
-  ['7', 'STEERING MECHANISM', [['a', 'Steering Wheel Free Play'], ['b', 'Steering Column'], ['c', 'Front Axle Beam and All Steering Components Other Than Steering Column'], ['d', 'Steering Gear Box'], ['e', 'Pitman Arm'], ['f', 'Power Steering'], ['g', 'Ball and Socket Joints'], ['h', 'Tie Rods and Drag Links'], ['i', 'Nuts'], ['j', 'Steering System']]],
-  ['8', 'SUSPENSION', [['a', 'Any U-bolt(s), spring hanger(s), or other axle positioning part(s) cracked, broken, loose or missing resulting in shifting of an axle from its normal position.'], ['b', 'Spring Assembly'], ['c', 'Torque, Radius or Tracking Components.']]],
-  ['9', 'FRAME', [['a', 'Frame Members'], ['b', 'Tire and Wheel Clearance'], ['c', 'Adjustable Axle Assemblies (Sliding Subframes)']]],
-  ['10', 'TIRES', [['a', 'Tires on any steering axle of a power unit.'], ['b', 'All other tires.']]],
-  ['11', 'WHEELS AND RIMS', [['a', 'Lock or Side Ring'], ['b', 'Wheels and Rims'], ['c', 'Fasteners'], ['d', 'Welds']]],
-  ['12', 'WINDSHIELD GLAZING', [['a', 'Requirements and exceptions as stated pertaining to any crack, discoloration or vision reducing matter (reference 393.60 for exceptions)']]],
-  ['13', 'WINDSHIELD WIPERS', [['a', 'Any power unit that has an inoperative wiper, or missing or damaged parts that render it ineffective.']]]
-]);
-export const INSPECTION_CODES = INSPECTION_SECTIONS.flatMap(([n, , items]) => items.map(([l]) => `${n}${l}`));
-// Items that normally do not apply, per vehicle type (the inspector can still change any of them).
-export const INSPECTION_PRESETS = Object.freeze({
-  tractor: ['1i', '1j', '1k', '2b', '2c', '2d', '2f', '3b', '9c'],
-  truck: ['1g', '1i', '1j', '1k', '2a', '2b', '2c', '2d', '2e', '2f', '3b', '9c'],
-  trailer: ['1f', '1g', '1h', '1i', '1j', '1k', '2a', '2b', '2c', '2d', '2f', '3a', '3b', '3c', '4a', '4b', '4c', '7a', '7b', '7c', '7d', '7e', '7f', '7g', '7h', '7i', '7j', '10a', '12a', '13a'],
-  other: []
+// ---------------------------------------------------------------- annual inspection documents
+// The shop's own annual inspection forms (truck/tractor and trailer) are stored as blank PDF templates.
+// Only the changing values are written onto them, at the same spots the originals used.
+const TEMPLATE_DIR = fileURLToPath(new URL('./assets/inspection-templates/', import.meta.url));
+const BOX = { reportNumber: [427.2, 491.4], unitNumber: [492.9, 611.1], date: [456.1, 606.1] };
+// x/y are PDF points from the bottom-left (baseline); w = widest the text may get before it shrinks.
+const COMMON = {
+  carrierName: { label: 'Motor carrier operator', w: 282 }, address: { label: 'Address', w: 282 }, cityStateZip: { label: 'City, state, ZIP', w: 282 },
+  inspectorName: { label: "Inspector's name", w: 280 }, vin: { label: 'VIN', w: 150 }, agency: { label: 'Inspection agency / location', w: 280 },
+  reportNumber: { label: 'Report number', center: true }, unitNumber: { label: 'Fleet unit number', center: true }, date: { label: 'Date', center: true },
+  otherConditions: { label: 'Other conditions (bottom right)', w: 92 }
+};
+export const INSPECTION_TEMPLATES = Object.freeze({
+  truck: { label: 'Truck / tractor', file: 'annual-truck.pdf', fields: {
+    reportNumber: { y: 741.5, size: 12 }, unitNumber: { y: 741.5, size: 12 }, date: { y: 723.5, size: 12 },
+    carrierName: { x: 37.1, y: 693.4, size: 12 }, address: { x: 37.1, y: 669.4, size: 12 }, cityStateZip: { x: 37.1, y: 645.4, size: 12 },
+    inspectorName: { x: 326.9, y: 693.6, size: 12 }, vin: { x: 324.8, y: 644.1, size: 12, w: 280 }, agency: { x: 326.9, y: 622.2, size: 11 },
+    otherConditions: { x: 517.9, y: 226.4, size: 11 } } },
+  trailer: { label: 'Trailer', file: 'annual-trailer.pdf', fields: {
+    reportNumber: { y: 742.0, size: 11 }, unitNumber: { y: 742.0, size: 11 }, date: { y: 724.5, size: 11 },
+    carrierName: { x: 41.1, y: 693.6, size: 11 }, address: { x: 41.6, y: 668.3, size: 11 }, cityStateZip: { x: 41.1, y: 646.5, size: 11 },
+    inspectorName: { x: 326.9, y: 692.0, size: 12 }, vin: { x: 329.6, y: 646.9, size: 11, w: 280 }, agency: { x: 326.9, y: 622.2, size: 11 },
+    otherConditions: { x: 517.9, y: 226.4, size: 11 } } }
 });
-export function presetItems(type) {
-  const na = new Set(INSPECTION_PRESETS[type] || []);
-  return Object.fromEntries(INSPECTION_CODES.map(c => [c, { status: na.has(c) ? 'na' : 'ok', repairedDate: '' }]));
-}
-export function cleanItems(raw, type) {
-  const base = presetItems(type), out = {};
-  for (const c of INSPECTION_CODES) {
-    const x = raw && typeof raw === 'object' ? raw[c] : null;
-    const status = ['ok', 'repair', 'na', 'repaired'].includes(x?.status) ? x.status : base[c].status;
-    const repairedDate = /^\d{4}-\d{2}-\d{2}$/.test(String(x?.repairedDate || '')) ? x.repairedDate : '';
-    out[c] = { status: status === 'repaired' && !repairedDate ? 'repair' : status, repairedDate: status === 'repaired' ? repairedDate : '' };
-  }
+export const INSPECTION_FIELD_KEYS = Object.keys(COMMON);
+export function cleanInspectionFields(raw = {}) {
+  const out = {}; for (const k of INSPECTION_FIELD_KEYS) out[k] = String(raw?.[k] ?? '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, k === 'otherConditions' ? 60 : 120);
+  if (out.vin) out.vin = out.vin.toUpperCase();
   return out;
 }
-export const inspectionResult = items => Object.values(items).some(i => i.status === 'repair') ? 'needs_repair' : 'passed';
-
-// ---------------------------------------------------------------- PDF (letter, one page, 3 item columns)
-export async function renderAnnualInspectionPdf({ PDFDocument, report: r, shop }) {
-  const doc = new PDFDocument({ size: 'LETTER', margin: 28, info: { Title: `Annual Vehicle Inspection ${r.report_number}` } });
-  const chunks = []; doc.on('data', c => chunks.push(c)); const done = new Promise(res => doc.on('end', () => res(Buffer.concat(chunks))));
-  const L = 28, R = 584, W = R - L, INK = '#111827', MUT = '#4b5563', LINE = '#111827', GRAY = '#d1d5db';
-  const t = (s, x, y, o = {}) => doc.text(String(s ?? ''), x, y, { lineBreak: o.width ? true : false, ...o });
-  const box = (x, y, w, h, fill) => { doc.save().lineWidth(.7).rect(x, y, w, h); fill ? doc.fillAndStroke(fill, LINE) : doc.stroke(LINE); doc.restore(); };
-  const check = (x, y, on) => { box(x, y, 8, 8); if (on) doc.save().lineWidth(1.2).moveTo(x + 1.5, y + 1.5).lineTo(x + 6.5, y + 6.5).moveTo(x + 6.5, y + 1.5).lineTo(x + 1.5, y + 6.5).stroke(INK).restore(); };
-  const date = v => { if (!v) return ''; const d = new Date(String(v).slice(0, 10) + 'T12:00:00'); return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`; };
-  // title + history box
-  doc.font('Helvetica-Bold').fontSize(16).fillColor(INK); t('ANNUAL VEHICLE INSPECTION REPORT', L, 30, { width: 360, align: 'center' });
-  doc.font('Helvetica').fontSize(8).fillColor(MUT); t(`${shop.name} · ${shop.address1}, ${shop.address2}${shop.phone ? ` · ${shop.phone}` : ''}`, L, 52, { width: 360, align: 'center' });
-  const hx = 402, hw = R - hx; box(hx, 24, hw, 14, '#374151'); doc.font('Helvetica-Bold').fontSize(8).fillColor('#fff'); t('VEHICLE HISTORY RECORD', hx, 28, { width: hw, align: 'center' });
-  box(hx, 38, hw / 2, 30); box(hx + hw / 2, 38, hw / 2, 30); box(hx, 68, hw, 22);
-  doc.fillColor(INK).font('Helvetica').fontSize(6.5); t('REPORT NUMBER', hx + 4, 41); t('FLEET UNIT NUMBER', hx + hw / 2 + 4, 41); t('DATE', hx + 4, 71);
-  doc.font('Helvetica-Bold').fontSize(11); t(r.report_number, hx + 4, 53, { width: hw / 2 - 8 }); t(r.fleet_unit_number || '', hx + hw / 2 + 4, 53, { width: hw / 2 - 8, align: 'center' }); t(date(r.inspection_date), hx + 40, 75, { width: hw - 50, align: 'center' });
-  // info grid
-  let y = 96; const half = W / 2;
-  const cell = (x, yy, w, h, label, value, size = 11) => { box(x, yy, w, h); doc.font('Helvetica').fontSize(6.5).fillColor(INK); t(label, x + 4, yy + 3); doc.font('Helvetica').fontSize(size); t(value || '', x + 4, yy + 12, { width: w - 8, height: h - 12, ellipsis: true }); };
-  cell(L, y, half, 26, 'MOTOR CARRIER OPERATOR', r.carrier_name); cell(L + half, y, half, 26, "INSPECTOR'S NAME (PRINT OR TYPE)", r.inspector_name);
-  y += 26; cell(L, y, half, 26, 'ADDRESS', r.carrier_address);
-  box(L + half, y, half, 26); doc.font('Helvetica').fontSize(6.5); t('THIS INSPECTOR MEETS THE QUALIFICATION REQUIREMENTS IN SECTION 396.19.', L + half + 4, y + 3); check(L + half + 4, y + 13, r.inspector_qualified !== false); doc.fontSize(8); t('YES', L + half + 16, y + 14);
-  y += 26; cell(L, y, half, 26, 'CITY, STATE, ZIP CODE', r.carrier_city_state_zip);
-  box(L + half, y, half, 26); doc.font('Helvetica').fontSize(6.5); t('VEHICLE IDENTIFICATION AND COMPLETE:', L + half + 4, y + 3);
-  const idk = r.id_kind || 'vin'; let cx = L + half + 150; for (const [k, lbl] of [['plate', 'LIC. PLATE NO.'], ['vin', 'VIN'], ['other', 'OTHER']]) { check(cx, y + 2, idk === k); t(lbl, cx + 11, y + 3); cx += k === 'plate' ? 62 : 32; }
-  doc.fontSize(11); t(idk === 'plate' ? r.plate : idk === 'other' ? r.id_other : r.vin, L + half + 4, y + 13, { width: half - 8 });
-  y += 26; box(L, y, half, 28); doc.fontSize(6.5); t('VEHICLE TYPE', L + 4, y + 3);
-  cx = L + 58; for (const [k, lbl] of [['tractor', 'TRACTOR'], ['trailer', 'TRAILER'], ['truck', 'TRUCK']]) { check(cx, y + 2, r.vehicle_type === k); doc.fontSize(8); t(lbl, cx + 11, y + 2.5); cx += 58; }
-  check(L + 58, y + 15, r.vehicle_type === 'other'); doc.fontSize(8); t(`(OTHER)${r.vehicle_type === 'other' && r.other_type ? ` ${r.other_type}` : ''}`, L + 69, y + 15.5);
-  cell(L + half, y, half, 28, 'INSPECTION AGENCY/LOCATION (OPTIONAL)', r.agency_location);
-  y += 34;
-  // components
-  box(L, y, W, 13, '#374151'); doc.font('Helvetica-Bold').fontSize(8.5).fillColor('#fff'); t('VEHICLE COMPONENTS INSPECTED', L, y + 3, { width: W, align: 'center' }); doc.fillColor(INK); y += 13;
-  const colW = W / 3, cOk = 18, cNr = 22, cRd = 30, textW = colW - cOk - cNr - cRd - 6, top = y;
-  for (let c = 0; c < 3; c++) { const x = L + c * colW; box(x, y, colW, 14, '#f3f4f6'); doc.font('Helvetica-Bold').fontSize(5.2); t('OK', x, y + 5, { width: cOk, align: 'center' }); t('NEEDS', x + cOk, y + 2, { width: cNr, align: 'center' }); t('REPAIR', x + cOk, y + 7.5, { width: cNr, align: 'center' }); t('REPAIRED', x + cOk + cNr, y + 2, { width: cRd, align: 'center' }); t('DATE', x + cOk + cNr, y + 7.5, { width: cRd, align: 'center' }); doc.fontSize(7); t('ITEM', x + cOk + cNr + cRd, y + 5, { width: textW, align: 'center' }); }
-  y += 14;
-  // Pre-measure every row, then split into 3 balanced columns.
-  doc.font('Helvetica').fontSize(7);
-  const rows = []; for (const [n, name, items] of INSPECTION_SECTIONS) { rows.push({ head: `${n}. ${name}`, h: 10 }); for (const [l, txt] of items) rows.push({ code: `${n}${l}`, text: `${l}. ${txt}`, h: Math.max(10, doc.heightOfString(`${l}. ${txt}`, { width: textW - 8 }) + 2) }); }
-  const total = rows.reduce((a, r2) => a + r2.h, 0), target = total / 3, cols = [[], [], []]; let ci = 0, acc = 0;
-  for (const row of rows) {
-    if (ci < 2 && acc + row.h > target + 4) {
-      ci++; acc = 0;
-      const prev = cols[ci - 1]; if (prev.length && prev[prev.length - 1].head) { const h = prev.pop(); cols[ci].push(h); acc += h.h; } // never leave a heading alone at the bottom
-    }
-    cols[ci].push(row); acc += row.h;
+export async function renderInspectionTemplate(template, fields) {
+  const t = INSPECTION_TEMPLATES[template]; if (!t) throw Object.assign(new Error('Unknown inspection template.'), { status: 400 });
+  const doc = await PdfLibDocument.load(fs.readFileSync(TEMPLATE_DIR + t.file)), page = doc.getPage(0), font = await doc.embedFont(StandardFonts.Helvetica);
+  const f = cleanInspectionFields(fields);
+  // Positions are measured inside the visible (crop) area; the forms are 11x17 sheets cropped to the form.
+  const crop = page.getCropBox(), ox = crop.x, oy = crop.y;
+  for (const [k, pos] of Object.entries(t.fields)) {
+    const text = f[k]; if (!text) continue;
+    const spec = { ...COMMON[k], ...pos }, box = BOX[k];
+    const maxW = spec.center && box ? box[1] - box[0] - 6 : spec.w || 200;
+    let size = spec.size; while (size > 6 && font.widthOfTextAtSize(text, size) > maxW) size -= 0.5;
+    const w = font.widthOfTextAtSize(text, size), x = spec.center && box ? box[0] + (box[1] - box[0] - w) / 2 : spec.x;
+    page.drawText(text, { x: x + ox, y: spec.y + oy, size, font, color: rgb(0, 0, 0) });
   }
-  const bottom = y + Math.max(...cols.map(cl => cl.reduce((a, r2) => a + r2.h, 0))) + 4;
-  cols.forEach((cl, c) => {
-    const x = L + c * colW; let yy = y;
-    for (const row of cl) {
-      if (row.head) { doc.font('Helvetica-Bold').fontSize(7.2).fillColor(INK); t(row.head, x + cOk + cNr + cRd + 3, yy + 2); yy += row.h; continue; }
-      const it = r.items?.[row.code] || { status: 'ok' };
-      doc.font('Helvetica-Bold').fontSize(7.5);
-      if (it.status === 'ok') t('X', x, yy + 1, { width: cOk, align: 'center' });
-      else if (it.status === 'na') t('N/A', x, yy + 1, { width: cOk, align: 'center' });
-      else { t('X', x + cOk, yy + 1, { width: cNr, align: 'center' }); if (it.status === 'repaired' && it.repairedDate) { doc.font('Helvetica').fontSize(5.6); t(date(it.repairedDate), x + cOk + cNr, yy + 2, { width: cRd, align: 'center' }); } }
-      doc.font('Helvetica').fontSize(7).fillColor(INK); t(row.text, x + cOk + cNr + cRd + 9, yy + 1, { width: textW - 8 });
-      yy += row.h; doc.save().lineWidth(.3).moveTo(x, yy).lineTo(x + cOk + cNr + cRd, yy).stroke(GRAY).restore();
-    }
-    for (const dx of [0, cOk, cOk + cNr, cOk + cNr + cRd]) doc.save().lineWidth(.7).moveTo(x + dx, y - 14).lineTo(x + dx, bottom).stroke(LINE).restore();
-  });
-  box(L, top, W, bottom - top);
-  // other conditions
-  y = bottom + 6; doc.font('Helvetica').fontSize(7.2); t('List any other condition which may prevent safe operation of this vehicle:', L, y);
-  doc.font('Helvetica').fontSize(9); t(r.other_conditions || 'NONE', L + 250, y - 1, { width: W - 250 }); y += 16;
-  doc.fontSize(6.8).fillColor(MUT); t('INSTRUCTIONS: MARK COLUMN ENTRIES TO VERIFY INSPECTION:  X  OK,  X  NEEDS REPAIR,  N/A  IF ITEMS DO NOT APPLY,  DATE  REPAIRED DATE', L, y, { width: W, align: 'center' }); y += 12;
-  doc.fillColor(INK).font('Helvetica-Bold').fontSize(8.5);
-  const passed = inspectionResult(r.items || {}) === 'passed';
-  t(passed ? 'CERTIFICATION: THIS VEHICLE HAS PASSED ALL THE INSPECTION ITEMS FOR THE ANNUAL VEHICLE INSPECTION REPORT IN ACCORDANCE WITH 49 CFR 396.'
-    : 'THIS VEHICLE HAS ITEMS MARKED NEEDS REPAIR. IT DOES NOT PASS THE ANNUAL INSPECTION UNTIL THOSE ITEMS ARE REPAIRED (49 CFR 396.17).', L, y, { width: W }); y = doc.y + 14;
-  doc.font('Helvetica').fontSize(8); doc.save().lineWidth(.7).moveTo(L, y + 12).lineTo(L + 250, y + 12).moveTo(L + 300, y + 12).lineTo(R, y + 12).stroke(LINE).restore();
-  t("INSPECTOR'S SIGNATURE", L, y + 15); t('DATE', L + 300, y + 15); doc.fontSize(10); t(date(r.inspection_date), L + 300, y, { width: 150 });
-  doc.page.margins.bottom = 0; // footer must not push a blank second page
-  doc.fontSize(6.5).fillColor(MUT); t(`Report ${r.report_number} · Prepared with ITTR ShopFlow by ${shop.name}. Keep with the vehicle file for 14 months (49 CFR 396.21).`, L, 772, { width: W, align: 'center' });
-  doc.end(); return done;
+  doc.setTitle(`Annual Vehicle Inspection ${f.unitNumber || f.vin || ''}`.trim());
+  return Buffer.from(await doc.save());
 }
 
 // ---------------------------------------------------------------- fleet maintenance
@@ -155,17 +88,12 @@ export function serviceStatus(item, { currentMiles = null, today = new Date().to
 export async function ensureComplianceSchema(pool) {
   if (!pool) return;
   await pool.query(`
-  CREATE TABLE IF NOT EXISTS annual_inspections(
-    id BIGSERIAL PRIMARY KEY, report_number TEXT UNIQUE NOT NULL, inspection_date DATE NOT NULL DEFAULT CURRENT_DATE,
-    vehicle_type TEXT NOT NULL DEFAULT 'tractor', other_type TEXT, customer_id BIGINT, unit_id BIGINT, usdot TEXT,
-    carrier_name TEXT NOT NULL DEFAULT '', carrier_address TEXT, carrier_city_state_zip TEXT,
-    fleet_unit_number TEXT, id_kind TEXT NOT NULL DEFAULT 'vin', vin TEXT, plate TEXT, id_other TEXT,
-    inspector_name TEXT, inspector_qualified BOOLEAN NOT NULL DEFAULT TRUE, agency_location TEXT,
-    items JSONB NOT NULL DEFAULT '{}'::jsonb, other_conditions TEXT, result TEXT NOT NULL DEFAULT 'passed',
+  CREATE TABLE IF NOT EXISTS inspection_documents(
+    id BIGSERIAL PRIMARY KEY, template TEXT NOT NULL, fields JSONB NOT NULL DEFAULT '{}'::jsonb,
+    carrier_name TEXT, unit_number TEXT, vin TEXT, doc_date TEXT, customer_id BIGINT, unit_id BIGINT,
     created_by TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
   );
-  CREATE INDEX IF NOT EXISTS idx_annual_inspections_date ON annual_inspections(inspection_date DESC);
-  CREATE INDEX IF NOT EXISTS idx_annual_inspections_vin ON annual_inspections(upper(vin));
+  CREATE INDEX IF NOT EXISTS idx_inspection_documents_created ON inspection_documents(created_at DESC);
   ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS odometer_miles NUMERIC;
   ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS odometer_at TIMESTAMPTZ;
   ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS odometer_source TEXT;
@@ -235,7 +163,7 @@ export const RESET_SCOPES = Object.freeze({
   work_orders: { label: 'Work orders, findings and their inspections', tables: ['mechanic_inspections', 'service_orders'] },
   billing: { label: 'Invoices, payments, estimates and email logs', tables: ['customer_invoice_payments', 'customer_invoice_lines', 'customer_invoices', 'invoice_email_deliveries', 'customer_estimate_lines', 'customer_estimates'] },
   gmail: { label: 'Gmail money inbox items (accounts stay connected)', tables: ['gmail_finance_messages'] },
-  annual_inspections: { label: 'Annual inspection reports', tables: ['annual_inspections'] }
+  annual_inspections: { label: 'Annual inspection documents', tables: ['inspection_documents'] }
 });
 export async function resetData(db, scopes, username) {
   const chosen = scopes.filter(s => RESET_SCOPES[s]), snapshot = {}, counts = {};
@@ -256,7 +184,7 @@ export async function resetData(db, scopes, username) {
     await db.query(`UPDATE fullbay_import_parts SET allocated=0 WHERE coalesce(allocated,0)<>0`);
   }
   await db.query(`INSERT INTO data_reset_snapshots(scopes,snapshot,created_by) VALUES($1::jsonb,$2::jsonb,$3)`, [JSON.stringify(chosen), JSON.stringify(snapshot), username]);
-  const order = ['customer_invoice_payments', 'customer_invoice_lines', 'invoice_email_deliveries', 'customer_invoices', 'customer_estimate_lines', 'customer_estimates', 'task_time_adjustments', 'task_time_sessions', 'mechanic_inspections', 'service_orders', 'gmail_finance_messages', 'annual_inspections'];
+  const order = ['customer_invoice_payments', 'customer_invoice_lines', 'invoice_email_deliveries', 'customer_invoices', 'customer_estimate_lines', 'customer_estimates', 'task_time_adjustments', 'task_time_sessions', 'mechanic_inspections', 'service_orders', 'gmail_finance_messages', 'inspection_documents'];
   for (const t of order) if (snapshot[t]) {
     if (t === 'gmail_finance_messages') await db.query(`DELETE FROM gmail_finance_messages`);
     else await db.query(`DELETE FROM ${t}`);
@@ -266,18 +194,18 @@ export async function resetData(db, scopes, username) {
 
 // ---------------------------------------------------------------- routes
 export function registerComplianceRoutes(app, deps) {
-  const { auth, ownerOnly, adminOnly, requireDb, audit, PDFDocument, shopProfile, lookupFmcsaCarrier, samsaraPaged, samsaraConfigured } = deps;
+  const { auth, ownerOnly, adminOnly, requireDb, audit, shopProfile, lookupFmcsaCarrier, samsaraPaged, samsaraConfigured } = deps;
   const read = h => async (req, res, next) => { try { res.json(await h(requireDb(), req, res)); } catch (e) { if (e?.status) return res.status(e.status).json({ error: e.message, code: e.code }); next(e); } };
   const tx = h => async (req, res, next) => { const db = await requireDb().connect(); try { await db.query('BEGIN'); const out = await h(db, req); await db.query('COMMIT'); res.json(out); } catch (e) { try { await db.query('ROLLBACK'); } catch {} if (e?.status) return res.status(e.status).json({ error: e.message, code: e.code }); next(e); } finally { db.release(); } };
   const fail = (s, m) => { throw Object.assign(new Error(m), { status: s }); };
   const str = (v, n = 300) => String(v ?? '').trim().slice(0, n);
 
-  // --- annual inspections
-  app.get('/api/annual-inspections/meta', auth, adminOnly, (req, res) => res.json({ sections: INSPECTION_SECTIONS, presets: INSPECTION_PRESETS, shop: shopProfile() }));
-  app.get('/api/annual-inspections', auth, adminOnly, read(async (db, req) => {
+  // --- annual inspection documents (the shop's own form, filled in)
+  app.get('/api/inspection-docs/templates', auth, adminOnly, (req, res) => res.json({ templates: Object.entries(INSPECTION_TEMPLATES).map(([key, t]) => ({ key, label: t.label, fields: Object.keys(t.fields) })), fields: Object.fromEntries(Object.entries(COMMON).map(([k, v]) => [k, v.label])), shop: shopProfile() }));
+  app.get('/api/inspection-docs', auth, adminOnly, read(async (db, req) => {
     const q = str(req.query.q, 100);
-    return { items: (await db.query(`SELECT id,report_number,inspection_date,vehicle_type,carrier_name,usdot,fleet_unit_number,vin,plate,inspector_name,result,created_by,updated_at FROM annual_inspections
-      WHERE ($1='' OR carrier_name ILIKE '%'||$1||'%' OR coalesce(vin,'') ILIKE '%'||$1||'%' OR coalesce(fleet_unit_number,'') ILIKE '%'||$1||'%' OR coalesce(usdot,'')=$1 OR report_number ILIKE '%'||$1||'%') ORDER BY inspection_date DESC,id DESC LIMIT 300`, [q])).rows };
+    return { items: (await db.query(`SELECT id,template,fields,carrier_name,unit_number,vin,doc_date,created_by,updated_at FROM inspection_documents
+      WHERE ($1='' OR coalesce(carrier_name,'') ILIKE '%'||$1||'%' OR coalesce(vin,'') ILIKE '%'||$1||'%' OR coalesce(unit_number,'') ILIKE '%'||$1||'%') ORDER BY id DESC LIMIT 300`, [q])).rows };
   }));
   app.get('/api/annual-inspections/lookup', auth, adminOnly, read(async (db, req) => {
     const q = str(req.query.q, 100); if (q.length < 2) return { customers: [], fmcsa: null };
@@ -288,30 +216,26 @@ export function registerComplianceRoutes(app, deps) {
     return { customers, fmcsa, fmcsaError };
   }));
   app.get('/api/annual-inspections/units', auth, adminOnly, read(async (db, req) => ({ items: (await db.query(`SELECT id,unit_number,vin,plate,year,make,model FROM customer_units WHERE ($1::bigint IS NULL OR customer_id=$1::bigint) AND ($2='' OR unit_number ILIKE '%'||$2||'%' OR coalesce(vin,'') ILIKE '%'||$2||'%') ORDER BY unit_number LIMIT 50`, [req.query.customerId || null, str(req.query.q, 60)])).rows })));
-  app.get('/api/annual-inspections/:id', auth, adminOnly, read(async (db, req) => { const r = (await db.query('SELECT * FROM annual_inspections WHERE id=$1::bigint', [req.params.id])).rows[0]; if (!r) fail(404, 'Inspection not found.'); return { item: r }; }));
-  const saveInspection = async (db, req, id) => {
-    const b = req.body || {}, type = ['tractor', 'trailer', 'truck', 'other'].includes(b.vehicleType) ? b.vehicleType : 'tractor', items = cleanItems(b.items, type);
-    const vals = [iso(b.inspectionDate) || new Date().toISOString().slice(0, 10), type, str(b.otherType, 60), b.customerId || null, b.unitId || null, str(b.usdot, 12), str(b.carrierName, 160), str(b.carrierAddress, 200), str(b.carrierCityStateZip, 160),
-      str(b.fleetUnitNumber, 40), ['vin', 'plate', 'other'].includes(b.idKind) ? b.idKind : 'vin', str(b.vin, 20).toUpperCase(), str(b.plate, 20).toUpperCase(), str(b.idOther, 60), str(b.inspectorName, 120), b.inspectorQualified !== false, str(b.agencyLocation, 200),
-      JSON.stringify(items), str(b.otherConditions, 1000), inspectionResult(items)];
-    if (!vals[6]) fail(400, 'Motor carrier name is required.');
-    if (id) {
-      const r = await db.query(`UPDATE annual_inspections SET inspection_date=$2::date,vehicle_type=$3,other_type=$4,customer_id=$5::bigint,unit_id=$6::bigint,usdot=$7,carrier_name=$8,carrier_address=$9,carrier_city_state_zip=$10,fleet_unit_number=$11,id_kind=$12,vin=$13,plate=$14,id_other=$15,inspector_name=$16,inspector_qualified=$17,agency_location=$18,items=$19::jsonb,other_conditions=$20,result=$21,updated_at=now() WHERE id=$1::bigint RETURNING id,report_number`, [id, ...vals]);
-      if (!r.rowCount) fail(404, 'Inspection not found.'); return r.rows[0];
-    }
-    await db.query('SELECT pg_advisory_xact_lock($1::bigint)', [2462]); const y = new Date().getFullYear();
-    const n = (await db.query(`SELECT coalesce(max((regexp_match(report_number,$1))[1]::int),0)+1 n FROM annual_inspections WHERE report_number ~ $2`, [`^AI-${y}-([0-9]+)$`, `^AI-${y}-[0-9]+$`])).rows[0].n;
-    return (await db.query(`INSERT INTO annual_inspections(report_number,inspection_date,vehicle_type,other_type,customer_id,unit_id,usdot,carrier_name,carrier_address,carrier_city_state_zip,fleet_unit_number,id_kind,vin,plate,id_other,inspector_name,inspector_qualified,agency_location,items,other_conditions,result,created_by)
-      VALUES($1,$2::date,$3,$4,$5::bigint,$6::bigint,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::jsonb,$20,$21,$22) RETURNING id,report_number`, [`AI-${y}-${String(n).padStart(5, '0')}`, ...vals, req.user.username])).rows[0];
-  };
-  app.post('/api/annual-inspections', auth, adminOnly, tx(async (db, req) => { const r = await saveInspection(db, req, null); await audit(req.user.username, 'annual_inspection_created', r); return { ok: true, ...r }; }));
-  app.put('/api/annual-inspections/:id', auth, adminOnly, tx(async (db, req) => { const r = await saveInspection(db, req, req.params.id); await audit(req.user.username, 'annual_inspection_updated', r); return { ok: true, ...r }; }));
-  app.delete('/api/annual-inspections/:id', auth, ownerOnly, read(async (db, req) => { await db.query('DELETE FROM annual_inspections WHERE id=$1::bigint', [req.params.id]); await audit(req.user.username, 'annual_inspection_deleted', { id: req.params.id }); return { ok: true }; }));
-  app.get('/api/annual-inspections/:id/pdf', auth, adminOnly, async (req, res, next) => {
+  const docValues = (b, preview = false) => { const template = INSPECTION_TEMPLATES[b?.template] ? b.template : null; if (!template) fail(400, 'Pick the truck or trailer form.'); const f = cleanInspectionFields(b.fields); if (!f.carrierName && !preview) fail(400, 'Motor carrier name is required.'); return { template, f }; };
+  app.post('/api/inspection-docs/preview', auth, adminOnly, async (req, res, next) => {
+    try { const { template, f } = docValues(req.body || {}, true); res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', 'inline; filename="annual-inspection-preview.pdf"'); res.send(await renderInspectionTemplate(template, f)); }
+    catch (e) { if (e?.status) return res.status(e.status).json({ error: e.message }); next(e); }
+  });
+  app.post('/api/inspection-docs', auth, adminOnly, read(async (db, req) => {
+    const { template, f } = docValues(req.body || {}), id = req.body?.id ? Number(req.body.id) : null, vals = [template, JSON.stringify(f), f.carrierName, f.unitNumber, f.vin, f.date, req.body?.customerId || null, req.body?.unitId || null];
+    const r = id ? await db.query(`UPDATE inspection_documents SET template=$2,fields=$3::jsonb,carrier_name=$4,unit_number=$5,vin=$6,doc_date=$7,customer_id=$8::bigint,unit_id=$9::bigint,updated_at=now() WHERE id=$1::bigint RETURNING id`, [id, ...vals])
+      : await db.query(`INSERT INTO inspection_documents(template,fields,carrier_name,unit_number,vin,doc_date,customer_id,unit_id,created_by) VALUES($1,$2::jsonb,$3,$4,$5,$6,$7::bigint,$8::bigint,$9) RETURNING id`, [...vals, req.user.username]);
+    if (!r.rowCount) fail(404, 'Document not found.');
+    await audit(req.user.username, 'inspection_document_saved', { id: r.rows[0].id, template, unit: f.unitNumber, vin: f.vin });
+    return { ok: true, id: r.rows[0].id };
+  }));
+  app.get('/api/inspection-docs/:id', auth, adminOnly, read(async (db, req) => { const r = (await db.query('SELECT * FROM inspection_documents WHERE id=$1::bigint', [req.params.id])).rows[0]; if (!r) fail(404, 'Document not found.'); return { item: r }; }));
+  app.delete('/api/inspection-docs/:id', auth, adminOnly, read(async (db, req) => { await db.query('DELETE FROM inspection_documents WHERE id=$1::bigint', [req.params.id]); await audit(req.user.username, 'inspection_document_deleted', { id: req.params.id }); return { ok: true }; }));
+  app.get('/api/inspection-docs/:id/pdf', auth, adminOnly, async (req, res, next) => {
     try {
-      const r = (await requireDb().query('SELECT * FROM annual_inspections WHERE id=$1::bigint', [req.params.id])).rows[0]; if (!r) return res.status(404).json({ error: 'Inspection not found.' });
-      const buf = await renderAnnualInspectionPdf({ PDFDocument, report: r, shop: shopProfile() });
-      res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `${req.query.download ? 'attachment' : 'inline'}; filename="Annual-Inspection-${String(r.fleet_unit_number || r.report_number).replace(/[^A-Za-z0-9_-]/g, '_')}.pdf"`); res.send(buf);
+      const r = (await requireDb().query('SELECT * FROM inspection_documents WHERE id=$1::bigint', [req.params.id])).rows[0]; if (!r) return res.status(404).json({ error: 'Document not found.' });
+      res.setHeader('Content-Type', 'application/pdf'); res.setHeader('Content-Disposition', `${req.query.download ? 'attachment' : 'inline'}; filename="Annual-Inspection-${String(r.unit_number || r.vin || r.id).replace(/[^A-Za-z0-9_-]/g, '_')}.pdf"`);
+      res.send(await renderInspectionTemplate(r.template, r.fields));
     } catch (e) { next(e); }
   });
 

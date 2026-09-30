@@ -1,4 +1,4 @@
-// ITTR ShopFlow v24.39.0 Fleet & Compliance route module: fleet PM/CARB tracking + annual inspection reports.
+// ITTR ShopFlow v24.40.0 Fleet & Compliance route module: fleet PM/CARB tracking + annual inspection form filler.
 const h=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const api=(u,o)=>window.apiJSON(u,o);
 const toast=(m,t='info')=>window.showToast?.(m,t);
@@ -7,7 +7,7 @@ const mi=v=>v==null||v===''?'—':`${Math.round(Number(v)).toLocaleString()} mi`
 const today=()=>new Date().toISOString().slice(0,10);
 const isOwner=()=>{try{return session?.role==='admin'}catch(_){return false}};
 const STATUS={overdue:'Overdue',due_soon:'Due soon',ok:'OK',no_data:'Needs dates/miles'};
-let S={scope:null,tab:'fleet',fleet:null,meta:null,list:[],form:null,lookupTimer:0,unitTimer:0,lookup:{customers:[],fmcsa:null},units:[]};
+let S={scope:null,tab:'fleet',fleet:null,meta:null,list:[],form:null,lookupTimer:0,unitTimer:0,lookup:{customers:[],fmcsa:null},units:[],prevTimer:0,prevUrl:null};
 const $=sel=>S.scope?.host.querySelector(sel);
 
 // ================================================================ fleet maintenance
@@ -61,53 +61,54 @@ function markDone(id){const i=S.fleet.items.find(x=>String(x.id)===String(id));i
 async function history(id){const i=S.fleet.items.find(x=>String(x.id)===String(id));const d=await api(`/api/fleet-maintenance/${id}/history`);
  modal(`<h2 style="margin-top:0">History: ${h(i?.unit_display||'')}</h2><div class="muted" style="margin-bottom:10px">${h(i?.name||'')}</div>${d.items.length?`<table class="cmpTable"><thead><tr><th>Date</th><th class="n">Miles</th><th>WO</th><th>Note</th><th>By</th></tr></thead><tbody>${d.items.map(x=>`<tr><td>${day(x.done_date)}</td><td class="n">${mi(x.done_miles)}</td><td>${h(x.work_order_id||'')}</td><td>${h(x.note||'')}</td><td>${h(x.recorded_by)}</td></tr>`).join('')}</tbody></table>`:'<div class="cmpEmpty">Not recorded yet.</div>'}<div class="cmpBar"><button class="secondary" data-close>Close</button></div>`)}
 
-// ================================================================ annual inspections
+// ================================================================ annual inspections (fill-in over the shop's own PDF forms)
+const FIELD_ORDER=[['carrierName','span2'],['address','span2'],['cityStateZip','span2'],['reportNumber',''],['date',''],['unitNumber',''],['vin',''],['inspectorName','span2'],['agency','span2'],['otherConditions','span2']];
+const usDate=(d=new Date())=>`${d.getMonth()+1}/${d.getDate()}/${d.getFullYear()}`;
 async function loadAnnual(){
- const box=$('#cmpAnnual');if(!S.meta)S.meta=await api('/api/annual-inspections/meta');
- try{S.list=(await api('/api/annual-inspections')).items}catch(e){box.innerHTML=`<div class="cmpEmpty">${h(e.message)}</div>`;return}
+ const box=$('#cmpAnnual');if(!S.meta){try{S.meta=await api('/api/inspection-docs/templates')}catch(e){box.innerHTML=`<div class="cmpEmpty">${h(e.message)}</div>`;return}}
+ try{S.list=(await api('/api/inspection-docs')).items}catch(e){box.innerHTML=`<div class="cmpEmpty">${h(e.message)}</div>`;return}
  if(!S.form)return renderAnnualList();renderAnnualForm();
 }
 function renderAnnualList(){
- $('#cmpAnnual').innerHTML=`<section class="cmpCard"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><h3>Annual vehicle inspection reports</h3><div class="sub">49 CFR 396.17 / 396.21 report. Type a USDOT number or company to fill the carrier, then print or download the PDF.</div></div><div><button data-c="new-insp">+ New inspection</button></div></div>
- ${S.list.length?`<div class="cmpScroll"><table class="cmpTable"><thead><tr><th>Report #</th><th>Date</th><th>Carrier</th><th>Unit</th><th>VIN / plate</th><th>Type</th><th>Result</th><th></th></tr></thead><tbody>${S.list.map(r=>`<tr><td><b>${h(r.report_number)}</b></td><td>${day(r.inspection_date)}</td><td>${h(r.carrier_name)}${r.usdot?`<div class="muted">USDOT ${h(r.usdot)}</div>`:''}</td><td>${h(r.fleet_unit_number||'—')}</td><td>${h(r.vin||r.plate||'')}</td><td>${h(r.vehicle_type)}</td><td><span class="cmpPill ${r.result}">${r.result==='passed'?'Passed':'Needs repair'}</span></td>
-  <td class="acts"><button class="secondary" data-c="pdf" data-id="${r.id}">Print / PDF</button> <button class="secondary" data-c="download" data-id="${r.id}">Download</button> <button class="secondary" data-c="edit-insp" data-id="${r.id}">Edit</button> <button class="secondary" data-c="copy-insp" data-id="${r.id}">Copy for next unit</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="cmpEmpty">No inspection reports yet.</div>'}</section>`;
+ const tl=k=>S.meta.templates.find(t=>t.key===k)?.label||k;
+ $('#cmpAnnual').innerHTML=`<section class="cmpCard"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><h3>Annual inspection forms</h3><div class="sub">Your own truck and trailer inspection forms. Fill in the carrier, address, date and VIN, then print or download.</div></div><div class="cmpBar" style="margin:0"><button data-c="new-insp" data-tpl="truck">+ Truck / tractor form</button><button data-c="new-insp" data-tpl="trailer">+ Trailer form</button></div></div>
+ ${S.list.length?`<div class="cmpScroll"><table class="cmpTable"><thead><tr><th>Date</th><th>Form</th><th>Carrier</th><th>Unit</th><th>VIN</th><th></th></tr></thead><tbody>${S.list.map(r=>`<tr><td>${h(r.doc_date||'')}</td><td>${h(tl(r.template))}</td><td>${h(r.carrier_name)}</td><td>${h(r.unit_number||'—')}</td><td>${h(r.vin||'')}</td>
+  <td class="acts"><button class="secondary" data-c="pdf" data-id="${r.id}">Print</button> <button class="secondary" data-c="download" data-id="${r.id}">Download</button> <button class="secondary" data-c="edit-insp" data-id="${r.id}">Edit</button> <button class="secondary" data-c="copy-insp" data-id="${r.id}">Copy for next unit</button> <button class="secondary" data-c="del-insp" data-id="${r.id}">Delete</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="cmpEmpty">No filled forms yet.</div>'}</section>`;
 }
-function blankForm(type='tractor'){const shop=S.meta.shop;let inspector='';try{inspector=localStorage.getItem('ittr_last_inspector')||''}catch(_){}
- return {id:null,inspectionDate:today(),vehicleType:type,otherType:'',customerId:null,unitId:null,usdot:'',carrierName:'',carrierAddress:'',carrierCityStateZip:'',fleetUnitNumber:'',idKind:'vin',vin:'',plate:'',idOther:'',inspectorName:inspector,inspectorQualified:true,agencyLocation:`${shop.name}, ${shop.address2}`.toUpperCase(),items:preset(type),otherConditions:''}}
-function preset(type){const na=new Set(S.meta.presets[type]||[]),o={};for(const [n,,items] of S.meta.sections)for(const [l] of items)o[`${n}${l}`]={status:na.has(`${n}${l}`)?'na':'ok',repairedDate:''};return o}
-function fromRow(r){return {id:r.id,inspectionDate:String(r.inspection_date).slice(0,10),vehicleType:r.vehicle_type,otherType:r.other_type||'',customerId:r.customer_id,unitId:r.unit_id,usdot:r.usdot||'',carrierName:r.carrier_name,carrierAddress:r.carrier_address||'',carrierCityStateZip:r.carrier_city_state_zip||'',fleetUnitNumber:r.fleet_unit_number||'',idKind:r.id_kind||'vin',vin:r.vin||'',plate:r.plate||'',idOther:r.id_other||'',inspectorName:r.inspector_name||'',inspectorQualified:r.inspector_qualified!==false,agencyLocation:r.agency_location||'',items:{...preset(r.vehicle_type),...(r.items||{})},otherConditions:r.other_conditions||''}}
+function blankForm(template='truck'){const shop=S.meta.shop||{};let inspector='';try{inspector=localStorage.getItem('ittr_last_inspector')||''}catch(_){}
+ return {id:null,template,customerId:null,unitId:null,fields:{carrierName:'',address:'',cityStateZip:'',reportNumber:'',unitNumber:'',date:usDate(),inspectorName:inspector,vin:'',agency:[shop.name,shop.address2].filter(Boolean).join(', ').toUpperCase(),otherConditions:'NONE'}}}
 function renderAnnualForm(){
- const f=S.form,fld=(label,key,cls='',type='text',extra='')=>`<div class="field ${cls}"><label>${label}</label><input data-f="${key}" type="${type}" value="${h(f[key]??'')}" ${extra}></div>`;
- const seg=(code,it)=>`<span class="cmpSeg">${[['ok','OK'],['repair','Needs repair'],['repaired','Repaired'],['na','N/A']].map(([k,l])=>`<button type="button" class="${it.status===k?`on ${k}`:''}" data-c="item" data-code="${code}" data-s="${k}">${l}</button>`).join('')}</span>${it.status==='repaired'?`<br><input type="date" data-rd="${code}" value="${h(it.repairedDate||'')}">`:''}`;
- const sections=S.meta.sections.map(([n,name,items])=>`<div class="cmpSec"><h4>${n}. ${h(name)}</h4>${items.map(([l,txt])=>{const c=`${n}${l}`;return `<div class="cmpItem"><span>${l}. ${h(txt.length>90?txt.slice(0,88)+'…':txt)}</span><span>${seg(c,f.items[c])}</span></div>`}).join('')}</div>`).join('');
- const repairs=Object.values(f.items).filter(i=>i.status==='repair').length;
- $('#cmpAnnual').innerHTML=`<section class="cmpCard"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><h3>${f.id?'Edit inspection':'New annual inspection'}</h3><div class="sub">Everything prints on one page. Marks default to OK; items that don't apply to the vehicle type are pre-set to N/A.</div></div><button class="secondary" data-c="back">← All inspections</button></div>
-  <div class="cmpGrid"><div class="field span4 cmpDrop"><label>Find carrier — USDOT # or company name</label><input id="cmpLookup" data-c-input="lookup" autocomplete="off" placeholder="e.g. 3182456 or HOBO Transportation" value="${h(f.usdot||'')}"><div id="cmpLookupList" class="cmpDropList hidden"></div></div>
-  ${fld('Motor carrier operator','carrierName','span2')}${fld('USDOT #','usdot')}${fld('Inspection date','inspectionDate','','date')}
-  ${fld('Address','carrierAddress','span2')}${fld('City, state, ZIP','carrierCityStateZip','span2')}</div></section>
- <section class="cmpCard"><h3>Vehicle</h3><div class="cmpTypes" style="margin-bottom:10px">${['tractor','trailer','truck','other'].map(t=>`<label class="${f.vehicleType===t?'on':''}"><input type="radio" name="cmpType" data-c-type="${t}" ${f.vehicleType===t?'checked':''}> ${t[0].toUpperCase()+t.slice(1)}</label>`).join('')}${f.vehicleType==='other'?`<input data-f="otherType" value="${h(f.otherType)}" placeholder="Describe" style="max-width:200px">`:''}</div>
-  <div class="cmpGrid"><div class="field span2 cmpDrop"><label>Pick unit (optional)</label><input id="cmpUnitSearch" data-c-input="unit" autocomplete="off" placeholder="Search unit # or VIN${f.customerId?' for this carrier':''}"><div id="cmpUnitList" class="cmpDropList hidden"></div></div>
-  ${fld('Fleet unit number','fleetUnitNumber')}<div class="field"><label>Identify by</label><select data-f="idKind">${[['vin','VIN'],['plate','License plate'],['other','Other']].map(([k,l])=>`<option value="${k}" ${f.idKind===k?'selected':''}>${l}</option>`).join('')}</select></div>
-  ${fld('VIN','vin','span2','text','maxlength="17"')}${fld('License plate','plate')}${fld('Other ID','idOther')}</div></section>
- <section class="cmpCard"><h3>Inspector</h3><div class="cmpGrid">${fld("Inspector's name",'inspectorName','span2')}<div class="field"><label>Meets 396.19 qualifications</label><select data-f="inspectorQualified"><option value="true" ${f.inspectorQualified?'selected':''}>Yes</option><option value="false" ${!f.inspectorQualified?'selected':''}>No</option></select></div><div></div>${fld('Inspection agency / location','agencyLocation','span4')}</div></section>
- <section class="cmpCard"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center"><div><h3>Components inspected</h3><div class="sub">${repairs?`<b style="color:#b42318">${repairs} item${repairs===1?'':'s'} need repair — the report will not certify a pass.</b>`:'All items pass.'}</div></div><div class="cmpBar" style="margin:0"><button class="secondary" data-c="all-ok">Reset to ${h(f.vehicleType)} defaults</button></div></div>
-  <div class="cmpItems">${sections}</div>
-  <div class="field" style="margin-top:12px"><label>Any other condition which may prevent safe operation of this vehicle</label><textarea data-f="otherConditions" placeholder="NONE">${h(f.otherConditions)}</textarea></div>
-  <div class="cmpBar"><button class="secondary" data-c="back">Cancel</button><button class="secondary" data-c="save-insp">Save</button><button data-c="save-pdf">Save &amp; open PDF</button></div></section>`;
+ const f=S.form,L=S.meta.fields;
+ const fld=([k,cls])=>`<div class="field ${cls}"><label>${h(L[k]||k)}</label><input data-f="${k}" value="${h(f.fields[k]??'')}" ${k==='vin'?'maxlength="17" style="text-transform:uppercase"':''} ${k==='date'?'placeholder="M/D/YYYY"':''}></div>`;
+ $('#cmpAnnual').innerHTML=`<div class="cmpEditor"><section class="cmpCard"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><h3>${f.id?'Edit form':'Fill in form'}</h3><div class="sub">Only the header and "other conditions" change. The checklist on your form stays as it is.</div></div><button class="secondary" data-c="back">← All forms</button></div>
+  <div class="cmpTypes" style="margin-bottom:12px">${S.meta.templates.map(t=>`<label class="${f.template===t.key?'on':''}"><input type="radio" name="cmpTpl" data-c-tpl="${t.key}" ${f.template===t.key?'checked':''}> ${h(t.label)}</label>`).join('')}</div>
+  <div class="cmpGrid" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+   <div class="field span2 cmpDrop"><label>Find carrier: USDOT # or company name</label><input id="cmpLookup" data-c-input="lookup" autocomplete="off" placeholder="e.g. 3182456 or HOBO Transportation"><div id="cmpLookupList" class="cmpDropList hidden"></div></div>
+   <div class="field span2 cmpDrop"><label>Pick unit (fills unit # and VIN)</label><input id="cmpUnitSearch" data-c-input="unit" autocomplete="off" placeholder="Search unit # or VIN${f.customerId?' for this carrier':''}"><div id="cmpUnitList" class="cmpDropList hidden"></div></div>
+   ${FIELD_ORDER.map(fld).join('')}</div>
+  <div class="cmpBar"><button class="secondary" data-c="back">Cancel</button><button class="secondary" data-c="save-insp">Save</button><button class="secondary" data-c="save-dl">Save &amp; download</button><button data-c="save-pdf">Save &amp; print</button></div></section>
+  <section class="cmpCard cmpPreview"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3>Preview</h3><span class="muted" id="cmpPrevState"></span></div><iframe id="cmpPrevFrame" title="Inspection form preview"></iframe></section></div>`;
+ schedulePreview(0);
 }
-function readForm(){const f=S.form;S.scope.host.querySelectorAll('#cmpAnnual [data-f]').forEach(el=>{let v=el.value;if(el.dataset.f==='inspectorQualified')v=v==='true';f[el.dataset.f]=v});S.scope.host.querySelectorAll('#cmpAnnual [data-rd]').forEach(el=>{f.items[el.dataset.rd].repairedDate=el.value});return f}
+function readForm(){const f=S.form;S.scope.host.querySelectorAll('#cmpAnnual [data-f]').forEach(el=>{f.fields[el.dataset.f]=el.dataset.f==='vin'?el.value.toUpperCase():el.value});return f}
+function schedulePreview(ms=600){clearTimeout(S.prevTimer);S.prevTimer=setTimeout(refreshPreview,ms)}
+async function refreshPreview(){const fr=$('#cmpPrevFrame'),st=$('#cmpPrevState');if(!fr||!S.form)return;const f=readForm();
+ const fields=f.fields;st&&(st.textContent='Updating…');
+ try{const r=await fetch('/api/inspection-docs/preview',{method:'POST',headers:{...window.authHeaders(),'Content-Type':'application/json'},body:JSON.stringify({template:f.template,fields})});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Preview failed');
+  const url=URL.createObjectURL(await r.blob());if(S.prevUrl)URL.revokeObjectURL(S.prevUrl);S.prevUrl=url;fr.src=url+'#toolbar=0&navpanes=0&view=Fit';st&&(st.textContent='')}catch(e){st&&(st.textContent=e.message)}}
 async function lookupCarrier(q){const list=$('#cmpLookupList');if(!list)return;if(q.trim().length<2){list.classList.add('hidden');return}
  try{S.lookup=await api(`/api/annual-inspections/lookup?q=${encodeURIComponent(q.trim())}`);const L=S.lookup,fm=L.fmcsa;
   list.innerHTML=`${fm?`<button type="button" data-c="pick-fmcsa"><span class="tag">FMCSA</span>${h(fm.legalName||fm.dbaName)}<small>USDOT ${h(fm.dotNumber)} · ${h([fm.address,fm.city,fm.state,fm.zip].filter(Boolean).join(', '))}</small></button>`:''}${L.customers.map((c,i)=>`<button type="button" data-c="pick-cust" data-i="${i}"><span class="tag" style="background:#ecfdf3;color:#067647">Customer</span>${h(c.customer_name)}<small>${c.dot_number?`USDOT ${h(c.dot_number)} · `:''}${h([c.address,c.city,c.state,c.postal_code].filter(Boolean).join(', '))}</small></button>`).join('')}${!fm&&!L.customers.length?`<button type="button" disabled>No match.${L.fmcsaError?` ${h(L.fmcsaError)}`:''}</button>`:''}`;
   list.classList.remove('hidden')}catch(e){toast(e.message,'error')}}
 async function searchUnits(q){const list=$('#cmpUnitList');if(!list)return;try{const d=await api(`/api/annual-inspections/units?q=${encodeURIComponent(q)}${S.form.customerId?`&customerId=${S.form.customerId}`:''}`);S.units=d.items;
  list.innerHTML=d.items.map((u,i)=>`<button type="button" data-c="pick-unit" data-i="${i}">Unit ${h(u.unit_number)}<small>${h([u.year,u.make,u.model].filter(Boolean).join(' '))}${u.vin?` · VIN ${h(u.vin)}`:''}${u.plate?` · ${h(u.plate)}`:''}</small></button>`).join('')||'<button type="button" disabled>No units found.</button>';list.classList.remove('hidden')}catch(e){toast(e.message,'error')}}
-async function saveInspection(openPdf){const f=readForm();if(!f.carrierName.trim())return toast('Motor carrier name is required.','error');
- const w=openPdf?window.open('','_blank'):null;
- try{const d=f.id?await api(`/api/annual-inspections/${f.id}`,{method:'PUT',body:f}):await api('/api/annual-inspections',{method:'POST',body:f});f.id=d.id;try{localStorage.setItem('ittr_last_inspector',f.inspectorName||'')}catch(_){}
-  toast(`Inspection ${d.report_number} saved.`,'success');if(openPdf)await openInspectionPdf(d.id,false,w);S.form=null;await loadAnnual()}catch(e){w?.close();toast(e.message,'error')}}
+function setFields(o){readForm();Object.assign(S.form.fields,o);for(const [k,v] of Object.entries(o)){const el=$(`#cmpAnnual [data-f="${k}"]`);if(el)el.value=v}S.scope.host.querySelectorAll('.cmpDropList').forEach(x=>x.classList.add('hidden'));schedulePreview(0)}
+async function saveInspection(then){const f=readForm();if(!f.fields.carrierName.trim())return toast('Motor carrier name is required.','error');
+ const w=then==='print'?window.open('','_blank'):null;
+ try{const d=await api('/api/inspection-docs',{method:'POST',body:{id:f.id,template:f.template,fields:f.fields,customerId:f.customerId,unitId:f.unitId}});f.id=d.id;try{localStorage.setItem('ittr_last_inspector',f.fields.inspectorName||'')}catch(_){}
+  toast('Form saved.','success');if(then)await openInspectionPdf(d.id,then==='download',w);S.form=null;await loadAnnual()}catch(e){w?.close();toast(e.message,'error')}}
 async function openInspectionPdf(id,download=false,win=null){const w=win||(download?null:window.open('','_blank'));
- try{const r=await fetch(`/api/annual-inspections/${id}/pdf${download?'?download=1':''}`,{headers:window.authHeaders()});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'PDF failed');const blob=await r.blob(),url=URL.createObjectURL(blob);
+ try{const r=await fetch(`/api/inspection-docs/${id}/pdf${download?'?download=1':''}`,{headers:window.authHeaders()});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'PDF failed');const blob=await r.blob(),url=URL.createObjectURL(blob);
   if(download){const a=document.createElement('a');a.href=url;a.download=(r.headers.get('content-disposition')||'').match(/filename="([^"]+)"/)?.[1]||'annual-inspection.pdf';document.body.appendChild(a);a.click();a.remove()}else if(w)w.location=url;else location.href=url;setTimeout(()=>URL.revokeObjectURL(url),60000)}
  catch(e){w?.close();toast(e.message,'error')}}
 
@@ -130,27 +131,29 @@ async function onClick(ev){
    const d=await api('/api/fleet-maintenance',{method:'POST',body:{items}});toast(`${d.ids.length} service${d.ids.length===1?'':'s'} added.${d.errors?.length?` Skipped line${d.errors.length===1?'':'s'} ${d.errors.map(x=>x.line).join(', ')} (no VIN or unit #).`:''}`,d.errors?.length?'error':'success',8000);return loadFleet()}
   if(a==='save-alerts'){await api('/api/fleet-maintenance/settings/alerts',{method:'PUT',body:{email:$('#faEmail').value,enabled:$('#faOn').value==='1'}});return toast('Reminder settings saved.','success')}
   // annual
-  if(a==='new-insp'){S.form=blankForm();return renderAnnualForm()}
+  if(a==='new-insp'){S.form=blankForm(b.dataset.tpl);return renderAnnualForm()}
   if(a==='back'){S.form=null;return renderAnnualList()}
-  if(a==='edit-insp'||a==='copy-insp'){const r=(await api(`/api/annual-inspections/${b.dataset.id}`)).item;S.form=fromRow(r);if(a==='copy-insp'){Object.assign(S.form,{id:null,unitId:null,fleetUnitNumber:'',vin:'',plate:'',idOther:'',inspectionDate:today(),items:preset(S.form.vehicleType),otherConditions:''})}return renderAnnualForm()}
+  if(a==='edit-insp'||a==='copy-insp'){const r=(await api(`/api/inspection-docs/${b.dataset.id}`)).item;S.form={id:r.id,template:r.template,customerId:r.customer_id,unitId:r.unit_id,fields:{...blankForm(r.template).fields,...(r.fields||{})}};
+   if(a==='copy-insp')Object.assign(S.form,{id:null,unitId:null}),Object.assign(S.form.fields,{unitNumber:'',vin:'',reportNumber:'',date:usDate()});return renderAnnualForm()}
+  if(a==='del-insp'){if(!confirm('Delete this saved form?'))return;await api(`/api/inspection-docs/${b.dataset.id}`,{method:'DELETE'});return loadAnnual()}
   if(a==='pdf')return openInspectionPdf(b.dataset.id);
   if(a==='download')return openInspectionPdf(b.dataset.id,true);
-  if(a==='item'){readForm();const it=S.form.items[b.dataset.code];it.status=b.dataset.s;if(b.dataset.s==='repaired'&&!it.repairedDate)it.repairedDate=today();return renderAnnualForm()}
-  if(a==='all-ok'){readForm();S.form.items=preset(S.form.vehicleType);return renderAnnualForm()}
-  if(a==='pick-fmcsa'){const fm=S.lookup.fmcsa;readForm();Object.assign(S.form,{usdot:fm.dotNumber,carrierName:(fm.legalName||fm.dbaName||'').toUpperCase(),carrierAddress:(fm.address||'').toUpperCase(),carrierCityStateZip:`${fm.city||''}${fm.state?`, ${fm.state}`:''} ${fm.zip||''}`.trim().toUpperCase()});return renderAnnualForm()}
-  if(a==='pick-cust'){const c=S.lookup.customers[Number(b.dataset.i)];readForm();Object.assign(S.form,{customerId:c.id,usdot:c.dot_number||S.form.usdot,carrierName:String(c.customer_name||'').toUpperCase(),carrierAddress:String(c.address||'').toUpperCase(),carrierCityStateZip:`${c.city||''}${c.state?`, ${c.state}`:''} ${c.postal_code||''}`.trim().toUpperCase()});return renderAnnualForm()}
-  if(a==='pick-unit'){const u=S.units[Number(b.dataset.i)];readForm();Object.assign(S.form,{unitId:u.id,fleetUnitNumber:u.unit_number||'',vin:u.vin||'',plate:u.plate||'',idKind:u.vin?'vin':u.plate?'plate':S.form.idKind});return renderAnnualForm()}
-  if(a==='save-insp')return saveInspection(false);
-  if(a==='save-pdf')return saveInspection(true);
+  if(a==='pick-fmcsa'){const fm=S.lookup.fmcsa;return setFields({carrierName:(fm.legalName||fm.dbaName||'').toUpperCase(),address:(fm.address||'').toUpperCase(),cityStateZip:`${fm.city||''}${fm.state?`, ${fm.state}`:''} ${fm.zip||''}`.trim().toUpperCase()})}
+  if(a==='pick-cust'){const c=S.lookup.customers[Number(b.dataset.i)];S.form.customerId=c.id;return setFields({carrierName:String(c.customer_name||'').toUpperCase(),address:String(c.address||'').toUpperCase(),cityStateZip:`${c.city||''}${c.state?`, ${c.state}`:''} ${c.postal_code||''}`.trim().toUpperCase()})}
+  if(a==='pick-unit'){const u=S.units[Number(b.dataset.i)];S.form.unitId=u.id;return setFields({unitNumber:u.unit_number||'',vin:String(u.vin||'').toUpperCase()})}
+  if(a==='save-insp')return saveInspection(null);
+  if(a==='save-dl')return saveInspection('download');
+  if(a==='save-pdf')return saveInspection('print');
  }catch(e){b.disabled=false;toast(e.message,'error')}
 }
 function onChange(ev){const t=ev.target;
  if(t.id==='fsType')return applyTypeDefaults(true);
- if(t.dataset.cType){readForm();const changed=JSON.stringify(S.form.items)!==JSON.stringify(preset(S.form.vehicleType));S.form.vehicleType=t.dataset.cType;if(!changed||confirm('Reset the component marks to the defaults for this vehicle type?'))S.form.items=preset(S.form.vehicleType);return renderAnnualForm()}
+ if(t.dataset.cTpl){readForm();S.form.template=t.dataset.cTpl;S.scope.host.querySelectorAll('#cmpAnnual .cmpTypes label').forEach(l=>l.classList.toggle('on',l.querySelector('input')?.dataset.cTpl===S.form.template));return schedulePreview(0)}
 }
 function onInput(ev){const t=ev.target;
  if(t.dataset.cInput==='lookup'){clearTimeout(S.lookupTimer);S.lookupTimer=setTimeout(()=>lookupCarrier(t.value),300)}
  if(t.dataset.cInput==='unit'){clearTimeout(S.unitTimer);S.unitTimer=setTimeout(()=>searchUnits(t.value),250)}
+ if(t.dataset.f&&S.form)schedulePreview();
 }
 function applyTab(){S.scope.host.querySelectorAll('[data-c="tab"]').forEach(b=>b.classList.toggle('active',b.dataset.t===S.tab));S.scope.host.querySelectorAll('.cmpPanel').forEach(p=>p.classList.toggle('active',p.dataset.panel===S.tab));return S.tab==='fleet'?loadFleet():loadAnnual()}
 export async function mount(scope){S={...S,scope,form:null};try{S.tab=sessionStorage.getItem('ittr_compliance_tab')||'fleet'}catch(_){}
@@ -158,4 +161,4 @@ export async function mount(scope){S={...S,scope,form:null};try{S.tab=sessionSto
  scope.on(document,'click',e=>{if(!e.target.closest?.('.cmpDrop'))S.scope?.host.querySelectorAll('.cmpDropList').forEach(x=>x.classList.add('hidden'))});
  await applyTab()}
 export async function afterShow(){}
-export function unmount(){S.scope=null}
+export function unmount(){clearTimeout(S.prevTimer);if(S.prevUrl)URL.revokeObjectURL(S.prevUrl);S.prevUrl=null;S.scope=null}

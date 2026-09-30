@@ -6,7 +6,8 @@ import net from 'node:net';
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
 import {accountDay,zonedToUtc,cleanShopHours} from './mechanic_productivity.mjs';
-import {serviceStatus,cleanItems,inspectionResult} from './compliance_center.mjs';
+import {serviceStatus,cleanInspectionFields,renderInspectionTemplate} from './compliance_center.mjs';
+import {PDFDocument as PdfLib} from 'pdf-lib';
 import {parseZelleEmail,parseVendorBillEmail,scoreZelleMatch,encryptToken,decryptToken,tireFeeQuantities,estimateTotals,vendorNameFromSender} from './finance_center.mjs';
 
 const assert=(v,label)=>{if(!v)throw new Error(label)};
@@ -39,7 +40,8 @@ const near=(a,b,label)=>{if(Math.abs(Number(a)-Number(b))>0.005)throw new Error(
  {const st=serviceStatus({last_done_miles:100000,interval_miles:25000,warn_miles:1000,warn_days:30},{currentMiles:124500});assert(st.status==='due_soon'&&st.milesLeft===500,'oil change due soon by miles');
   assert(serviceStatus({last_done_date:'2025-01-01',interval_days:365,warn_days:30},{today:'2026-01-05'}).status==='overdue','CARB overdue by date');
   assert(serviceStatus({due_date:'2026-12-31',warn_days:30},{today:'2026-06-01'}).status==='ok','expiry far away is ok');
-  const it=cleanItems({'10a':{status:'repair'}},'trailer');assert(it['4a'].status==='na'&&inspectionResult(it)==='needs_repair','trailer preset + needs repair');}
+  const cf=cleanInspectionFields({vin:' 1xkyd49x8nj123456 ',carrierName:'  HOBO  ',bogus:'x'});assert(cf.vin==='1XKYD49X8NJ123456'&&cf.carrierName==='HOBO'&&!('bogus' in cf),'inspection fields cleaned');
+  for(const t of ['truck','trailer']){const pdf=await PdfLib.load(await renderInspectionTemplate(t,cf));assert(pdf.getPageCount()===1,`${t} inspection form stays one page`)}}
  console.log('PASS finance parsers: Zelle (in/out), vendor bills, match scoring, token crypto, tire quantities, estimate totals');
 }
 
@@ -217,12 +219,14 @@ try{
  console.log('PASS mechanic activity: start/stop saved on server, visible to admin, mechanic sees only self');
  // --- v24.39.0 compliance: annual inspections, fleet PM/CARB, owner reset
  const lk=await request('/api/annual-inspections/lookup?q=Tire Keeper');assert(lk.customers.some(c=>c.customer_name==='Tire Keeper Freight'),'carrier lookup finds customers');
- const ai=await request('/api/annual-inspections',{method:'POST',body:{carrierName:'HOBO TRANSPORTATION',carrierAddress:'1460 N RENAISSANCE DR #307',carrierCityStateZip:'PARK RIDGE, IL 60068',vehicleType:'trailer',fleetUnitNumber:'9500',vin:'7KYAF5323RED39599',inspectorName:'Eli M',items:{'1a':{status:'repaired',repairedDate:'2026-09-29'}}}});
- assert(/^AI-\d{4}-00001$/.test(ai.report_number),'inspection report number');
- const aiRow=(await request(`/api/annual-inspections/${ai.id}`)).item;assert(aiRow.items['4a'].status==='na'&&aiRow.items['1a'].status==='repaired'&&aiRow.result==='passed','trailer defaults + repaired item still passes');
- const aiPdf=await fetch(`http://127.0.0.1:${port}/api/annual-inspections/${ai.id}/pdf`,{headers:{Authorization:`Bearer ${token}`}});const pdfTxt=Buffer.from(await aiPdf.arrayBuffer()).toString('latin1');
- assert(aiPdf.ok&&(pdfTxt.match(/\/Type\s*\/Page[^s]/g)||[]).length===1,'annual inspection PDF is exactly one page');
- const mechAi=await request('/api/annual-inspections',{tok:mechToken,allowError:true});assert(mechAi.status===403,'mechanics cannot open inspections');
+ const ai=await request('/api/inspection-docs',{method:'POST',body:{template:'trailer',fields:{carrierName:'HOBO TRANSPORTATION',address:'1460 N RENAISSANCE DR #307',cityStateZip:'PARK RIDGE, IL 60068',unitNumber:'9500',vin:'7kyaf5323red39599',date:'9/30/2026',inspectorName:'Eli M',otherConditions:'NONE'}}});
+ const aiRow=(await request(`/api/inspection-docs/${ai.id}`)).item;assert(aiRow.template==='trailer'&&aiRow.vin==='7KYAF5323RED39599'&&aiRow.fields.address==='1460 N RENAISSANCE DR #307','inspection form saved');
+ await request('/api/inspection-docs',{method:'POST',body:{id:ai.id,template:'truck',fields:{...aiRow.fields,unitNumber:'9501'}}});assert((await request('/api/inspection-docs?q=9501')).items.length===1,'inspection form updated and searchable');
+ const aiPdf=await fetch(`http://127.0.0.1:${port}/api/inspection-docs/${ai.id}/pdf`,{headers:{Authorization:`Bearer ${token}`}});
+ assert(aiPdf.ok&&(await PdfLib.load(await aiPdf.arrayBuffer())).getPageCount()===1,'annual inspection PDF is the one-page form');
+ const prev=await fetch(`http://127.0.0.1:${port}/api/inspection-docs/preview`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({template:'truck',fields:{carrierName:'X'}})});assert(prev.ok&&prev.headers.get('content-type').includes('pdf'),'inspection preview renders');
+ const mechAi=await request('/api/inspection-docs',{tok:mechToken,allowError:true});assert(mechAi.status===403,'mechanics cannot open inspection forms');
+ await request(`/api/inspection-docs/${ai.id}`,{method:'DELETE'});assert(!(await request('/api/inspection-docs')).items.length,'inspection form deleted');
  const fu=(await db.query("INSERT INTO customer_units(unit_number,customer_name,mileage,odometer_miles,odometer_source) VALUES('FLEET-1','Iron Team Fleet',124500,124500,'samsara') RETURNING id")).rows[0].id;
  await request('/api/fleet-maintenance',{method:'POST',body:{unitId:fu,serviceType:'oil_change',lastDoneMiles:100000,lastDoneDate:'2026-06-01'}});
  await request('/api/fleet-maintenance',{method:'POST',body:{items:[{serviceType:'carb_test',unitLabel:'FLEET-1',lastDoneDate:'2025-09-01',dueDate:'2025-12-31'}]}});

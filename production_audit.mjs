@@ -150,7 +150,7 @@ check('work orders share one stage color scheme',root.includes('function woStage
 const comp=exists('compliance_center.mjs')?read('compliance_center.mjs'):'';
 check('compliance routes registered before API 404',server.includes('registerComplianceRoutes(app,')&&server.indexOf('registerComplianceRoutes(app,')<server.indexOf('app.use("/api",(req,res)=>res.status(404)'));
 check('data reset is owner-only, typed-confirmed and snapshotted',comp.includes("app.post('/api/admin/reset-data', auth, ownerOnly")&&comp.includes("'START FRESH'")&&comp.includes('INSERT INTO data_reset_snapshots'));
-check('annual inspection PDF never spills to a second page',comp.includes('doc.page.margins.bottom = 0'));
+check('annual inspections fill the shop\'s own PDF forms',comp.includes('export async function renderInspectionTemplate')&&exists('assets/inspection-templates/annual-truck.pdf')&&exists('assets/inspection-templates/annual-trailer.pdf'));
 check('customer emails use the branded template',server.includes('documentEmailHtml({kind:\'invoice\''));
 check('Fullbay imports accept large CSV exports',server.includes('const csvUpload=multer(')&&server.includes('"/api/fullbay/import/service-history",auth,managerPermission("customers"),csvUpload'));
 
