@@ -6,6 +6,7 @@ import net from 'node:net';
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
 import {accountDay,zonedToUtc,cleanShopHours} from './mechanic_productivity.mjs';
+import {serviceStatus,cleanItems,inspectionResult} from './compliance_center.mjs';
 import {parseZelleEmail,parseVendorBillEmail,scoreZelleMatch,encryptToken,decryptToken,tireFeeQuantities,estimateTotals,vendorNameFromSender} from './finance_center.mjs';
 
 const assert=(v,label)=>{if(!v)throw new Error(label)};
@@ -35,6 +36,10 @@ const near=(a,b,label)=>{if(Math.abs(Number(a)-Number(b))>0.005)throw new Error(
   near(r.repairMs/H,3,'repair hours incl. after-hours');near(r.overtimeMs/H,1,'after-hours repair');near(r.activityMs/H,1,'overlap goes to repair first');near(r.breakMs/H,.5,'break');near(r.unaccountedMs/H,6.5,'unaccounted in shop hours');
   assert(r.gaps.length===3&&r.gaps[1].before==='Parts'&&r.gaps[1].after==='Break','idle gaps know what came before/after');
   assert(cleanShopHours({start:'18:00',end:'06:00'}).end>'18:00','close time must be after open time');}
+ {const st=serviceStatus({last_done_miles:100000,interval_miles:25000,warn_miles:1000,warn_days:30},{currentMiles:124500});assert(st.status==='due_soon'&&st.milesLeft===500,'oil change due soon by miles');
+  assert(serviceStatus({last_done_date:'2025-01-01',interval_days:365,warn_days:30},{today:'2026-01-05'}).status==='overdue','CARB overdue by date');
+  assert(serviceStatus({due_date:'2026-12-31',warn_days:30},{today:'2026-06-01'}).status==='ok','expiry far away is ok');
+  const it=cleanItems({'10a':{status:'repair'}},'trailer');assert(it['4a'].status==='na'&&inspectionResult(it)==='needs_repair','trailer preset + needs repair');}
  console.log('PASS finance parsers: Zelle (in/out), vendor bills, match scoring, token crypto, tire quantities, estimate totals');
 }
 
@@ -210,6 +215,32 @@ try{
  const mm=mr.mechanics.find(m=>m.username===mechUser);assert(mm.totals.byActivity.parts>0,'activity time counted in productivity report');
  const deniedP=await request('/api/reports/mechanics',{tok:mechToken,allowError:true});assert(deniedP.status===403,'mechanics cannot read the productivity report');
  console.log('PASS mechanic activity: start/stop saved on server, visible to admin, mechanic sees only self');
+ // --- v24.39.0 compliance: annual inspections, fleet PM/CARB, owner reset
+ const lk=await request('/api/annual-inspections/lookup?q=Tire Keeper');assert(lk.customers.some(c=>c.customer_name==='Tire Keeper Freight'),'carrier lookup finds customers');
+ const ai=await request('/api/annual-inspections',{method:'POST',body:{carrierName:'HOBO TRANSPORTATION',carrierAddress:'1460 N RENAISSANCE DR #307',carrierCityStateZip:'PARK RIDGE, IL 60068',vehicleType:'trailer',fleetUnitNumber:'9500',vin:'7KYAF5323RED39599',inspectorName:'Eli M',items:{'1a':{status:'repaired',repairedDate:'2026-09-29'}}}});
+ assert(/^AI-\d{4}-00001$/.test(ai.report_number),'inspection report number');
+ const aiRow=(await request(`/api/annual-inspections/${ai.id}`)).item;assert(aiRow.items['4a'].status==='na'&&aiRow.items['1a'].status==='repaired'&&aiRow.result==='passed','trailer defaults + repaired item still passes');
+ const aiPdf=await fetch(`http://127.0.0.1:${port}/api/annual-inspections/${ai.id}/pdf`,{headers:{Authorization:`Bearer ${token}`}});const pdfTxt=Buffer.from(await aiPdf.arrayBuffer()).toString('latin1');
+ assert(aiPdf.ok&&(pdfTxt.match(/\/Type\s*\/Page[^s]/g)||[]).length===1,'annual inspection PDF is exactly one page');
+ const mechAi=await request('/api/annual-inspections',{tok:mechToken,allowError:true});assert(mechAi.status===403,'mechanics cannot open inspections');
+ const fu=(await db.query("INSERT INTO customer_units(unit_number,customer_name,mileage,odometer_miles,odometer_source) VALUES('FLEET-1','Iron Team Fleet',124500,124500,'samsara') RETURNING id")).rows[0].id;
+ await request('/api/fleet-maintenance',{method:'POST',body:{unitId:fu,serviceType:'oil_change',lastDoneMiles:100000,lastDoneDate:'2026-06-01'}});
+ await request('/api/fleet-maintenance',{method:'POST',body:{items:[{serviceType:'carb_test',unitLabel:'FLEET-1',lastDoneDate:'2025-09-01',dueDate:'2025-12-31'}]}});
+ let fm=await request('/api/fleet-maintenance');const oil=fm.items.find(i=>i.service_type==='oil_change'),carb=fm.items.find(i=>i.service_type==='carb_test');
+ assert(oil.status==='due_soon'&&oil.milesLeft===500&&oil.milesSource==='Samsara','oil change due soon from Samsara miles');assert(carb.status==='overdue'&&String(carb.unit_id)===String(fu),'CARB overdue, matched by unit #');
+ const sum=await request('/api/fleet-maintenance/summary');assert(sum.overdue===1&&sum.dueSoon===1,'dashboard badge counts');
+ await request(`/api/fleet-maintenance/${carb.id}/done`,{method:'POST',body:{doneDate:'2026-09-30',nextDueDate:'2027-09-30'}});
+ fm=await request('/api/fleet-maintenance');assert(fm.items.find(i=>i.id===carb.id).status==='ok','marking done clears the alert');
+ await request('/api/estimates',{method:'POST',body:{customerName:'Reset Test'}});
+ const pv=await request('/api/admin/reset-data/preview');assert(pv.scopes.billing.rows>0,'reset preview counts billing rows');
+ const noConfirm=await request('/api/admin/reset-data',{method:'POST',body:{scopes:['billing'],confirm:'yes'},allowError:true});assert(noConfirm.status===400,'reset needs typed confirmation');
+ const mechReset=await request('/api/admin/reset-data',{method:'POST',tok:mechToken,body:{scopes:['billing'],confirm:'START FRESH'},allowError:true});assert(mechReset.status===403,'mechanics cannot reset');
+ const rs=await request('/api/admin/reset-data',{method:'POST',body:{scopes:['billing','productivity'],confirm:'START FRESH'}});
+ assert((await db.query('SELECT count(*)::int n FROM customer_invoices')).rows[0].n===0&&(await db.query('SELECT count(*)::int n FROM customer_estimates')).rows[0].n===0,'billing wiped');
+ assert((await db.query('SELECT count(*)::int n FROM task_time_sessions')).rows[0].n===0,'timers wiped');
+ const snap=(await db.query('SELECT snapshot FROM data_reset_snapshots ORDER BY id DESC LIMIT 1')).rows[0].snapshot;assert(Array.isArray(snap.customer_estimates)&&snap.customer_estimates.length>0,'deleted rows kept in snapshot');
+ assert((await db.query("SELECT count(*)::int n FROM customer_units WHERE unit_number='FLEET-1'")).rows[0].n===1,'units are kept');
+ console.log('PASS compliance: annual inspection + 1-page PDF, fleet PM/CARB status + done, owner reset with snapshot');
  console.log('Finance center integration: all scenarios passed');
 }catch(e){console.error(e.message);console.error(output.slice(-4000));process.exitCode=1}
 finally{if(child&&child.exitCode==null){child.kill('SIGTERM');await sleep(200)}fake.close();await db.end()}

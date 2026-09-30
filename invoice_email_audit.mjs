@@ -3,7 +3,7 @@ import fs from 'node:fs';
 
 const server=fs.readFileSync('server.js','utf8');
 assert.match(server,/app\.get\('\/api\/invoices\/:id\/email-draft'/,'invoice email review endpoint missing');
-assert.match(server,/invoiceEmailHtml\(i,message\)/,'branded HTML invoice email missing');
+assert.match(server,/invoiceEmailHtml\(i,message(,x\.lines)?\)/,'branded HTML invoice email missing');
 assert.match(server,/View &amp; Pay Invoice/,'secure payment call-to-action missing');
 assert.match(server,/attachments=attachPdf\?/,'optional current invoice PDF attachment missing');
 assert.match(server,/CREATE TABLE IF NOT EXISTS invoice_email_deliveries/,'delivery audit schema missing');

@@ -87,6 +87,7 @@ function renderEditor(){
  const pill=`<span class="estPill ${h(e.status)}">${h(LABEL[e.status]||e.status)}</span>`;
  const actions=[];
  actions.push(`<button class="secondary" data-est="pdf">PDF</button>`);
+ if(e.status!=='converted')actions.push(`<button class="secondary" data-est="email">Email</button>`);
  if(e.status==='draft')actions.push(`<button class="secondary" data-est="status" data-to="sent">Mark sent</button>`);
  if(['draft','sent'].includes(e.status))actions.push(`<button class="success" data-est="status" data-to="approved">Approved</button><button class="danger" data-est="status" data-to="declined">Declined</button>`);
  if(['approved','sent','draft'].includes(e.status))actions.push(`<button data-est="convert">Convert to invoice →</button>`);
@@ -137,6 +138,26 @@ async function partSearch(input){
   drop.classList.remove('hidden')}catch(e){toast(e.message,'error')}
 }
 function defaultRate(){const lab=S.cur?.lines?.find(l=>l.line_type==='labor'&&Number(l.unit_price)>0);return Number(lab?.unit_price||window.invoiceDefaultLaborRate?.()||115)}
+async function openEmail(id){
+ const d=await api(`/api/estimates/${id}/email-draft`);
+ if(!d.configured)return toast('Email is not set up yet (Resend). Add RESEND_API_KEY and INVOICE_FROM_EMAIL in Railway.','error');
+ $('#estEmailBox')?.remove();
+ const box=document.createElement('div');box.id='estEmailBox';box.className='estEditor';box.style.zIndex='60';
+ box.innerHTML=`<div class="estEditorBox" style="max-width:640px"><div class="estHead"><h2>Email estimate</h2><div class="estHeadActions"><button class="secondary" data-est="email-close">Cancel</button></div></div><div style="padding:16px 22px">
+  <div class="field"><label>To</label><input id="estMailTo" value="${h(d.to)}" placeholder="customer@example.com"></div>
+  <div class="field"><label>CC (optional)</label><input id="estMailCc"></div>
+  <div class="field"><label>Subject</label><input id="estMailSubject" value="${h(d.subject)}"></div>
+  <div class="field"><label>Message</label><textarea id="estMailMsg" style="min-height:180px">${h(d.message)}</textarea></div>
+  <div class="muted" style="margin-bottom:12px">The estimate PDF is attached automatically. A draft estimate is marked Sent.</div>
+  <div style="display:flex;justify-content:flex-end"><button data-est="email-send">Send estimate</button></div></div></div>`;
+ S.scope.host.appendChild(box);
+}
+async function sendEmail(id,btn){
+ btn.disabled=true;btn.textContent='Sending…';
+ try{await api(`/api/estimates/${id}/email`,{method:'POST',body:{to:$('#estMailTo').value,cc:$('#estMailCc').value,subject:$('#estMailSubject').value,message:$('#estMailMsg').value,requestId:crypto.randomUUID?.()||String(Date.now())}});
+  $('#estEmailBox')?.remove();toast('Estimate emailed.','success');await reload()}
+ catch(e){btn.disabled=false;btn.textContent='Send estimate';toast(e.message,'error')}
+}
 async function openPdf(){
  const w=window.open('','_blank');
  try{const r=await fetch(`/api/estimates/${S.cur.estimate.id}/pdf`,{headers:window.authHeaders()});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'PDF failed');const url=URL.createObjectURL(await r.blob());if(w)w.location=url;else location.href=url;setTimeout(()=>URL.revokeObjectURL(url),60000)}
@@ -154,6 +175,9 @@ async function onClick(ev){
   if(act==='create')return createEstimate(b);
   const id=S.cur?.estimate?.id;if(!id)return;
   if(act==='pdf')return openPdf();
+  if(act==='email')return openEmail(id);
+  if(act==='email-send')return sendEmail(id,b);
+  if(act==='email-close'){$('#estEmailBox')?.remove();return}
   if(act==='status'){let note='';if(b.dataset.to==='declined'){note=prompt('Why was it declined? (optional)')??null;if(note===null)return}
    await api(`/api/estimates/${id}`,{method:'PUT',body:{status:b.dataset.to,decisionNote:note}});toast(`Estimate marked ${LABEL[b.dataset.to]||b.dataset.to}.`,'success');return reload()}
   if(act==='convert'){if(!confirm('Create a draft invoice from this estimate?'))return;b.disabled=true;const d=await api(`/api/estimates/${id}/convert`,{method:'POST',body:{}});toast(`Draft invoice ${d.invoiceNumber||''} created.`,'success');return goInvoice(d.id)}

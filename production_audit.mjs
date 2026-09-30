@@ -85,7 +85,7 @@ check('language role-sync marker present',root.includes('ITTR_LANGUAGE_ROLE_SYNC
 const partsInsert=server.match(/INSERT INTO fullbay_import_parts\([\s\S]*?VALUES\(([^)]*)\)[\s\S]*?ON CONFLICT\(source_key\)/);
 if(partsInsert){const refs=[...partsInsert[1].matchAll(/\$(\d+)/g)].map(m=>Number(m[1]));const max=refs.length?Math.max(...refs):0;check('Fullbay v23.7.1 max parameter remains $22',max===22,`max=$${max}`);check('Fullbay v23.7.1 has no $23',!refs.includes(23));}else check('Fullbay inventory INSERT regression target found',false);
 
-for(const name of ['customers','invoices','parts','procenter','trucksearch','estimates','reports']){
+for(const name of ['customers','invoices','parts','procenter','trucksearch','estimates','reports','compliance']){
  for(const ext of ['html','js']){
   const a=`modules/${name}.${ext}`,b=`public/modules/${name}.${ext}`;
   check(`${name}.${ext} exists in both module trees`,exists(a)&&exists(b));
@@ -145,6 +145,14 @@ check('mechanic productivity report registered and reports-protected',server.inc
 check('tire fee dialog sits above the invoice workspace',read('public/finance-shared.js').includes('z-index:6000'));
 check('tire fees attach to their tire line',finance.includes("metadata->>'forLineId'")&&server.includes("metadata->>'forLineId'=$1::text"));
 check('work orders share one stage color scheme',root.includes('function woStage(w)')&&root.includes('class="woStageLegend"'));
+
+// v24.39.0 compliance center, email template, reset
+const comp=exists('compliance_center.mjs')?read('compliance_center.mjs'):'';
+check('compliance routes registered before API 404',server.includes('registerComplianceRoutes(app,')&&server.indexOf('registerComplianceRoutes(app,')<server.indexOf('app.use("/api",(req,res)=>res.status(404)'));
+check('data reset is owner-only, typed-confirmed and snapshotted',comp.includes("app.post('/api/admin/reset-data', auth, ownerOnly")&&comp.includes("'START FRESH'")&&comp.includes('INSERT INTO data_reset_snapshots'));
+check('annual inspection PDF never spills to a second page',comp.includes('doc.page.margins.bottom = 0'));
+check('customer emails use the branded template',server.includes('documentEmailHtml({kind:\'invoice\''));
+check('Fullbay imports accept large CSV exports',server.includes('const csvUpload=multer(')&&server.includes('"/api/fullbay/import/service-history",auth,managerPermission("customers"),csvUpload'));
 
 const dupIds=[...root.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]).filter((x,i,a)=>a.indexOf(x)!==i);
 check('no duplicate DOM ids in shell',dupIds.length===0,[...new Set(dupIds)].join(','));

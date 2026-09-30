@@ -1,0 +1,39 @@
+<style>
+.cmp{--c-line:#e4e7ec;--c-ink:#101828;--c-mut:#667085}
+.cmpTabs{display:flex;gap:4px;border-bottom:1px solid var(--c-line);margin:4px 0 16px;overflow-x:auto}
+.cmpTabs button{background:transparent;color:#475467;border-radius:0;border-bottom:2px solid transparent;padding:10px 14px;min-height:auto;white-space:nowrap}
+.cmpTabs button.active{color:var(--c-ink);border-bottom-color:#2563eb}
+.cmpPanel{display:none}.cmpPanel.active{display:block}
+.cmpCard{background:#fff;border:1px solid var(--c-line);border-radius:14px;padding:16px;margin-bottom:14px}
+.cmpCard h3{margin:0 0 4px;font-size:16px}.cmpCard .sub{font-size:12px;color:var(--c-mut);margin-bottom:10px}
+.cmpGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.cmpGrid .field{margin:0}.cmpGrid .span2{grid-column:span 2}.cmpGrid .span4{grid-column:1/-1}
+.cmpDrop{position:relative}.cmpDropList{position:absolute;z-index:20;left:0;right:0;top:100%;background:#fff;border:1px solid var(--c-line);border-radius:10px;box-shadow:0 12px 30px rgba(15,23,42,.15);max-height:300px;overflow:auto}
+.cmpDropList button{display:block;width:100%;text-align:left;background:#fff;color:var(--c-ink);border-radius:0;border-bottom:1px solid var(--c-line);font-weight:700;min-height:auto;padding:9px 12px}
+.cmpDropList button small{display:block;color:var(--c-mut);font-weight:500}.cmpDropList .tag{display:inline-block;font-size:10px;font-weight:800;padding:2px 6px;border-radius:999px;background:#eff8ff;color:#175cd3;margin-right:6px}
+.cmpTypes{display:flex;gap:8px;flex-wrap:wrap}.cmpTypes label{display:flex;align-items:center;gap:6px;border:1px solid var(--c-line);border-radius:10px;padding:8px 12px;font-weight:700;cursor:pointer}.cmpTypes input{width:auto;min-height:auto}
+.cmpTypes label.on{border-color:#2563eb;background:#eff6ff}
+.cmpItems{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.cmpSec{border:1px solid var(--c-line);border-radius:12px;overflow:hidden}.cmpSec h4{margin:0;padding:8px 12px;background:#f8fafc;font-size:13px;border-bottom:1px solid var(--c-line)}
+.cmpItem{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:6px 10px;border-bottom:1px solid #f2f4f7;font-size:13px}.cmpItem:last-child{border-bottom:0}
+.cmpSeg{display:inline-flex;border:1px solid #d0d5dd;border-radius:9px;overflow:hidden}.cmpSeg button{background:#fff;color:#344054;border-radius:0;min-height:30px;padding:4px 9px;font-size:12px;font-weight:700;border-right:1px solid #d0d5dd}.cmpSeg button:last-child{border-right:0}
+.cmpSeg button.on.ok{background:#ecfdf3;color:#067647}.cmpSeg button.on.repair{background:#fef3f2;color:#b42318}.cmpSeg button.on.repaired{background:#fffaeb;color:#b54708}.cmpSeg button.on.na{background:#f2f4f7;color:#344054}
+.cmpItem input[type=date]{min-height:30px;padding:3px 6px;font-size:12px;border:1px solid #d0d5dd;border-radius:7px;margin-top:4px}
+.cmpBar{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center;margin-top:12px}
+.cmpPill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap}
+.cmpPill.passed,.cmpPill.ok{background:#ecfdf3;color:#067647}.cmpPill.needs_repair,.cmpPill.overdue{background:#fef3f2;color:#b42318}.cmpPill.due_soon{background:#fffaeb;color:#b54708}.cmpPill.no_data{background:#f2f4f7;color:#475467}
+.cmpKpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}.cmpKpi{background:#fff;border:1px solid var(--c-line);border-radius:12px;padding:12px 14px}.cmpKpi b{display:block;font-size:24px}.cmpKpi span{font-size:12px;color:var(--c-mut);font-weight:600}
+.cmpKpi.overdue b{color:#b42318}.cmpKpi.due b{color:#b54708}.cmpKpi.ok b{color:#067647}
+.cmpTable{width:100%;border-collapse:collapse;font-size:13px}.cmpTable th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--c-mut);background:#f9fafb;text-align:left}.cmpTable td,.cmpTable th{padding:8px 10px;border-bottom:1px solid #eef0f3;vertical-align:middle}
+.cmpTable tr.overdue td:first-child{box-shadow:inset 4px 0 0 #d92d20}.cmpTable tr.due_soon td:first-child{box-shadow:inset 4px 0 0 #f79009}.cmpTable tr.ok td:first-child{box-shadow:inset 4px 0 0 #17b26a}
+.cmpTable .n{text-align:right;font-variant-numeric:tabular-nums}.cmpTable .acts{white-space:nowrap}.cmpTable .acts button{min-height:30px;padding:4px 9px;font-size:12px}
+.cmpScroll{overflow:auto;border:1px solid #eef0f3;border-radius:10px}.cmpEmpty{padding:24px;text-align:center;color:var(--c-mut)}
+.cmpModal{position:fixed;inset:0;z-index:60;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px}.cmpModal>div{background:#fff;border-radius:16px;max-width:560px;width:100%;padding:20px;max-height:92dvh;overflow:auto}
+@media(max-width:900px){.cmpGrid{grid-template-columns:1fr 1fr}.cmpItems{grid-template-columns:1fr}.cmpKpis{grid-template-columns:1fr 1fr}}
+@media(max-width:560px){.cmpGrid{grid-template-columns:1fr}.cmpGrid .span2{grid-column:auto}}
+</style>
+<div class="cmp">
+ <div class="toolbar"><div><h1>Fleet &amp; Compliance</h1><div class="muted">Annual DOT inspection reports, and PM / CARB / recurring maintenance for your trucks with mileage from Samsara.</div></div></div>
+ <div class="cmpTabs"><button data-c="tab" data-t="fleet" class="active">Fleet maintenance (PM &amp; CARB)</button><button data-c="tab" data-t="annual">Annual inspections</button></div>
+ <div class="cmpPanel active" data-panel="fleet" id="cmpFleet"></div>
+ <div class="cmpPanel" data-panel="annual" id="cmpAnnual"></div>
+</div>
