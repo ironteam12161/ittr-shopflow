@@ -149,9 +149,69 @@ function applyTab(){
  S.scope.host.querySelectorAll('.repPanel').forEach(p=>p.classList.toggle('active',p.dataset.panel===S.tab));
  $('#repKpis').style.display=S.tab==='overview'?'':'none';
  if(S.tab==='inbox')loadInbox();
+ if(S.tab==='mech')loadMech();
  requestAnimationFrame(drawCharts);
 }
 
+// ---------------------------------------------------------------- Mechanics productivity
+const MK={repair:'var(--s1)',activity:'var(--s2)',break:'#98a2b3',idle:'var(--idle)'};
+const hrs=ms=>`${(Number(ms||0)/3600000).toFixed(1)} h`;
+const mins=ms=>{const m=Math.round(Number(ms||0)/60000);return m>=60?`${Math.floor(m/60)}h ${String(m%60).padStart(2,'0')}m`:`${m}m`};
+const clock=(ms,tz)=>new Date(ms).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:tz});
+const dayLabel=ymd=>new Date(`${ymd}T12:00:00`).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+async function loadMech(){
+ const box=$('#repMech');if(!box)return;const key=`${S.range.from}|${S.range.to}`;
+ if(S.mech&&S.mechKey===key)return renderMech();
+ box.innerHTML='<div class="repEmpty">Loading mechanic activity…</div>';
+ try{S.mech=await api(`/api/reports/mechanics?from=${S.range.from}&to=${S.range.to}`);S.mechKey=key;if(!S.mech.mechanics.some(m=>m.username===S.mechSel))S.mechSel=S.mech.mechanics[0]?.username||'';renderMech()}
+ catch(e){box.innerHTML=`<div class="repEmpty">${h(e.message)}</div>`}
+}
+function splitBar(t){const total=Math.max(1,t.repairMs-t.overtimeMs+t.activityMs+t.breakMs+t.idleMs);const part=(k,ms,label)=>ms>0?`<span style="width:${ms/total*100}%;background:${MK[k]}" data-tip="${h(`${label}: ${mins(ms)}`)}"></span>`:'';
+ return `<div class="mechBar">${part('repair',t.repairMs-t.overtimeMs,'Repair (task timers)')}${part('activity',t.activityMs,'Other work')}${part('break',t.breakMs,'Break')}${part('idle',t.idleMs,'Idle / not recorded')}</div>`}
+function timelineHtml(day,tz,range){
+ const span=range.end-range.start,pos=ms=>Math.max(0,Math.min(100,(ms-range.start)/span*100));
+ const segs=(day.segments||[]).filter(sg=>sg.end>range.start&&sg.start<range.end).map(sg=>{const k=sg.kind==='idle'?'idle':sg.kind;return `<span class="mechSeg" style="left:${pos(sg.start)}%;width:${Math.max(.3,pos(sg.end)-pos(sg.start))}%;background:${MK[k]}" data-tip="${h(`${clock(sg.start,tz)}–${clock(sg.end,tz)} · ${mins(sg.end-sg.start)}\n${sg.label}`)}"></span>`}).join('');
+ const shift=day.window?`<span class="mechShift" style="left:${pos(day.window.start)}%;width:${pos(day.window.end)-pos(day.window.start)}%"></span>`:'';
+ return `<div class="mechLane">${shift}${segs}</div>`;
+}
+function renderMech(){
+ const d=S.mech,box=$('#repMech'),tz=d.settings.timezone,st=d.settings,owner=isOwner();
+ if(!d.mechanics.length){box.innerHTML='<div class="repEmpty">No mechanic accounts found.</div>';return}
+ const legendHtml=`<div class="repLegend"><span><i style="background:${MK.repair}"></i>Repair (task timer)</span><span><i style="background:${MK.activity}"></i>Other work (parts, yard, cleaning…)</span><span><i style="background:${MK.break}"></i>Break</span><span><i style="background:${MK.idle}"></i>Idle / nothing recorded</span></div>`;
+ const sumCols=[{key:'display',label:'Mechanic'},{key:'daysWorked',label:'Days',num:true},{key:'repair',label:'Repair',num:true,fmt:v=>hrs(v)},{key:'activity',label:'Other work',num:true,fmt:v=>hrs(v)},{key:'break',label:'Break',num:true,fmt:v=>hrs(v)},{key:'idle',label:'Idle',num:true,html:r=>`<span class="${r.idlePct>=20?'repTag late':''}">${hrs(r.idle)}</span>`,csv:r=>(r.idle/3600000).toFixed(2)},{key:'utilizationPct',label:'On repairs',num:true,fmt:v=>`${v}%`},{key:'billedHours',label:'Billed hrs',num:true,fmt:v=>Number(v).toFixed(1)},{key:'efficiencyPct',label:'Billed ÷ clocked',num:true,fmt:v=>v==null?'—':`${v}%`},{key:'tasksCompleted',label:'Jobs done',num:true},{key:'longestIdle',label:'Longest idle',num:true,fmt:v=>v?mins(v):'—'},{key:'noActivityDays',label:'Days w/o any record',num:true},{key:'bar',label:'Shop day split',html:r=>splitBar(r.t),csv:()=>''}];
+ const sumRows=d.mechanics.map(m=>{const t=m.totals;return {username:m.username,display:m.display,t,daysWorked:t.daysWorked,repair:t.repairMs,activity:t.activityMs,break:t.breakMs,idle:t.idleMs,idlePct:t.scheduledMs?Math.round(t.idleMs/t.scheduledMs*100):0,utilizationPct:t.utilizationPct,billedHours:t.billedHours,efficiencyPct:t.efficiencyPct,tasksCompleted:t.tasksCompleted,longestIdle:t.longestIdleMs,noActivityDays:t.noActivityDays,bar:0}});
+ registerCsv('mechanics-summary',sumCols.filter(c=>c.key!=='bar'),sumRows);
+ const m=d.mechanics.find(x=>x.username===S.mechSel)||d.mechanics[0],t=m.totals,worked=m.days.filter(x=>!x.noActivity);
+ const dayCols=[{key:'date',label:'Day',fmt:v=>dayLabel(v)},{key:'first',label:'First record',fmt:v=>v?clock(v,tz):'—'},{key:'last',label:'Last record',fmt:v=>v?clock(v,tz):'—'},{key:'repairMs',label:'Repair',num:true,fmt:mins},{key:'activityMs',label:'Other work',num:true,fmt:mins},{key:'breakMs',label:'Break',num:true,fmt:mins},{key:'idleMs',label:'Idle',num:true,fmt:v=>v==null?'—':mins(v)},{key:'overtimeMs',label:'After hours',num:true,fmt:v=>v?mins(v):'—'},{key:'wos',label:'Work orders',html:r=>r.noActivity?'<span class="repTag late">No activity recorded</span>':h(r.wos),csv:r=>r.noActivity?'No activity recorded':r.wos}];
+ const dayRows=[...m.days].reverse().map(x=>({...x,first:x.firstEvent,last:x.lastEvent,wos:(x.workOrders||[]).map(w=>`#${w}`).join(', '),repairMs:x.repairMs||0,activityMs:x.activityMs||0,breakMs:x.breakMs||0,idleMs:x.noActivity?null:x.idleMs||0,overtimeMs:x.overtimeMs||0}));
+ registerCsv('mechanic-days',dayCols,dayRows);
+ const gaps=worked.flatMap(x=>(x.gaps||[]).map(g=>({...g,date:x.date}))).sort((a,b)=>b.minutes-a.minutes);
+ const gapCols=[{key:'date',label:'Day',fmt:v=>dayLabel(v)},{key:'start',label:'From',fmt:v=>clock(v,tz)},{key:'end',label:'To',fmt:v=>clock(v,tz)},{key:'minutes',label:'Minutes',num:true},{key:'before',label:'Before the gap'},{key:'after',label:'After the gap'}];
+ registerCsv('idle-gaps',gapCols,gaps);
+ // Timeline: one lane per day, spanning shop hours widened to cover any early/late work.
+ const lanes=worked.slice(-14).map(x=>{const lo=Math.min(x.window?.start??x.firstEvent,x.firstEvent),hi=Math.max(x.window?.end??x.lastEvent,x.lastEvent);return {x,range:{start:lo,end:Math.max(hi,lo+3600000)}}});
+ const act=Object.entries(t.byActivity||{}).map(([k,ms])=>({label:d.activityLabels[k]||k,value:ms/3600000,tip:`${d.activityLabels[k]||k}: ${mins(ms)}`}));
+ const pauses=Object.entries(t.pauseReasons||{}).map(([k,n])=>({label:k,value:n,tip:`${k}: paused ${n} time${n===1?'':'s'}`}));
+ box.innerHTML=`<div class="repNotice">Each shop day (${h(st.start)}–${h(st.end)}, ${h(tz.replace('_',' '))}) is split into <b>repair</b> (task timers), <b>other work</b> (activities like getting parts or cleaning), <b>break</b>, and <b>idle</b> — time with nothing recorded. The first ${st.breakAllowanceMinutes} min of unrecorded time per day counts as lunch, not idle. Idle can also mean the mechanic forgot to press start.</div>
+  ${card('Team summary','Click a mechanic to see their days, timeline and idle gaps.',legendHtml+table('mechsum',sumCols,sumRows,{rowAttr:r=>`data-mech="${h(r.username)}" class="${r.username===m.username?'mechSel':''}"`}),'mechanics-summary')}
+  <div class="repKpis" style="grid-template-columns:repeat(6,minmax(0,1fr))">
+   <div class="repKpi"><span>${h(m.display)} · on repairs</span><b>${t.utilizationPct}%</b><small>${hrs(t.repairMs)} clocked of ${hrs(t.scheduledMs)} shop time</small></div>
+   <div class="repKpi"><span>Idle</span><b>${hrs(t.idleMs)}</b><small>${t.gaps} gap${t.gaps===1?'':'s'} ≥ ${st.idleGapMinutes} min</small></div>
+   <div class="repKpi"><span>Other work</span><b>${hrs(t.activityMs)}</b><small>break ${hrs(t.breakMs)}</small></div>
+   <div class="repKpi"><span>Billed hours</span><b>${Number(t.billedHours).toFixed(1)}</b><small>${t.efficiencyPct==null?'no billed labor yet':`${t.efficiencyPct}% of clocked time`}</small></div>
+   <div class="repKpi"><span>Jobs finished</span><b>${t.tasksCompleted}</b><small>${t.workOrders} work order${t.workOrders===1?'':'s'}</small></div>
+   <div class="repKpi"><span>After hours</span><b>${hrs(t.overtimeMs)}</b><small>${t.noActivityDays} shop day${t.noActivityDays===1?'':'s'} with no record</small></div></div>
+  ${card(`${m.display} — day by day`,`Timeline of the last ${lanes.length} day${lanes.length===1?'':'s'} with records. Hover a block for details; the light band is shop hours.`,legendHtml+(lanes.length?`<div class="mechTimeline">${lanes.map(l=>`<div class="mechRow"><div class="mechDay">${dayLabel(l.x.date)}<small>${clock(l.range.start,tz)} – ${clock(l.range.end,tz)}</small></div>${timelineHtml(l.x,tz,l.range)}</div>`).join('')}</div>`:'<div class="repEmpty">No recorded activity in this range.</div>')+'<div style="height:12px"></div>'+table('mechdays',dayCols,dayRows,{empty:'No shop days in this range.'}),'mechanic-days')}
+  <div class="repGrid"><div>${card('Idle gaps',`Stretches of ${st.idleGapMinutes}+ minutes inside shop hours with nothing recorded, longest first.`,table('gaps',gapCols,gaps,{empty:'No idle gaps. 👍'}),'idle-gaps')}</div>
+  <div>${card('Other work breakdown','Time logged with the Current Activity buttons.',hbars(act,{fmt:v=>`${v.toFixed(1)} h`,color:MK.activity}))}${card('Why jobs were paused','Reasons picked when pausing a task timer.',hbars(pauses,{fmt:v=>`${v}×`,color:'var(--q3)'}))}</div></div>
+  ${owner?card('Shop hours used for this report','Change these if your shop opens, closes or takes lunch at different times.',`<div class="repForm">
+   <div class="field"><label>Opens</label><input id="shOpen" type="time" value="${h(st.start)}"></div><div class="field"><label>Closes</label><input id="shClose" type="time" value="${h(st.end)}"></div>
+   <div class="field"><label>Time zone</label><select id="shTz">${['America/Chicago','America/New_York','America/Denver','America/Los_Angeles','Europe/Kyiv'].map(z=>`<option ${z===tz?'selected':''}>${z}</option>`).join('')}</select></div>
+   <div class="field"><label>Lunch allowance (min, not counted as idle)</label><input id="shLunch" type="number" min="0" max="180" value="${st.breakAllowanceMinutes}"></div>
+   <div class="field"><label>Report idle gaps longer than (min)</label><input id="shGap" type="number" min="5" max="240" value="${st.idleGapMinutes}"></div>
+   <div class="field"><label>Work days</label><div class="mechDays">${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((n,i)=>`<label><input type="checkbox" data-wd="${i}" ${st.workdays.includes(i)?'checked':''}> ${n}</label>`).join('')}</div></div>
+   </div><div style="display:flex;justify-content:flex-end;margin-top:10px"><button data-rep="save-hours">Save shop hours</button></div>`):''}`;
+}
 // ---------------------------------------------------------------- Gmail money inbox
 async function loadInbox(){
  const box=$('#repInbox');if(!box)return;box.innerHTML='<div class="repEmpty">Loading Gmail…</div>';
@@ -180,13 +240,15 @@ async function gmailAttachment(id,i){const w=window.open('','_blank');try{const 
 
 // ---------------------------------------------------------------- events
 async function onClick(ev){
+ const mr=ev.target.closest('tr[data-mech]');if(mr&&!ev.target.closest('[data-rep]')){S.mechSel=mr.dataset.mech;renderMech();return}
  const inv=ev.target.closest('tr[data-inv]');if(inv){await window.showView('invoices');window.openInvoiceWorkspace?.(Number(inv.dataset.inv));return}
  const b=ev.target.closest('[data-rep]');if(!b)return;const a=b.dataset.rep;
  try{
   if(a==='preset'){S.preset=b.dataset.p;S.range=presetRange(S.preset);return load()}
   if(a==='tab'){S.tab=b.dataset.t;try{sessionStorage.setItem('ittr_reports_tab',S.tab)}catch(_){}return applyTab()}
-  if(a==='sort'){const cur=S.sort[b.dataset.table];S.sort[b.dataset.table]={key:b.dataset.key,dir:cur?.key===b.dataset.key?-cur.dir:-1};return render()}
+  if(a==='sort'){const cur=S.sort[b.dataset.table];S.sort[b.dataset.table]={key:b.dataset.key,dir:cur?.key===b.dataset.key?-cur.dir:-1};return S.tab==='mech'?renderMech():render()}
   if(a==='csv')return downloadCsv(b.dataset.k);
+  if(a==='save-hours'){const wd=[...S.scope.host.querySelectorAll('[data-wd]')].filter(x=>x.checked).map(x=>Number(x.dataset.wd));await api('/api/reports/mechanics/settings',{method:'PUT',body:{start:$('#shOpen').value,end:$('#shClose').value,timezone:$('#shTz').value,breakAllowanceMinutes:$('#shLunch').value,idleGapMinutes:$('#shGap').value,workdays:wd}});S.mech=null;toast('Shop hours saved.','success');return loadMech()}
   if(a==='print')return window.print();
   if(a==='save-tires'){const v=id=>$(id)?.value;await api('/api/finance/settings/tire-fees',{method:'PUT',body:{userFeeLabel:v('#tfsUserLabel'),userFee:v('#tfsUser'),userFeeRetainedPerTire:v('#tfsRetained'),disposalLabel:v('#tfsDispLabel'),disposalFee:v('#tfsDisp'),taxable:v('#tfsTax')==='yes'}});toast('Tire fee amounts saved.','success');return load()}
   if(a==='inbox-kind'){S.inbox.kind=b.dataset.k;return loadInbox()}

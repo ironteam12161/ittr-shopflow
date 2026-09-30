@@ -8,7 +8,7 @@ export const DEFAULT_TIRE_FEES = Object.freeze({
   userFee: 2.5,
   userFeeLabel: 'Illinois Tire User Fee',
   userFeeRetainedPerTire: 0.1,
-  disposalFee: 5,
+  disposalFee: 10,
   disposalLabel: 'Tire Disposal Fee',
   taxable: false
 });
@@ -58,6 +58,7 @@ export async function ensureFinanceSchema(pool) {
     metadata JSONB NOT NULL DEFAULT '{}'::jsonb, created_at TIMESTAMPTZ DEFAULT now()
   );
   CREATE INDEX IF NOT EXISTS idx_customer_estimate_lines_estimate ON customer_estimate_lines(estimate_id,sort_order,id);
+  ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS tire_disposal_exempt BOOLEAN NOT NULL DEFAULT FALSE;
   CREATE INDEX IF NOT EXISTS idx_customer_invoice_lines_fee_code ON customer_invoice_lines((metadata->>'feeCode')) WHERE metadata ? 'feeCode';
   CREATE TABLE IF NOT EXISTS gmail_accounts(
     id BIGSERIAL PRIMARY KEY, email TEXT UNIQUE NOT NULL, refresh_token_enc TEXT NOT NULL,
@@ -126,6 +127,55 @@ async function setTireFeeLines(db, { table, fk, parentId, newTires, otherDispose
     }
   }
   return { userQty, disposalQty };
+}
+
+// v24.38.0: tire fees belong to a specific tire part line and sit right under it in the same job:
+//   Michelin XDA 11R22.5 ×4 → Tire User Fee ×4 → Tire Disposal Fee ×4
+// Each fee can be switched off per line (e.g. the customer keeps the old tires → no disposal fee).
+export const TIRE_PART_RE = /\btires?\b|\b\d{3}\/\d{2}\s?r\s?\d{2}(\.\d)?\b|\b1[01]r2[245](\.5)?\b|\b\d{2,3}r\d{2}\.5\b/i;
+export const NOT_TIRE_RE = /\btube\b|valve|chain|gauge|\biron\b|patch|\bplug\b|repair kit|sealant|balanc|rotation|user fee|disposal|\brims?\b|lug\b/i;
+export const looksLikeTire = l => TIRE_PART_RE.test(`${l.description || ''} ${l.part_number || ''}`) && !NOT_TIRE_RE.test(l.description || '');
+async function tireFeeContext(db, { table, fk, parentId, customerId }) {
+  const lines = (await db.query(`SELECT * FROM ${table} WHERE ${fk}=$1::bigint ORDER BY sort_order,id`, [parentId])).rows;
+  const fees = lines.filter(l => l.metadata?.forLineId);
+  const cust = customerId ? (await db.query('SELECT id,customer_name,tire_disposal_exempt FROM fullbay_import_customers WHERE id=$1::bigint', [customerId])).rows[0] : null;
+  return {
+    customer: cust ? { id: cust.id, name: cust.customer_name, disposalExempt: !!cust.tire_disposal_exempt } : null,
+    legacyFeeLines: lines.filter(l => l.metadata?.feeCode && !l.metadata?.forLineId).length,
+    parts: lines.filter(l => l.line_type === 'part').map(l => {
+      const mine = fees.filter(f => String(f.metadata.forLineId) === String(l.id));
+      const q = code => { const f = mine.find(x => x.metadata.feeCode === code); return f ? Number(f.quantity) : 0; };
+      return { id: l.id, description: l.description, partNumber: l.part_number, quantity: Number(l.quantity), isTire: looksLikeTire(l), userQty: q(TIRE_FEE_CODES.user), disposalQty: q(TIRE_FEE_CODES.disposal), hasFees: mine.length > 0 };
+    })
+  };
+}
+async function setTireFeesForParts(db, { table, fk, parentId, items, fees }) {
+  const out = [];
+  for (const it of Array.isArray(items) ? items.slice(0, 100) : []) {
+    const part = (await db.query(`SELECT * FROM ${table} WHERE id=$1::bigint AND ${fk}=$2::bigint AND line_type='part'`, [it.partLineId, parentId])).rows[0];
+    if (!part) throw Object.assign(new Error('Tire line not found on this document.'), { status: 409 });
+    const qty = Math.max(0, Math.min(500, Math.round(num(it.quantity))));
+    const plan = [[TIRE_FEE_CODES.user, fees.userFeeLabel, it.userFee !== false ? qty : 0, fees.userFee], [TIRE_FEE_CODES.disposal, fees.disposalLabel, it.disposalFee !== false ? qty : 0, fees.disposalFee]];
+    for (const [code, label, q, price] of plan) {
+      const ex = (await db.query(`SELECT id FROM ${table} WHERE ${fk}=$1::bigint AND metadata->>'forLineId'=$2 AND metadata->>'feeCode'=$3 ORDER BY id`, [parentId, String(part.id), code])).rows;
+      if (ex.length > 1) await db.query(`DELETE FROM ${table} WHERE id = ANY($1::bigint[])`, [ex.slice(1).map(x => x.id)]);
+      if (!q) { if (ex[0]) await db.query(`DELETE FROM ${table} WHERE id=$1::bigint`, [ex[0].id]); continue; }
+      if (ex[0]) await db.query(`UPDATE ${table} SET description=$2,quantity=$3::numeric,unit_price=$4::numeric,taxable=$5::boolean,discount=0,line_total=$3::numeric*$4::numeric,line_type='fee',parent_line_id=$6::bigint,job_uid=$7,job_name=$8 WHERE id=$1::bigint`,
+        [ex[0].id, label, q, price, !!fees.taxable, part.parent_line_id, part.job_uid || '', part.job_name || '']);
+      else await db.query(`INSERT INTO ${table}(${fk},sort_order,job_uid,job_name,parent_line_id,line_type,description,quantity,unit_price,unit_cost,taxable,discount,line_total,metadata)
+        VALUES($1::bigint,$2,$3,$4,$5::bigint,'fee',$6,$7::numeric,$8::numeric,0,$9::boolean,0,$7::numeric*$8::numeric,$10::jsonb)`,
+      [parentId, part.sort_order || 0, part.job_uid || '', part.job_name || '', part.parent_line_id, label, q, price, !!fees.taxable, JSON.stringify({ feeCode: code, forLineId: Number(part.id) })]);
+    }
+    out.push({ partLineId: Number(part.id), quantity: qty, userFee: it.userFee !== false && qty > 0, disposalFee: it.disposalFee !== false && qty > 0 });
+  }
+  // Per-tire fees replace the older invoice-level tire fee lines (v24.37.0) so nothing is charged twice.
+  if (out.length) await db.query(`DELETE FROM ${table} WHERE ${fk}=$1::bigint AND metadata ? 'feeCode' AND NOT metadata ? 'forLineId'`, [parentId]);
+  // Fee lines whose tire line was deleted are removed too.
+  await db.query(`DELETE FROM ${table} f WHERE f.${fk}=$1::bigint AND f.metadata ? 'forLineId' AND NOT EXISTS (SELECT 1 FROM ${table} p WHERE p.id=(f.metadata->>'forLineId')::bigint AND p.${fk}=$1::bigint)`, [parentId]);
+  return out;
+}
+async function rememberDisposalExempt(db, customerId, value) {
+  if (customerId && typeof value === 'boolean') await db.query('UPDATE fullbay_import_customers SET tire_disposal_exempt=$2 WHERE id=$1::bigint', [customerId, value]);
 }
 
 // ---------------------------------------------------------------- estimates
@@ -489,12 +539,20 @@ export function registerFinanceRoutes(app, deps) {
   }));
 
   // ----- tire fees on invoices
+  app.get('/api/invoices/:id/tire-fees', auth, invoicesPerm, read(async (db, req) => {
+    const inv = (await db.query('SELECT id,customer_id,status FROM customer_invoices WHERE id=$1::bigint', [req.params.id])).rows[0];
+    if (!inv) fail(404, 'Invoice not found.');
+    return { settings: await getSetting(db, 'tire_fees', DEFAULT_TIRE_FEES), locked: !['draft', 'sent', 'partial'].includes(inv.status), ...(await tireFeeContext(db, { table: 'customer_invoice_lines', fk: 'invoice_id', parentId: inv.id, customerId: inv.customer_id })) };
+  }));
   app.post('/api/invoices/:id/tire-fees', auth, invoicesPerm, tx(async (db, req) => {
     const inv = (await db.query('SELECT * FROM customer_invoices WHERE id=$1::bigint FOR UPDATE', [req.params.id])).rows[0];
     if (!inv) fail(404, 'Invoice not found.');
     if (!['draft', 'sent', 'partial'].includes(inv.status)) fail(409, 'Paid or void invoices are locked.');
     const fees = await getSetting(db, 'tire_fees', DEFAULT_TIRE_FEES);
-    const r = await setTireFeeLines(db, { table: 'customer_invoice_lines', fk: 'invoice_id', parentId: inv.id, newTires: req.body?.newTires, otherDisposed: req.body?.otherDisposed, fees });
+    const r = Array.isArray(req.body?.items)
+      ? { items: await setTireFeesForParts(db, { table: 'customer_invoice_lines', fk: 'invoice_id', parentId: inv.id, items: req.body.items, fees }) }
+      : await setTireFeeLines(db, { table: 'customer_invoice_lines', fk: 'invoice_id', parentId: inv.id, newTires: req.body?.newTires, otherDisposed: req.body?.otherDisposed, fees });
+    await rememberDisposalExempt(db, inv.customer_id, req.body?.rememberDisposalExempt);
     await recalcInvoice(db, inv.id);
     await audit(req.user.username, 'invoice_tire_fees_set', { invoiceId: inv.id, ...r });
     return { ok: true, ...r };
@@ -592,13 +650,21 @@ export function registerFinanceRoutes(app, deps) {
   }));
   app.delete('/api/estimates/:id/lines/:lineId', auth, invoicesPerm, tx(async (db, req) => {
     const est = await lockedEstimate(db, req.params.id);
-    await db.query('DELETE FROM customer_estimate_lines WHERE estimate_id=$1::bigint AND (id=$2::bigint OR parent_line_id=$2::bigint)', [est.id, req.params.lineId]);
+    await db.query(`DELETE FROM customer_estimate_lines WHERE estimate_id=$1::bigint AND (id=$2::bigint OR parent_line_id=$2::bigint OR metadata->>'forLineId'=$2::text)`, [est.id, req.params.lineId]);
     await recalcEstimate(db, est.id);
     return { ok: true };
   }));
+  app.get('/api/estimates/:id/tire-fees', auth, invoicesPerm, read(async (db, req) => {
+    const est = (await db.query('SELECT id,customer_id,status FROM customer_estimates WHERE id=$1::bigint', [req.params.id])).rows[0];
+    if (!est) fail(404, 'Estimate not found.');
+    return { settings: await getSetting(db, 'tire_fees', DEFAULT_TIRE_FEES), locked: !editable(est.status), ...(await tireFeeContext(db, { table: 'customer_estimate_lines', fk: 'estimate_id', parentId: est.id, customerId: est.customer_id })) };
+  }));
   app.post('/api/estimates/:id/tire-fees', auth, invoicesPerm, tx(async (db, req) => {
     const est = await lockedEstimate(db, req.params.id), fees = await getSetting(db, 'tire_fees', DEFAULT_TIRE_FEES);
-    const r = await setTireFeeLines(db, { table: 'customer_estimate_lines', fk: 'estimate_id', parentId: est.id, newTires: req.body?.newTires, otherDisposed: req.body?.otherDisposed, fees });
+    const r = Array.isArray(req.body?.items)
+      ? { items: await setTireFeesForParts(db, { table: 'customer_estimate_lines', fk: 'estimate_id', parentId: est.id, items: req.body.items, fees }) }
+      : await setTireFeeLines(db, { table: 'customer_estimate_lines', fk: 'estimate_id', parentId: est.id, newTires: req.body?.newTires, otherDisposed: req.body?.otherDisposed, fees });
+    await rememberDisposalExempt(db, est.customer_id, req.body?.rememberDisposalExempt);
     await recalcEstimate(db, est.id);
     return { ok: true, ...r };
   }));
@@ -621,6 +687,7 @@ export function registerFinanceRoutes(app, deps) {
     for (const l of ordered) {
       const meta = { ...(l.metadata || {}), estimateId: Number(est.id), estimateLineId: Number(l.id) };
       if (l.inventory_part_id) meta.inventoryPartId = Number(l.inventory_part_id);
+      if (meta.forLineId) meta.forLineId = idMap.get(String(meta.forLineId)) || null;
       const r = await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,part_number,quantity,unit_price,unit_cost,taxable,discount,discount_type,discount_value,line_total,parent_line_id,inventory_part_id,stock_posted_qty,metadata)
         VALUES($1::bigint,$2,$3,$4,$5,$6,$7,$8::numeric,$9::numeric,$10::numeric,$11::boolean,$12::numeric,'fixed',$12::numeric,$13::numeric,$14::bigint,$15::bigint,0,$16::jsonb) RETURNING id`,
       [inv.id, l.sort_order, l.job_uid || '', l.job_name || '', l.line_type, l.description, l.part_number || '', l.quantity, l.unit_price, l.unit_cost || 0, !!l.taxable, l.discount || 0, l.line_total, l.parent_line_id ? idMap.get(String(l.parent_line_id)) || null : null, l.inventory_part_id, JSON.stringify(meta)]);

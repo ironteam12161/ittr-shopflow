@@ -139,6 +139,13 @@ check('shop-floor stylesheet lives in the page head, not the label popup',root.i
 check('finalize recalculates paid status',server.includes("a draft paid in full before finalizing must land on 'paid'"));
 check('release check executes finance integration test',String(pkg.scripts?.check||'').includes('node finance_center_integration_test.mjs'));
 
+// v24.38.0 productivity, per-tire fees, stage colors
+const prod=exists('mechanic_productivity.mjs')?read('mechanic_productivity.mjs'):'';
+check('mechanic productivity report registered and reports-protected',server.includes('registerProductivityRoutes(app,')&&prod.includes("app.get('/api/reports/mechanics', auth, reportsPerm"));
+check('tire fee dialog sits above the invoice workspace',read('public/finance-shared.js').includes('z-index:6000'));
+check('tire fees attach to their tire line',finance.includes("metadata->>'forLineId'")&&server.includes("metadata->>'forLineId'=$1::text"));
+check('work orders share one stage color scheme',root.includes('function woStage(w)')&&root.includes('class="woStageLegend"'));
+
 const dupIds=[...root.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]).filter((x,i,a)=>a.indexOf(x)!==i);
 check('no duplicate DOM ids in shell',dupIds.length===0,[...new Set(dupIds)].join(','));
 

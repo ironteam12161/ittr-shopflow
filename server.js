@@ -19,6 +19,7 @@ import {runShopAssistant,createAssistantTools,assistantRole} from "./shop_assist
 import {renderCustomerDocumentPdf,shopProfile} from "./invoice_pdf.mjs";
 import {extractPdfPages,slicePdf,manualSearchTerms} from "./manual_library.mjs";
 import {ensureFinanceSchema,registerFinanceRoutes} from "./finance_center.mjs";
+import {registerProductivityRoutes} from "./mechanic_productivity.mjs";
 import os from "os";
 import bwipjs from "bwip-js";
 import {S3Client,PutObjectCommand,GetObjectCommand,DeleteObjectCommand,HeadBucketCommand} from "@aws-sdk/client-s3";
@@ -1736,8 +1737,8 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.37.1");
-app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-FINANCE-CENTER-20260930`}));
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.38.0");
+app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-PRODUCTIVITY-20260930`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
@@ -3537,6 +3538,7 @@ app.delete('/api/invoices/:id/lines/:lineId',auth,managerPermission("invoices"),
   const rows=target.line_type==='labor'?(await db.query('SELECT * FROM customer_invoice_lines WHERE invoice_id=$1::bigint AND (id=$2::bigint OR parent_line_id=$2::bigint) ORDER BY id FOR UPDATE',[id,req.params.lineId])).rows:[target],warnings=[];
   if(invoiceStockIsPosted(inv))for(const line of rows)if(line.inventory_part_id&&stockNum(line.stock_posted_qty)>0)await postInvoiceLineStock(db,inv,line,req.user.username,warnings,0,'Invoice line deleted after finalization');
   if(target.line_type==='labor')await db.query('DELETE FROM customer_invoice_lines WHERE parent_line_id=$1::bigint AND invoice_id=$2::bigint',[req.params.lineId,id]);
+  await db.query("DELETE FROM customer_invoice_lines WHERE invoice_id=$2::bigint AND metadata->>'forLineId'=$1::text",[String(req.params.lineId),id]);
   await db.query('DELETE FROM customer_invoice_lines WHERE id=$1::bigint AND invoice_id=$2::bigint',[req.params.lineId,id]);await recalcInvoice(db,id);await db.query('COMMIT');res.json({ok:true,warnings});
  }catch(e){try{await db.query('ROLLBACK')}catch{}if(e?.status)return res.status(e.status).json({error:e.message,code:e.code});next(e)}finally{db.release()}
 });
@@ -4283,6 +4285,7 @@ app.post("/api/transcribe",auth,upload.single("audio"),async(req,res)=>{try{if(!
 app.get("/api/admin/server-audit",auth,managerPermission("reports"),async(req,res,next)=>{try{const q=await requireDb().query("SELECT username,action,details,created_at FROM server_audit ORDER BY id DESC LIMIT 500");res.json({rows:q.rows})}catch(e){next(e)}});
 // v24.37.0 estimates, tire fees, accountant reports and Gmail finance inbox
 registerFinanceRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit,recalcInvoice,nextInvoiceNumber,PDFDocument,renderCustomerDocumentPdf,shopProfile,logoPath:path.join(__dirname,"public","assets","iron-team-logo.png"),dateText:v=>{if(!v)return '';try{return invoiceDateText(v)}catch(_){return String(v).slice(0,10)}}});
+registerProductivityRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit});
 app.use("/api",(req,res)=>res.status(404).json({error:"API endpoint not found"}));
 
 
