@@ -4,20 +4,34 @@
 
 .shopTouchAction,.mechanicAction{min-height:52px!important;font-size:16px!important;padding:16px!important;touch-action:manipulation}
 .stateActive{background:#ecfdf3!important;color:#067647!important}.statePaused{background:#fffaeb!important;color:#b54708!important}.stateHold{background:#fef3f2!important;color:#b42318!important}.stateComplete{background:#eef4ff!important;color:#3538cd!important}
+.opsGroups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.opsGroup{background:#fff;border:1px solid #e4e7ec;border-radius:14px;padding:12px}.opsGroup h3{margin:0 0 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#667085}
+.opsBtns{display:grid;gap:6px}.opsBtns button{display:flex;flex-direction:column;align-items:flex-start;text-align:left;background:#f8fafc;color:#101828;border:1px solid #e4e7ec;border-radius:10px;padding:9px 12px;min-height:auto;font-weight:700}
+.opsBtns button span{font-size:12px;font-weight:500;color:#667085}.opsBtns button:hover{border-color:#2563eb;background:#eff6ff}
+@media(max-width:900px){.opsGroups{grid-template-columns:1fr}}
 </style>
 <div class="toolbar"><div>
     <h1>Shop Operations</h1>
-    <div class="muted">Maintenance, productivity, team controls, reporting, integrations and shop tools. Vehicle records now live in Customers & Vehicles.</div>
+    <div class="muted">Team, shop tools, data imports and integrations. Money reports live in Reports; customers and trucks in Customers &amp; Vehicles.</div>
   </div></div>
-
-  <div class="workspaceNote"><b>Unified records:</b> customer data, vehicles and history now live in <button type="button" class="secondary" onclick="showView('customers')">Customers & Vehicles</button>.</div><div class="opsQuick"><button type="button" data-view="activityhistory" onclick="showView('activityhistory')">Team Activity</button><button type="button" data-view="accounts" onclick="showView('accounts')">Mechanic Accounts</button><button type="button" data-view="completed" onclick="showView('completed')">Completed Work</button></div><div class="proTabs">
-    <button class="secondary" onclick="showProPanel('maintenance')">Maintenance</button>
-    <button class="secondary" onclick="showProPanel('productivity')">Productivity</button>
-    <button class="secondary" onclick="showProPanel('notifications')">Notifications</button>
-    <button class="secondary" onclick="showProPanel('dailyreport')">Daily Report</button>
-    <button class="secondary" onclick="showProPanel('audit')">Audit Log</button>
-    <button class="secondary" onclick="showProPanel('fullbay')">Fullbay Data</button>
-    <button class="secondary" onclick="showProPanel('aitools')">AI Tools</button>
+  <div class="opsGroups">
+   <section class="opsGroup"><h3>Team</h3><div class="opsBtns">
+    <button type="button" onclick="try{sessionStorage.setItem('ittr_reports_tab','mech')}catch(_){};showView('reports')"><b>Mechanic productivity</b><span>Repair vs idle time, timelines</span></button>
+    <button type="button" data-view="accounts" onclick="showView('accounts')"><b>Mechanic accounts</b><span>Logins, passwords, access</span></button>
+    <button type="button" data-view="activityhistory" onclick="showView('activityhistory')"><b>Activity log</b><span>Every activity entry, by day</span></button>
+    <button type="button" onclick="showProPanel('productivity')"><b>Task timer log</b><span>Raw timer sessions + AI summary</span></button>
+   </div></section>
+   <section class="opsGroup"><h3>Shop</h3><div class="opsBtns">
+    <button type="button" data-view="completed" onclick="showView('completed')"><b>Completed work</b><span>Finished work orders</span></button>
+    <button type="button" onclick="showProPanel('maintenance')"><b>Maintenance plans</b><span>Mileage-based PM reminders</span></button>
+    <button type="button" onclick="showProPanel('dailyreport')"><b>Daily report</b><span>Today's shop summary</span></button>
+    <button type="button" onclick="showProPanel('notifications')"><b>Notifications</b><span>Alerts and reminders</span></button>
+   </div></section>
+   <section class="opsGroup"><h3>Data &amp; integrations</h3><div class="opsBtns">
+    <button type="button" onclick="showProPanel('fullbay')"><b>Fullbay &amp; Samsara</b><span>Imports, unit sync, cleanup</span></button>
+    <button type="button" onclick="showProPanel('audit')"><b>Audit log</b><span>Who changed what</span></button>
+    <button type="button" onclick="showProPanel('aitools')"><b>AI tools</b><span>Writing, diagnostics, part lookup</span></button>
+   </div></section>
   </div>
 
   <div id="proPanelVehicles" class="proPanel hidden">

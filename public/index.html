@@ -6,13 +6,13 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.37.1-FINANCE-CENTER-20260930">
+<meta name="ittr-build" content="ITTR-24.38.0-PRODUCTIVITY-20260930">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.37.1</title>
+<title>ITTR ShopFlow v24.38.0</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -701,7 +701,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 
 </style>
 <style id="ittrShopFloorV2416">
-/* Restored in v24.37.1: this stylesheet had been pasted inside the part-label print template, so the app never loaded it. */
+/* Restored in v24.38.0: this stylesheet had been pasted inside the part-label print template, so the app never loaded it. */
 /* v24.16.0 shop-floor mobile, receiving, AI and resilience */
 :root{--job-active:#067647;--job-active-bg:#ecfdf3;--job-paused:#b54708;--job-paused-bg:#fffaeb;--job-hold:#b42318;--job-hold-bg:#fef3f2;--job-completed:#175cd3;--job-completed-bg:#eef4ff}
 .mechanicAction,.taskcontrols button,.mechanicActivityActions button,.mechanicWizardNav button{min-height:52px!important;padding:14px 16px!important;border-radius:12px!important;font-weight:850!important;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
@@ -743,7 +743,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.37.1">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.38.0">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -761,7 +761,7 @@ body.invoiceWorkspaceMode .invoiceRateWrap{display:grid!important;grid-template-
 </style>
 <link rel="stylesheet" href="./inspection-workflow.css?v=3">
 <style id="ittrNavLayoutV2">
-/* v24.37.1 desktop navigation: one full-width tab strip grouped by workflow (Shop · Money · Records · Operations). */
+/* v24.38.0 desktop navigation: one full-width tab strip grouped by workflow (Shop · Money · Records · Operations). */
 @media(min-width:761px){
  header{flex-wrap:wrap;row-gap:10px;padding-bottom:0}
  header>nav{order:10;flex:1 0 100%;align-self:stretch;display:flex;flex-wrap:wrap;align-items:stretch;gap:2px 18px;margin:0 -20px;padding:0 20px;border-top:1px solid rgba(255,255,255,.08)}
@@ -777,6 +777,12 @@ body.invoiceWorkspaceMode .invoiceRateWrap{display:grid!important;grid-template-
  header>nav .adminOnly.hiddenRole,header>nav .mechanicOnly.hiddenRole{display:none!important}
 }
 .toastRegion{top:150px}
+.stage-scheduled{--st:#98a2b3;--stbg:#f2f4f7;--stfg:#344054}.stage-ready{--st:#2e90fa;--stbg:#eff8ff;--stfg:#175cd3}.stage-working{--st:#eaaa08;--stbg:#fefbe8;--stfg:#854a0e}.stage-paused{--st:#f97316;--stbg:#fff4ed;--stfg:#b93815}.stage-done{--st:#17b26a;--stbg:#ecfdf3;--stfg:#067647}
+.calJob[class*="stage-"]{border-left:5px solid var(--st)!important;background:var(--stbg)!important}
+tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-working td,tr.woRow.stage-paused td{background:var(--stbg)}
+.woCard[class*="stage-"]{border-left:5px solid var(--st)!important}
+.badge.stBadge{background:var(--stbg)!important;color:var(--stfg)!important;box-shadow:inset 0 0 0 1px var(--st)}
+.woStageLegend{display:flex;flex-wrap:wrap;gap:6px 14px;margin:2px 0 12px;font-size:12px;color:#475467;font-weight:600}.woStageLegend span{display:inline-flex;align-items:center;gap:6px}.woStageLegend i{width:12px;height:12px;border-radius:3px;background:var(--st);display:inline-block}
 .invoiceUnassignedCard .invoiceServiceIndex::before{content:none!important}.invoiceUnassignedCard .invoiceServiceTotal:before,.invoiceUnassignedCard .invoiceServiceTotal::before{content:'Total'!important}
 #invoiceKpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:4px 0 14px}
 #invoiceKpis .stat{background:#fff;border:1px solid #e4e7ec;border-radius:12px;padding:12px 14px;display:flex;flex-direction:column-reverse;gap:3px}
@@ -786,7 +792,7 @@ body.invoiceWorkspaceMode .invoiceRateWrap{display:grid!important;grid-template-
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.37.1 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.38.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -839,6 +845,7 @@ body.invoiceWorkspaceMode .invoiceRateWrap{display:grid!important;grid-template-
     <button onclick="openWorkOrder()">+ New Work Order</button>
   </div>
 
+<div class="woStageLegend" aria-label="Work order colors"><span class="stage-scheduled"><i></i>Scheduled / on the way</span><span class="stage-ready"><i></i>Truck here</span><span class="stage-working"><i></i>Being worked on</span><span class="stage-paused"><i></i>Paused / waiting</span><span class="stage-done"><i></i>Completed</span></div>
   <div class="calendarControls card">
     <div class="calendarNav">
       <button class="secondary" onclick="calendarMove(-1)">‹</button>
@@ -873,6 +880,7 @@ body.invoiceWorkspaceMode .invoiceRateWrap{display:grid!important;grid-template-
     <button class="filterbtn" onclick="setAdminFilter('here',this)">Truck Here</button>
     <button class="filterbtn" onclick="setAdminFilter('fleet',this)">Fleet</button>
   </div>
+  <div class="woStageLegend" aria-label="Work order colors"><span class="stage-scheduled"><i></i>Scheduled / on the way</span><span class="stage-ready"><i></i>Truck here</span><span class="stage-working"><i></i>Being worked on</span><span class="stage-paused"><i></i>Paused / waiting</span><span class="stage-done"><i></i>Completed</span></div>
   <div class="card" style="padding:0;overflow:auto">
     <table>
       <thead><tr><th>WO</th><th>Unit / Truck</th><th>Scheduled</th><th>Mechanic</th><th>Parking</th><th>Availability</th><th>Status</th><th></th></tr></thead>
@@ -1331,7 +1339,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.37.1';
+const FRONTEND_VERSION='24.38.0';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1514,7 +1522,7 @@ function closeCurrentMechanicActivity(users,username,endedAt=new Date().toISOStr
  if(row)row.endedAt=endedAt;
  u.currentActivity={code:"",customText:"",note:"",startedAt:""};
 }
-// v24.37.1: the server owns each mechanic's activity record (mechanics can't save the shared users record).
+// v24.38.0: the server owns each mechanic's activity record (mechanics can't save the shared users record).
 async function sendMechanicActivity(body){
  try{const d=await apiJSON("/api/mechanic/activity",{method:"POST",body});
   USERS[session.username]={...(USERS[session.username]||{role:"mechanic",display:session.display||session.username}),...d.user};
@@ -1570,7 +1578,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.37.1";
+const ROUTE_MODULE_VERSION="24.38.0";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -2719,6 +2727,10 @@ function availabilityBadge(w){
  if(w.truckHere) return '<span class="badge b-here">Truck Here</span>';
  return '<span class="badge b-future">Waiting for Truck</span>';
 }
+// v24.38.0: one color per work-order stage everywhere (calendar, list, mechanic cards).
+function woStage(w){if(!w)return "scheduled";if(String(w.status)==="Completed")return "done";if((w.tasks||[]).some(t=>t&&t.startedAt&&!t.stoppedAt&&!t.done))return "working";if(String(w.status)==="In Progress")return "paused";return readyForMechanic(w)?"ready":"scheduled"}
+const WO_STAGE_LABEL={scheduled:"Scheduled",ready:"Truck here",working:"Being worked on",paused:"Paused / waiting",done:"Completed"};
+function woStageBadge(w){const st=woStage(w);return `<span class="badge stBadge stage-${st}">${esc(translateDynamicText?.(WO_STAGE_LABEL[st])||WO_STAGE_LABEL[st])}</span>`}
 function statusBadge(s){let c=s==="Completed"?"b-done":s==="In Progress"?"b-progress":"b-open";return `<span class="badge ${c}">${esc(s)}</span>`}
 function priorityBadge(s){let c=(s==="High"||s==="Emergency")?"b-high":"b-low";return `<span class="badge ${c}">${esc(s)}</span>`}
 
@@ -3110,7 +3122,7 @@ function calendarJobsFor(date){
 }
 function calendarJobCard(w){
  const firstOpen=(w.tasks||[]).find(t=>!t.done) || (w.tasks||[])[0];
- return `<div class="calJob" onclick="openDetail(${w.id})">
+ return `<div class="calJob stage-${woStage(w)}" onclick="openDetail(${w.id})" title="${esc(WO_STAGE_LABEL[woStage(w)])}">
    <div class="unit">Unit ${esc(w.unit)}</div>
    <div class="meta">${esc(w.time||"No time")} · ${esc(mechanicDisplay(w.mechanic)||"Unassigned")} · ${esc(w.status||"")}</div>
    ${firstOpen?`<div class="task">${esc(firstOpen.t)}</div>`:""}
@@ -4042,14 +4054,14 @@ function renderAdminTable(){
  if(adminFilter==="here")wo=wo.filter(w=>w.truckHere);
  if(adminFilter==="fleet")wo=wo.filter(w=>w.unitType==="fleet");
 
- table.innerHTML=wo.map(w=>`<tr><td>#${w.id}</td><td><b>${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · ${w.unitType==="fleet"?"Fleet":"Customer"}</div></td><td>${esc(w.date)} ${esc(w.time)}</td><td>${esc(mechanicAssignmentsLabel(w))}</td><td>${esc(w.parking||"—")}</td><td>${availabilityBadge(w)}</td><td>${statusBadge(w.status)}</td><td><button class="secondary" onclick="openDetail(${w.id})">Open</button> <button class="secondary" onclick="openEdit(${w.id})">Edit</button></td></tr>`).join("")||'<tr><td colspan="8" class="empty">No work orders in this view.</td></tr>';
+ table.innerHTML=wo.map(w=>`<tr class="woRow stage-${woStage(w)}"><td>#${w.id}</td><td><b>${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · ${w.unitType==="fleet"?"Fleet":"Customer"}</div></td><td>${esc(w.date)} ${esc(w.time)}</td><td>${esc(mechanicAssignmentsLabel(w))}</td><td>${esc(w.parking||"—")}</td><td>${availabilityBadge(w)}</td><td>${woStageBadge(w)}</td><td><button class="secondary" onclick="openDetail(${w.id})">Open</button> <button class="secondary" onclick="openEdit(${w.id})">Edit</button></td></tr>`).join("")||'<tr><td colspan="8" class="empty">No work orders in this view.</td></tr>';
 }
 function setAdminFilter(f,btn){adminFilter=f;document.querySelectorAll(".filterbtn").forEach(x=>x.classList.remove("active"));btn.classList.add("active");renderAdminTable()}
-function jobCard(w){return `<div class="card jobcard"><div class="jobtop"><div><b>#${w.id} — ${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · ${esc(mechanicAssignmentsLabel(w))} · ${esc(w.date)} ${esc(w.time)} · Parking ${esc(w.parking||"—")}</div></div>${statusBadge(w.status)}</div><div style="margin-top:8px">${availabilityBadge(w)}</div><div style="margin-top:10px"><b>Assigned to you:</b>${w.tasks.map(t=>`<div class="muted">${t.done?"✓":(t.startedAt&&!t.stoppedAt?"▶":"○")} ${esc(t.t)}${t.done?` · ${fmtDuration(taskElapsed(t))}`:""}</div>`).join("")}</div><div style="margin-top:10px"><button class="secondary" onclick="openDetail(${w.id})">Open Work Order</button></div></div>`}
-function futureCard(w){return `<div class="card jobcard"><div class="jobtop"><div><b>#${w.id} — ${esc(w.unit)}</b><div class="muted">${esc(w.date)} ${esc(w.time)} · ${esc(mechanicDisplay(w.mechanic))} · Parking ${esc(w.parking||"—")}</div></div>${availabilityBadge(w)}</div><p class="muted">${esc(w.notes||"")}</p><div style="display:flex;gap:8px;flex-wrap:wrap">${w.unitType==="customer"?`<button class="success mechanicAction jobStateActive" onclick="markTruckHere(${w.id})">✓ Truck Is Here</button>`:""}<button class="secondary" onclick="openDetail(${w.id})">Open</button><button class="secondary" onclick="openEdit(${w.id})">Edit</button></div></div>`}
+function jobCard(w){return `<div class="card jobcard woCard stage-${woStage(w)}"><div class="jobtop"><div><b>#${w.id} — ${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · ${esc(mechanicAssignmentsLabel(w))} · ${esc(w.date)} ${esc(w.time)} · Parking ${esc(w.parking||"—")}</div></div>${woStageBadge(w)}</div><div style="margin-top:8px">${availabilityBadge(w)}</div><div style="margin-top:10px"><b>Assigned to you:</b>${w.tasks.map(t=>`<div class="muted">${t.done?"✓":(t.startedAt&&!t.stoppedAt?"▶":"○")} ${esc(t.t)}${t.done?` · ${fmtDuration(taskElapsed(t))}`:""}</div>`).join("")}</div><div style="margin-top:10px"><button class="secondary" onclick="openDetail(${w.id})">Open Work Order</button></div></div>`}
+function futureCard(w){return `<div class="card jobcard woCard stage-scheduled"><div class="jobtop"><div><b>#${w.id} — ${esc(w.unit)}</b><div class="muted">${esc(w.date)} ${esc(w.time)} · ${esc(mechanicDisplay(w.mechanic))} · Parking ${esc(w.parking||"—")}</div></div>${availabilityBadge(w)}</div><p class="muted">${esc(w.notes||"")}</p><div style="display:flex;gap:8px;flex-wrap:wrap">${w.unitType==="customer"?`<button class="success mechanicAction jobStateActive" onclick="markTruckHere(${w.id})">✓ Truck Is Here</button>`:""}<button class="secondary" onclick="openDetail(${w.id})">Open</button><button class="secondary" onclick="openEdit(${w.id})">Edit</button></div></div>`}
 function mechanicUpcomingCard(w){
  const assignedJobs=(w.tasks||[]).map(t=>`<div class="muted">○ ${esc(t.t)}</div>`).join("");
- return `<div class="card jobcard">
+ return `<div class="card jobcard woCard stage-scheduled">
    <div class="jobtop">
      <div>
        <b>Unit ${esc(w.unit)}</b>
@@ -5061,7 +5073,7 @@ async function deleteWorkOrder(id){
  if(!w)return;
  const label=`${w.unit||"this unit"}${w.customer?` — ${w.customer}`:""}`;
  if(!confirm(`Delete work order for ${label}?\n\nThis permanently removes this work order, its findings and its inspection from the shared shop database and vehicle history.`))return;
- // v24.37.1: delete on the server first so a newer copy on another device can't silently undo it.
+ // v24.38.0: delete on the server first so a newer copy on another device can't silently undo it.
  try{const d=await apiJSON(`/api/work-orders/${encodeURIComponent(id)}`,{method:"DELETE"});
   state.workorders=state.workorders.filter(x=>x.id!==id);
   state.issues=(state.issues||[]).filter(i=>Number(i.wo)!==Number(id));
@@ -5434,7 +5446,7 @@ function invoiceServiceCardHtml(g,locked,idx){
 function invoiceCategorizedLinesHtml(lines,locked){
  const labors=lines.filter(x=>x.line_type==='labor').sort((a,b)=>Number(a.sort_order||a.id)-Number(b.sort_order||b.id));
  const blocks=labors.map(labor=>({anchor:labor,parts:invoiceLaborPartsFor(lines,labor,labors)}));
- // v24.37.1: lines that belong to no labor job (tire fees, imported charges) used to be billed but invisible here.
+ // v24.38.0: lines that belong to no labor job (tire fees, imported charges) used to be billed but invisible here.
  const placed=new Set(blocks.flatMap(b=>b.parts.map(x=>String(x.id)))),unassigned=lines.filter(x=>x.line_type!=='labor'&&!placed.has(String(x.id)));
  const extraCard=unassigned.length?`<article class="invoiceServiceCard invoiceLaborBlock invoiceUnassignedCard"><header class="invoiceServiceHead invoiceLaborBlockHead"><div class="invoiceServiceIndex">+</div><div class="invoiceLaborBlockLabel"><span>INVOICE</span><b>Other items &amp; fees</b></div><div></div><div></div><div class="invoiceServiceTotal"><b>${invMoney(unassigned.reduce((a,x)=>a+invoiceLineNet(x),0))}</b></div></header><div class="invoiceServiceRows">${unassigned.map(x=>invoicePartRowHtml(x,locked)).join('')}</div></article>`:'';
  if(!labors.length)return `<div class="invoiceServiceEmpty invoiceServiceStart"><b>No labor added yet.</b><span>Add labor to start the invoice. Parts will appear underneath the labor they belong to.</span></div>${extraCard?`<div class="invoiceServiceStack">${extraCard}</div>`:''}`;
@@ -5777,7 +5789,7 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
  </div>
 </div>
 
-<script src="./finance-shared.js?v=24.37.1"></script>
+<script src="./finance-shared.js?v=24.38.0"></script>
 <script src="./inspection-checklist.js?v=3"></script>
 <script src="./inspection-workflow.js?v=3"></script>
 </body>

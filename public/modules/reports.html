@@ -1,5 +1,10 @@
 <style>
-.rep{--rep-line:#e4e7ec;--rep-ink:#101828;--rep-2:#475467;--rep-3:#667085;--rep-grid:#eef0f3;--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--q1:#86b6ef;--q2:#5598e7;--q3:#2a78d6;--q4:#1c5cab;--q5:#104281}
+.rep{--rep-line:#e4e7ec;--rep-ink:#101828;--rep-2:#475467;--rep-3:#667085;--rep-grid:#eef0f3;--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--q1:#86b6ef;--q2:#5598e7;--q3:#2a78d6;--q4:#1c5cab;--q5:#104281;--idle:#e34948}
+.mechBar{display:flex;height:12px;min-width:140px;border-radius:0 4px 4px 0;overflow:hidden;gap:2px;background:transparent}.mechBar span{display:block;height:100%}
+.mechTimeline{display:grid;gap:6px}.mechRow{display:grid;grid-template-columns:120px minmax(0,1fr);gap:10px;align-items:center}.mechDay{font-size:13px;font-weight:700;color:var(--rep-ink)}.mechDay small{display:block;font-weight:500;color:var(--rep-3);font-size:11px}
+.mechLane{position:relative;height:26px;background:#f2f4f7;border-radius:6px;overflow:hidden}.mechShift{position:absolute;top:0;bottom:0;background:#e4e7ec}.mechSeg{position:absolute;top:3px;bottom:3px;border-radius:3px;min-width:2px}
+.repTable tr[data-mech]{cursor:pointer}.repTable tr.mechSel td{background:#eff8ff}.mechDays{display:flex;flex-wrap:wrap;gap:8px;font-size:13px}.mechDays label{display:flex;align-items:center;gap:4px}.mechDays input{width:auto;min-height:auto}
+@media(max-width:560px){.mechRow{grid-template-columns:1fr}}
 .repTop{display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px}
 .repTop h1{margin:0}.repRange{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .repRange button{min-height:36px;padding:7px 11px;font-size:13px;background:#eef2f7;color:#1f2937}.repRange button.active{background:#111827;color:#fff}
@@ -28,7 +33,7 @@
 .repTable td,.repTable th{padding:8px 10px;border-bottom:1px solid var(--rep-grid);text-align:left}.repTable .n{text-align:right;font-variant-numeric:tabular-nums}
 .repTable tr[data-inv]{cursor:pointer}.repTable tr[data-inv]:hover td{background:#f8fafc}
 .repScroll{max-height:460px;overflow:auto;border:1px solid var(--rep-grid);border-radius:10px}
-.repTag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:#f2f4f7;color:#344054}
+.repTag{display:inline-block;white-space:nowrap;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:#f2f4f7;color:#344054}
 .repTag.late{background:#fef3f2;color:#b42318}.repTag.ok{background:#ecfdf3;color:#067647}.repTag.in{background:#ecfdf3;color:#067647}.repTag.out{background:#fff4ed;color:#b93815}.repTag.bill{background:#eff8ff;color:#175cd3}
 .repEmpty{padding:24px;text-align:center;color:var(--rep-3);font-size:14px}
 .repForm{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.repForm .field{margin:0}
@@ -61,13 +66,14 @@
   </div>
  </div>
  <div class="repTabs" role="tablist">
-  <button data-rep="tab" data-t="overview" class="active">Overview</button><button data-rep="tab" data-t="ar">Customers owe</button><button data-rep="tab" data-t="parts">Parts &amp; spending</button><button data-rep="tab" data-t="tires">Tire fees</button><button data-rep="tab" data-t="inbox">Money inbox (Gmail)</button>
+  <button data-rep="tab" data-t="overview" class="active">Overview</button><button data-rep="tab" data-t="ar">Customers owe</button><button data-rep="tab" data-t="parts">Parts &amp; spending</button><button data-rep="tab" data-t="tires">Tire fees</button><button data-rep="tab" data-t="mech">Mechanics</button><button data-rep="tab" data-t="inbox">Money inbox (Gmail)</button>
  </div>
  <div id="repKpis" class="repKpis"></div>
  <div class="repPanel active" data-panel="overview" id="repOverview"></div>
  <div class="repPanel" data-panel="ar" id="repAr"></div>
  <div class="repPanel" data-panel="parts" id="repParts"></div>
  <div class="repPanel" data-panel="tires" id="repTires"></div>
+ <div class="repPanel" data-panel="mech" id="repMech"></div>
  <div class="repPanel" data-panel="inbox" id="repInbox"></div>
  <div id="repTip" class="repTip" role="tooltip"></div>
 </div>
