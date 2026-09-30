@@ -1,4 +1,4 @@
-// ITTR ShopFlow v24.40.0 Fleet & Compliance route module: fleet PM/CARB tracking + annual inspection form filler.
+// ITTR ShopFlow v24.40.1 Fleet & Compliance route module: fleet PM/CARB tracking + annual inspection form filler.
 const h=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const api=(u,o)=>window.apiJSON(u,o);
 const toast=(m,t='info')=>window.showToast?.(m,t);
@@ -7,7 +7,7 @@ const mi=v=>v==null||v===''?'—':`${Math.round(Number(v)).toLocaleString()} mi`
 const today=()=>new Date().toISOString().slice(0,10);
 const isOwner=()=>{try{return session?.role==='admin'}catch(_){return false}};
 const STATUS={overdue:'Overdue',due_soon:'Due soon',ok:'OK',no_data:'Needs dates/miles'};
-let S={scope:null,tab:'fleet',fleet:null,meta:null,list:[],form:null,lookupTimer:0,unitTimer:0,lookup:{customers:[],fmcsa:null},units:[],prevTimer:0,prevUrl:null};
+let S={scope:null,tab:'fleet',fleet:null,meta:null,list:[],form:null,lookupTimer:0,unitTimer:0,lookup:{customers:[],carriers:[]},units:[],prevTimer:0,prevUrl:null};
 const $=sel=>S.scope?.host.querySelector(sel);
 
 // ================================================================ fleet maintenance
@@ -97,8 +97,8 @@ async function refreshPreview(){const fr=$('#cmpPrevFrame'),st=$('#cmpPrevState'
  try{const r=await fetch('/api/inspection-docs/preview',{method:'POST',headers:{...window.authHeaders(),'Content-Type':'application/json'},body:JSON.stringify({template:f.template,fields})});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Preview failed');
   const url=URL.createObjectURL(await r.blob());if(S.prevUrl)URL.revokeObjectURL(S.prevUrl);S.prevUrl=url;fr.src=url+'#toolbar=0&navpanes=0&view=Fit';st&&(st.textContent='')}catch(e){st&&(st.textContent=e.message)}}
 async function lookupCarrier(q){const list=$('#cmpLookupList');if(!list)return;if(q.trim().length<2){list.classList.add('hidden');return}
- try{S.lookup=await api(`/api/annual-inspections/lookup?q=${encodeURIComponent(q.trim())}`);const L=S.lookup,fm=L.fmcsa;
-  list.innerHTML=`${fm?`<button type="button" data-c="pick-fmcsa"><span class="tag">FMCSA</span>${h(fm.legalName||fm.dbaName)}<small>USDOT ${h(fm.dotNumber)} · ${h([fm.address,fm.city,fm.state,fm.zip].filter(Boolean).join(', '))}</small></button>`:''}${L.customers.map((c,i)=>`<button type="button" data-c="pick-cust" data-i="${i}"><span class="tag" style="background:#ecfdf3;color:#067647">Customer</span>${h(c.customer_name)}<small>${c.dot_number?`USDOT ${h(c.dot_number)} · `:''}${h([c.address,c.city,c.state,c.postal_code].filter(Boolean).join(', '))}</small></button>`).join('')}${!fm&&!L.customers.length?`<button type="button" disabled>No match.${L.fmcsaError?` ${h(L.fmcsaError)}`:''}</button>`:''}`;
+ try{S.lookup=await api(`/api/annual-inspections/lookup?q=${encodeURIComponent(q.trim())}`);const L=S.lookup,cs=L.carriers||[];
+  list.innerHTML=`${L.customers.map((c,i)=>`<button type="button" data-c="pick-cust" data-i="${i}"><span class="tag" style="background:#ecfdf3;color:#067647">Customer</span>${h(c.customer_name)}<small>${c.dot_number?`USDOT ${h(c.dot_number)} · `:''}${h([c.address,c.city,c.state,c.postal_code].filter(Boolean).join(', '))}</small></button>`).join('')}${cs.map((fm,i)=>`<button type="button" data-c="pick-fmcsa" data-i="${i}"><span class="tag">FMCSA</span>${h(fm.legalName||fm.dbaName)}<small>USDOT ${h(fm.dotNumber)} · ${h([fm.address,fm.city,fm.state,fm.zip].filter(Boolean).join(', '))}</small></button>`).join('')}${L.fmcsaError&&(L.customers.length||cs.length)?`<button type="button" disabled><small>FMCSA: ${h(L.fmcsaError)}</small></button>`:''}${!cs.length&&!L.customers.length?`<button type="button" disabled>No match.${L.fmcsaError?` ${h(L.fmcsaError)}`:''}</button>`:''}`;
   list.classList.remove('hidden')}catch(e){toast(e.message,'error')}}
 async function searchUnits(q){const list=$('#cmpUnitList');if(!list)return;try{const d=await api(`/api/annual-inspections/units?q=${encodeURIComponent(q)}${S.form.customerId?`&customerId=${S.form.customerId}`:''}`);S.units=d.items;
  list.innerHTML=d.items.map((u,i)=>`<button type="button" data-c="pick-unit" data-i="${i}">Unit ${h(u.unit_number)}<small>${h([u.year,u.make,u.model].filter(Boolean).join(' '))}${u.vin?` · VIN ${h(u.vin)}`:''}${u.plate?` · ${h(u.plate)}`:''}</small></button>`).join('')||'<button type="button" disabled>No units found.</button>';list.classList.remove('hidden')}catch(e){toast(e.message,'error')}}
@@ -138,7 +138,7 @@ async function onClick(ev){
   if(a==='del-insp'){if(!confirm('Delete this saved form?'))return;await api(`/api/inspection-docs/${b.dataset.id}`,{method:'DELETE'});return loadAnnual()}
   if(a==='pdf')return openInspectionPdf(b.dataset.id);
   if(a==='download')return openInspectionPdf(b.dataset.id,true);
-  if(a==='pick-fmcsa'){const fm=S.lookup.fmcsa;return setFields({carrierName:(fm.legalName||fm.dbaName||'').toUpperCase(),address:(fm.address||'').toUpperCase(),cityStateZip:`${fm.city||''}${fm.state?`, ${fm.state}`:''} ${fm.zip||''}`.trim().toUpperCase()})}
+  if(a==='pick-fmcsa'){const fm=S.lookup.carriers[Number(b.dataset.i)];return setFields({carrierName:(fm.legalName||fm.dbaName||'').toUpperCase(),address:(fm.address||'').toUpperCase(),cityStateZip:`${fm.city||''}${fm.state?`, ${fm.state}`:''} ${fm.zip||''}`.trim().toUpperCase()})}
   if(a==='pick-cust'){const c=S.lookup.customers[Number(b.dataset.i)];S.form.customerId=c.id;return setFields({carrierName:String(c.customer_name||'').toUpperCase(),address:String(c.address||'').toUpperCase(),cityStateZip:`${c.city||''}${c.state?`, ${c.state}`:''} ${c.postal_code||''}`.trim().toUpperCase()})}
   if(a==='pick-unit'){const u=S.units[Number(b.dataset.i)];S.form.unitId=u.id;return setFields({unitNumber:u.unit_number||'',vin:String(u.vin||'').toUpperCase()})}
   if(a==='save-insp')return saveInspection(null);

@@ -1311,6 +1311,21 @@ async function lookupFmcsaCarrier(dot){
   fmcsaCache.set(usdot,{at:Date.now(),data:normalized});return normalized;
  }catch(e){if(e?.name==="AbortError")throw Object.assign(new Error("FMCSA lookup timed out. Try again."),{status:504,code:"FMCSA_TIMEOUT"});throw e}finally{clearTimeout(timer)}
 }
+// v24.40.1: FMCSA carrier search by company name (annual inspection carrier lookup).
+async function searchFmcsaCarriersByName(name){
+ const q=String(name||"").trim().slice(0,80);if(q.length<3)return [];
+ if(!FMCSA_WEBKEY)throw Object.assign(new Error("FMCSA name search needs FMCSA_WEBKEY in Railway Variables."),{status:503,code:"FMCSA_NOT_CONFIGURED"});
+ const key=`name:${q.toLowerCase()}`,cached=fmcsaCache.get(key);if(cached&&Date.now()-cached.at<15*60*1000)return cached.data;
+ const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
+ try{
+  const r=await fetch(`${FMCSA_API_BASE}/carriers/name/${encodeURIComponent(q)}?webKey=${encodeURIComponent(FMCSA_WEBKEY)}&size=10`,{headers:{Accept:"application/json","User-Agent":"ITTR-ShopFlow/24.40"},signal:ctl.signal});
+  if(r.status===404)return [];
+  if(!r.ok)throw Object.assign(new Error(`FMCSA service returned ${r.status}.`),{status:502});
+  const data=await r.json().catch(()=>null),rows=Array.isArray(data?.content)?data.content:[];
+  const list=rows.map(x=>normalizeFmcsaCarrier(x?.carrier||x,"")).filter(c=>c&&(c.legalName||c.dbaName)).slice(0,8);
+  fmcsaCache.set(key,{at:Date.now(),data:list});return list;
+ }catch(e){if(e?.name==="AbortError")throw Object.assign(new Error("FMCSA lookup timed out."),{status:504});throw e}finally{clearTimeout(timer)}
+}
 app.get("/api/fmcsa/status",auth,managerPermission("customers"),(req,res)=>res.json({configured:Boolean(FMCSA_WEBKEY),provider:"FMCSA QCMobile / SAFER",official:true}));
 app.get("/api/fmcsa/carriers/:dotNumber",auth,managerPermission("customers"),async(req,res)=>{try{const item=await lookupFmcsaCarrier(req.params.dotNumber);res.json({item,source:"FMCSA QCMobile API",official:true,checkedAt:new Date().toISOString()})}catch(e){res.status(e.status||500).json({error:e.message||"FMCSA lookup failed.",code:e.code||"FMCSA_LOOKUP"})}});
 function cleanVin(value){return String(value||"").trim().toUpperCase().replace(/\s+/g,"")}
@@ -1742,7 +1757,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.40.0");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.40.1");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPFORMS-20260930`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
@@ -4280,7 +4295,7 @@ app.get("/api/admin/server-audit",auth,managerPermission("reports"),async(req,re
 // v24.37.0 estimates, tire fees, accountant reports and Gmail finance inbox
 registerFinanceRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit,recalcInvoice,nextInvoiceNumber,PDFDocument,renderCustomerDocumentPdf,shopProfile,logoPath:path.join(__dirname,"public","assets","iron-team-logo.png"),dateText:v=>{if(!v)return '';try{return invoiceDateText(v)}catch(_){return String(v).slice(0,10)}}});
 registerProductivityRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit});
-registerComplianceRoutes(app,{auth,ownerOnly,adminOnly,requireDb,audit,PDFDocument,shopProfile,lookupFmcsaCarrier,samsaraPaged,samsaraConfigured:samsaraTokenPresent});
+registerComplianceRoutes(app,{auth,ownerOnly,adminOnly,requireDb,audit,PDFDocument,shopProfile,lookupFmcsaCarrier,searchFmcsaCarriersByName,samsaraPaged,samsaraConfigured:samsaraTokenPresent});
 app.use("/api",(req,res)=>res.status(404).json({error:"API endpoint not found"}));
 
 

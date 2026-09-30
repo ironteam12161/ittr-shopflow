@@ -219,6 +219,7 @@ try{
  console.log('PASS mechanic activity: start/stop saved on server, visible to admin, mechanic sees only self');
  // --- v24.39.0 compliance: annual inspections, fleet PM/CARB, owner reset
  const lk=await request('/api/annual-inspections/lookup?q=Tire Keeper');assert(lk.customers.some(c=>c.customer_name==='Tire Keeper Freight'),'carrier lookup finds customers');
+ const lkNone=await request('/api/annual-inspections/lookup?q=zzqxnomatch');assert(!lkNone.customers.length&&Array.isArray(lkNone.carriers),'name lookup does not match every customer without a USDOT');
  const ai=await request('/api/inspection-docs',{method:'POST',body:{template:'trailer',fields:{carrierName:'HOBO TRANSPORTATION',address:'1460 N RENAISSANCE DR #307',cityStateZip:'PARK RIDGE, IL 60068',unitNumber:'9500',vin:'7kyaf5323red39599',date:'9/30/2026',inspectorName:'Eli M',otherConditions:'NONE'}}});
  const aiRow=(await request(`/api/inspection-docs/${ai.id}`)).item;assert(aiRow.template==='trailer'&&aiRow.vin==='7KYAF5323RED39599'&&aiRow.fields.address==='1460 N RENAISSANCE DR #307','inspection form saved');
  await request('/api/inspection-docs',{method:'POST',body:{id:ai.id,template:'truck',fields:{...aiRow.fields,unitNumber:'9501'}}});assert((await request('/api/inspection-docs?q=9501')).items.length===1,'inspection form updated and searchable');
