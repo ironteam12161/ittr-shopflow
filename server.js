@@ -19,7 +19,9 @@ import {runShopAssistant,createAssistantTools,assistantRole} from "./shop_assist
 import {renderCustomerDocumentPdf,shopProfile} from "./invoice_pdf.mjs";
 import {extractPdfPages,slicePdf,manualSearchTerms} from "./manual_library.mjs";
 import {ensureFinanceSchema,registerFinanceRoutes} from "./finance_center.mjs";
+import {documentEmailHtml} from "./email_templates.mjs";
 import {registerProductivityRoutes} from "./mechanic_productivity.mjs";
+import {ensureComplianceSchema,registerComplianceRoutes,startFleetScheduler} from "./compliance_center.mjs";
 import os from "os";
 import bwipjs from "bwip-js";
 import {S3Client,PutObjectCommand,GetObjectCommand,DeleteObjectCommand,HeadBucketCommand} from "@aws-sdk/client-s3";
@@ -36,6 +38,8 @@ const vinDecodeCache=new Map();
 const app=express();
 const httpServer=http.createServer(app);
 const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:20*1024*1024}});
+// v24.39.0: years of Fullbay history can be a large CSV — imports get their own, larger limit.
+const csvUpload=multer({storage:multer.memoryStorage(),limits:{fileSize:80*1024*1024}});
 const photoUpload=multer({
  storage:multer.memoryStorage(),
  limits:{fileSize:25*1024*1024,files:1},
@@ -879,7 +883,7 @@ async function findImportedUnit(db,unitId,customerId,unitNumber,vin){
  return null;
 }
 
-app.post("/api/fullbay/import/customer-units",auth,managerPermission("customers"),upload.single("file"),async(req,res,next)=>{try{
+app.post("/api/fullbay/import/customer-units",auth,managerPermission("customers"),csvUpload.single("file"),async(req,res,next)=>{try{
  if(!req.file)return res.status(400).json({error:"Choose CustomersUnits.csv first."});
  const rows=csvObjects(req.file.buffer);if(!rows.length)return res.status(400).json({error:"No data rows found in CustomersUnits.csv."});
  const db=requireDb(),client=await db.connect();let customers=0,units=0,updated=0,skipped=0;
@@ -901,7 +905,7 @@ app.post("/api/fullbay/import/customer-units",auth,managerPermission("customers"
  }catch(e){await client.query("ROLLBACK");throw e}finally{client.release()}
 }catch(e){console.error('[Samsara all units]',e);res.status(500).json({ok:false,error:'Could not load ITTR units',detail:e.message||String(e),build:'24.28.4'})}});
 
-app.post("/api/fullbay/import/repair-orders",auth,managerPermission("customers"),upload.single("file"),async(req,res,next)=>{try{
+app.post("/api/fullbay/import/repair-orders",auth,managerPermission("customers"),csvUpload.single("file"),async(req,res,next)=>{try{
  if(!req.file)return res.status(400).json({error:"Choose repairOrders.csv first."});
  const rows=csvObjects(req.file.buffer);if(!rows.length)return res.status(400).json({error:"No repair orders found in this CSV."});
  const db=requireDb(),client=await db.connect();let imported=0,updated=0,skipped=0,customerMatches=0,unitMatches=0;
@@ -924,7 +928,7 @@ app.get("/api/fullbay/import/status",auth,adminOnly,async(req,res,next)=>{try{
  res.json({customers:c.rows[0],parts:p.rows[0],service:srv.rows[0],units:u.rows[0],recent:l.rows});
 }catch(e){next(e)}});
 
-app.post("/api/fullbay/import/customers",auth,managerPermission("customers"),upload.single("file"),async(req,res,next)=>{try{
+app.post("/api/fullbay/import/customers",auth,managerPermission("customers"),csvUpload.single("file"),async(req,res,next)=>{try{
  if(!req.file)return res.status(400).json({error:"Choose a Fullbay customer CSV file."});
  const rows=csvObjects(req.file.buffer);if(!rows.length)return res.status(400).json({error:"No data rows found in this CSV."});
  const db=requireDb();let imported=0,skipped=0;
@@ -941,7 +945,7 @@ app.post("/api/fullbay/import/customers",auth,managerPermission("customers"),upl
  await audit(req.user.username,"fullbay_customers_import",{file:req.file.originalname,received:rows.length,imported,skipped});res.json({ok:true,received:rows.length,imported,skipped});
 }catch(e){next(e)}});
 
-app.post("/api/fullbay/import/parts",auth,managerPermission("inventory"),upload.single("file"),async(req,res,next)=>{try{
+app.post("/api/fullbay/import/parts",auth,managerPermission("inventory"),csvUpload.single("file"),async(req,res,next)=>{try{
  if(!req.file)return res.status(400).json({error:"Choose a Fullbay parts/inventory CSV file."});
  const rows=csvObjects(req.file.buffer);if(!rows.length)return res.status(400).json({error:"No data rows found in this CSV."});
  const db=requireDb();let imported=0,skipped=0;
@@ -956,7 +960,7 @@ app.post("/api/fullbay/import/parts",auth,managerPermission("inventory"),upload.
  await audit(req.user.username,"fullbay_parts_import",{file:req.file.originalname,received:rows.length,imported,skipped});res.json({ok:true,received:rows.length,imported,skipped});
 }catch(e){next(e)}});
 
-app.post("/api/fullbay/import/service-history",auth,managerPermission("customers"),upload.single("file"),async(req,res,next)=>{
+app.post("/api/fullbay/import/service-history",auth,managerPermission("customers"),csvUpload.single("file"),async(req,res,next)=>{
  try{
   if(!req.file)return res.status(400).json({error:"Choose the Fullbay Details / Service History CSV file."});
   const rows=csvObjects(req.file.buffer);if(!rows.length)return res.status(400).json({error:"No data rows found in this CSV."});
@@ -1737,8 +1741,8 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.38.0");
-app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-PRODUCTIVITY-20260930`}));
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.39.0");
+app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-COMPLIANCE-20260930`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
@@ -3984,20 +3988,9 @@ function invoiceEmailDefaults(i){const shop=shopProfile(),bal=Number(i.balance_d
  return {to:String(i.customer_email||''),subject:`Invoice ${i.invoice_number} from ${shop.name}${i.unit_number?` — Unit ${i.unit_number}`:''}`,
   message:`Hello${i.customer_name?` ${String(i.customer_name).split(/\s+/).slice(0,3).join(' ')}`:''},\n\nThank you for choosing ${shop.name}. Your invoice ${i.invoice_number}${i.unit_number?` for Unit ${i.unit_number}`:''} is attached.\n\n${bal>0.004?`Balance due: $${bal.toFixed(2)} (due ${due}).`:'This invoice is paid in full — thank you!'}\n\nIf you have any questions, just reply to this email${shop.phone?` or call us at ${shop.phone}`:''}.\n\nThank you,\n${shop.name}`}}
 function escHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function invoiceEmailHtml(i,message){const shop=shopProfile(),bal=Number(i.balance_due??i.total??0),accent=String(process.env.SHOP_ACCENT_COLOR||'#c2410c'),logo=process.env.APP_PUBLIC_URL?`${String(process.env.APP_PUBLIC_URL).replace(/\/$/,'')}/assets/iron-team-logo.png`:'';
- const pay=i.payment_url&&bal>0.004?`<tr><td style="padding:8px 28px 4px"><a href="${escHtml(i.payment_url)}" style="display:block;text-align:center;background:${accent};color:#fff;padding:14px 18px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px">View &amp; Pay Invoice</a></td></tr>`:'';
- return `<!doctype html><html><body style="margin:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#0f172a"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:24px 0"><tr><td align="center">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0">
-<tr><td style="background:#0f172a;padding:18px 28px">${logo?`<img src="${logo}" alt="" height="44" style="vertical-align:middle;margin-right:12px">`:''}<span style="color:#fff;font-size:18px;font-weight:700;vertical-align:middle">${escHtml(shop.name)}</span></td></tr>
-<tr><td style="height:4px;background:${accent}"></td></tr>
-<tr><td style="padding:24px 28px 8px;font-size:15px;line-height:1.55">${escHtml(message).replace(/\n/g,'<br>')}</td></tr>
-<tr><td style="padding:8px 28px 16px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px"><tr>
-<td style="padding:14px 16px;font-size:13px;color:#64748b">Invoice<br><b style="color:#0f172a;font-size:15px">${escHtml(i.invoice_number)}</b></td>
-<td style="padding:14px 16px;font-size:13px;color:#64748b">${i.unit_number?`Unit<br><b style="color:#0f172a;font-size:15px">${escHtml(i.unit_number)}</b>`:''}</td>
-<td style="padding:14px 16px;font-size:13px;color:#64748b;text-align:right">${bal>0.004?'Amount due':'Total'}<br><b style="color:${bal>0.004?accent:'#047857'};font-size:20px">$${(bal>0.004?bal:Number(i.total||0)).toFixed(2)}</b></td></tr></table></td></tr>
-${pay}
-<tr><td style="padding:16px 28px 22px;font-size:12px;color:#64748b;border-top:1px solid #e2e8f0">${escHtml(shop.name)} · ${escHtml(shop.address1)}, ${escHtml(shop.address2)}${shop.phone?` · ${escHtml(shop.phone)}`:''}<br>After tire or wheel service, wheel nuts must be re-torqued after 50 miles of driving.</td></tr>
-</table></td></tr></table></body></html>`}
+// v24.39.0: colorful branded template shared with estimates (email_templates.mjs).
+function invoiceEmailHtml(i,message,lines=[]){const base=process.env.APP_PUBLIC_URL?String(process.env.APP_PUBLIC_URL).replace(/\/$/,''):'';
+ return documentEmailHtml({kind:'invoice',doc:i,lines,message,shop:shopProfile(),logoUrl:base?`${base}/assets/iron-team-logo.png`:'',payUrl:i.payment_url||'',payLabel:'View &amp; Pay Invoice',accent:String(process.env.SHOP_ACCENT_COLOR||'#c2410c')})}
 app.get('/api/invoices/:id/email-draft',auth,managerPermission("invoices"),async(req,res,next)=>{try{const x=await getInvoiceBundle(requireDb(),req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const d=invoiceEmailDefaults(x.invoice);res.json({...d,to:d.to||x.invoice.profile_customer_email||'',configured:Boolean(resendKey&&invoiceFromEmail),from:invoiceFromEmail,hasPaymentLink:Boolean(x.invoice.payment_url),lastSentAt:x.invoice.email_sent_at||null})}catch(e){next(e)}});
 app.post('/api/invoices/:id/email',auth,managerPermission("invoices"),async(req,res,next)=>{let deliveryId=null;try{
  if(!resendKey||!invoiceFromEmail)return res.status(503).json({error:'Email is not configured. Add RESEND_API_KEY and INVOICE_FROM_EMAIL in Railway.'});
@@ -4018,7 +4011,7 @@ app.post('/api/invoices/:id/email',auth,managerPermission("invoices"),async(req,
  deliveryId=delivery.id;
  const attachments=attachPdf?[{filename:`${String(i.invoice_number).replace(/[^A-Za-z0-9_-]/g,'_')}.pdf`,content:(await invoicePdfBuffer(x)).toString('base64')}]:[];
  const shop=shopProfile(),replyTo=String(process.env.INVOICE_REPLY_TO||shop.email||'').trim();
- const rr=await fetch(String(process.env.RESEND_API_URL||'https://api.resend.com/emails'),{method:'POST',headers:{Authorization:`Bearer ${resendKey}`,'Content-Type':'application/json','Idempotency-Key':idempotencyKey},body:JSON.stringify({from:invoiceFromEmail,to,cc:cc.length?cc:undefined,reply_to:replyTo||undefined,subject,html:invoiceEmailHtml(i,message),text:message,attachments,tags:[{name:'document',value:'invoice'},{name:'invoice_id',value:String(i.id)}]})});
+ const rr=await fetch(String(process.env.RESEND_API_URL||'https://api.resend.com/emails'),{method:'POST',headers:{Authorization:`Bearer ${resendKey}`,'Content-Type':'application/json','Idempotency-Key':idempotencyKey},body:JSON.stringify({from:invoiceFromEmail,to,cc:cc.length?cc:undefined,reply_to:replyTo||undefined,subject,html:invoiceEmailHtml(i,message,x.lines),text:message,attachments,tags:[{name:'document',value:'invoice'},{name:'invoice_id',value:String(i.id)}]})});
  const d=await rr.json().catch(()=>({}));if(!rr.ok){const reason=resendFriendlyError(rr.status,d);await db.query("UPDATE invoice_email_deliveries SET status='failed',error_message=$2 WHERE id=$1::bigint",[deliveryId,reason]);await audit(req.user.username,'invoice_email_failed',{invoiceId:i.id,invoiceNumber:i.invoice_number,to,cc,deliveryId,error:reason});return res.status(502).json({error:reason})}
  await db.query("UPDATE invoice_email_deliveries SET status='sent',provider_message_id=$2,sent_at=now(),error_message=NULL WHERE id=$1::bigint",[deliveryId,d.id||null]);
  await db.query("UPDATE customer_invoices SET customer_email=$2,email_sent_at=now(),updated_at=now() WHERE id=$1::bigint",[i.id,to[0]]);
@@ -4286,6 +4279,7 @@ app.get("/api/admin/server-audit",auth,managerPermission("reports"),async(req,re
 // v24.37.0 estimates, tire fees, accountant reports and Gmail finance inbox
 registerFinanceRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit,recalcInvoice,nextInvoiceNumber,PDFDocument,renderCustomerDocumentPdf,shopProfile,logoPath:path.join(__dirname,"public","assets","iron-team-logo.png"),dateText:v=>{if(!v)return '';try{return invoiceDateText(v)}catch(_){return String(v).slice(0,10)}}});
 registerProductivityRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit});
+registerComplianceRoutes(app,{auth,ownerOnly,adminOnly,requireDb,audit,PDFDocument,shopProfile,lookupFmcsaCarrier,samsaraPaged,samsaraConfigured:samsaraTokenPresent});
 app.use("/api",(req,res)=>res.status(404).json({error:"API endpoint not found"}));
 
 
@@ -4308,6 +4302,8 @@ app.get("*splat",(req,res)=>{
 
 initDb()
   .then(()=>ensureFinanceSchema(pool))
+  .then(()=>ensureComplianceSchema(pool))
+  .then(()=>{if(process.env.NODE_ENV!=='test')startFleetScheduler({pool,samsaraPaged,samsaraConfigured:samsaraTokenPresent})})
   .then(()=>reconcileReservedInventoryAllocations())
   .then(()=>ensurePartsSearchPerformance())
   .then(()=>migrateLegacyFindingPhotosAtStartup())

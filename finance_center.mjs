@@ -2,6 +2,7 @@
 // Estimates, tire fees, accountant reports and Gmail (Zelle + vendor bill) inbox.
 // Everything here is additive: new tables only, no changes to existing invoice data.
 import crypto from 'node:crypto';
+import { documentEmailHtml, sendResendEmail } from './email_templates.mjs';
 
 export const TIRE_FEE_CODES = Object.freeze({ user: 'tire_user_fee', disposal: 'tire_disposal_fee' });
 export const DEFAULT_TIRE_FEES = Object.freeze({
@@ -697,6 +698,27 @@ export function registerFinanceRoutes(app, deps) {
     await db.query(`UPDATE customer_estimates SET status='converted',converted_invoice_id=$2::bigint,converted_at=now(),decided_at=coalesce(decided_at,now()),decided_by=coalesce(decided_by,$3),updated_at=now() WHERE id=$1::bigint`, [est.id, inv.id, req.user.username]);
     await audit(req.user.username, 'estimate_converted', { estimateId: est.id, estimateNumber: est.estimate_number, invoiceId: inv.id, invoiceNumber });
     return { ok: true, id: inv.id, invoiceNumber };
+  }));
+  const estimatePdf = x => renderCustomerDocumentPdf({ PDFDocument, kind: 'ESTIMATE', invoice: { ...x.estimate, status: x.estimate.status === 'converted' ? 'approved' : x.estimate.status }, lines: x.lines, payments: [], shop: shopProfile(), logoPath, text: v => String(v ?? ''), dateText });
+  const estimateMessage = e => { const shop = shopProfile(); return `Hello${e.customer_name ? ` ${String(e.customer_name).split(/\s+/).slice(0, 3).join(' ')}` : ''},\n\nThank you for the opportunity to quote your repair. Estimate ${e.estimate_number}${e.unit_number ? ` for Unit ${e.unit_number}` : ''} is attached.\n\nReply to this email or call us${shop.phone ? ` at ${shop.phone}` : ''} to approve the work.\n\nThank you,\n${shop.name}`; };
+  app.get('/api/estimates/:id/email-draft', auth, invoicesPerm, read(async (db, req) => {
+    const x = await estimateBundle(db, req.params.id); if (!x) fail(404, 'Estimate not found.');
+    const e = x.estimate; return { to: e.customer_email || e.profile_customer_email || '', subject: `Estimate ${e.estimate_number} from ${shopProfile().name}${e.unit_number ? ` — Unit ${e.unit_number}` : ''}`, message: estimateMessage(e), configured: Boolean(process.env.RESEND_API_KEY && process.env.INVOICE_FROM_EMAIL) };
+  }));
+  app.post('/api/estimates/:id/email', auth, invoicesPerm, read(async (db, req) => {
+    const x = await estimateBundle(db, req.params.id); if (!x) fail(404, 'Estimate not found.');
+    const e = x.estimate, list = v => String(v || '').split(/[,;\s]+/).map(a => a.trim().toLowerCase()).filter(Boolean), ok = a => a.length <= 254 && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a);
+    const to = list(req.body?.to || e.customer_email || e.profile_customer_email), cc = list(req.body?.cc);
+    if (!to.length) fail(400, 'Customer email is required.'); const bad = [...to, ...cc].find(a => !ok(a)); if (bad) fail(400, `"${bad}" is not a valid email address.`);
+    const subject = str(req.body?.subject || `Estimate ${e.estimate_number} from ${shopProfile().name}`, 200).replace(/[\r\n]+/g, ' '), message = String(req.body?.message || estimateMessage(e)).slice(0, 5000);
+    const base = String(process.env.APP_PUBLIC_URL || '').replace(/\/$/, ''), shop = shopProfile();
+    const r = await sendResendEmail({ to, cc, subject, text: message, replyTo: String(process.env.INVOICE_REPLY_TO || shop.email || ''), idempotencyKey: `estimate-${e.id}-${str(req.body?.requestId, 80).replace(/[^A-Za-z0-9_-]/g, '') || crypto.randomUUID()}`,
+      html: documentEmailHtml({ kind: 'estimate', doc: e, lines: x.lines, message, shop, logoUrl: base ? `${base}/assets/iron-team-logo.png` : '', accent: String(process.env.SHOP_ACCENT_COLOR || '#c2410c') }),
+      attachments: [{ filename: `${String(e.estimate_number).replace(/[^A-Za-z0-9_-]/g, '_')}.pdf`, content: (await estimatePdf(x)).toString('base64') }], tags: [{ name: 'document', value: 'estimate' }] });
+    if (!r.ok) fail(502, r.error);
+    await db.query(`UPDATE customer_estimates SET customer_email=$2,status=CASE WHEN status='draft' THEN 'sent' ELSE status END,sent_at=coalesce(sent_at,now()),updated_at=now() WHERE id=$1::bigint`, [e.id, to[0]]);
+    await audit(req.user.username, 'estimate_emailed', { estimateId: e.id, to, cc, resendId: r.id });
+    return { ok: true, id: r.id, to };
   }));
   app.get('/api/estimates/:id/pdf', auth, invoicesPerm, async (req, res, next) => {
     try {

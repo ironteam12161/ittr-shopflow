@@ -1,6 +1,6 @@
-// ITTR ShopFlow v24.38.0 production PWA service worker
-const CACHE='ittr-shopflow-v24.38.0';
-const SHELL=['/','/index.html','/manifest.webmanifest','/invoice-workspace.css','/modules/invoices.html','/modules/invoices.js','/modules/parts.html','/modules/parts.js','/modules/procenter.html','/modules/procenter.js','/modules/customers.html','/modules/customers.js','/modules/trucksearch.html','/modules/trucksearch.js','/modules/estimates.html','/modules/estimates.js','/modules/reports.html','/modules/reports.js','/finance-shared.js','/inspection-workflow.css','/inspection-workflow.js','/inspection-checklist.js','/assets/iron-team-logo.png'];
+// ITTR ShopFlow v24.39.0 production PWA service worker
+const CACHE='ittr-shopflow-v24.39.0';
+const SHELL=['/','/index.html','/manifest.webmanifest','/invoice-workspace.css','/modules/invoices.html','/modules/invoices.js','/modules/parts.html','/modules/parts.js','/modules/procenter.html','/modules/procenter.js','/modules/customers.html','/modules/customers.js','/modules/trucksearch.html','/modules/trucksearch.js','/modules/estimates.html','/modules/estimates.js','/modules/reports.html','/modules/reports.js','/modules/compliance.html','/modules/compliance.js','/finance-shared.js','/inspection-workflow.css','/inspection-workflow.js','/inspection-checklist.js','/assets/iron-team-logo.png'];
 
 self.addEventListener('install',event=>event.waitUntil(
   caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())

@@ -52,6 +52,31 @@
    catch(err){e.target.disabled=false;showToast?.(err.message,'error')}});
  };
  window.ittrFinanceFormat={h,usd};
+ // v24.39.0 owner "start fresh": wipe test data before going live. The server keeps a snapshot of what it deletes.
+ window.openDataReset=async function(){
+  let role='';try{role=session?.role||''}catch(_){}
+  if(role!=='admin')return showToast?.('Only the owner account can reset data.','error');
+  ensureStyle();let p;try{p=await apiJSON('/api/admin/reset-data/preview')}catch(e){return showToast?.(e.message,'error')}
+  const wrap=document.createElement('div');wrap.className='tfBackdrop';
+  wrap.innerHTML=`<div class="tfBox" role="dialog" aria-modal="true" aria-label="Start fresh"><h2>Start fresh — reset test data</h2><p>Pick what to erase. Customers, trucks, parts inventory, user accounts and settings are <b>kept</b>. A snapshot of everything deleted is saved on the server so it can be recovered. Parts stock counts are not changed.</p>
+   ${Object.entries(p.scopes).map(([k,v])=>`<label class="tfRow" style="grid-template-columns:auto 1fr auto;cursor:pointer"><input type="checkbox" data-scope="${k}" style="width:18px;height:18px;min-height:auto"><span><b>${h(v.label)}</b></span><small>${v.rows.toLocaleString()} record${v.rows===1?'':'s'}</small></label>`).join('')}
+   <div class="tfHint">This cannot be undone from the screen. Type <b>START FRESH</b> to confirm.</div>
+   <input data-tf="confirm" placeholder="START FRESH" style="width:100%;padding:10px;border:1px solid #cfd6dc;border-radius:9px;font:inherit;margin-bottom:12px">
+   ${p.snapshots?.length?`<p>Earlier resets: ${p.snapshots.map(x=>`<a href="#" data-snap="${x.id}">#${x.id} (${new Date(x.created_at).toLocaleDateString()})</a>`).join(', ')}</p>`:''}
+   <div class="tfActions"><button class="secondary" data-tf="cancel">Cancel</button><button class="danger" data-tf="save">Erase selected data</button></div></div>`;
+  document.body.appendChild(wrap);
+  wrap.addEventListener('click',async e=>{const k=e.target.dataset?.tf,snap=e.target.dataset?.snap;
+   if(snap){e.preventDefault();const r=await fetch(`/api/admin/reset-data/snapshots/${snap}`,{headers:authHeaders()});const url=URL.createObjectURL(await r.blob()),a=document.createElement('a');a.href=url;a.download=`ittr-reset-snapshot-${snap}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);return}
+   if(e.target===wrap||k==='cancel')return wrap.remove();if(k!=='save')return;
+   const scopes=[...wrap.querySelectorAll('[data-scope]:checked')].map(x=>x.dataset.scope);if(!scopes.length)return showToast?.('Pick at least one thing to erase.','error');
+   e.target.disabled=true;
+   try{const d=await apiJSON('/api/admin/reset-data',{method:'POST',body:{scopes,confirm:wrap.querySelector('[data-tf="confirm"]').value}});wrap.remove();showToast?.('Data reset. Reloading…','success',4000);setTimeout(()=>location.reload(),1200)}
+   catch(err){e.target.disabled=false;showToast?.(err.message,'error')}});
+ };
+ // Red badge on "Fleet & Compliance" when services are overdue or due soon.
+ async function refreshComplianceBadge(){let role='';try{role=session?.role||''}catch(_){}if(!['admin','manager'].includes(role))return;
+  try{const d=await apiJSON('/api/fleet-maintenance/summary'),n=Number(d.overdue||0)+Number(d.dueSoon||0),el=document.getElementById('complianceNavBadge');if(el){el.textContent=String(n);el.style.display=n?'':'none';el.title=`${d.overdue} overdue, ${d.dueSoon} due soon`}}catch(_){}}
+ setTimeout(refreshComplianceBadge,4000);setInterval(refreshComplianceBadge,10*60*1000);
  // Google sends the owner back to /?gmail=connected|error after the Gmail consent screen.
  try{
   const u=new URL(location.href),g=u.searchParams.get('gmail');
