@@ -1,0 +1,73 @@
+<style>
+.rep{--rep-line:#e4e7ec;--rep-ink:#101828;--rep-2:#475467;--rep-3:#667085;--rep-grid:#eef0f3;--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--q1:#86b6ef;--q2:#5598e7;--q3:#2a78d6;--q4:#1c5cab;--q5:#104281}
+.repTop{display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px}
+.repTop h1{margin:0}.repRange{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.repRange button{min-height:36px;padding:7px 11px;font-size:13px;background:#eef2f7;color:#1f2937}.repRange button.active{background:#111827;color:#fff}
+.repRange input{min-height:36px;padding:6px 8px;border:1px solid #cfd6dc;border-radius:8px;font:inherit;font-size:14px}
+.repTabs{display:flex;gap:4px;border-bottom:1px solid var(--rep-line);margin:4px 0 16px;overflow-x:auto;scrollbar-width:none}
+.repTabs button{background:transparent;color:var(--rep-2);border-radius:0;border-bottom:2px solid transparent;padding:10px 14px;white-space:nowrap;min-height:auto}
+.repTabs button.active{color:var(--rep-ink);border-bottom-color:#2563eb}
+.repKpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:16px}
+.repKpi{background:#fff;border:1px solid var(--rep-line);border-radius:12px;padding:12px 14px}
+.repKpi span{display:block;font-size:12px;color:var(--rep-3);font-weight:600}.repKpi b{display:block;font-size:22px;color:var(--rep-ink);margin-top:4px;font-variant-numeric:tabular-nums}
+.repKpi small{display:block;color:var(--rep-3);font-size:12px;margin-top:2px}.repKpi small.bad{color:#b42318;font-weight:700}
+.repGrid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:14px}
+.repCard{background:#fff;border:1px solid var(--rep-line);border-radius:14px;padding:16px;margin-bottom:14px;min-width:0}
+.repCard h3{margin:0 0 2px;font-size:16px;color:var(--rep-ink)}.repCard .sub{font-size:12px;color:var(--rep-3);margin-bottom:10px}
+.repCardHead{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.repCardHead button{min-height:32px;padding:5px 10px;font-size:12px;background:#f2f4f7;color:#344054}
+.repLegend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--rep-2);margin:4px 0 8px}
+.repLegend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.repChart{position:relative;width:100%}.repChart svg{display:block;width:100%;height:auto;overflow:visible}
+.repChart text{font-size:11px;fill:var(--rep-3);font-family:inherit}.repChart .val{fill:var(--rep-2);font-weight:600}
+.repTip{position:fixed;z-index:800;pointer-events:none;background:#101828;color:#fff;font-size:12px;line-height:1.45;padding:7px 10px;border-radius:8px;box-shadow:0 8px 20px rgba(0,0,0,.2);white-space:pre;display:none}
+.repHbar{display:grid;grid-template-columns:minmax(90px,38%) minmax(0,1fr) auto;gap:8px;align-items:center;font-size:13px;padding:4px 0}
+.repHbar .lbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--rep-ink)}.repHbar .trk{height:12px;border-radius:0 4px 4px 0;background:transparent}
+.repHbar .bar{height:12px;border-radius:0 4px 4px 0;min-width:2px}.repHbar .num{font-variant-numeric:tabular-nums;color:var(--rep-2);font-weight:600;text-align:right}
+.repTable{width:100%;border-collapse:collapse;font-size:13px}.repTable th{position:sticky;top:0;background:#f9fafb;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--rep-3);cursor:pointer;user-select:none}
+.repTable td,.repTable th{padding:8px 10px;border-bottom:1px solid var(--rep-grid);text-align:left}.repTable .n{text-align:right;font-variant-numeric:tabular-nums}
+.repTable tr[data-inv]{cursor:pointer}.repTable tr[data-inv]:hover td{background:#f8fafc}
+.repScroll{max-height:460px;overflow:auto;border:1px solid var(--rep-grid);border-radius:10px}
+.repTag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;background:#f2f4f7;color:#344054}
+.repTag.late{background:#fef3f2;color:#b42318}.repTag.ok{background:#ecfdf3;color:#067647}.repTag.in{background:#ecfdf3;color:#067647}.repTag.out{background:#fff4ed;color:#b93815}.repTag.bill{background:#eff8ff;color:#175cd3}
+.repEmpty{padding:24px;text-align:center;color:var(--rep-3);font-size:14px}
+.repForm{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.repForm .field{margin:0}
+.repNotice{background:#eff8ff;border:1px solid #b2ddff;color:#194185;border-radius:10px;padding:12px 14px;font-size:14px;margin-bottom:12px;line-height:1.5}
+.repNotice.warn{background:#fffaeb;border-color:#fedf89;color:#7a2e0e}
+.repMsg{border:1px solid var(--rep-line);border-radius:12px;padding:12px 14px;margin-bottom:10px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px}
+.repMsg .amt{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;text-align:right}
+.repMsg .meta{font-size:12px;color:var(--rep-3)}.repMsg .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.repMsg .acts button{min-height:32px;padding:5px 10px;font-size:12px}
+.repSugg{margin-top:8px;display:grid;gap:6px}.repSugg button{display:flex;justify-content:space-between;gap:10px;background:#f8fafc;color:var(--rep-ink);border:1px solid var(--rep-line);text-align:left;font-weight:600;min-height:auto;padding:8px 10px;font-size:13px}
+.repSugg small{color:var(--rep-3);font-weight:500}
+.repPanel{display:none}.repPanel.active{display:block}
+.repPrintHead{display:none}
+@media(max-width:1000px){.repKpis{grid-template-columns:repeat(3,minmax(0,1fr))}.repGrid{grid-template-columns:1fr}}
+@media(max-width:560px){.repKpis{grid-template-columns:repeat(2,minmax(0,1fr))}.repForm{grid-template-columns:1fr}.repKpi b{font-size:18px}}
+@media print{
+ header,nav,#mobileBottomNav,.repTabs,.repRange,.repCardHead button,.repNoPrint,.repMsg .acts,.repSugg{display:none!important}
+ main{max-width:none;padding:0}.rep .repPanel{display:block!important;break-inside:auto}.repCard{break-inside:avoid;border-color:#ccc}
+ .repPrintHead{display:block;margin-bottom:8px}.repScroll{max-height:none;overflow:visible;border:0}.repKpis{grid-template-columns:repeat(3,1fr)}
+ body{background:#fff}.repPanel[data-panel="inbox"]{display:none!important}
+}
+</style>
+<div class="rep">
+ <div class="repPrintHead"><h2 style="margin:0">Iron Team Truck &amp; Trailer Repair — Financial Report</h2><div id="repPrintRange" class="muted"></div></div>
+ <div class="repTop">
+  <div><h1>Reports</h1><div class="muted">Money in, money owed, parts spending and tire fees — ready for your accountant.</div></div>
+  <div class="repRange" id="repRange">
+   <button data-rep="preset" data-p="month">This month</button><button data-rep="preset" data-p="lastmonth">Last month</button><button data-rep="preset" data-p="quarter">This quarter</button><button data-rep="preset" data-p="ytd">Year to date</button><button data-rep="preset" data-p="lastyear">Last year</button>
+   <input type="date" id="repFrom" aria-label="From date"><span class="muted">to</span><input type="date" id="repTo" aria-label="To date">
+   <button data-rep="print" class="repNoPrint" style="background:#2563eb;color:#fff">Print / Save PDF</button>
+  </div>
+ </div>
+ <div class="repTabs" role="tablist">
+  <button data-rep="tab" data-t="overview" class="active">Overview</button><button data-rep="tab" data-t="ar">Customers owe</button><button data-rep="tab" data-t="parts">Parts &amp; spending</button><button data-rep="tab" data-t="tires">Tire fees</button><button data-rep="tab" data-t="inbox">Money inbox (Gmail)</button>
+ </div>
+ <div id="repKpis" class="repKpis"></div>
+ <div class="repPanel active" data-panel="overview" id="repOverview"></div>
+ <div class="repPanel" data-panel="ar" id="repAr"></div>
+ <div class="repPanel" data-panel="parts" id="repParts"></div>
+ <div class="repPanel" data-panel="tires" id="repTires"></div>
+ <div class="repPanel" data-panel="inbox" id="repInbox"></div>
+ <div id="repTip" class="repTip" role="tooltip"></div>
+</div>

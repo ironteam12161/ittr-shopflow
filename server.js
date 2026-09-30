@@ -18,6 +18,7 @@ import {invoiceEnglishText,invoiceDateText} from "./invoice_customer_text.mjs";
 import {runShopAssistant,createAssistantTools,assistantRole} from "./shop_assistant.mjs";
 import {renderCustomerDocumentPdf,shopProfile} from "./invoice_pdf.mjs";
 import {extractPdfPages,slicePdf,manualSearchTerms} from "./manual_library.mjs";
+import {ensureFinanceSchema,registerFinanceRoutes} from "./finance_center.mjs";
 import os from "os";
 import bwipjs from "bwip-js";
 import {S3Client,PutObjectCommand,GetObjectCommand,DeleteObjectCommand,HeadBucketCommand} from "@aws-sdk/client-s3";
@@ -769,6 +770,10 @@ async function ensurePartsSearchPerformance(){
 }
 
 function adminOnly(req,res,next){if(!["admin","manager"].includes(req.user?.role))return res.status(403).json({error:"Manager access required."});next()}
+// v24.37.0: mechanics can search/scan parts for their jobs but never see buy costs or inventory value.
+const MECHANIC_HIDDEN_PART_FIELDS=new Set(["cost","cost_floor","inventory_value","inventory_balance","last_cost","average_cost","unit_cost","purchase_tax_rate","total_value","inventoryValue","stockValue"]);
+function scrubPartCosts(v,depth=0){if(depth>6||v===null||typeof v!=="object")return v;if(Array.isArray(v))return v.map(x=>scrubPartCosts(x,depth+1));const o={};for(const [k,x] of Object.entries(v)){if(MECHANIC_HIDDEN_PART_FIELDS.has(k))continue;o[k]=scrubPartCosts(x,depth+1)}return o}
+function hidePartCostsFromMechanics(req,res,next){if(req.user?.role==="mechanic"){const send=res.json.bind(res);res.json=body=>send(scrubPartCosts(body))}next()}
 function ownerOnly(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Owner/Admin access required."});next()}
 function can(req,key){return req.user?.role==="admin" || (req.user?.role==="manager" && req.user?.permissions?.[key]!==false)}
 function managerPermission(key){return (req,res,next)=>{if(req.user?.role==="admin")return next();if(req.user?.role!=="manager")return res.status(403).json({error:"Manager access required."});if(req.user?.permissions?.[key]===false)return res.status(403).json({error:`Manager permission required: ${key}.`});next()}}
@@ -1016,7 +1021,7 @@ app.post("/api/fullbay/history/reconcile",auth,managerPermission("customers"),as
  res.json({ok:true,report});
 }catch(e){next(e)}});
 
-app.get("/api/fullbay/service-orders/:so",auth,async(req,res,next)=>{try{
+app.get("/api/fullbay/service-orders/:so",auth,managerPermission("customers"),async(req,res,next)=>{try{
  const db=requireDb(),so=String(req.params.so||"").trim(),canonical=canonicalFullbaySo(so),customerId=String(req.query.customerId||"").trim(),unit=String(req.query.unit||"").trim();
  if(!canonical)return res.status(400).json({error:"Service order is required."});
  const params=[canonical];let where="regexp_replace(regexp_replace(coalesce(service_order,''),'\\s*\\(Quick SO\\)\\s*$','','i'),'^SO[\\s#-]*','','i')=$1";
@@ -1064,8 +1069,8 @@ app.post('/api/parts',auth,managerPermission("inventory"),async(req,res,next)=>{
  }
  await db.query('COMMIT');await audit(req.user.username,'part_created',{partId:x.id,partNumber:pn,vendor:vendorContext.vendor||null,vendorBranch:vendorContext.branch||null,initialQuantity:qty});res.json({ok:true,item:x});
 }catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
-app.get("/api/parts/summary",auth,async(req,res,next)=>{try{const db=requireDb();const r=await db.query(`SELECT count(*)::int total,count(*) FILTER (WHERE coalesce(quantity,0)<=0)::int out_of_stock,count(*) FILTER (WHERE coalesce(quantity,0)>0 AND coalesce(quantity,0)<=coalesce(reorder_point,min_qty,0) AND coalesce(reorder_point,min_qty,0)>0)::int low_stock,coalesce(sum(coalesce(inventory_value,coalesce(quantity,0)*coalesce(cost,0))),0)::numeric inventory_value,coalesce(sum(coalesce(on_order,0)),0)::numeric on_order FROM fullbay_import_parts`);res.json(r.rows[0])}catch(e){next(e)}});
-app.get("/api/parts",auth,async(req,res,next)=>{try{
+app.get("/api/parts/summary",auth,hidePartCostsFromMechanics,async(req,res,next)=>{try{const db=requireDb();const r=await db.query(`SELECT count(*)::int total,count(*) FILTER (WHERE coalesce(quantity,0)<=0)::int out_of_stock,count(*) FILTER (WHERE coalesce(quantity,0)>0 AND coalesce(quantity,0)<=coalesce(reorder_point,min_qty,0) AND coalesce(reorder_point,min_qty,0)>0)::int low_stock,coalesce(sum(coalesce(inventory_value,coalesce(quantity,0)*coalesce(cost,0))),0)::numeric inventory_value,coalesce(sum(coalesce(on_order,0)),0)::numeric on_order FROM fullbay_import_parts`);res.json(r.rows[0])}catch(e){next(e)}});
+app.get("/api/parts",auth,hidePartCostsFromMechanics,async(req,res,next)=>{try{
  const q=String(req.query.q||"").trim(),filter=String(req.query.filter||"all"),limit=Math.min(200,Math.max(1,Number(req.query.limit||100))),like=`%${q}%`,prefix=`${q}%`;
  let extra="";
  if(filter==="low")extra=" AND (coalesce(quantity,0)<=0 OR (coalesce(quantity,0)<=coalesce(reorder_point,min_qty,0) AND coalesce(reorder_point,min_qty,0)>0))";
@@ -1091,7 +1096,7 @@ app.get("/api/parts",auth,async(req,res,next)=>{try{
    LIMIT $3`,[q,like,limit,prefix]);
  res.json({items:r.rows})
 }catch(e){next(e)}});
-app.get("/api/parts/scan/:code",auth,async(req,res,next)=>{try{const code=String(req.params.code||"").trim();const db=requireDb();let r=await db.query(`SELECT *,coalesce(quantity,0)-coalesce(allocated,0) available FROM fullbay_import_parts WHERE lower(coalesce(internal_barcode,''))=lower($1) OR lower(coalesce(part_number,''))=lower($1) OR barcode_aliases @> jsonb_build_array($1::text) LIMIT 1`,[code]);
+app.get("/api/parts/scan/:code",auth,hidePartCostsFromMechanics,async(req,res,next)=>{try{const code=String(req.params.code||"").trim();const db=requireDb();let r=await db.query(`SELECT *,coalesce(quantity,0)-coalesce(allocated,0) available FROM fullbay_import_parts WHERE lower(coalesce(internal_barcode,''))=lower($1) OR lower(coalesce(part_number,''))=lower($1) OR barcode_aliases @> jsonb_build_array($1::text) LIMIT 1`,[code]);
  if(!r.rowCount)r=await db.query(`SELECT *,coalesce(quantity,0)-coalesce(allocated,0) available FROM fullbay_import_parts WHERE EXISTS(SELECT 1 FROM jsonb_array_elements_text(coalesce(barcode_aliases,'[]'::jsonb)) a WHERE lower(a)=lower($1)) LIMIT 1`,[code]);if(!r.rowCount&&/^ITTR-P-0*([0-9]+)$/i.test(code)){const id=Number(code.match(/^ITTR-P-0*([0-9]+)$/i)[1]);r=await db.query(`SELECT *,coalesce(quantity,0)-coalesce(allocated,0) available FROM fullbay_import_parts WHERE id=$1`,[id])}if(!r.rowCount)return res.status(404).json({error:"Barcode is not assigned to an inventory part."});if(!r.rows[0].internal_barcode)r.rows[0].internal_barcode=await ensurePartBarcode(db,r.rows[0].id);res.json({item:r.rows[0]})}catch(e){next(e)}});
 
 app.post("/api/parts/:id/barcodes",auth,managerPermission("inventory"),async(req,res,next)=>{try{
@@ -1176,7 +1181,7 @@ app.patch("/api/parts/inventory-count/:sessionId/parts/:partId",auth,managerPerm
 app.post("/api/parts/inventory-count/:sessionId/complete",auth,managerPermission("inventory"),async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const sr=await db.query(`SELECT * FROM inventory_count_sessions WHERE id=$1 AND status='open' FOR UPDATE`,[req.params.sessionId]);if(!sr.rowCount){await db.query('ROLLBACK');return res.status(409).json({error:'Inventory count is already closed.'})}const lines=await db.query(`SELECT l.*,p.part_number,p.quantity AS current_qty FROM inventory_count_lines l JOIN fullbay_import_parts p ON p.id=l.part_id WHERE l.session_id=$1 ORDER BY l.id FOR UPDATE`,[req.params.sessionId]);const conflicts=lines.rows.filter(l=>Number(l.current_qty||0)!==Number(l.system_qty||0)).map(l=>({partNumber:l.part_number,was:Number(l.system_qty||0),now:Number(l.current_qty||0)}));if(conflicts.length){await db.query('ROLLBACK');return res.status(409).json({error:`${conflicts.length} counted part(s) changed in inventory after they were counted. Recheck those parts before applying the count.`,code:'COUNT_STOCK_MOVED',conflicts:conflicts.slice(0,20)})}let adjusted=0;for(const l of lines.rows){const before=Number(l.current_qty||0),after=Number(l.counted_qty||0),delta=after-before;if(delta===0)continue;await db.query('UPDATE fullbay_import_parts SET quantity=$2::numeric,inventory_value=($2::numeric*coalesce(cost,0::numeric)),updated_at=now() WHERE id=$1',[l.part_id,after]);await db.query(`INSERT INTO part_inventory_transactions(part_id,transaction_type,quantity_delta,quantity_before,quantity_after,reference,reason,username,metadata) VALUES($1,'inventory_count',$2,$3,$4,$5,$6,$7,$8::jsonb)`,[l.part_id,delta,before,after,`Inventory Count #${req.params.sessionId}`,'Physical inventory count',req.user.username,JSON.stringify({sessionId:Number(req.params.sessionId),countedFrom:Number(l.system_qty||0)})]);adjusted++}await db.query(`UPDATE inventory_count_sessions SET status='completed',completed_by=$2,completed_at=now() WHERE id=$1`,[req.params.sessionId,req.user.username]);await db.query('COMMIT');await audit(req.user.username,'inventory_count_completed',{sessionId:req.params.sessionId,lines:lines.rowCount,adjusted});res.json({ok:true,lines:lines.rowCount,adjusted})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
 app.post("/api/parts/inventory-count/:sessionId/cancel",auth,managerPermission("inventory"),async(req,res,next)=>{try{const r=await requireDb().query(`UPDATE inventory_count_sessions SET status='cancelled',completed_by=$2,completed_at=now() WHERE id=$1 AND status='open' RETURNING id`,[req.params.sessionId,req.user.username]);res.json({ok:true,cancelled:Boolean(r.rowCount)})}catch(e){next(e)}});
 
-app.get("/api/parts/:id",auth,async(req,res,next)=>{try{const db=requireDb();const r=await db.query(`SELECT *,coalesce(quantity,0)-coalesce(allocated,0) available FROM fullbay_import_parts WHERE id=$1`,[req.params.id]);if(!r.rowCount)return res.status(404).json({error:"Part not found."});r.rows[0].internal_barcode=await ensurePartBarcode(db,r.rows[0].id);const tx=await db.query("SELECT * FROM part_inventory_transactions WHERE part_id=$1 ORDER BY created_at DESC LIMIT 100",[req.params.id]);res.json({item:r.rows[0],transactions:tx.rows})}catch(e){next(e)}});
+app.get("/api/parts/:id",auth,hidePartCostsFromMechanics,async(req,res,next)=>{try{const db=requireDb();const r=await db.query(`SELECT *,coalesce(quantity,0)-coalesce(allocated,0) available FROM fullbay_import_parts WHERE id=$1`,[req.params.id]);if(!r.rowCount)return res.status(404).json({error:"Part not found."});r.rows[0].internal_barcode=await ensurePartBarcode(db,r.rows[0].id);const tx=await db.query("SELECT * FROM part_inventory_transactions WHERE part_id=$1 ORDER BY created_at DESC LIMIT 100",[req.params.id]);res.json({item:r.rows[0],transactions:tx.rows})}catch(e){next(e)}});
 app.get("/api/parts/:id/barcode.svg",auth,async(req,res,next)=>{try{const db=requireDb(),code=await ensurePartBarcode(db,req.params.id);if(!code)return res.status(404).send("Part not found");const svg=bwipjs.toSVG({bcid:"code128",text:code,scale:3,height:12,includetext:false});res.type("image/svg+xml").send(svg)}catch(e){next(e)}});
 app.patch("/api/parts/:id",auth,managerPermission("inventory"),async(req,res,next)=>{try{const db=requireDb(),cur=await db.query("SELECT * FROM fullbay_import_parts WHERE id=$1",[req.params.id]);if(!cur.rowCount)return res.status(404).json({error:"Part not found."});const c=cur.rows[0],aliases=Array.isArray(req.body?.barcodeAliases)?req.body.barcodeAliases.map(x=>String(x||"").trim()).filter(Boolean).slice(0,20):(Array.isArray(c.barcode_aliases)?c.barcode_aliases:[]);const val=(k,old)=>Object.prototype.hasOwnProperty.call(req.body||{},k)?String(req.body[k]??"").trim()||null:old,num=(k,old)=>Object.prototype.hasOwnProperty.call(req.body||{},k)?(Number.isFinite(Number(req.body[k]))?Number(req.body[k]):null):old;const vendorRaw=val("vendor",c.vendor),vendor=vendorRaw?await resolveVendor(db,vendorRaw,true):null;const bool=(k,old)=>Object.prototype.hasOwnProperty.call(req.body||{},k)?Boolean(req.body[k]):old;const vals=[val("location",c.location),vendor,num("minQty",c.min_qty),num("maxQty",c.max_qty),num("reorderPoint",c.reorder_point),JSON.stringify(aliases),num("price",c.price),bool("purchaseTaxable",c.purchase_taxable),bool("sellTaxable",c.sell_taxable),num("purchaseTaxRate",c.purchase_tax_rate),bool("hasCore",c.has_core),Math.max(0,num("defaultCoreCharge",c.default_core_charge)||0),req.params.id];const r=await db.query(`UPDATE fullbay_import_parts SET location=$1,vendor=$2,min_qty=$3,max_qty=$4,reorder_point=$5,barcode_aliases=$6::jsonb,price=$7,purchase_taxable=$8,sell_taxable=$9,purchase_tax_rate=$10,has_core=$11,default_core_charge=$12,updated_at=now() WHERE id=$13 RETURNING *`,vals);await audit(req.user.username,"part_profile_updated",{partId:req.params.id});res.json({ok:true,item:r.rows[0]})}catch(e){next(e)}});
 app.post("/api/parts/:id/transaction",auth,managerPermission("inventory"),async(req,res,next)=>{const db=await requireDb().connect();try{
@@ -1188,13 +1193,13 @@ app.post("/api/parts/:id/transaction",auth,managerPermission("inventory"),async(
  if(recordsPurchase){const coreCharge=Boolean(req.body?.hasCore)?Math.max(0,Number(req.body?.coreCharge||0)):0,h=await db.query(`INSERT INTO part_purchase_cost_history(part_id,vendor,vendor_id,vendor_location_id,vendor_branch_snapshot,invoice_number,purchased_at,quantity,unit_cost,landed_unit_cost,core_cost,username) VALUES($1,$2,$3,$4,$5,$6,coalesce($7::date,now()),$8,$9,$9,$10,$11) RETURNING id`,[req.params.id,vendorContext.vendor,vendorContext.vendorId,vendorContext.locationId,vendorContext.branch||null,reference,/^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.purchaseDate||''))?String(req.body.purchaseDate):null,qty,unitCost,coreCharge,req.user.username]);if(coreCharge>0){const amount=qty*coreCharge,cr=await db.query(`INSERT INTO part_core_obligations(part_id,purchase_history_id,vendor_id,vendor_location_id,vendor_name_snapshot,vendor_branch_snapshot,quantity,unit_core_charge,original_amount,open_quantity,open_amount,due_date,purchase_reference,created_by,updated_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$7,$9,$10,$11,$12,$12) RETURNING id`,[req.params.id,h.rows[0].id,vendorContext.vendorId,vendorContext.locationId,vendorContext.vendor,vendorContext.branch||null,qty,coreCharge,amount,/^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.coreDueDate||''))?String(req.body.coreDueDate):null,reference,req.user.username]);await db.query(`INSERT INTO part_core_events(core_obligation_id,event_type,quantity,amount,reference,from_status,to_status,username) VALUES($1,'created',$2,$3,$4,NULL,'outstanding',$5)`,[cr.rows[0].id,qty,amount,reference,req.user.username])}}
  await db.query("COMMIT");await audit(req.user.username,"inventory_transaction",{partId:req.params.id,type,delta,purchaseRecorded:recordsPurchase,vendor:vendorContext.vendor||null,vendorBranch:vendorContext.branch||null});res.json({ok:true,quantity:after,purchaseRecorded:recordsPurchase})
 }catch(e){try{await db.query("ROLLBACK")}catch{}next(e)}finally{db.release()}});
-app.get("/api/fullbay/parts",auth,async(req,res,next)=>{try{
+app.get("/api/fullbay/parts",auth,hidePartCostsFromMechanics,async(req,res,next)=>{try{
  const q=String(req.query.q||"").trim(),limit=Math.min(200,Math.max(1,Number(req.query.limit)||50)),offset=Math.max(0,Number(req.query.offset)||0),like=`%${q}%`;
  const r=await requireDb().query(`SELECT id,part_number,description,status,uom,quantity,allocated,cost,price,min_qty,max_qty,location,vendor,track_quantity,category,cost_floor,inventory_value,inventory_balance,manufacturer,notes,updated_at FROM fullbay_import_parts WHERE $1='' OR coalesce(part_number,'') ILIKE $2 OR coalesce(description,'') ILIKE $2 OR coalesce(vendor,'') ILIKE $2 OR coalesce(manufacturer,'') ILIKE $2 OR coalesce(category,'') ILIKE $2 ORDER BY CASE WHEN lower(coalesce(part_number,'')) LIKE lower($3) THEN 0 ELSE 1 END,part_number NULLS LAST,description LIMIT $4 OFFSET $5`,[q,like,`${q}%`,limit,offset]);
  const c=await requireDb().query(`SELECT count(*)::int n FROM fullbay_import_parts WHERE $1='' OR coalesce(part_number,'') ILIKE $2 OR coalesce(description,'') ILIKE $2 OR coalesce(vendor,'') ILIKE $2 OR coalesce(manufacturer,'') ILIKE $2 OR coalesce(category,'') ILIKE $2`,[q,like]);res.json({items:r.rows,total:c.rows[0].n,limit,offset});
 }catch(e){next(e)}});
 
-app.get("/api/fullbay/parts/:id",auth,async(req,res,next)=>{try{const r=await requireDb().query(`SELECT * FROM fullbay_import_parts WHERE id=$1`,[req.params.id]);if(!r.rowCount)return res.status(404).json({error:"Part not found."});res.json({item:r.rows[0]});}catch(e){next(e)}});
+app.get("/api/fullbay/parts/:id",auth,hidePartCostsFromMechanics,async(req,res,next)=>{try{const r=await requireDb().query(`SELECT * FROM fullbay_import_parts WHERE id=$1`,[req.params.id]);if(!r.rowCount)return res.status(404).json({error:"Part not found."});res.json({item:r.rows[0]});}catch(e){next(e)}});
 
 
 
@@ -1719,8 +1724,8 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.36.0");
-app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-OPERATIONS-LIFECYCLE-20260929`}));
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.37.0");
+app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-FINANCE-CENTER-20260930`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
@@ -2394,7 +2399,7 @@ app.get("/api/work-orders/:id/pdf",auth,async(req,res,next)=>{try{
  const pro=states.pro&&typeof states.pro==="object"?states.pro:{vehicles:[]};
  const w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===workOrderId);
  if(!w)return res.status(404).json({error:"Work order not found."});
- if(req.user?.role!=="admin"&&!mechanicOwnsWorkOrder(req.user,w))return res.status(403).json({error:"You do not have access to this work order."});
+ if(!["admin","manager"].includes(req.user?.role)&&!mechanicOwnsWorkOrder(req.user,w))return res.status(403).json({error:"You do not have access to this work order."});
  if(String(w.status)!=="Completed")return res.status(409).json({error:"Work order PDF is available after the work order is completed."});
  const profileVehicle=(Array.isArray(pro.vehicles)?pro.vehicles:[]).find(v=>String(v?.unit||"").toLowerCase()===String(w.unit||"").toLowerCase())||{}; const vehicle={year:w.year||profileVehicle.year,make:w.make||profileVehicle.make,model:w.model||profileVehicle.model,vin:w.vin||profileVehicle.vin,plate:w.plate||profileVehicle.plate,mileage:w.mileage||profileVehicle.mileage,engine:w.engine||profileVehicle.engine,transmission:w.transmission||profileVehicle.transmission,customer:w.customer||profileVehicle.customer};
  const sessions=(await db.query(`SELECT task_uid,task_name,mechanic_username,started_at,ended_at,end_reason,pause_reason,pause_note FROM task_time_sessions WHERE work_order_id=$1 ORDER BY started_at,id`,[workOrderId])).rows||[];
@@ -3515,6 +3520,8 @@ app.post('/api/invoices/:id/finalize',auth,managerPermission("invoices"),async(r
   for(const line of lines)if(line.inventory_part_id)await postInvoiceLineStock(db,inv,line,req.user.username,warnings,null,'Invoice finalized');
   const released=await releaseInvoiceReservations(db,inv,lines,req.user.username);
   const uq=await db.query("UPDATE customer_invoices SET status=CASE WHEN amount_paid>0 THEN 'partial' ELSE 'sent' END,finalized_at=coalesce(finalized_at,now()),sent_at=coalesce(sent_at,now()),stock_posted_at=coalesce(stock_posted_at,now()),updated_at=now() WHERE id=$1::bigint RETURNING stock_posted_at",[id]);
+  // v24.37.0: a draft paid in full before finalizing must land on 'paid', not 'partial' with a $0 balance.
+  await recalcInvoice(db,id);
   await db.query('COMMIT');await audit(req.user.username,'invoice_finalized',{invoiceId:id,invoiceNumber:inv.invoice_number,warnings:warnings.length,reservationsReleased:released.released});
   res.json({ok:true,warnings,stockPostedAt:uq.rows[0]?.stock_posted_at||null});
  }catch(e){try{await db.query('ROLLBACK')}catch{}if(e?.status)return res.status(e.status).json({error:e.message,code:e.code});next(e)}finally{db.release()}
@@ -3894,6 +3901,13 @@ app.get('/api/invoices/:id/pdf',auth,managerPermission("invoices"),async(req,res
 
 const stripeSecret=String(process.env.STRIPE_SECRET_KEY||'').trim();
 const resendKey=String(process.env.RESEND_API_KEY||'').trim();
+// v24.37.0: turn Resend's raw errors into instructions the shop can act on (most common: domain not verified yet).
+function resendFriendlyError(status,d){const raw=String(d?.message||d?.error||'').slice(0,400);
+ if(/not verified|verify a domain|domain.*verif/i.test(raw))return `Email domain is not verified in Resend yet. Finish SPF/DKIM verification in Resend (Domains), or use a From address on a verified domain. Resend said: ${raw}`;
+ if(/testing emails to your own email/i.test(raw))return `Resend is in test mode: until the domain is verified it only delivers to the account owner's address. Resend said: ${raw}`;
+ if(status===401||status===403&&/api key/i.test(raw))return 'Resend rejected the API key. Check RESEND_API_KEY in Railway.';
+ if(status===429)return 'Resend rate limit reached. Wait a minute and try again.';
+ return (raw||'Email could not be sent.').slice(0,500)}
 const invoiceFromEmail=String(process.env.INVOICE_FROM_EMAIL||'').trim();
 app.post('/api/invoices/:id/payment-link',auth,managerPermission("invoices"),async(req,res,next)=>{try{if(!stripeSecret)return res.status(503).json({error:'Stripe is not configured. Add STRIPE_SECRET_KEY in Railway.'});const x=await getInvoiceBundle(requireDb(),req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const i=x.invoice,amount=Math.round(Number(i.balance_due||0)*100);if(amount<50)return res.status(409).json({error:'Invoice has no payable balance.'});const base=String(process.env.APP_PUBLIC_URL||'').replace(/\/$/,'');const p=new URLSearchParams();p.set('mode','payment');p.set('success_url',`${base}/?payment=success&invoice=${encodeURIComponent(i.invoice_number)}`);p.set('cancel_url',`${base}/?payment=cancel&invoice=${encodeURIComponent(i.invoice_number)}`);p.set('line_items[0][price_data][currency]','usd');p.set('line_items[0][price_data][product_data][name]',`Invoice ${i.invoice_number}`);p.set('line_items[0][price_data][unit_amount]',String(amount));p.set('line_items[0][quantity]','1');p.set('metadata[invoice_id]',String(i.id));p.set('metadata[invoice_number]',String(i.invoice_number));const rr=await fetch('https://api.stripe.com/v1/checkout/sessions',{method:'POST',headers:{Authorization:`Bearer ${stripeSecret}`,'Content-Type':'application/x-www-form-urlencoded'},body:p});const d=await rr.json();if(!rr.ok)throw new Error(d?.error?.message||'Stripe checkout could not be created.');await requireDb().query('UPDATE customer_invoices SET payment_url=$2,stripe_session_id=$3,updated_at=now() WHERE id=$1::bigint',[i.id,d.url,d.id]);await audit(req.user.username,'invoice_payment_link_created',{invoiceId:i.id});res.json({ok:true,url:d.url})}catch(e){next(e)}});
 function invoicePdfLines(x){return (Array.isArray(x.lines)?x.lines:[]).filter(l=>l.line_type==='labor'||String(l.part_number||'').trim()||String(l.description||'').trim()||Number(l.unit_price||0)!==0||Number(l.quantity||0)!==1).map(l=>({...l,description:invoiceEnglishText(l.description,l.line_type==='part'?'Part / material':'Repair / service'),job_name:invoiceEnglishText(l.job_name||'','Repair / service')}))}
@@ -3939,7 +3953,7 @@ app.post('/api/invoices/:id/email',auth,managerPermission("invoices"),async(req,
  const attachments=attachPdf?[{filename:`${String(i.invoice_number).replace(/[^A-Za-z0-9_-]/g,'_')}.pdf`,content:(await invoicePdfBuffer(x)).toString('base64')}]:[];
  const shop=shopProfile(),replyTo=String(process.env.INVOICE_REPLY_TO||shop.email||'').trim();
  const rr=await fetch(String(process.env.RESEND_API_URL||'https://api.resend.com/emails'),{method:'POST',headers:{Authorization:`Bearer ${resendKey}`,'Content-Type':'application/json','Idempotency-Key':idempotencyKey},body:JSON.stringify({from:invoiceFromEmail,to,cc:cc.length?cc:undefined,reply_to:replyTo||undefined,subject,html:invoiceEmailHtml(i,message),text:message,attachments,tags:[{name:'document',value:'invoice'},{name:'invoice_id',value:String(i.id)}]})});
- const d=await rr.json().catch(()=>({}));if(!rr.ok){const reason=String(d?.message||'Email could not be sent.').slice(0,500);await db.query("UPDATE invoice_email_deliveries SET status='failed',error_message=$2 WHERE id=$1::bigint",[deliveryId,reason]);await audit(req.user.username,'invoice_email_failed',{invoiceId:i.id,invoiceNumber:i.invoice_number,to,cc,deliveryId,error:reason});return res.status(502).json({error:reason})}
+ const d=await rr.json().catch(()=>({}));if(!rr.ok){const reason=resendFriendlyError(rr.status,d);await db.query("UPDATE invoice_email_deliveries SET status='failed',error_message=$2 WHERE id=$1::bigint",[deliveryId,reason]);await audit(req.user.username,'invoice_email_failed',{invoiceId:i.id,invoiceNumber:i.invoice_number,to,cc,deliveryId,error:reason});return res.status(502).json({error:reason})}
  await db.query("UPDATE invoice_email_deliveries SET status='sent',provider_message_id=$2,sent_at=now(),error_message=NULL WHERE id=$1::bigint",[deliveryId,d.id||null]);
  await db.query("UPDATE customer_invoices SET customer_email=$2,email_sent_at=now(),updated_at=now() WHERE id=$1::bigint",[i.id,to[0]]);
  await audit(req.user.username,'invoice_emailed',{invoiceId:i.id,invoiceNumber:i.invoice_number,to,cc,subject,attachedPdf:attachments.length>0,resendId:d.id,deliveryId});res.json({ok:true,id:d.id,to,cc});
@@ -4203,6 +4217,8 @@ app.post("/api/vin",auth,async(req,res)=>{try{const item=await lookupNhtsaVin(re
 app.post("/api/transcribe",auth,upload.single("audio"),async(req,res)=>{try{if(!req.file)return res.status(400).json({error:"audio required"});const file=new File([req.file.buffer],req.file.originalname||"note.webm",{type:req.file.mimetype||"audio/webm"});const t=await requireAIClient().audio.transcriptions.create({file,model:process.env.OPENAI_TRANSCRIBE_MODEL||"gpt-4o-transcribe"});res.json({text:t.text||""})}catch(e){return aiErrorResponse(res,e,"transcription failed")}});
 
 app.get("/api/admin/server-audit",auth,managerPermission("reports"),async(req,res,next)=>{try{const q=await requireDb().query("SELECT username,action,details,created_at FROM server_audit ORDER BY id DESC LIMIT 500");res.json({rows:q.rows})}catch(e){next(e)}});
+// v24.37.0 estimates, tire fees, accountant reports and Gmail finance inbox
+registerFinanceRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit,recalcInvoice,nextInvoiceNumber,PDFDocument,renderCustomerDocumentPdf,shopProfile,logoPath:path.join(__dirname,"public","assets","iron-team-logo.png"),dateText:v=>{if(!v)return '';try{return invoiceDateText(v)}catch(_){return String(v).slice(0,10)}}});
 app.use("/api",(req,res)=>res.status(404).json({error:"API endpoint not found"}));
 
 
@@ -4224,6 +4240,7 @@ app.get("*splat",(req,res)=>{
 });
 
 initDb()
+  .then(()=>ensureFinanceSchema(pool))
   .then(()=>reconcileReservedInventoryAllocations())
   .then(()=>ensurePartsSearchPerformance())
   .then(()=>migrateLegacyFindingPhotosAtStartup())

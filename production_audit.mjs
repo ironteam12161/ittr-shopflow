@@ -85,7 +85,7 @@ check('language role-sync marker present',root.includes('ITTR_LANGUAGE_ROLE_SYNC
 const partsInsert=server.match(/INSERT INTO fullbay_import_parts\([\s\S]*?VALUES\(([^)]*)\)[\s\S]*?ON CONFLICT\(source_key\)/);
 if(partsInsert){const refs=[...partsInsert[1].matchAll(/\$(\d+)/g)].map(m=>Number(m[1]));const max=refs.length?Math.max(...refs):0;check('Fullbay v23.7.1 max parameter remains $22',max===22,`max=$${max}`);check('Fullbay v23.7.1 has no $23',!refs.includes(23));}else check('Fullbay inventory INSERT regression target found',false);
 
-for(const name of ['customers','invoices','parts','procenter','trucksearch']){
+for(const name of ['customers','invoices','parts','procenter','trucksearch','estimates','reports']){
  for(const ext of ['html','js']){
   const a=`modules/${name}.${ext}`,b=`public/modules/${name}.${ext}`;
   check(`${name}.${ext} exists in both module trees`,exists(a)&&exists(b));
@@ -123,6 +123,21 @@ check('release check executes startup smoke test',String(pkg.scripts?.check||'')
 check('dedicated language-switch audit exists',exists('language_switch_audit.mjs'));
 check('release check executes language-switch audit',String(pkg.scripts?.check||'').includes('node language_switch_audit.mjs'));
 check('audit command uses production audit',pkg.scripts?.audit==='node production_audit.mjs',pkg.scripts?.audit||'');
+
+// v24.37.0 finance center
+const finance=exists('finance_center.mjs')?read('finance_center.mjs'):'';
+check('finance center routes registered before API 404',server.includes('registerFinanceRoutes(app,')&&server.indexOf('registerFinanceRoutes(app,')<server.indexOf('app.use("/api",(req,res)=>res.status(404)'));
+check('finance schema prepared at startup',server.includes('.then(()=>ensureFinanceSchema(pool))'));
+check('estimates, reports and tire fees API present',finance.includes("'/api/estimates/:id/convert'")&&finance.includes("'/api/reports/finance'")&&finance.includes("'/api/invoices/:id/tire-fees'"));
+check('reports require reports + invoices permission',finance.includes("app.get('/api/reports/finance', auth, reportsPerm, invoicesPerm"));
+check('Gmail OAuth uses single-use state and encrypted refresh tokens',finance.includes('DELETE FROM gmail_oauth_states WHERE state=$1 AND expires_at>now()')&&finance.includes("createCipheriv('aes-256-gcm'")&&finance.includes('gmail.readonly'));
+check('Gmail connect/disconnect owner-only',finance.includes("app.post('/api/gmail/connect', auth, ownerOnly")&&finance.includes("app.delete('/api/gmail/accounts/:id', auth, ownerOnly"));
+check('Estimates and Reports tabs routed',root.includes('estimates:{html:routeAsset("/modules/estimates.html")')&&root.includes('reports:{html:routeAsset("/modules/reports.html")')&&root.includes('data-view="estimates"')&&root.includes('data-view="reports"'));
+check('invoice editor has Tire Fees button',root.includes('onclick="openInvoiceTireFees()"')&&exists('public/finance-shared.js'));
+check('mechanics never receive part buy cost',server.includes('function hidePartCostsFromMechanics(')&&server.includes('app.get("/api/parts",auth,hidePartCostsFromMechanics,'));
+check('shop-floor stylesheet lives in the page head, not the label popup',root.includes('<style id="ittrShopFloorV2416">')&&!/<title>\$\{esc\(partNo[\s\S]{0,4000}v24\.16\.0 shop-floor/.test(root));
+check('finalize recalculates paid status',server.includes("a draft paid in full before finalizing must land on 'paid'"));
+check('release check executes finance integration test',String(pkg.scripts?.check||'').includes('node finance_center_integration_test.mjs'));
 
 const dupIds=[...root.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]).filter((x,i,a)=>a.indexOf(x)!==i);
 check('no duplicate DOM ids in shell',dupIds.length===0,[...new Set(dupIds)].join(','));

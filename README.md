@@ -36,7 +36,9 @@ Production shop-management PWA for **Iron Team Truck & Trailer Repair**.
 
 **Customers & Vehicles:** Customer/unit directory, VIN/USDOT data and unified service history.
 
-**Finance:** Labor-centric invoicing, work-order sync, parts/fees/discounts, payments, PDF/print and invoice service-history records.
+**Finance:** Estimates (quote → approve → convert to invoice), labor-centric invoicing, work-order sync, parts/fees/discounts, tire user + disposal fees, payments, PDF/print and invoice service-history records.
+
+**Reports:** Accountant-ready sales, collections, customers-owe aging, parts usage/profit, vendor spend and tire-fee remittance with charts, CSV export and print. Includes a read-only Gmail money inbox for Zelle notices and vendor bills. See `docs/AUDIT-2026-09-30.md` for setup.
 
 **Parts:** Inventory, manufacturer/internal barcode scanning, physical inventory and Smart Vendor Receiving.
 
