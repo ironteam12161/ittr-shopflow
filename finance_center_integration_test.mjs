@@ -170,6 +170,16 @@ try{
  await request('/api/state/shopflow',{method:'PUT',body:{expectedVersion:cur.version,payload:{...cur.payload,workorders:cur.payload.workorders.filter(w=>String(w.id)!=='9902')}}});
  assert((await db.query("SELECT 1 FROM mechanic_inspections WHERE work_order_id='9902'")).rowCount===0,'removing a WO through a normal save also removes its inspection');
  console.log('PASS work orders: delete endpoint + normal save remove the WO and its inspection from vehicle history');
+ // --- v24.37.1: mechanics can change their own Current Activity
+ const badAct=await request('/api/mechanic/activity',{method:'POST',tok:mechToken,body:{action:'start',code:'hacking'},allowError:true});assert(badAct.status===400,'unknown activity rejected');
+ const act=await request('/api/mechanic/activity',{method:'POST',tok:mechToken,body:{action:'start',code:'parts',note:'NAPA run'}});
+ assert(act.user.currentActivity.code==='parts','activity saved for mechanic');
+ const adminView=await request('/api/state');assert(adminView.users.payload[mechUser]?.currentActivity?.code==='parts','admin sees mechanic activity');
+ const mechView=await request('/api/state',{tok:mechToken});const keys=Object.keys(mechView.users?.payload||{});
+ assert(keys.length===1&&keys[0]===mechUser&&mechView.users.payload[mechUser].currentActivity.note==='NAPA run','mechanic reads only their own activity');
+ await request('/api/mechanic/activity',{method:'POST',tok:mechToken,body:{action:'stop'}});
+ const after=(await request('/api/state')).users.payload[mechUser];assert(!after.currentActivity.code&&after.activityHistory[0].endedAt,'stop closes the activity in history');
+ console.log('PASS mechanic activity: start/stop saved on server, visible to admin, mechanic sees only self');
  console.log('Finance center integration: all scenarios passed');
 }catch(e){console.error(e.message);console.error(output.slice(-4000));process.exitCode=1}
 finally{if(child&&child.exitCode==null){child.kill('SIGTERM');await sleep(200)}fake.close();await db.end()}

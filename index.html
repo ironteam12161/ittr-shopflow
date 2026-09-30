@@ -1514,37 +1514,30 @@ function closeCurrentMechanicActivity(users,username,endedAt=new Date().toISOStr
  if(row)row.endedAt=endedAt;
  u.currentActivity={code:"",customText:"",note:"",startedAt:""};
 }
+// v24.37.1: the server owns each mechanic's activity record (mechanics can't save the shared users record).
+async function sendMechanicActivity(body){
+ try{const d=await apiJSON("/api/mechanic/activity",{method:"POST",body});
+  USERS[session.username]={...(USERS[session.username]||{role:"mechanic",display:session.display||session.username}),...d.user};
+  localStorage.setItem("ittr_users_v1",JSON.stringify(USERS));
+  renderMechanicActivity();renderMechanicLiveStatus();return true;
+ }catch(e){showToast(e.message||"Activity was not saved.","error",8000);return false}
+}
 function stopMechanicActivity(){
  if(!requireMechanic())return;
- const users=USERS;if(!users?.[session.username])return;
- closeCurrentMechanicActivity(users,session.username);
- try{saveUsers(users)}catch(e){saveUsers()}
- renderMechanicActivity();renderMechanicLiveStatus();
+ sendMechanicActivity({action:"stop"});
 }
-
-function startMechanicActivity(){
+async function startMechanicActivity(){
  if(!requireMechanic())return;
  const code=document.getElementById("mechanicActivitySelect")?.value||"";
  const customText=(document.getElementById("mechanicCustomActivity")?.value||"").trim();
  const note=(document.getElementById("mechanicActivityNote")?.value||"").trim();
  if(!code)return alert(currentLanguage==="uk"?"Оберіть діяльність.":"Choose an activity.");
  if(code==="custom"&&!customText)return alert(currentLanguage==="uk"?"Введіть свою діяльність.":"Type your custom activity.");
- const users=USERS;if(!users?.[session.username])return;
- closeCurrentMechanicActivity(users,session.username);
- const r={code,customText:code==="custom"?customText:"",note,startedAt:new Date().toISOString(),endedAt:""};
- users[session.username].currentActivity={...r};
- users[session.username].activityHistory=Array.isArray(users[session.username].activityHistory)?users[session.username].activityHistory:[];
- users[session.username].activityHistory.unshift({...r});
- users[session.username].activityHistory=users[session.username].activityHistory.slice(0,500);
- try{saveUsers(users)}catch(e){saveUsers()}
- renderMechanicActivity();renderMechanicLiveStatus();
+ if(await sendMechanicActivity({action:"start",code,customText,note})){const n=document.getElementById("mechanicActivityNote");if(n)n.value="";showToast(currentLanguage==="uk"?"Діяльність оновлено.":"Activity updated.","success")}
 }
 function clearMechanicActivity(){
  if(!requireMechanic())return;
- const users=USERS;if(!users?.[session.username])return;
- closeCurrentMechanicActivity(users,session.username);
- try{saveUsers(users)}catch(e){saveUsers()}
- renderMechanicActivity();renderMechanicLiveStatus();
+ sendMechanicActivity({action:"stop"});
 }
 function renderMechanicActivity(){
  if(session?.role!=="mechanic")return;
