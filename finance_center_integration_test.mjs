@@ -151,6 +151,25 @@ try{
  const mp=await request('/api/parts?q=FIN-1',{tok:mechToken});assert(mp.items?.length&&mp.items[0].cost===undefined&&mp.items[0].price!==undefined,'mechanic part search hides cost');
  const ap=await request('/api/parts?q=FIN-1');assert(Number(ap.items[0].cost)===12.5,'admin still sees cost');
  console.log('PASS audit: mechanics no longer receive part buy cost');
+ // --- v24.37.1: deleted work orders leave vehicle history (inspection rows included)
+ const unitRow=(await db.query("INSERT INTO customer_units(unit_number,customer_name) VALUES('DEL-UNIT-1','Delete Test Co') RETURNING id")).rows[0];
+ const sfRow=(await db.query("SELECT payload,version FROM app_state WHERE state_key='shopflow'")).rows[0];
+ const keepWos=(sfRow.payload?.workorders||[]).filter(w=>!['9901','9902'].includes(String(w?.id)));
+ const mkWo=id=>({id,unit:'DEL-UNIT-1',unitRecordId:unitRow.id,customer:'Delete Test Co',status:'Completed',mechanic:mechUser,helpers:[],date:'2026-09-28',tasks:[{uid:`t-${id}`,t:`Job ${id}`,done:true}]});
+ await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1 WHERE state_key='shopflow'",[JSON.stringify({...sfRow.payload,workorders:[...keepWos,mkWo(9901),mkWo(9902)],issues:sfRow.payload?.issues||[]})]);
+ for(const id of ['9901','9902','9903'])await db.query(`INSERT INTO mechanic_inspections(work_order_id,unit_id,unit_number_snapshot,inspection_type,status,completed_at) VALUES($1,$2,'DEL-UNIT-1','truck','completed',now()) ON CONFLICT(work_order_id) DO NOTHING`,[id,unitRow.id]);
+ const inspIds=async()=>(await request(`/api/customer-units/${unitRow.id}/profile`)).history.filter(h=>h.source==='inspection').map(h=>String(h.workOrderId)).sort().join(',');
+ assert(await inspIds()==='9901,9902',`orphan inspection (WO deleted earlier) is hidden, got ${await inspIds()}`);
+ const mechDel=await request('/api/work-orders/9901',{method:'DELETE',tok:mechToken,allowError:true});assert(mechDel.status===403,'mechanic cannot delete work orders');
+ await request('/api/work-orders/9901',{method:'DELETE'});
+ assert((await db.query("SELECT 1 FROM mechanic_inspections WHERE work_order_id='9901'")).rowCount===0,'deleting a WO removes its inspection');
+ const hist=(await request(`/api/customer-units/${unitRow.id}/profile`)).history;
+ assert(!hist.some(h=>String(h.id)==='9901'||String(h.workOrderId)==='9901'),'deleted WO gone from vehicle history');
+ assert((await db.query("SELECT 1 FROM server_audit WHERE action='work_order_deleted' AND details->>'workOrderId'='9901'")).rowCount===1,'deleted WO snapshot kept in audit log');
+ const cur=(await request('/api/state')).shopflow;
+ await request('/api/state/shopflow',{method:'PUT',body:{expectedVersion:cur.version,payload:{...cur.payload,workorders:cur.payload.workorders.filter(w=>String(w.id)!=='9902')}}});
+ assert((await db.query("SELECT 1 FROM mechanic_inspections WHERE work_order_id='9902'")).rowCount===0,'removing a WO through a normal save also removes its inspection');
+ console.log('PASS work orders: delete endpoint + normal save remove the WO and its inspection from vehicle history');
  console.log('Finance center integration: all scenarios passed');
 }catch(e){console.error(e.message);console.error(output.slice(-4000));process.exitCode=1}
 finally{if(child&&child.exitCode==null){child.kill('SIGTERM');await sleep(200)}fake.close();await db.end()}
