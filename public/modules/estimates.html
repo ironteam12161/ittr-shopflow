@@ -1,0 +1,52 @@
+<style>
+.estWrap{--est-line:#e2e8f0;--est-soft:#f8fafc;--est-ink:#0f172a;--est-muted:#64748b}
+.estStats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.estStat{background:#fff;border:1px solid var(--est-line);border-radius:12px;padding:12px 14px;text-align:left;color:var(--est-ink);cursor:pointer;min-height:auto;font-weight:600}
+.estStat b{display:block;font-size:22px}.estStat span{display:block;font-size:12px;color:var(--est-muted);text-transform:uppercase;letter-spacing:.04em}.estStat small{color:var(--est-muted)}
+.estStat.active{border-color:#2563eb;box-shadow:0 0 0 2px #bfdbfe inset}
+.estSearch{display:flex;gap:8px;margin-bottom:12px}.estSearch input{flex:1;padding:10px 12px;border:1px solid #cfd6dc;border-radius:10px;font:inherit}
+.estTable td,.estTable th{vertical-align:middle}.estTable tr[data-open]{cursor:pointer}.estTable tr[data-open]:hover td{background:#f8fafc}
+.estPill{display:inline-block;padding:4px 9px;border-radius:999px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em}
+.estPill.draft{background:#f2f4f7;color:#344054}.estPill.sent{background:#eff8ff;color:#175cd3}.estPill.approved{background:#ecfdf3;color:#067647}
+.estPill.declined{background:#fef3f2;color:#b42318}.estPill.converted{background:#f4f3ff;color:#5925dc}.estPill.expired{background:#fffaeb;color:#b54708}
+.estNum{text-align:right;font-variant-numeric:tabular-nums}
+.estEditor{position:fixed;inset:0;z-index:40;background:rgba(15,23,42,.55);overflow:auto;padding:18px}
+.estEditorBox{max-width:1100px;margin:10px auto 40px;background:#fff;border-radius:16px;box-shadow:0 20px 60px rgba(15,23,42,.3)}
+.estHead{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:18px 22px;border-bottom:1px solid var(--est-line);flex-wrap:wrap}
+.estHead h2{margin:0;font-size:22px}.estHead .muted{margin-top:3px}
+.estHeadActions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.estBody{padding:18px 22px;display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px}
+.estFields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.estFields .field{margin:0}.estFields .wide{grid-column:span 2}
+.estLookup{position:relative}.estLookupDrop{position:absolute;z-index:5;left:0;right:0;top:100%;background:#fff;border:1px solid var(--est-line);border-radius:10px;box-shadow:0 12px 30px rgba(15,23,42,.15);max-height:260px;overflow:auto}
+.estLookupDrop button{display:block;width:100%;text-align:left;background:#fff;color:var(--est-ink);border-radius:0;border-bottom:1px solid var(--est-line);font-weight:600;min-height:auto;padding:9px 12px}
+.estLookupDrop button small{display:block;color:var(--est-muted);font-weight:500}
+.estJob{border:1px solid var(--est-line);border-radius:12px;margin-bottom:12px;overflow:hidden}
+.estJobHead{display:flex;gap:8px;align-items:center;background:var(--est-soft);padding:10px 12px;border-bottom:1px solid var(--est-line)}
+.estJobHead .estNo{background:#c2410c;color:#fff;border-radius:6px;min-width:24px;text-align:center;font-weight:800;font-size:12px;padding:3px 0}
+.estRow{display:grid;grid-template-columns:52px minmax(0,1fr) 110px 76px 90px 44px 90px 32px;gap:6px;align-items:center;padding:6px 12px;border-bottom:1px solid #f1f5f9}
+.estRow:last-child{border-bottom:0}.estRow input{width:100%;padding:7px 8px;border:1px solid #d0d5dd;border-radius:8px;font:inherit;font-size:14px;min-height:36px}
+.estRow .tx{display:flex;align-items:center;gap:3px;font-size:12px;color:var(--est-muted)}.estRow .tx input{width:auto;min-height:auto}
+.estRow .t{font-size:10px;font-weight:800;color:var(--est-muted);text-transform:uppercase}
+.estRow .amt{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+.estRow .del{background:transparent;color:#b42318;min-height:32px;padding:4px}
+.estRowHead{font-size:11px;color:var(--est-muted);font-weight:700;background:#fff;text-transform:uppercase;letter-spacing:.03em;padding-top:0;padding-bottom:0}
+.estJobFoot{display:flex;gap:8px;padding:8px 12px;flex-wrap:wrap}.estJobFoot button{min-height:34px;padding:6px 10px;font-size:13px}
+.estPartDrop{position:relative}.estPartDrop .estLookupDrop{min-width:320px}
+.estSide{display:flex;flex-direction:column;gap:12px}
+.estTotals{border:1px solid var(--est-line);border-radius:12px;padding:12px}
+.estTotals div{display:flex;justify-content:space-between;padding:5px 0;font-variant-numeric:tabular-nums}
+.estTotals .grand{border-top:1px solid var(--est-line);margin-top:6px;padding-top:10px;font-size:20px;font-weight:800}
+.estSide .field{margin-bottom:8px}.estSide textarea{min-height:70px}
+.estAddJob{display:flex;gap:8px}.estAddJob input{flex:1;padding:10px;border:1px solid #cfd6dc;border-radius:9px;font:inherit}
+.estLockNote{background:#f4f3ff;border:1px solid #d9d6fe;color:#5925dc;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:14px}
+@media(max-width:900px){.estStats{grid-template-columns:repeat(2,minmax(0,1fr))}.estBody{grid-template-columns:1fr}.estFields{grid-template-columns:1fr 1fr}
+ .estRow{grid-template-columns:1fr 1fr 1fr 1fr;row-gap:4px}.estRow .desc{grid-column:2/-1}.estRowHead{display:none}.estEditor{padding:0}.estEditorBox{margin:0;border-radius:0;min-height:100%}}
+</style>
+<div class="estWrap">
+ <div class="toolbar"><div><h1>Estimates</h1><div class="muted">Quote the job before the work starts. Approved estimates turn into a draft invoice in one click.</div></div><div><button data-est="new">+ New Estimate</button></div></div>
+ <div id="estStats" class="estStats"></div>
+ <div class="estSearch"><input id="estSearch" type="search" placeholder="Search estimate #, customer, unit or VIN…" aria-label="Search estimates"></div>
+ <div class="card" style="padding:0;overflow:auto"><table class="estTable"><thead><tr><th>Estimate</th><th>Customer</th><th>Unit</th><th>Date</th><th>Valid until</th><th class="estNum">Total</th><th>Status</th></tr></thead><tbody id="estRows"><tr><td colspan="7" class="empty">Loading estimates…</td></tr></tbody></table></div>
+ <div id="estEditor" class="estEditor hidden" role="dialog" aria-modal="true" aria-label="Estimate editor"><div class="estEditorBox" id="estEditorBox"></div></div>
+</div>
