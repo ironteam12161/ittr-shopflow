@@ -1774,7 +1774,11 @@ app.get("/api/state",auth,async(req,res,next)=>{try{
   const self=me&&typeof me==="object"?{[req.user.username]:{role:me.role||"mechanic",display:me.display||req.user.display_name||req.user.username,currentActivity:me.currentActivity||{code:"",note:"",startedAt:""},activityHistory:Array.isArray(me.activityHistory)?me.activityHistory.slice(0,50):[]}}:{};
   return res.json({shopflow:{payload:{...sf,workorders,issues},version:Number(r.version),updatedAt:r.updated_at},users:{payload:self,version:Number(ur?.version||0),updatedAt:ur?.updated_at||null}});
  }
- const q=await db.query("SELECT state_key,payload,version,updated_at FROM app_state ORDER BY state_key");const d={};for(const r of q.rows)d[r.state_key]={payload:r.payload,version:Number(r.version),updatedAt:r.updated_at};res.json(d);
+ const q=await db.query("SELECT state_key,payload,version,updated_at FROM app_state ORDER BY state_key");const d={};for(const r of q.rows)d[r.state_key]={payload:r.payload,version:Number(r.version),updatedAt:r.updated_at};
+ // v24.37.1: every active mechanic login appears on the dashboard, even if the account was created
+ // without an entry in the shared users record (imports, direct DB, other devices).
+ if(d.users){const users=d.users.payload&&typeof d.users.payload==='object'?{...d.users.payload}:{};const mq=await db.query("SELECT username,display_name FROM auth_users WHERE role='mechanic' AND active=true");for(const m of mq.rows)if(!users[m.username])users[m.username]={role:'mechanic',display:m.display_name||m.username,activityHistory:[],currentActivity:{code:'',note:'',startedAt:''}};d.users={...d.users,payload:users}}
+ res.json(d);
 }catch(e){next(e)}});
 // ITTR v24.27.0 state integrity hardening
 // v24.37.1: delete a work order on the server so a stale copy on another device can't block or undo it.

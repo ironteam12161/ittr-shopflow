@@ -179,6 +179,8 @@ try{
  assert(keys.length===1&&keys[0]===mechUser&&mechView.users.payload[mechUser].currentActivity.note==='NAPA run','mechanic reads only their own activity');
  await request('/api/mechanic/activity',{method:'POST',tok:mechToken,body:{action:'stop'}});
  const after=(await request('/api/state')).users.payload[mechUser];assert(!after.currentActivity.code&&after.activityHistory[0].endedAt,'stop closes the activity in history');
+ await db.query("INSERT INTO auth_users(username,display_name,password_hash,role) VALUES('ghostmech','Ghost Mechanic','x','mechanic') ON CONFLICT(username) DO NOTHING");
+ assert((await request('/api/state')).users.payload.ghostmech?.role==='mechanic','mechanic login missing from users record still shows on dashboard');
  console.log('PASS mechanic activity: start/stop saved on server, visible to admin, mechanic sees only self');
  console.log('Finance center integration: all scenarios passed');
 }catch(e){console.error(e.message);console.error(output.slice(-4000));process.exitCode=1}
