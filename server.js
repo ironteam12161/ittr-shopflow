@@ -1770,9 +1770,15 @@ app.get("/api/state",auth,async(req,res,next)=>{try{
   const workorders=(Array.isArray(sf.workorders)?sf.workorders:[]).filter(w=>mechanicOwnsWorkOrder(req.user,w));
   const ids=new Set(workorders.map(w=>String(w?.id||'')));
   const issues=(Array.isArray(sf.issues)?sf.issues:[]).filter(i=>ids.has(String(i?.wo||'')));
-  return res.json({shopflow:{payload:{...sf,workorders,issues},version:Number(r.version),updatedAt:r.updated_at}});
+  const ur=(await db.query("SELECT payload,version,updated_at FROM app_state WHERE state_key='users'")).rows[0],me=ur?.payload?.[req.user.username];
+  const self=me&&typeof me==="object"?{[req.user.username]:{role:me.role||"mechanic",display:me.display||req.user.display_name||req.user.username,currentActivity:me.currentActivity||{code:"",note:"",startedAt:""},activityHistory:Array.isArray(me.activityHistory)?me.activityHistory.slice(0,50):[]}}:{};
+  return res.json({shopflow:{payload:{...sf,workorders,issues},version:Number(r.version),updatedAt:r.updated_at},users:{payload:self,version:Number(ur?.version||0),updatedAt:ur?.updated_at||null}});
  }
- const q=await db.query("SELECT state_key,payload,version,updated_at FROM app_state ORDER BY state_key");const d={};for(const r of q.rows)d[r.state_key]={payload:r.payload,version:Number(r.version),updatedAt:r.updated_at};res.json(d);
+ const q=await db.query("SELECT state_key,payload,version,updated_at FROM app_state ORDER BY state_key");const d={};for(const r of q.rows)d[r.state_key]={payload:r.payload,version:Number(r.version),updatedAt:r.updated_at};
+ // v24.37.1: every active mechanic login appears on the dashboard, even if the account was created
+ // without an entry in the shared users record (imports, direct DB, other devices).
+ if(d.users){const users=d.users.payload&&typeof d.users.payload==='object'?{...d.users.payload}:{};const mq=await db.query("SELECT username,display_name FROM auth_users WHERE role='mechanic' AND active=true");for(const m of mq.rows)if(!users[m.username])users[m.username]={role:'mechanic',display:m.display_name||m.username,activityHistory:[],currentActivity:{code:'',note:'',startedAt:''}};d.users={...d.users,payload:users}}
+ res.json(d);
 }catch(e){next(e)}});
 // ITTR v24.27.0 state integrity hardening
 // v24.37.1: delete a work order on the server so a stale copy on another device can't block or undo it.
@@ -1792,6 +1798,33 @@ app.delete("/api/work-orders/:id",auth,adminOnly,async(req,res,next)=>{
   broadcastShopStatus("shopflow_changed",{by:req.user.username,version:Number(q.rows[0].version)});
   res.json({ok:true,version:Number(q.rows[0].version)});
  }catch(e){try{await db.query('ROLLBACK')}catch(_){}next(e)}finally{db.release()}
+});
+// v24.37.1: mechanics set their own "Current Activity". It lives in the shared users record, which
+// mechanics may not read or replace, so the browser-only save silently did nothing.
+const MECHANIC_ACTIVITY_CODES=["cleaning","yard","moving_unit","parts","waiting_parts","helping","inspection","break","custom"];
+app.post("/api/mechanic/activity",auth,async(req,res,next)=>{
+ const db=await requireDb().connect();
+ try{
+  const action=String(req.body?.action||"start"),code=String(req.body?.code||""),customText=String(req.body?.customText||"").replace(/[<>]/g,"").trim().slice(0,120),note=String(req.body?.note||"").replace(/[<>]/g,"").trim().slice(0,500);
+  if(!["start","stop"].includes(action))return res.status(400).json({error:"Unsupported activity action."});
+  if(action==="start"&&!MECHANIC_ACTIVITY_CODES.includes(code))return res.status(400).json({error:"Choose an activity."});
+  if(action==="start"&&code==="custom"&&!customText)return res.status(400).json({error:"Type your custom activity."});
+  await db.query("BEGIN");
+  const cur=(await db.query("SELECT payload FROM app_state WHERE state_key='users' FOR UPDATE")).rows[0];
+  const users=cur?.payload&&typeof cur.payload==="object"?cur.payload:{},username=req.user.username,now=new Date().toISOString();
+  const u=users[username]&&typeof users[username]==="object"?users[username]:{role:req.user.role,display:req.user.display_name||username};
+  u.activityHistory=Array.isArray(u.activityHistory)?u.activityHistory:[];
+  const a=u.currentActivity;
+  if(a?.code){const row=u.activityHistory.find(x=>!x?.endedAt&&x?.startedAt===a.startedAt);if(row)row.endedAt=now}
+  if(action==="start"){const r={code,customText:code==="custom"?customText:"",note,startedAt:now,endedAt:""};u.currentActivity={...r};u.activityHistory.unshift({...r});u.activityHistory=u.activityHistory.slice(0,500)}
+  else u.currentActivity={code:"",customText:"",note:"",startedAt:""};
+  users[username]=u;
+  const q=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='users' RETURNING version",[JSON.stringify(users),username]);
+  await db.query("COMMIT");
+  await audit(username,"mechanic_activity",{action,code});
+  broadcastShopStatus("task_changed",{by:username,activity:true});
+  res.json({ok:true,user:{currentActivity:u.currentActivity,activityHistory:u.activityHistory.slice(0,50)},version:Number(q.rows[0]?.version||0)});
+ }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
 });
 app.put("/api/state/:key",auth,async(req,res,next)=>{
  const db=await requireDb().connect();
