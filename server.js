@@ -1216,6 +1216,18 @@ async function resolveInspectionUnitId(db,w){
  if(unit){const params=[unit],where=["lower(unit_number)=lower($1)"];if(/^\d+$/.test(customerId)){params.push(customerId);where.push(`customer_id=$${params.length}::bigint`)}const q=await db.query(`SELECT id FROM customer_units WHERE ${where.join(" AND ")} ORDER BY id LIMIT 1`,params);if(q.rowCount)return q.rows[0].id}
  return null;
 }
+// v24.37.1: a deleted work order must also leave the vehicle history. Its inspection lives in its own
+// table (keyed by work_order_id, never reused), so remove it and keep an audit snapshot of the WO.
+async function pruneDeletedWorkOrders(db,before,after,username){
+ const keep=new Set((Array.isArray(after?.workorders)?after.workorders:[]).map(w=>String(w?.id??'')));
+ const removed=(Array.isArray(before?.workorders)?before.workorders:[]).filter(w=>w&&w.id!=null&&!keep.has(String(w.id)));
+ if(!removed.length)return [];
+ const ids=removed.map(w=>String(w.id));
+ await db.query('DELETE FROM mechanic_inspections WHERE work_order_id::text = ANY($1::text[])',[ids]);
+ for(const w of removed)await audit(username,'work_order_deleted',{workOrderId:String(w.id),unit:w.unit||'',customer:w.customer||'',status:w.status||'',snapshot:w});
+ return ids;
+}
+function liveWorkOrderIdSet(core){return new Set((Array.isArray(core?.shopflow?.workorders)?core.shopflow.workorders:[]).map(w=>String(w?.id??'')))}
 async function syncMechanicInspections(db,shopflow){
  const workorders=Array.isArray(shopflow?.workorders)?shopflow.workorders:[];let linked=0;
  for(const w of workorders){const i=w?.inspection;if(!i?.required||!i?.type||w?.id==null)continue;
@@ -1462,7 +1474,7 @@ app.get("/api/customer-units/:id/profile",auth,managerPermission("customers"),as
   invoiceHistory=ir.rows.map(x=>({source:"invoice",id:x.id,invoice:x.invoice_number,unit:x.unit_number,vin:x.vin,completedAt:x.finalized_at||x.sent_at||x.invoice_date||x.created_at,status:"Completed",invoiceStatus:x.status,mileage:x.mileage,totalAmount:Number(x.total||0),subtotal:Number(x.subtotal||0),taxAmount:Number(x.tax_amount||0),discount:Number(x.discount||0),additionalFees:Number(x.additional_fees||0),otherCharges:Number(x.other_charges||0),workOrderId:x.work_order_id,serviceOrderId:x.service_order_id,tasks:(Array.isArray(x.lines)?x.lines:[]).map(l=>({id:l.id,t:[l.jobName,l.description].filter(Boolean).join(" · "),description:l.description,jobName:l.jobName,jobUid:l.jobUid,parentLineId:l.parentLineId,lineType:l.type,partNumber:l.partNumber,quantity:l.quantity,unitPrice:l.unitPrice,unitCost:l.unitCost,lineTotal:l.lineTotal,taxable:l.taxable,discountType:l.discountType,discountValue:l.discountValue,tech:l.tech}))}))
  }catch(e){console.error("Vehicle invoice history warning:",e?.code,e?.message)}
   let inspectionHistory=[];
-  try{const xr=await db.query(`SELECT id,work_order_id,unit_number_snapshot,vin_snapshot,inspection_type,inspection_subtype,status,mechanic_username,started_at,completed_at,summary,findings FROM mechanic_inspections WHERE unit_id=$1::bigint OR (unit_id IS NULL AND (lower(unit_number_snapshot)=lower($2) OR ($3<>'' AND upper(coalesce(vin_snapshot,''))=upper($3)))) ORDER BY coalesce(completed_at,started_at,updated_at) DESC`,[unit.id,unit.unit_number||"",unit.vin||""]);inspectionHistory=xr.rows.map(x=>({source:"inspection",id:x.id,workOrderId:x.work_order_id,unit:x.unit_number_snapshot,vin:x.vin_snapshot,completedAt:x.completed_at||x.started_at,status:x.status,mechanic:x.mechanic_username,inspectionType:x.inspection_type,inspectionSubtype:x.inspection_subtype,summary:x.summary||{},findings:Array.isArray(x.findings)?x.findings:[],tasks:(Array.isArray(x.findings)?x.findings:[]).map(f=>({t:f.label||f.id||"Inspection finding",outcome:f.status,outcomeNote:f.note||""}))}))}catch(e){console.error("Vehicle inspection history warning:",e?.message)}
+  try{const xr=await db.query(`SELECT id,work_order_id,unit_number_snapshot,vin_snapshot,inspection_type,inspection_subtype,status,mechanic_username,started_at,completed_at,summary,findings FROM mechanic_inspections WHERE unit_id=$1::bigint OR (unit_id IS NULL AND (lower(unit_number_snapshot)=lower($2) OR ($3<>'' AND upper(coalesce(vin_snapshot,''))=upper($3)))) ORDER BY coalesce(completed_at,started_at,updated_at) DESC`,[unit.id,unit.unit_number||"",unit.vin||""]);const liveWo=liveWorkOrderIdSet(await getCoreState());inspectionHistory=xr.rows.filter(x=>!x.work_order_id||liveWo.has(String(x.work_order_id))).map(x=>({source:"inspection",id:x.id,workOrderId:x.work_order_id,unit:x.unit_number_snapshot,vin:x.vin_snapshot,completedAt:x.completed_at||x.started_at,status:x.status,mechanic:x.mechanic_username,inspectionType:x.inspection_type,inspectionSubtype:x.inspection_subtype,summary:x.summary||{},findings:Array.isArray(x.findings)?x.findings:[],tasks:(Array.isArray(x.findings)?x.findings:[]).map(f=>({t:f.label||f.id||"Inspection finding",outcome:f.status,outcomeNote:f.note||""}))}))}catch(e){console.error("Vehicle inspection history warning:",e?.message)}
   const history=[...inspectionHistory,...invoiceHistory,...fullbayHistory,...ittrHistory].sort((a,b)=>new Date(b.completedAt||b.date||0)-new Date(a.completedAt||a.date||0));
  const active=ittrHistory.filter(x=>x.status!=="Completed");
  res.json({unit,customer:unit.customer_id?{id:unit.customer_id,customer_name:unit.customer_name,dot_number:unit.dot_number,phone:unit.customer_phone,email:unit.customer_email}:null,history,active});
@@ -1482,7 +1494,7 @@ app.get("/api/smart-search",auth,adminOnly,async(req,res,next)=>{try{
  const units=(await db.query(`SELECT u.id,u.customer_id::text AS customer_id,coalesce(c.customer_name,u.customer_name) AS customer_name,u.unit_number,u.vin,u.year,u.make,u.model,u.plate,u.mileage,u.engine,u.transmission,u.notes FROM customer_units u LEFT JOIN fullbay_import_customers c ON c.id::text=u.customer_id::text WHERE u.unit_number ILIKE $1 OR coalesce(u.vin,'') ILIKE $1 OR coalesce(u.plate,'') ILIKE $1 OR coalesce(u.make,'') ILIKE $1 OR coalesce(u.model,'') ILIKE $1 OR coalesce(u.engine,'') ILIKE $1 OR coalesce(u.notes,'') ILIKE $1 OR coalesce(c.customer_name,u.customer_name,'') ILIKE $1 ORDER BY u.unit_number LIMIT $2`,[like,limit])).rows;
  let workorders=[];try{const core=await getCoreState(),needle=q.toLowerCase();workorders=(Array.isArray(core.shopflow?.workorders)?core.shopflow.workorders:[]).filter(w=>{if(!w||typeof w!=="object")return false;const tasks=(Array.isArray(w.tasks)?w.tasks:[]).map(t=>[t?.t,t?.outcomeNote,t?.completionNote].filter(Boolean).join(" ")).join(" "),hay=[w.id,w.unit,w.customer,w.status,w.notes,w.completionNotes,w.futureNotes,w.parking,tasks].filter(v=>v!=null).join(" ").toLowerCase();return hay.includes(needle)}).sort((a,b)=>Number(b.id||0)-Number(a.id||0)).slice(0,limit).map(w=>({source:"ittr",id:w.id,unit:w.unit,customer:w.customer,status:w.status,date:w.date,time:w.time,completedAt:w.completedAt,summary:(w.tasks||[]).map(t=>t?.t).filter(Boolean).slice(0,3).join(", ")||w.notes||w.completionNotes||w.futureNotes||""}))}catch(e){console.error("Smart search work-order warning:",e?.message)}
  try{const sr=await db.query(`SELECT customer_id::text AS customer_id,customer_name,service_order,invoice_number,unit_number,max(action_completed_at) completed_at,count(*)::int job_count,(array_agg(nullif(complaint,'') ORDER BY action_completed_at NULLS LAST,action_number) FILTER (WHERE coalesce(complaint,'')<>''))[1] first_complaint,(array_agg(nullif(actual_correction,'') ORDER BY action_completed_at NULLS LAST,action_number) FILTER (WHERE coalesce(actual_correction,'')<>''))[1] first_correction FROM fullbay_service_history WHERE customer_name ILIKE $1 OR coalesce(unit_number,'') ILIKE $1 OR coalesce(vin,'') ILIKE $1 OR coalesce(service_order,'') ILIKE $1 OR coalesce(invoice_number,'') ILIKE $1 OR coalesce(complaint,'') ILIKE $1 OR coalesce(actual_correction,'') ILIKE $1 OR coalesce(component,'') ILIKE $1 OR coalesce(system,'') ILIKE $1 GROUP BY customer_id,customer_name,service_order,invoice_number,unit_number ORDER BY max(action_completed_at) DESC NULLS LAST LIMIT $2`,[like,limit]);for(const x of sr.rows){const first=x.first_complaint||x.first_correction||"Service record";workorders.push({source:"fullbay",id:x.service_order,invoice:x.invoice_number,unit:x.unit_number,customer:x.customer_name,customer_id:x.customer_id,status:"Fullbay History",completedAt:x.completed_at,jobCount:Number(x.job_count||0),summary:`${first}${Number(x.job_count||0)>1?` + ${Number(x.job_count)-1} more job${Number(x.job_count)-1===1?"":"s"}`:""}`})}}catch(e){console.error("Smart search Fullbay history warning:",e?.message)}
- try{const xr=await db.query(`SELECT work_order_id,unit_number_snapshot,vin_snapshot,customer_name_snapshot,inspection_type,inspection_subtype,status,mechanic_username,completed_at,summary,findings FROM mechanic_inspections WHERE unit_number_snapshot ILIKE $1 OR coalesce(vin_snapshot,'') ILIKE $1 OR coalesce(customer_name_snapshot,'') ILIKE $1 OR work_order_id ILIKE $1 OR coalesce(mechanic_username,'') ILIKE $1 OR findings::text ILIKE $1 ORDER BY coalesce(completed_at,updated_at) DESC LIMIT $2`,[like,limit]);for(const x of xr.rows){const s=x.summary||{},label=[x.inspection_type,x.inspection_subtype].filter(Boolean).join(" / ");workorders.push({source:"inspection",id:x.work_order_id,workOrderId:x.work_order_id,unit:x.unit_number_snapshot,vin:x.vin_snapshot,customer:x.customer_name_snapshot,status:x.status,completedAt:x.completed_at,mechanic:x.mechanic_username,summary:`${label||"Inspection"}: ${Number(s.repair||0)} repair, ${Number(s.attention||0)} attention`,findings:x.findings||[]})}}catch(e){console.error("Smart search inspection warning:",e?.message)}
+ try{const xr=await db.query(`SELECT work_order_id,unit_number_snapshot,vin_snapshot,customer_name_snapshot,inspection_type,inspection_subtype,status,mechanic_username,completed_at,summary,findings FROM mechanic_inspections WHERE unit_number_snapshot ILIKE $1 OR coalesce(vin_snapshot,'') ILIKE $1 OR coalesce(customer_name_snapshot,'') ILIKE $1 OR work_order_id ILIKE $1 OR coalesce(mechanic_username,'') ILIKE $1 OR findings::text ILIKE $1 ORDER BY coalesce(completed_at,updated_at) DESC LIMIT $2`,[like,limit]);const liveWo=liveWorkOrderIdSet(await getCoreState());for(const x of xr.rows.filter(r=>!r.work_order_id||liveWo.has(String(r.work_order_id)))){const s=x.summary||{},label=[x.inspection_type,x.inspection_subtype].filter(Boolean).join(" / ");workorders.push({source:"inspection",id:x.work_order_id,workOrderId:x.work_order_id,unit:x.unit_number_snapshot,vin:x.vin_snapshot,customer:x.customer_name_snapshot,status:x.status,completedAt:x.completed_at,mechanic:x.mechanic_username,summary:`${label||"Inspection"}: ${Number(s.repair||0)} repair, ${Number(s.attention||0)} attention`,findings:x.findings||[]})}}catch(e){console.error("Smart search inspection warning:",e?.message)}
  workorders.sort((a,b)=>new Date(b.completedAt||b.date||0)-new Date(a.completedAt||a.date||0));
  // v24.34.0: the main search also finds parts (with live stock) and, for managers, invoices.
  let parts=[],invoices=[];const qs=String(req.query.q||"").trim();
@@ -1724,7 +1736,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.37.0");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.37.1");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-FINANCE-CENTER-20260930`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
@@ -1763,6 +1775,24 @@ app.get("/api/state",auth,async(req,res,next)=>{try{
  const q=await db.query("SELECT state_key,payload,version,updated_at FROM app_state ORDER BY state_key");const d={};for(const r of q.rows)d[r.state_key]={payload:r.payload,version:Number(r.version),updatedAt:r.updated_at};res.json(d);
 }catch(e){next(e)}});
 // ITTR v24.27.0 state integrity hardening
+// v24.37.1: delete a work order on the server so a stale copy on another device can't block or undo it.
+app.delete("/api/work-orders/:id",auth,adminOnly,async(req,res,next)=>{
+ const db=await requireDb().connect();
+ try{
+  await db.query('BEGIN');const id=String(req.params.id);
+  const cur=(await db.query("SELECT payload,version FROM app_state WHERE state_key='shopflow' FOR UPDATE")).rows[0];
+  if(!cur){await db.query('ROLLBACK');return res.status(404).json({error:'Shop data not found.'})}
+  const sf=cur.payload&&typeof cur.payload==='object'?cur.payload:{workorders:[],issues:[]};
+  const workorders=Array.isArray(sf.workorders)?sf.workorders:[];
+  if(!workorders.some(w=>String(w?.id)===id)){await db.query('ROLLBACK');return res.status(404).json({error:'Work order not found. It may already be deleted.'})}
+  const next={...sf,workorders:workorders.filter(w=>String(w?.id)!==id),issues:(Array.isArray(sf.issues)?sf.issues:[]).filter(i=>String(i?.wo)!==id)};
+  const q=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version",[JSON.stringify(next),req.user.username]);
+  await pruneDeletedWorkOrders(db,sf,next,req.user.username);
+  await db.query('COMMIT');
+  broadcastShopStatus("shopflow_changed",{by:req.user.username,version:Number(q.rows[0].version)});
+  res.json({ok:true,version:Number(q.rows[0].version)});
+ }catch(e){try{await db.query('ROLLBACK')}catch(_){}next(e)}finally{db.release()}
+});
 app.put("/api/state/:key",auth,async(req,res,next)=>{
  const db=await requireDb().connect();
  try{
@@ -1809,6 +1839,7 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{
   }
   const q=await db.query("UPDATE app_state SET payload=$2::jsonb,version=version+1,updated_at=now(),updated_by=$3 WHERE state_key=$1 AND version=$4 RETURNING version,updated_at",[key,JSON.stringify(nextPayload),req.user.username,expectedVersion]);
   if(!q.rowCount){await db.query('ROLLBACK');db.release();return res.status(409).json({error:"This data changed before the save completed. Refresh and try again.",code:"STATE_VERSION_CONFLICT"})}
+  if(key==="shopflow"&&req.user?.role!=="mechanic")await pruneDeletedWorkOrders(db,curQ.rows[0].payload,nextPayload,req.user.username);
   if(key==="shopflow")await syncMechanicInspections(db,nextPayload);
   await db.query('COMMIT');
   await audit(req.user.username,"state_save",{key,expectedVersion,role:req.user?.role});
