@@ -6,13 +6,13 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.40.1-INSPFORMS-20260930">
+<meta name="ittr-build" content="ITTR-24.41.0-TIMECLOCK-20260930">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.40.1</title>
+<title>ITTR ShopFlow v24.41.0</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -435,6 +435,16 @@ body{-webkit-text-size-adjust:100%}
 
 
 .mechanicActivityPanel{margin-bottom:14px}
+/* v24.41.0 time clock */
+.mechClock{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;margin-bottom:14px;border-left:6px solid #98a2b3}
+.mechClock.on{border-left-color:#12b76a;background:linear-gradient(90deg,#ecfdf3,#fff 60%)}
+.mechClock h2{margin:0 0 2px}.mechClockState{font-size:15px;color:#344054}.mechClockNums{display:flex;gap:18px;flex-wrap:wrap;margin-top:8px}
+.mechClockNums div{font-size:12px;color:#667085;font-weight:700;text-transform:uppercase;letter-spacing:.03em}.mechClockNums b{display:block;font-size:22px;color:#101828;text-transform:none;letter-spacing:0;font-variant-numeric:tabular-nums}
+.mechClockBtn{min-width:190px;min-height:64px!important;font-size:19px!important;font-weight:900!important;border-radius:14px!important}
+.mechClockBtn.in{background:#12b76a!important;color:#fff!important}.mechClockBtn.out{background:#d92d20!important;color:#fff!important}
+.mechQuick{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:12px}
+.mechQuick button{min-height:52px;background:#f2f4f7;color:#1d2939;font-weight:800;border-radius:12px}.mechQuick button.on{background:#175cd3;color:#fff}
+@media(max-width:760px){.mechClock{grid-template-columns:1fr}.mechClockBtn{width:100%}}
 .mechanicActivityTop{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
 .mechanicActivityActions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .mechanicActivityLive{border-left:4px solid #175cd3}
@@ -743,7 +753,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.40.1">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.41.0">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -793,7 +803,7 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.40.1 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.41.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -900,11 +910,20 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
   <div class="toolbar"><div><h1>My Work Orders</h1><div class="muted">Touch-first mechanic workspace</div></div><button type="button" class="mechanicAction mechanicPrimary" onclick="openMechanicStartWizard()">＋ Start New Job</button></div>
   <div class="notice">You can start a walk-in job yourself using company DOT + VIN, or see work assigned to you before the truck arrives. When the truck arrives, press <b>Truck Is Here</b> to move it into your ready-to-work list.</div>
 
+  <div id="mechanicClockCard" class="card mechClock">
+    <div>
+      <h2>Time Clock</h2>
+      <div id="mechClockState" class="mechClockState">Checking…</div>
+      <div class="mechClockNums"><div>Today<b id="mechClockToday">0h 00m</b></div><div>This week<b id="mechClockWeek">0h 00m</b></div></div>
+    </div>
+    <button type="button" id="mechClockBtn" class="mechClockBtn in" onclick="punchMechanicClock()">Clock In</button>
+  </div>
+
   <div id="mechanicActivityPanel" class="card mechanicActivityPanel">
     <div class="mechanicActivityTop">
       <div>
         <h2 style="margin:0">Current Activity</h2>
-        <div class="muted">Update what you are doing when you are not actively timed on a repair task.</div>
+        <div class="muted">Tap what you are doing when you are not timed on a repair task. Tap it again or press Done when you finish.</div>
       </div>
       <span id="mechanicActivityStatusBadge" class="badge">Not Set</span>
     </div>
@@ -931,10 +950,19 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
         <input id="mechanicActivityNote" placeholder="Example: cleaning bay 2, checking trailers in yard...">
       </div>
     </div>
+    <div class="mechQuick" id="mechQuickActivities">
+      <button type="button" data-quick-activity="cleaning">Cleaning Work Area</button>
+      <button type="button" data-quick-activity="yard">In the Yard</button>
+      <button type="button" data-quick-activity="moving_unit">Moving Truck / Trailer</button>
+      <button type="button" data-quick-activity="parts">Getting Parts</button>
+      <button type="button" data-quick-activity="waiting_parts">Waiting for Parts</button>
+      <button type="button" data-quick-activity="helping">Helping Another Mechanic</button>
+      <button type="button" data-quick-activity="inspection">General Inspection</button>
+      <button type="button" data-quick-activity="break">Break</button>
+    </div>
     <div class="mechanicActivityActions">
       <button type="button" onclick="startMechanicActivity()">Update Activity</button>
-      <button type="button" class="danger" onclick="stopMechanicActivity()">Stop Activity</button>
-      <button type="button" class="secondary" onclick="clearMechanicActivity()">Clear / Available</button>
+      <button type="button" class="secondary" onclick="stopMechanicActivity()">Done / Available</button>
     </div>
     <div id="mechanicActivityCurrent" class="muted" style="margin-top:10px"></div>
   </div>
@@ -1341,7 +1369,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.40.1';
+const FRONTEND_VERSION='24.41.0';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1532,6 +1560,39 @@ async function sendMechanicActivity(body){
   renderMechanicActivity();renderMechanicLiveStatus();return true;
  }catch(e){showToast(e.message||"Activity was not saved.","error",8000);return false}
 }
+
+// v24.41.0 time clock: mechanics clock in/out of the work day; clocking out pauses a running task timer and ends the activity.
+let MECH_CLOCK=null,mechClockFetchedAt=0,mechClockTimer=0;
+const fmtHM=ms=>{const m=Math.max(0,Math.floor(Number(ms||0)/60000));return `${Math.floor(m/60)}h ${String(m%60).padStart(2,"0")}m`};
+async function loadMechanicClock(force=false){
+ if(session?.role!=="mechanic"||!document.getElementById("mechanicClockCard"))return;
+ if(!force&&MECH_CLOCK&&Date.now()-mechClockFetchedAt<(MECH_CLOCK.open?60000:10000))return paintMechanicClock();
+ try{MECH_CLOCK=await apiJSON("/api/timeclock/me");MECH_CLOCK.fetchedAt=Date.now();mechClockFetchedAt=Date.now();paintMechanicClock()}catch(e){const st=document.getElementById("mechClockState");if(st)st.textContent=e.message||"Time clock unavailable."}
+ clearInterval(mechClockTimer);mechClockTimer=setInterval(()=>{if(document.getElementById("mechanic")?.classList.contains("hidden"))return;paintMechanicClock()},30000);
+}
+function paintMechanicClock(){
+ const c=MECH_CLOCK,card=document.getElementById("mechanicClockCard");if(!c||!card)return;
+ const live=c.open?Date.now()-c.fetchedAt:0,on=!!c.open,tr=translateDynamicText;
+ card.classList.toggle("on",on);
+ document.getElementById("mechClockState").innerHTML=on?`<b>${esc(tr("Clocked in"))}</b> · ${esc(tr("since"))} ${esc(new Date(c.open.clockIn).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}))}${String(c.open.inSource||"").startsWith("auto")?` <span class="badge">${esc(tr("automatic"))}</span>`:""}`:esc(tr("You are clocked out."));
+ document.getElementById("mechClockToday").textContent=fmtHM(c.todayMs+live);
+ const week=c.weekMs+live,ot=(c.weeklyOvertimeHours||0)*3600000;
+ document.getElementById("mechClockWeek").textContent=fmtHM(week)+(ot&&week>ot?` · ${tr("overtime")} ${fmtHM(week-ot)}`:"");
+ const b=document.getElementById("mechClockBtn");b.textContent=tr(on?"Clock Out":"Clock In");b.className=`mechClockBtn ${on?"out":"in"}`;
+}
+async function punchMechanicClock(){
+ if(!requireMechanic())return;const out=!!MECH_CLOCK?.open,uk=currentLanguage==="uk";
+ if(out&&!confirm(uk?"Завершити робочий день? Запущений таймер завдання буде поставлено на паузу.":"Clock out for the day? A running task timer will be paused."))return;
+ const b=document.getElementById("mechClockBtn");if(b)b.disabled=true;
+ try{const d=await apiJSON("/api/timeclock/punch",{method:"POST",body:{action:out?"out":"in"}});
+  showToast(out?(d.stopped?.paused?(uk?"Ви завершили зміну. Таймер поставлено на паузу.":"Clocked out. Your task timer was paused."):(uk?"Ви завершили зміну.":"Clocked out.")):(uk?"Ви почали зміну.":"Clocked in. Have a good shift!"),"success");
+  if(out&&d.stopped?.activity){closeCurrentMechanicActivity(USERS,session.username,d.shift?.clockOut||new Date().toISOString());try{localStorage.setItem("ittr_users_v1",JSON.stringify(USERS))}catch(_){}renderMechanicActivity()}
+  if(out&&(d.stopped?.paused||d.stopped?.activity)&&typeof refreshCloudStateSilently==="function")try{await refreshCloudStateSilently()}catch(_){}
+  await loadMechanicClock(true);if(typeof render==="function")render();
+ }catch(e){showToast(e.message||"Time clock error.","error",8000);loadMechanicClock(true)}finally{if(b)b.disabled=false}
+}
+document.addEventListener("click",e=>{const q=e.target.closest?.("[data-quick-activity]");if(!q||!requireMechanic())return;const code=q.dataset.quickActivity,cur=mechanicActivityRecord(session.username);
+ sendMechanicActivity(cur.code===code?{action:"stop"}:{action:"start",code}).then(ok=>{if(ok&&cur.code!==code&&!MECH_CLOCK?.open)loadMechanicClock(true)})});
 function stopMechanicActivity(){
  if(!requireMechanic())return;
  sendMechanicActivity({action:"stop"});
@@ -1563,6 +1624,8 @@ function renderMechanicActivity(){
   if(c)c.textContent=translateDynamicText("Available");p.classList.remove("mechanicActivityLive");
  }
  toggleCustomMechanicActivity();
+ document.querySelectorAll("[data-quick-activity]").forEach(x=>x.classList.toggle("on",x.dataset.quickActivity===a.code));
+ loadMechanicClock();
 }
 
 function mechanicAccounts(){
@@ -1580,7 +1643,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.40.1";
+const ROUTE_MODULE_VERSION="24.41.0";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -2112,7 +2175,19 @@ Object.assign(UI_TRANSLATIONS,{
  "Available":"Вільний",
  "Current activity":"Поточна діяльність",
  "Started":"Почато",
- "Activity history":"Історія діяльності"
+ "Activity history":"Історія діяльності",
+ "Time Clock":"Облік часу",
+ "Clock In":"Почати зміну",
+ "Clock Out":"Завершити зміну",
+ "Clocked in":"На зміні",
+ "since":"з",
+ "automatic":"автоматично",
+ "You are clocked out.":"Ви не на зміні.",
+ "overtime":"понаднормово",
+ "Today":"Сьогодні",
+ "This week":"Цього тижня",
+ "Done / Available":"Готово / Вільний",
+ "Tap what you are doing when you are not timed on a repair task. Tap it again or press Done when you finish.":"Натисніть, чим ви зайняті, коли не працюєте за таймером ремонту. Натисніть ще раз або «Готово», коли закінчите."
 });
 
 
@@ -5793,7 +5868,7 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
  </div>
 </div>
 
-<script src="./finance-shared.js?v=24.40.1"></script>
+<script src="./finance-shared.js?v=24.41.0"></script>
 <script src="./inspection-checklist.js?v=3"></script>
 <script src="./inspection-workflow.js?v=3"></script>
 </body>

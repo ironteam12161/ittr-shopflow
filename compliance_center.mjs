@@ -159,7 +159,7 @@ export async function runFleetAlerts(db, { force = false } = {}) {
 
 // ---------------------------------------------------------------- owner data reset
 export const RESET_SCOPES = Object.freeze({
-  productivity: { label: 'Mechanic productivity (task timers + activity history)', tables: ['task_time_sessions', 'task_time_adjustments'] },
+  productivity: { label: 'Mechanic productivity (time clock, task timers + activity history)', tables: ['task_time_sessions', 'task_time_adjustments', 'mechanic_shift_edits', 'mechanic_shifts'] },
   work_orders: { label: 'Work orders, findings and their inspections', tables: ['mechanic_inspections', 'service_orders'] },
   billing: { label: 'Invoices, payments, estimates and email logs', tables: ['customer_invoice_payments', 'customer_invoice_lines', 'customer_invoices', 'invoice_email_deliveries', 'customer_estimate_lines', 'customer_estimates'] },
   gmail: { label: 'Gmail money inbox items (accounts stay connected)', tables: ['gmail_finance_messages'] },
@@ -184,7 +184,7 @@ export async function resetData(db, scopes, username) {
     await db.query(`UPDATE fullbay_import_parts SET allocated=0 WHERE coalesce(allocated,0)<>0`);
   }
   await db.query(`INSERT INTO data_reset_snapshots(scopes,snapshot,created_by) VALUES($1::jsonb,$2::jsonb,$3)`, [JSON.stringify(chosen), JSON.stringify(snapshot), username]);
-  const order = ['customer_invoice_payments', 'customer_invoice_lines', 'invoice_email_deliveries', 'customer_invoices', 'customer_estimate_lines', 'customer_estimates', 'task_time_adjustments', 'task_time_sessions', 'mechanic_inspections', 'service_orders', 'gmail_finance_messages', 'inspection_documents'];
+  const order = ['mechanic_shift_edits', 'mechanic_shifts', 'customer_invoice_payments', 'customer_invoice_lines', 'invoice_email_deliveries', 'customer_invoices', 'customer_estimate_lines', 'customer_estimates', 'task_time_adjustments', 'task_time_sessions', 'mechanic_inspections', 'service_orders', 'gmail_finance_messages', 'inspection_documents'];
   for (const t of order) if (snapshot[t]) {
     if (t === 'gmail_finance_messages') await db.query(`DELETE FROM gmail_finance_messages`);
     else await db.query(`DELETE FROM ${t}`);
