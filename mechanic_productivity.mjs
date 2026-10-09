@@ -1,6 +1,7 @@
-// ITTR ShopFlow v24.38.0 mechanic productivity report.
+// ITTR ShopFlow v24.41.0 mechanic productivity report.
 // Every shop day is split into: repair (task timers) > other activities > break > unaccounted.
-// Unaccounted time inside shop hours, beyond the break allowance, is reported as idle.
+// The day is measured against the mechanic's clocked shifts (time clock). Days with no clock punches fall back
+// to shop hours. Unaccounted time inside that window, beyond the break allowance, is reported as idle.
 import { getSetting } from './finance_center.mjs';
 
 export const DEFAULT_SHOP_HOURS = Object.freeze({
@@ -46,18 +47,20 @@ export function cleanShopHours(b = {}, cur = DEFAULT_SHOP_HOURS) {
 
 // ---------------------------------------------------------------- pure day accounting (unit tested)
 // intervals: [{start,end,kind:'repair'|'activity'|'break',label,code?}] in ms. window: {start,end}|null.
-export function accountDay({ intervals, window, dayStart, dayEnd, gapMinutes = 15 }) {
+// windows: the paid/expected time (clocked shifts or shop hours). `window` (one span) is still accepted.
+export function accountDay({ intervals, window, windows, dayStart, dayEnd, gapMinutes = 15 }) {
+  const wins = (windows || (window ? [window] : [])).filter(w => w && w.end > w.start);
   const clip = intervals.map(i => ({ ...i, start: Math.max(i.start, dayStart), end: Math.min(i.end, dayEnd) })).filter(i => i.end > i.start);
-  const lo = Math.min(dayStart, ...(window ? [window.start] : [])), hi = Math.max(dayEnd, ...(window ? [window.end] : []));
+  const lo = Math.min(dayStart, ...wins.map(w => w.start)), hi = Math.max(dayEnd, ...wins.map(w => w.end));
   const cuts = new Set([lo, hi]);
   for (const i of clip) { cuts.add(i.start); cuts.add(i.end); }
-  if (window) { cuts.add(window.start); cuts.add(window.end); }
+  for (const w of wins) { cuts.add(w.start); cuts.add(w.end); }
   const pts = [...cuts].filter(t => t >= lo && t <= hi).sort((a, b) => a - b);
   const segs = [];
   for (let k = 0; k < pts.length - 1; k++) {
     const a = pts[k], b = pts[k + 1]; if (b <= a) continue;
     let top = null; for (const i of clip) if (i.start <= a && i.end >= b && (!top || RANK[i.kind] > RANK[top.kind])) top = i;
-    const inWin = !!window && a >= window.start && b <= window.end;
+    const inWin = wins.some(w => a >= w.start && b <= w.end);
     if (!top && !inWin) continue;
     const kind = top ? top.kind : 'idle', label = top ? top.label : 'No activity recorded', code = top?.code || '';
     const last = segs[segs.length - 1];
@@ -79,7 +82,7 @@ export function accountDay({ intervals, window, dayStart, dayEnd, gapMinutes = 1
     const prev = segs.slice(0, i).reverse().find(x => x.kind !== 'idle'), next = segs.slice(i + 1).find(x => x.kind !== 'idle');
     gaps.push({ start: s.start, end: s.end, minutes: Math.round((s.end - s.start) / MIN), before: prev ? prev.label : 'Start of shift', after: next ? next.label : 'End of shift' });
   });
-  return { ...t, scheduledMs: window ? window.end - window.start : 0, segments: segs.map(({ inWindow, ...s }) => s), gaps };
+  return { ...t, scheduledMs: wins.reduce((n, w) => n + w.end - w.start, 0), segments: segs.map(({ inWindow, ...s }) => s), gaps };
 }
 
 // ---------------------------------------------------------------- report builder
@@ -90,6 +93,8 @@ export async function buildProductivityReport(db, { from, to, mechanic = '', now
   const sessions = (await db.query(`SELECT work_order_id,task_uid,task_name,mechanic_username,started_at,ended_at,end_reason,pause_reason,pause_note
     FROM task_time_sessions WHERE started_at < $2::timestamptz AND coalesce(ended_at,now()) > $1::timestamptz AND ($3='' OR mechanic_username=$3) ORDER BY started_at`,
   [new Date(rangeStart).toISOString(), new Date(rangeEnd).toISOString(), mechanic])).rows;
+  const shiftRows = await db.query(`SELECT username,clock_in,clock_out FROM mechanic_shifts WHERE deleted_at IS NULL AND clock_in < $2::timestamptz AND coalesce(clock_out,now()) > $1::timestamptz AND ($3='' OR username=$3) ORDER BY clock_in`,
+    [new Date(rangeStart).toISOString(), new Date(rangeEnd).toISOString(), mechanic]).then(r => r.rows).catch(() => []);
   const users = (await db.query(`SELECT payload FROM app_state WHERE state_key='users'`)).rows[0]?.payload || {};
   const sf = (await db.query(`SELECT payload FROM app_state WHERE state_key='shopflow'`)).rows[0]?.payload || {};
   const woById = new Map((Array.isArray(sf.workorders) ? sf.workorders : []).map(w => [String(w?.id), w]));
@@ -108,6 +113,10 @@ export async function buildProductivityReport(db, { from, to, mechanic = '', now
   }
 
   const days = []; for (let d = from; d <= to; d = addDays(d, 1)) days.push(d);
+  const firstEver = new Map();
+  for (const r of (await db.query(`SELECT mechanic_username u,min(started_at) t FROM task_time_sessions GROUP BY 1 UNION ALL SELECT username,min(clock_in) FROM mechanic_shifts WHERE deleted_at IS NULL GROUP BY 1`).catch(() => ({ rows: [] }))).rows) {
+    const t = new Date(r.t).getTime(); if (!firstEver.has(r.u) || t < firstEver.get(r.u)) firstEver.set(r.u, t);
+  }
   const mechanics = [];
   for (const [username, display] of names) {
     const mine = sessions.filter(s => s.mechanic_username === username);
@@ -126,17 +135,24 @@ export async function buildProductivityReport(db, { from, to, mechanic = '', now
       end = Math.min(end, cap, now);
       if (end > start && end > rangeStart && start < rangeEnd) intervals.push({ start, end, kind: a.code === 'break' ? 'break' : 'activity', code: a.code, label: a.code === 'custom' ? (a.customText || 'Custom activity') : ACTIVITY_LABELS[a.code] || a.code, note: a.note || '' });
     });
-    const tot = { scheduledMs: 0, repairMs: 0, activityMs: 0, breakMs: 0, unaccountedMs: 0, idleMs: 0, overtimeMs: 0, byActivity: {}, daysWorked: 0, noActivityDays: 0, longestIdleMs: 0, gaps: 0 };
+    const shifts = shiftRows.filter(r => r.username === username).map(r => ({ start: new Date(r.clock_in).getTime(), end: r.clock_out ? new Date(r.clock_out).getTime() : Math.min(now, rangeEnd) }));
+    const tot = { clockedDays: 0, scheduledMs: 0, repairMs: 0, activityMs: 0, breakMs: 0, unaccountedMs: 0, idleMs: 0, overtimeMs: 0, byActivity: {}, daysWorked: 0, noActivityDays: 0, longestIdleMs: 0, gaps: 0 };
     const dayRows = [];
+    // Days before a mechanic's first record (new hire, or before ShopFlow was used) are not counted as "no activity".
+    const seen = [...intervals.map(i => i.start), ...shifts.map(w => w.start), ...(firstEver.has(username) ? [firstEver.get(username)] : [])], firstSeen = seen.length ? localYmd(Math.min(...seen), tz) : '9999-12-31';
     for (const ymd of days) {
       const dayStart = zonedToUtc(ymd, '00:00', tz), dayEnd = Math.min(zonedToUtc(addDays(ymd, 1), '00:00', tz), now);
       if (dayEnd <= dayStart) continue;
       const scheduled = hours.workdays.includes(weekday(ymd));
+      const clockedWins = shifts.map(w => ({ start: Math.max(w.start, dayStart), end: Math.min(w.end, dayEnd) })).filter(w => w.end > w.start);
+      const clocked = clockedWins.length > 0;
       let window = scheduled ? { start: zonedToUtc(ymd, hours.start, tz), end: Math.min(zonedToUtc(ymd, hours.end, tz), now) } : null;
       if (window && window.end <= window.start) window = null;
+      const windows = clocked ? clockedWins : window ? [window] : [];
       const todays = intervals.filter(i => i.end > dayStart && i.start < dayEnd);
-      if (!todays.length) { if (window && window.end - window.start >= 60 * MIN) { tot.noActivityDays++; dayRows.push({ date: ymd, workday: true, noActivity: true, scheduledMs: window.end - window.start }); } continue; }
-      const r = accountDay({ intervals: todays, window, dayStart, dayEnd, gapMinutes: hours.idleGapMinutes });
+      if (!todays.length && !clocked) { if (ymd >= firstSeen && window && window.end - window.start >= 60 * MIN) { tot.noActivityDays++; dayRows.push({ date: ymd, workday: true, noActivity: true, scheduledMs: window.end - window.start }); } continue; }
+      if (clocked) tot.clockedDays++;
+      const r = accountDay({ intervals: todays, windows, dayStart, dayEnd, gapMinutes: hours.idleGapMinutes });
       const allowance = Math.max(0, hours.breakAllowanceMinutes * MIN - r.breakMs);
       const idleMs = Math.max(0, r.unaccountedMs - allowance);
       tot.daysWorked++; for (const k of ['scheduledMs', 'repairMs', 'activityMs', 'breakMs', 'unaccountedMs', 'overtimeMs']) tot[k] += r[k];
@@ -146,8 +162,9 @@ export async function buildProductivityReport(db, { from, to, mechanic = '', now
       const pauses = todays.filter(i => i.kind === 'repair' && i.pauseReason && i.end <= dayEnd).map(i => i.pauseReason);
       // Minute-by-minute timelines are only kept for the last 31 days of the range (the chart shows 14).
       if (days.length - days.indexOf(ymd) > 31) r.segments = [];
-      dayRows.push({ date: ymd, workday: scheduled, window, ...r, idleMs, pauses,
-        firstEvent: Math.max(dayStart, Math.min(...todays.map(i => i.start))), lastEvent: Math.min(dayEnd, Math.max(...todays.map(i => i.end))),
+      const marks = [...todays.flatMap(i => [i.start, i.end]), ...(clocked ? clockedWins.flatMap(w => [w.start, w.end]) : [])];
+      dayRows.push({ date: ymd, workday: scheduled, clocked, window: windows[0] || null, windows, clockIn: clocked ? clockedWins[0].start : null, clockOut: clocked ? clockedWins[clockedWins.length - 1].end : null, ...r, idleMs, pauses,
+        firstEvent: Math.max(dayStart, Math.min(...marks)), lastEvent: Math.min(dayEnd, Math.max(...marks)),
         workOrders: [...new Set(todays.filter(i => i.kind === 'repair').map(i => i.workOrderId))] });
     }
     const inRange = mine.filter(s => { const t = new Date(s.started_at).getTime(); return t >= rangeStart && t < rangeEnd; });

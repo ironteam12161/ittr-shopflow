@@ -21,6 +21,8 @@ import {extractPdfPages,slicePdf,manualSearchTerms} from "./manual_library.mjs";
 import {ensureFinanceSchema,registerFinanceRoutes} from "./finance_center.mjs";
 import {documentEmailHtml} from "./email_templates.mjs";
 import {registerProductivityRoutes} from "./mechanic_productivity.mjs";
+import {ensureTimeClockSchema,registerTimeClockRoutes,startTimeClockScheduler,autoClockIn} from "./time_clock.mjs";
+import {registerLaborTimeRoutes} from "./labor_times.mjs";
 import {ensureComplianceSchema,registerComplianceRoutes,startFleetScheduler} from "./compliance_center.mjs";
 import os from "os";
 import bwipjs from "bwip-js";
@@ -1060,7 +1062,9 @@ async function resolveVendorPurchaseContext(db,rawVendor,rawBranch){
  if(vendorId&&branch){const lr=await db.query(`INSERT INTO parts_vendor_locations(vendor_id,branch_name) VALUES($1,$2) ON CONFLICT(vendor_id,branch_name) DO UPDATE SET active=true,updated_at=now() RETURNING id`,[vendorId,branch]);locationId=lr.rows[0].id}
  return {vendor:canonical,vendorId,branch,locationId};
 }
-app.get('/api/parts/vendors',auth,async(req,res,next)=>{try{const db=requireDb();const imported=await db.query(`SELECT vendor,count(*)::int n FROM fullbay_import_parts WHERE vendor IS NOT NULL AND trim(vendor)<>'' GROUP BY vendor ORDER BY n DESC`);for(const x of imported.rows.slice(0,100)){await resolveVendor(db,x.vendor,true)}const r=await db.query(`SELECT v.id,v.canonical_name,v.aliases,v.website_domain,v.active,coalesce(json_agg(json_build_object('id',l.id,'branchName',l.branch_name,'city',l.city,'state',l.state) ORDER BY l.branch_name) FILTER (WHERE l.id IS NOT NULL),'[]'::json) locations FROM parts_vendors v LEFT JOIN parts_vendor_locations l ON l.vendor_id=v.id AND l.active=true WHERE v.active IS DISTINCT FROM FALSE GROUP BY v.id ORDER BY v.canonical_name`);res.json({items:r.rows})}catch(e){next(e)}});
+// Imported vendor names are folded into the vendor list at most every 10 minutes, not on every page load.
+let vendorSyncAt=0;
+app.get('/api/parts/vendors',auth,async(req,res,next)=>{try{const db=requireDb();const imported=await db.query(`SELECT vendor,count(*)::int n FROM fullbay_import_parts WHERE vendor IS NOT NULL AND trim(vendor)<>'' GROUP BY vendor ORDER BY n DESC`);if(Date.now()-vendorSyncAt>10*60*1000){vendorSyncAt=Date.now();for(const x of imported.rows.slice(0,100)){await resolveVendor(db,x.vendor,true)}}const r=await db.query(`SELECT v.id,v.canonical_name,v.aliases,v.website_domain,v.active,coalesce(json_agg(json_build_object('id',l.id,'branchName',l.branch_name,'city',l.city,'state',l.state) ORDER BY l.branch_name) FILTER (WHERE l.id IS NOT NULL),'[]'::json) locations FROM parts_vendors v LEFT JOIN parts_vendor_locations l ON l.vendor_id=v.id AND l.active=true WHERE v.active IS DISTINCT FROM FALSE GROUP BY v.id ORDER BY v.canonical_name`);res.json({items:r.rows})}catch(e){next(e)}});
 app.post('/api/parts/vendors/resolve',auth,managerPermission("inventory"),async(req,res,next)=>{try{const db=requireDb();const canonical=await resolveVendor(db,req.body?.vendor,true);res.json({canonical})}catch(e){next(e)}});
 app.post('/api/parts',auth,managerPermission("inventory"),async(req,res,next)=>{const db=await requireDb().connect();try{
  const b=req.body||{},pn=String(b.partNumber||'').trim();if(!pn)return res.status(400).json({error:'Part number is required.'});
@@ -1757,8 +1761,8 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.40.1");
-app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPFORMS-20260930`}));
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.41.0");
+app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-TIMECLOCK-20261009`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
@@ -1843,6 +1847,7 @@ app.post("/api/mechanic/activity",auth,async(req,res,next)=>{
   const q=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='users' RETURNING version",[JSON.stringify(users),username]);
   await db.query("COMMIT");
   await audit(username,"mechanic_activity",{action,code});
+  if(action==="start")await autoClockInSafe(req.user,"activity");
   broadcastShopStatus("task_changed",{by:username,activity:true});
   res.json({ok:true,user:{currentActivity:u.currentActivity,activityHistory:u.activityHistory.slice(0,50)},version:Number(q.rows[0]?.version||0)});
  }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
@@ -1920,6 +1925,31 @@ function mechanicOwnsWorkOrder(user,w){
   return user?.role==="mechanic" && assignedMechanicUsernames(w).includes(String(user.username||"").trim().toLowerCase());
 }
 function taskRunningMechanic(task,w){return String(task?.runningBy||((task?.startedAt&&!task?.stoppedAt&&!task?.done)?w?.mechanic||"":"")).trim().toLowerCase()}
+
+// v24.41.0: clocking out (or the automatic close of a forgotten shift) pauses the mechanic's running task timer
+// at the clock-out time and ends their current activity, so nothing keeps counting overnight. db is inside a transaction.
+async function stopMechanicWork(db,username,atMs,reason){
+ const who=String(username||"").trim().toLowerCase(),iso=new Date(atMs).toISOString();let paused=0,activity=false;
+ const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE"),sf=q.rows[0]?.payload;
+ if(sf&&Array.isArray(sf.workorders)){
+  for(const w of sf.workorders)for(const t of (Array.isArray(w?.tasks)?w.tasks:[])){
+   if(!taskRunning(t)||taskRunningMechanic(t,w)!==who)continue;
+   t.elapsedMs=Number(t.elapsedMs||0)+Math.max(0,atMs-new Date(t.startedAt).getTime());
+   Object.assign(t,{stoppedAt:iso,runningBy:"",paused:true,pausedAt:iso,pauseReason:reason,pauseNote:""});paused++;
+  }
+  if(paused)await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow'",[JSON.stringify(sf),username]);
+ }
+ await db.query("UPDATE task_time_sessions SET ended_at=greatest(started_at,$2::timestamptz),end_reason='paused',pause_reason=$3 WHERE lower(mechanic_username)=$1 AND ended_at IS NULL",[who,iso,reason]);
+ const uq=await db.query("SELECT payload FROM app_state WHERE state_key='users' FOR UPDATE"),users=uq.rows[0]?.payload;
+ const key=users&&Object.keys(users).find(k=>k.toLowerCase()===who),u=key&&users[key];
+ if(u?.currentActivity?.code){
+  const row=(Array.isArray(u.activityHistory)?u.activityHistory:[]).find(x=>!x?.endedAt&&x?.startedAt===u.currentActivity.startedAt);if(row)row.endedAt=iso;
+  u.currentActivity={code:"",customText:"",note:"",startedAt:""};activity=true;
+  await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='users'",[JSON.stringify(users),username]);
+ }
+ return {paused,activity};
+}
+async function autoClockInSafe(user,source){if(user?.role!=="mechanic")return;try{const s=await autoClockIn(requireDb(),user.username,source);if(s)await audit(user.username,"clock_in",{shiftId:s.id,auto:source})}catch(e){console.warn("[time clock] auto clock-in failed",e?.message)}}
 
 async function closeOpenTaskSession(db,workOrderId,taskUid,mechanic,endReason,pauseReason="",pauseNote=""){
   await db.query(
@@ -2468,6 +2498,7 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/action",auth,async(req,res,
    );
    await db.query("COMMIT");
    await audit(req.user.username,"task_action",{workOrderId,taskUid:uid,taskName:String(task.t||""),action,pauseReason:req.body?.reason||""});
+   if(action==="start"||action==="resume")await autoClockInSafe(req.user,"task");
    res.json({ok:true,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at,taskUid:uid});
  }catch(e){
    try{await db.query("ROLLBACK")}catch(_){}
@@ -4295,6 +4326,8 @@ app.get("/api/admin/server-audit",auth,managerPermission("reports"),async(req,re
 // v24.37.0 estimates, tire fees, accountant reports and Gmail finance inbox
 registerFinanceRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit,recalcInvoice,nextInvoiceNumber,PDFDocument,renderCustomerDocumentPdf,shopProfile,logoPath:path.join(__dirname,"public","assets","iron-team-logo.png"),dateText:v=>{if(!v)return '';try{return invoiceDateText(v)}catch(_){return String(v).slice(0,10)}}});
 registerProductivityRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit});
+registerTimeClockRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit,stopMechanicWork,onChange:by=>broadcastShopStatus("task_changed",{by,timeclock:true})});
+registerLaborTimeRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit});
 registerComplianceRoutes(app,{auth,ownerOnly,adminOnly,requireDb,audit,PDFDocument,shopProfile,lookupFmcsaCarrier,searchFmcsaCarriersByName,samsaraPaged,samsaraConfigured:samsaraTokenPresent});
 app.use("/api",(req,res)=>res.status(404).json({error:"API endpoint not found"}));
 
@@ -4319,6 +4352,8 @@ app.get("*splat",(req,res)=>{
 initDb()
   .then(()=>ensureFinanceSchema(pool))
   .then(()=>ensureComplianceSchema(pool))
+  .then(()=>ensureTimeClockSchema(pool))
+  .then(()=>{if(process.env.NODE_ENV!=='test')startTimeClockScheduler({pool,stopMechanicWork,onChange:()=>broadcastShopStatus("task_changed",{timeclock:true})})})
   .then(()=>{if(process.env.NODE_ENV!=='test')startFleetScheduler({pool,samsaraPaged,samsaraConfigured:samsaraTokenPresent})})
   .then(()=>reconcileReservedInventoryAllocations())
   .then(()=>ensurePartsSearchPerformance())
@@ -4328,5 +4363,5 @@ initDb()
   .then(()=>repairApprovedFindingsAtStartup())
   .then(()=>repairWorkOrderNumberCollisions())
   .then(async()=>{try{const q=await pool.query("SELECT id FROM workshop_manuals WHERE active=true AND (index_status IS NULL OR index_status IN ('queued','indexing')) AND (r2_key IS NOT NULL OR EXISTS(SELECT 1 FROM workshop_manual_files f WHERE f.manual_id=workshop_manuals.id))");for(const r of q.rows)queueManualIndex(r.id)}catch(e){console.error('[manual index startup]',e?.message)}})
-  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v24.28.4 Online running on port ${port}`))})
+  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v${ITTR_APP_VERSION} Online running on port ${port}`))})
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

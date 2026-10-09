@@ -157,6 +157,18 @@ check('Fullbay imports accept large CSV exports',server.includes('const csvUploa
 const dupIds=[...root.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]).filter((x,i,a)=>a.indexOf(x)!==i);
 check('no duplicate DOM ids in shell',dupIds.length===0,[...new Set(dupIds)].join(','));
 
+// v24.41.0 time clock, labor times, audit fixes
+const tc=exists('time_clock.mjs')?read('time_clock.mjs'):'',lt=exists('labor_times.mjs')?read('labor_times.mjs'):'';
+check('time clock + labor routes registered before API 404',server.indexOf('registerTimeClockRoutes(app,')>0&&server.indexOf('registerLaborTimeRoutes(app,')>0&&server.indexOf('registerLaborTimeRoutes(app,')<server.indexOf('app.use("/api",(req,res)=>res.status(404)'));
+check('clocking out pauses running task timers',server.includes('async function stopMechanicWork(')&&tc.includes("stopMechanicWork(db, username"));
+check('one open shift per mechanic (database rule)',tc.includes('uq_mechanic_shift_open'));
+check('timesheet changes are owner-only and need a reason',tc.includes("app.put('/api/timeclock/shifts/:id', auth, ownerOnly")&&tc.includes('needReason(b)')&&tc.includes('INSERT INTO mechanic_shift_edits'));
+check('forgotten shifts close automatically',tc.includes('export async function closeForgottenShifts')&&server.includes('startTimeClockScheduler({pool'));
+check('mechanic screen has the time clock',root.includes('id="mechanicClockCard"')&&root.includes('function punchMechanicClock()'));
+check('labor times compare mechanics with the shop, not with padded billing',lt.includes('export function typicalTimes')&&lt.includes("basisOf(j)"));
+check('startup log shows the real version',server.includes('console.log(`ITTR v${ITTR_APP_VERSION} Online running on port'));
+check('vendor list does not resync on every request',server.includes('vendorSyncAt'));
+
 const failed=results.filter(x=>!x.ok);
 for(const r of results)console.log(`${r.ok?'PASS':'FAIL'}  ${r.name}${r.detail?'  '+r.detail:''}`);
 console.log(`\nITTR production audit: ${results.length-failed.length}/${results.length} passed`);

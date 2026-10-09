@@ -6,6 +6,8 @@ import net from 'node:net';
 import pg from 'pg';
 import bcrypt from 'bcryptjs';
 import {accountDay,zonedToUtc,cleanShopHours} from './mechanic_productivity.mjs';
+import {buildTimesheet,forgottenShiftCloseAt,closeForgottenShifts} from './time_clock.mjs';
+import {compileJobTypes,classifyJob,DEFAULT_JOB_TYPES,leadMechanic,describe,compareMechanics,typicalTimes} from './labor_times.mjs';
 import {serviceStatus,cleanInspectionFields,renderInspectionTemplate} from './compliance_center.mjs';
 import {PDFDocument as PdfLib} from 'pdf-lib';
 import {parseZelleEmail,parseVendorBillEmail,scoreZelleMatch,encryptToken,decryptToken,tireFeeQuantities,estimateTotals,vendorNameFromSender} from './finance_center.mjs';
@@ -42,6 +44,19 @@ const near=(a,b,label)=>{if(Math.abs(Number(a)-Number(b))>0.005)throw new Error(
   assert(serviceStatus({due_date:'2026-12-31',warn_days:30},{today:'2026-06-01'}).status==='ok','expiry far away is ok');
   const cf=cleanInspectionFields({vin:' 1xkyd49x8nj123456 ',carrierName:'  HOBO  ',bogus:'x'});assert(cf.vin==='1XKYD49X8NJ123456'&&cf.carrierName==='HOBO'&&!('bogus' in cf),'inspection fields cleaned');
   for(const t of ['truck','trailer']){const pdf=await PdfLib.load(await renderInspectionTemplate(t,cf));assert(pdf.getPageCount()===1,`${t} inspection form stays one page`)}}
+ {const tz='America/Chicago',H=3600000,a=zonedToUtc('2026-10-05','07:00',tz);
+  const sh=buildTimesheet([{start:a,end:a+9*H},{start:a+24*H,end:a+34*H},{start:zonedToUtc('2026-10-07','20:00',tz),end:zonedToUtc('2026-10-08','06:00',tz)}],{from:'2026-10-05',to:'2026-10-11',tz,weekStartsOn:1,weeklyOvertimeHours:20});
+  near(sh.totals.paidMs/H,29,'timesheet total');near(sh.totals.overtimeMs/H,9,'weekly overtime');near(sh.days.find(d=>d.date==='2026-10-07').paidMs/H,4,'overnight shift split at midnight');
+  near((forgottenShiftCloseAt({clockIn:a,lastEvent:0,shopClose:zonedToUtc('2026-10-05','17:00',tz),maxShiftHours:14})-a)/H,10,'forgotten shift closes at shop close');
+  near((forgottenShiftCloseAt({clockIn:a,lastEvent:a+12*H,shopClose:a+10*H,maxShiftHours:14})-a)/H,12,'forgotten shift closes at last recorded work');
+  near((forgottenShiftCloseAt({clockIn:a,lastEvent:a+30*H,shopClose:a+10*H,maxShiftHours:14})-a)/H,14,'forgotten shift never longer than the max');
+  const r=accountDay({intervals:[{start:a+H,end:a+2*H,kind:'repair',label:'x'}],windows:[{start:a,end:a+4*H},{start:a+5*H,end:a+8*H}],dayStart:zonedToUtc('2026-10-05','00:00',tz),dayEnd:zonedToUtc('2026-10-06','00:00',tz)});
+  near(r.scheduledMs/H,7,'two clocked windows');near(r.unaccountedMs/H,6,'idle only inside clocked time');
+  const c=compileJobTypes(DEFAULT_JOB_TYPES);assert(classifyJob('R&R KING PINS',c)==='king_pins'&&classifyJob('Replace wheel seal RH',c)==='wheel_seal'&&classifyJob('PM-B w/ lube',c)==='pm_service'&&classifyJob('Coolant leak at radiator',c)==='cooling'&&classifyJob('zzz',c)===null,'job types recognized');
+  assert(leadMechanic({a:900,b:100})==='a'&&leadMechanic({a:500,b:500})==='team','a job belongs to one mechanic only at 80%+');
+  const d=describe([2,2.5,3,2.2,8]);assert(d.median===2.5&&d.p25===2.2&&d.p75===3,'median and usual range');
+  const jobs=[...[2,2,2].map(h=>({source:'invoice',type:'wheel_seal',mechanic:'a',mechHours:h,billed:2.5,actual:h})),...[3,3,3].map(h=>({source:'invoice',type:'wheel_seal',mechanic:'b',mechHours:h,billed:2.5,actual:h}))];
+  const cm=compareMechanics(jobs,typicalTimes(jobs));assert(cm.mechanics[0].mechanic==='a'&&cm.mechanics[0].pct===-20&&cm.mechanics[1].pct===20,'mechanics compared with the shop typical time');assert(cm.mechanics[0].billedEff===125,'billed ÷ real hours');}
  console.log('PASS finance parsers: Zelle (in/out), vendor bills, match scoring, token crypto, tire quantities, estimate totals');
 }
 
@@ -217,6 +232,44 @@ try{
  const mm=mr.mechanics.find(m=>m.username===mechUser);assert(mm.totals.byActivity.parts>0,'activity time counted in productivity report');
  const deniedP=await request('/api/reports/mechanics',{tok:mechToken,allowError:true});assert(deniedP.status===403,'mechanics cannot read the productivity report');
  console.log('PASS mechanic activity: start/stop saved on server, visible to admin, mechanic sees only self');
+ // --- v24.41.0 time clock + labor times
+ let me=await request('/api/timeclock/me',{tok:mechToken});assert(me.open&&me.open.inSource==='auto:activity','starting an activity while clocked out clocks the mechanic in');
+ assert((await request('/api/timeclock/punch',{method:'POST',tok:mechToken,body:{action:'in'},allowError:true})).status===409,'cannot clock in twice');
+ const st0=(await request('/api/state')).shopflow;
+ await request('/api/state/shopflow',{method:'PUT',body:{expectedVersion:st0.version,payload:{...st0.payload,workorders:[...st0.payload.workorders,{id:'9950',status:'Open',unit:'TC-1',customer:'Clock Test',mechanic:mechUser,tasks:[{uid:'tc-task-1',t:'Replace wheel seal LH',done:false}]}]}}});
+ await request('/api/work-orders/9950/tasks/by-uid/tc-task-1/action',{method:'POST',tok:mechToken,body:{action:'start'}});
+ await request('/api/mechanic/activity',{method:'POST',tok:mechToken,body:{action:'start',code:'helping'}});
+ const outP=await request('/api/timeclock/punch',{method:'POST',tok:mechToken,body:{action:'out'}});
+ assert(outP.stopped.paused===1&&outP.stopped.activity===true,'clock-out pauses the running task and ends the activity');
+ const t1=(await request('/api/state')).shopflow.payload.workorders.find(w=>String(w.id)==='9950').tasks[0];assert(t1.paused&&t1.pauseReason==='Clocked out'&&!t1.runningBy,'task shows paused: clocked out');
+ assert((await db.query("SELECT 1 FROM task_time_sessions WHERE task_uid='tc-task-1' AND ended_at IS NULL")).rowCount===0,'timer session closed at clock-out');
+ assert(!(await request('/api/state')).users.payload[mechUser].currentActivity.code,'activity ended at clock-out');
+ me=await request('/api/timeclock/me',{tok:mechToken});assert(!me.open&&me.shifts.length>=1,'mechanic sees their shifts');
+ const ts=await request('/api/timeclock/timesheet?from=2026-01-01&to=2026-12-31');const tsm=ts.mechanics.find(m=>m.username===mechUser);assert(tsm&&tsm.flagged>=1,'timesheet flags the automatic clock-in');
+ assert((await request('/api/timeclock/shifts',{method:'POST',body:{username:mechUser,clockIn:'2026-09-01T12:00:00Z',clockOut:'2026-09-01T21:00:00Z'},allowError:true})).status===400,'a manual shift needs a reason');
+ const addS=await request('/api/timeclock/shifts',{method:'POST',body:{username:mechUser,clockIn:'2026-09-01T12:00:00Z',clockOut:'2026-09-01T21:00:00Z',reason:'Forgot phone at home'}});
+ assert((await request('/api/timeclock/shifts',{method:'POST',body:{username:mechUser,clockIn:'2026-09-01T20:00:00Z',clockOut:'2026-09-01T22:00:00Z',reason:'duplicate'},allowError:true})).status===409,'overlapping shifts rejected');
+ await request(`/api/timeclock/shifts/${addS.shift.id}`,{method:'PUT',body:{clockOut:'2026-09-01T22:00:00Z',reason:'Stayed late'}});
+ const sHist=(await request(`/api/timeclock/shifts/${addS.shift.id}/history`)).items;assert(sHist.length===2&&sHist[0].reason==='Stayed late','timesheet edits kept with reasons');
+ near((await request('/api/timeclock/timesheet?from=2026-09-01&to=2026-09-01')).mechanics.find(m=>m.username===mechUser).totals.paidMs/3600000,10,'timesheet hours for the day');
+ assert((await request('/api/timeclock/shifts',{method:'POST',tok:mechToken,body:{username:mechUser,clockIn:'2026-09-02T12:00:00Z',reason:'self edit'},allowError:true})).status===403,'mechanics cannot edit timesheets');
+ assert((await request('/api/timeclock/timesheet',{tok:mechToken,allowError:true})).status===403,'mechanics cannot read timesheets');
+ const prS=(await request('/api/reports/mechanics?from=2026-09-01&to=2026-09-01')).mechanics.find(m=>m.username===mechUser);near(prS.totals.scheduledMs/3600000,10,'productivity measures the clocked shift');assert(prS.days[0].clocked&&prS.totals.clockedDays===1,'day marked as clocked');
+ await request(`/api/timeclock/shifts/${addS.shift.id}`,{method:'DELETE',body:{reason:'test cleanup'}});
+ assert((await db.query('SELECT deleted_at FROM mechanic_shifts WHERE id=$1',[addS.shift.id])).rows[0].deleted_at,'deleted shift kept for the record');
+ await db.query(`INSERT INTO mechanic_shifts(username,clock_in) VALUES($1, now()-interval '20 hours')`,[mechUser]);
+ const closedF=await closeForgottenShifts(db,{});assert(closedF.length===1,'forgotten shift closed automatically');
+ const fs=(await db.query("SELECT clock_in,clock_out,out_source FROM mechanic_shifts WHERE id=$1",[closedF[0].id])).rows[0];assert(fs.out_source==='auto:forgot'&&new Date(fs.clock_out)-new Date(fs.clock_in)<=14*3600000,'forgotten shift capped and flagged');
+ const lInv=(await db.query(`INSERT INTO customer_invoices(invoice_number,work_order_id,customer_name,status,invoice_date,created_by) VALUES('TC-LAB-1','9950','Clock Test','sent',CURRENT_DATE,'test') RETURNING id`)).rows[0].id;
+ await db.query(`INSERT INTO customer_invoice_lines(invoice_id,job_uid,job_name,line_type,description,quantity,unit_price) VALUES($1,'tc-task-1','Replace wheel seal LH','labor','Replace wheel seal LH',2.5,135)`,[lInv]);
+ const lt=await request('/api/reports/labor-times?from=2020-01-01&to=2030-12-31');const ws=lt.types.find(t=>t.key==='wheel_seal');
+ assert(ws&&ws.n>=1&&ws.billed.median===2.5&&ws.actual.n>=1,'labor times: wheel seal job with billed and timer hours');
+ const lj=await request('/api/reports/labor-times/jobs?from=2020-01-01&to=2030-12-31&type=wheel_seal');assert(lj.items.some(j=>j.ref==='Invoice TC-LAB-1'&&j.mechanic===mechUser),'labor job list links the mechanic');
+ await request('/api/reports/labor-times/job-types',{method:'PUT',body:{types:[{label:'Seals',keywords:'wheel seal*',bookHours:2}]}});
+ const lt2=await request('/api/reports/labor-times?from=2020-01-01&to=2030-12-31');assert(lt2.types.find(t=>t.key==='seals')?.standard===2,'owner-set job types and standard hours');
+ await request('/api/reports/labor-times/job-types',{method:'PUT',body:{reset:true}});
+ assert((await request('/api/reports/labor-times',{tok:mechToken,allowError:true})).status===403,'mechanics cannot read labor times');
+ console.log('PASS time clock: punch in/out, auto clock-in, clock-out pauses work, admin edits with history, overtime, forgotten shifts; labor times by job type');
  // --- v24.39.0 compliance: annual inspections, fleet PM/CARB, owner reset
  const lk=await request('/api/annual-inspections/lookup?q=Tire Keeper');assert(lk.customers.some(c=>c.customer_name==='Tire Keeper Freight'),'carrier lookup finds customers');
  const lkNone=await request('/api/annual-inspections/lookup?q=zzqxnomatch');assert(!lkNone.customers.length&&Array.isArray(lkNone.carriers),'name lookup does not match every customer without a USDOT');
