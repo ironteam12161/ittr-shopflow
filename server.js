@@ -18,12 +18,15 @@ import {invoiceEnglishText,invoiceDateText} from "./invoice_customer_text.mjs";
 import {runShopAssistant,createAssistantTools,assistantRole} from "./shop_assistant.mjs";
 import {renderCustomerDocumentPdf,shopProfile} from "./invoice_pdf.mjs";
 import {extractPdfPages,slicePdf,manualSearchTerms} from "./manual_library.mjs";
-import {ensureFinanceSchema,registerFinanceRoutes,cleanMiles} from "./finance_center.mjs";
+import {ensureFinanceSchema,registerFinanceRoutes,cleanMiles,reportRange,fetchGmailAttachment} from "./finance_center.mjs";
 import {documentEmailHtml} from "./email_templates.mjs";
 import {registerProductivityRoutes} from "./mechanic_productivity.mjs";
 import {ensureTimeClockSchema,registerTimeClockRoutes,startTimeClockScheduler,autoClockIn} from "./time_clock.mjs";
 import {registerLaborTimeRoutes} from "./labor_times.mjs";
-import {parseBatchTranslations} from "./translation_guard.mjs";
+import {parseBatchTranslations,validTranslation} from "./translation_guard.mjs";
+import {aiContext,featureForPath,createAIMeter,ensureAIUsageSchema} from "./ai_usage.mjs";
+import {registerAICenterRoutes} from "./ai_center.mjs";
+import {ensureVendorBillSchema} from "./vendor_bills.mjs";
 import {ensureComplianceSchema,registerComplianceRoutes,startFleetScheduler} from "./compliance_center.mjs";
 import os from "os";
 import bwipjs from "bwip-js";
@@ -39,6 +42,8 @@ const fmcsaCache=new Map();
 const NHTSA_VPIC_BASE="https://vpic.nhtsa.dot.gov/api/vehicles";
 const vinDecodeCache=new Map();
 const app=express();
+// v24.42.0: remember which feature (and user) each request belongs to, for the AI usage meter.
+app.use((req,res,next)=>aiContext.run({feature:featureForPath(req.path),req},next));
 const httpServer=http.createServer(app);
 const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:20*1024*1024}});
 // v24.39.0: years of Fullbay history can be a large CSV — imports get their own, larger limit.
@@ -73,10 +78,10 @@ const isProd=process.env.NODE_ENV==="production";
 
 const configuredApiKey=String(process.env.OPENAI_API_KEY||"").trim();
 const apiKeyLooksConfigured=Boolean(configuredApiKey && configuredApiKey!=="your_server_side_key" && !configuredApiKey.toLowerCase().includes("replace") && !configuredApiKey.toLowerCase().includes("your_"));
-const client=apiKeyLooksConfigured?new OpenAI({apiKey:configuredApiKey}):null;
+const rawOpenAIClient=apiKeyLooksConfigured?new OpenAI({apiKey:configuredApiKey}):null;
 const configuredOpenRouterKey=String(process.env.OPENROUTER_API_KEY||"").trim();
 const openRouterKeyLooksConfigured=Boolean(configuredOpenRouterKey && !configuredOpenRouterKey.toLowerCase().includes("replace") && !configuredOpenRouterKey.toLowerCase().includes("your_"));
-const openRouterClient=openRouterKeyLooksConfigured?new OpenAI({apiKey:configuredOpenRouterKey,baseURL:String(process.env.OPENROUTER_BASE_URL||"https://openrouter.ai/api/v1"),defaultHeaders:{"HTTP-Referer":String(process.env.APP_PUBLIC_URL||"").trim()||"https://ittr-shopflow.invalid","X-Title":"ITTR ShopFlow"}}):null;
+const rawOpenRouterClient=openRouterKeyLooksConfigured?new OpenAI({apiKey:configuredOpenRouterKey,baseURL:String(process.env.OPENROUTER_BASE_URL||"https://openrouter.ai/api/v1"),defaultHeaders:{"HTTP-Referer":String(process.env.APP_PUBLIC_URL||"").trim()||"https://ittr-shopflow.invalid","X-Title":"ITTR ShopFlow"}}):null;
 const aiProvider=String(process.env.AI_PROVIDER||"auto").trim().toLowerCase();
 const openRouterModel=String(process.env.OPENROUTER_MODEL||"google/gemini-2.5-flash-lite").trim()||"google/gemini-2.5-flash-lite";
 const openRouterInvoiceModel=String(process.env.OPENROUTER_INVOICE_MODEL||"google/gemini-2.5-flash-lite").trim()||"google/gemini-2.5-flash-lite";
@@ -93,6 +98,10 @@ function ittrDbSsl(url){
  return isProd?{rejectUnauthorized:false}:false;
 }
 const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATABASE_URL,ssl:ittrDbSsl(process.env.DATABASE_URL)}):null;
+// v24.42.0: every AI call is metered (feature, user, tokens, cost) and stops at the owner's monthly budget.
+const aiMeter=createAIMeter({pool});
+const client=aiMeter.meterAIClient(rawOpenAIClient,"openai");
+const openRouterClient=aiMeter.meterAIClient(rawOpenRouterClient,"openrouter");
 
 const r2Bucket=String(process.env.R2_BUCKET_NAME||"").trim();
 const r2Endpoint=String(process.env.R2_ENDPOINT||"").trim();
@@ -1791,8 +1800,8 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.41.9");
-app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-TRANSLATE-20261010`}));
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.42.0");
+app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-AICENTER-20261010`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
@@ -3277,11 +3286,19 @@ app.patch("/api/admin/users/:username/password",auth,managerPermission("employee
 app.delete("/api/admin/users/:username",auth,managerPermission("employees"),async(req,res,next)=>{try{const username=cleanUsername(req.params.username);const q=await pool.query("DELETE FROM auth_users WHERE username=$1 AND role='mechanic' RETURNING username",[username]);if(!q.rowCount)return res.status(404).json({error:"Mechanic account not found."});await audit(req.user.username,"mechanic_deleted",{username});res.json({ok:true})}catch(e){next(e)}});
 
 function parseAiJson(text){let t=String(text||'').trim();t=t.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');return JSON.parse(t)}
+// v24.42.0: also reads the due date / terms so vendor bills can be tracked as paid or overdue.
+const VENDOR_INVOICE_PROMPT=`Extract this heavy-duty truck parts vendor invoice. Return ONLY strict JSON with this shape: {"vendor":"","invoiceNumber":"","invoiceDate":"YYYY-MM-DD or empty","dueDate":"YYYY-MM-DD or empty","terms":"","poNumber":"","subtotal":0,"tax":0,"freight":0,"total":0,"lines":[{"partNumber":"","manufacturer":"","description":"","quantity":0,"unitCost":0,"coreCost":0,"lineTotal":0}]}. "vendor" is the company that SOLD the parts (the letterhead), never the shop being billed (Iron Team Truck & Trailer Repair). Preserve part numbers exactly. Never invent missing values. Costs and quantities must be numbers. If a quantity or cost is unclear use 0. Carefully distinguish unit cost, core charge, tax, freight and line total. If only payment terms like "Net 30" are printed, put them in "terms" and leave dueDate empty.`;
+async function extractVendorInvoiceAny(file){
+ const mime=String(file.mimetype||'');
+ if(openRouterClient){const r=await openRouterInvoiceExtract(file);return r.parsed||{}}
+ if(client&&mime.startsWith('image/')){const r=await client.chat.completions.create({model:String(process.env.OPENAI_VISION_MODEL||'gpt-4o-mini'),messages:[{role:'user',content:[{type:'text',text:VENDOR_INVOICE_PROMPT},{type:'image_url',image_url:{url:`data:${mime};base64,${file.buffer.toString('base64')}`}}]}],temperature:0,max_tokens:5000});return parseAiJson(String(r.choices?.[0]?.message?.content||''))}
+ const e=new Error(client?"Scanning PDF vendor invoices needs OPENROUTER_API_KEY on Railway (photos work with OpenAI).":"No AI provider is configured. Add OPENROUTER_API_KEY in Railway.");e.code="AI_NOT_CONFIGURED";throw e;
+}
 async function openRouterInvoiceExtract(file){
  const or=requireOpenRouterClient();
  const mime=String(file.mimetype||'');
  const b64=file.buffer.toString('base64');
- const prompt=`Extract this heavy-duty truck parts vendor invoice. Return ONLY strict JSON with this shape: {"vendor":"","invoiceNumber":"","invoiceDate":"YYYY-MM-DD or empty","poNumber":"","subtotal":0,"tax":0,"freight":0,"total":0,"lines":[{"partNumber":"","manufacturer":"","description":"","quantity":0,"unitCost":0,"coreCost":0,"lineTotal":0}]}. Preserve part numbers exactly. Never invent missing values. Costs and quantities must be numbers. If a quantity or cost is unclear use 0. Carefully distinguish unit cost, core charge, tax, freight and line total.`;
+ const prompt=VENDOR_INVOICE_PROMPT;
  const content=[{type:'text',text:prompt}];
  if(mime==='application/pdf') content.push({type:'file',file:{filename:file.originalname||'invoice.pdf',file_data:`data:application/pdf;base64,${b64}`}});
  else content.push({type:'image_url',image_url:{url:`data:${mime};base64,${b64}`}});
@@ -3311,8 +3328,11 @@ app.post("/api/parts/receiving/receive",auth,managerPermission("inventory"),asyn
  const invoiceNumber=String(inv.invoiceNumber||'').trim()||null;
  stage="begin";await db.query('BEGIN');
  stage="vendor";const vendorContext=await resolveVendorPurchaseContext(db,inv.vendor,inv.vendorBranch);inv.vendor=vendorContext.vendor;inv.vendorBranch=vendorContext.branch;
+ // v24.42.0: a bill that was only filed (scanned for bookkeeping) is replaced by the received one, keeping its file and payment.
+ stage="filed_bill";const filedBill=invoiceNumber?(await db.query(`DELETE FROM parts_vendor_invoices WHERE status='filed' AND lower(coalesce(vendor,''))=lower($1) AND lower(coalesce(invoice_number,''))=lower($2) RETURNING due_date,paid_at,paid_reference,paid_by,gmail_message_id,file_key,file_mime,notes`,[inv.vendor||'',invoiceNumber])).rows[0]:null;
  stage="invoice";const ir=await db.query(`INSERT INTO parts_vendor_invoices(vendor,vendor_id,vendor_location_id,vendor_branch_snapshot,invoice_number,invoice_date,po_number,subtotal,tax,freight,total,tax_rate,tax_included_in_cost,source_filename,source_method,status,raw_extract,created_by,received_at) VALUES($1::text,$2::bigint,$3::bigint,$4::text,$5::text,$6::date,$7::text,$8::numeric,$9::numeric,$10::numeric,$11::numeric,$12::numeric,$13::boolean,$14::text,'scan','received',$15::jsonb,$16::text,now()) RETURNING id`,[inv.vendor||null,vendorContext.vendorId,vendorContext.locationId,vendorContext.branch||null,invoiceNumber,invoiceDate,String(inv.poNumber||'').trim()||null,Number(inv.subtotal||0),Number(inv.tax||0),Number(inv.freight||0),Number(inv.total||0),Number(inv.taxRate||0),Boolean(inv.taxIncludedInCost),String(req.body?.filename||'').slice(0,255)||null,JSON.stringify(inv),req.user.username]);
  const invoiceId=ir.rows[0].id;let received=0,created=0;
+ if(filedBill)await db.query(`UPDATE parts_vendor_invoices SET due_date=$2,paid_at=$3,paid_reference=$4,paid_by=$5,gmail_message_id=$6,file_key=$7,file_mime=$8,notes=$9 WHERE id=$1`,[invoiceId,filedBill.due_date,filedBill.paid_at,filedBill.paid_reference,filedBill.paid_by,filedBill.gmail_message_id,filedBill.file_key,filedBill.file_mime,filedBill.notes]);
  const taxableBase=usable.reduce((a,{l})=>a+(l.taxable===false?0:Math.max(0,Number(l.quantity||0))*Math.max(0,Number(l.unitCost||0))),0);
  for(const {l,i} of usable){stage=`line_${i+1}`;let partId=Number(l.matchedPartId||0)||null;const qty=Math.max(0,Number(l.quantity||0)),unitCost=Math.max(0,Number(l.unitCost||0)),core=Math.max(0,Number(l.coreCost||0)),hasCore=Boolean(l.hasCore)||core>0;
   if(partId){const exists=await db.query('SELECT id FROM fullbay_import_parts WHERE id=$1::bigint',[partId]);if(!exists.rowCount)throw Object.assign(new Error(`Line ${i+1}: selected inventory match no longer exists.`),{status:409})}
@@ -4130,6 +4150,7 @@ const memoryCache=new Map();
 function aiErrorResponse(res,err,fallback){
  console.error("AI ERROR:",err?.status,err?.code,err?.message);
  if(err?.code==="AI_NOT_CONFIGURED")return res.status(503).json({error:err.message,code:"AI_NOT_CONFIGURED"});
+ if(err?.code==="AI_BUDGET_REACHED")return res.status(429).json({error:err.message,code:"AI_BUDGET_REACHED"});
  if(err?.status===401||err?.code==="invalid_api_key")return res.status(401).json({error:"AI provider rejected the API key. Check the server-side API key in Railway.",code:"INVALID_API_KEY"});
  if(err?.status===429)return res.status(429).json({error:"AI provider is temporarily rate-limited. The configured paid fallback is attempted automatically when available; try again shortly.",code:"RATE_LIMIT"});
  if(err?.status===403)return res.status(403).json({error:"The configured AI key/model does not have permission for this request.",code:"PERMISSION"});
@@ -4163,11 +4184,15 @@ app.post("/api/translate",auth,async(req,res)=>{try{
  const texts=(single?[req.body.text]:Array.isArray(req.body?.texts)?req.body.texts:[]).map(t=>String(t??"")).slice(0,40);
  if(!texts.length||texts.some(t=>!t.trim()))return res.status(400).json({error:"text is required"});
  if(texts.some(t=>t.length>(single?5000:400)))return res.status(400).json({error:"text is too long"});
- const out=texts.map(t=>memoryCache.get(cacheKey(t,targetLanguage))??null),missing=texts.map((t,i)=>out[i]==null?i:-1).filter(i=>i>=0);
+ const out=texts.map(t=>memoryCache.get(cacheKey(t,targetLanguage))??null);
+ // v24.42.0: translations are shared by the whole shop in the database, so each phrase is paid for once, not once per phone.
+ let missing=texts.map((t,i)=>out[i]==null?i:-1).filter(i=>i>=0);
+ if(missing.length&&pool){try{const r=await pool.query("SELECT source_text,translation FROM ai_translation_cache WHERE target_language=$1 AND source_text=ANY($2::text[])",[String(targetLanguage),missing.map(i=>texts[i])]);const m=new Map(r.rows.map(x=>[x.source_text,x.translation]));for(const i of missing){const t=m.get(texts[i]);if(t!=null&&validTranslation(texts[i],t)){out[i]=t;memoryCache.set(cacheKey(texts[i],targetLanguage),t)}}missing=missing.filter(i=>out[i]==null)}catch(_){}}
  if(missing.length){const src=missing.map(i=>texts[i]);
   const raw=await textAI(UI_TRANSLATE_SYSTEM(sourceLanguage,targetLanguage),JSON.stringify({texts:src}));
   const got=parseBatchTranslations(src,raw);
-  missing.forEach((idx,k)=>{if(got[k]!=null){out[idx]=got[k];memoryCache.set(cacheKey(texts[idx],targetLanguage),got[k])}});
+  const fresh=[];missing.forEach((idx,k)=>{if(got[k]!=null){out[idx]=got[k];memoryCache.set(cacheKey(texts[idx],targetLanguage),got[k]);fresh.push([texts[idx],got[k]])}});
+  if(fresh.length&&pool){try{await pool.query("INSERT INTO ai_translation_cache(target_language,source_text,translation) SELECT $1,s,t FROM unnest($2::text[],$3::text[]) AS x(s,t) ON CONFLICT DO NOTHING",[String(targetLanguage),fresh.map(f=>f[0]),fresh.map(f=>f[1])])}catch(_){}}
  }
  if(single)return out[0]==null?res.status(422).json({error:"The AI did not return a usable translation.",code:"BAD_TRANSLATION"}):res.json({translation:out[0],cached:!missing.length});
  res.json({translations:out});
@@ -4196,7 +4221,7 @@ async function findWorkshopManuals(db,unit,question){
 }
 async function manualPdfAsk(manual,system,user){
  if(!manual?.r2_key||!openRouterClient)return '';
- if(Number(manual.size_bytes||0)>18*1024*1024)return '';
+ if(Number(manual.size_bytes||0)>8*1024*1024)return ''; // v24.42.0: whole-manual fallback capped (big PDFs cost a lot per question; the v2 assistant reads only the matching pages)
  const obj=await requireR2().send(new GetObjectCommand({Bucket:r2Bucket,Key:manual.r2_key}));
  const bytes=await obj.Body.transformToByteArray();
  const b64=Buffer.from(bytes).toString('base64');
@@ -4352,7 +4377,7 @@ app.post("/api/ai/shop-chat",auth,async(req,res)=>{try{
   const today=new Date().toLocaleDateString('en-CA',{timeZone:process.env.SHOP_TIMEZONE||'America/Chicago'});
   const out=await runShopAssistant({question,history:Array.isArray(req.body?.history)?req.body.history:[],who,tools,chat:chatFn,today,extraContext:explicitUnit?`The user selected unit ${explicitUnit} in the unit box.`:''});
   if(out.answer){
-   const label={shop_status:'Live shop status',find_truck:'Vehicle records',truck_history:'Truck history (ITTR + Fullbay)',search_parts:'Parts inventory',work_orders:'Work orders',work_order_details:'Work order details',search_repair_history:'Repair history search',search_customers:'Customers',invoices:'Invoices',cores_owed:'Cores owed',workshop_manuals:'Workshop manuals',manual_search:'Workshop manuals',manual_read:'Workshop manual pages'};
+   const label={shop_status:'Live shop status',find_truck:'Vehicle records',truck_history:'Truck history (ITTR + Fullbay)',search_parts:'Parts inventory',work_orders:'Work orders',work_order_details:'Work order details',search_repair_history:'Repair history search',search_customers:'Customers',invoices:'Invoices',cores_owed:'Cores owed',vendor_bills:'Vendor bills',workshop_manuals:'Workshop manuals',manual_search:'Workshop manuals',manual_read:'Workshop manual pages'};
    const sources=[...new Set(out.used)].map(t=>({type:t,label:label[t]||t}));
    try{await audit(req.user.username,'ai_chat',{v:2,model:assistantModelName(),tools:out.used,promptTokens:out.usage.prompt,completionTokens:out.usage.completion,rounds:out.usage.rounds})}catch(_){}
    return res.json({result:out.answer,sources,usage:out.usage,assistant:'v2'});
@@ -4412,6 +4437,13 @@ registerFinanceRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit,reca
 registerProductivityRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit});
 registerTimeClockRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit,stopMechanicWork,onChange:by=>broadcastShopStatus("task_changed",{by,timeclock:true})});
 registerLaborTimeRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit});
+// v24.42.0 AI usage + budget, vendor bills by vendor, and invoice check
+registerAICenterRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit,aiMeter,upload,textAI,resolveVendor,reportRange,fetchGmailAttachment,inspectionLabor,
+ aiStatus:()=>({provider:selectedAIProvider(),textModel:assistantModelName(),invoiceModel:openRouterClient?openRouterInvoiceModel:String(process.env.OPENAI_VISION_MODEL||'gpt-4o-mini'),invoiceFallbackModel:openRouterClient?openRouterInvoiceFallbackModel:''}),
+ extractVendorInvoice:extractVendorInvoiceAny,
+ getShopflow:async()=>(await requireDb().query("SELECT payload FROM app_state WHERE state_key='shopflow'")).rows[0]?.payload||{},
+ storeFile:r2Configured?async(key,buffer,mime)=>{await requireR2().send(new PutObjectCommand({Bucket:r2Bucket,Key:key,Body:buffer,ContentType:mime,CacheControl:"private, max-age=3600"}));return key}:null,
+ readFile:r2Configured?async key=>{const o=await requireR2().send(new GetObjectCommand({Bucket:r2Bucket,Key:key}));return Buffer.from(await o.Body.transformToByteArray())}:null});
 registerComplianceRoutes(app,{auth,ownerOnly,adminOnly,requireDb,audit,PDFDocument,shopProfile,lookupFmcsaCarrier,searchFmcsaCarriersByName,samsaraPaged,samsaraConfigured:samsaraTokenPresent});
 app.use("/api",(req,res)=>res.status(404).json({error:"API endpoint not found"}));
 
@@ -4437,6 +4469,8 @@ initDb()
   .then(()=>ensureFinanceSchema(pool))
   .then(()=>ensureComplianceSchema(pool))
   .then(()=>ensureTimeClockSchema(pool))
+  .then(()=>pool&&ensureAIUsageSchema(pool))
+  .then(()=>pool&&ensureVendorBillSchema(pool))
   // v24.41.1: odometer readings typed with a dot as thousands separator ("304.538") were saved as 304.538 miles. Repair once.
   .then(async()=>{if(!pool)return;for(const t of ["customer_invoices","customer_estimates"]){try{const r=await pool.query(`UPDATE ${t} SET mileage=mileage*1000 WHERE mileage IS NOT NULL AND mileage<>trunc(mileage) AND scale(mileage)=3 AND mileage<100000`);if(r.rowCount)console.log(`Repaired ${r.rowCount} ${t} mileage value(s) typed with a dot.`)}catch(e){console.warn("mileage repair",t,e?.message)}}})
   .then(()=>{if(process.env.NODE_ENV!=='test')startTimeClockScheduler({pool,stopMechanicWork,onChange:()=>broadcastShopStatus("task_changed",{timeclock:true})})})

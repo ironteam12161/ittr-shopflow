@@ -22,6 +22,8 @@
     <button type="button" onclick="showProPanel('productivity')"><b>Task timer log</b><span>Raw timer sessions + AI summary</span></button>
    </div></section>
    <section class="opsGroup"><h3>Shop</h3><div class="opsBtns">
+    <button type="button" onclick="try{sessionStorage.setItem('ittr_reports_tab','vendors')}catch(_){};showView('reports')"><b>Vendor bills</b><span>Spending by vendor, price increases, unpaid bills</span></button>
+    <button type="button" onclick="try{sessionStorage.setItem('ittr_reports_tab','ai')}catch(_){};showView('reports')"><b>AI usage &amp; budget</b><span>What AI costs each month, by feature</span></button>
     <button type="button" onclick="showView('compliance')"><b>Fleet &amp; compliance</b><span>PM, CARB tests, annual inspections</span></button>
     <button type="button" data-view="completed" onclick="showView('completed')"><b>Completed work</b><span>Finished work orders</span></button>
     <button type="button" onclick="showProPanel('maintenance')"><b>Maintenance plans</b><span>Mileage-based PM reminders</span></button>

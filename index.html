@@ -6,13 +6,13 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.41.9-TRANSLATE-20260930">
+<meta name="ittr-build" content="ITTR-24.42.0-AICENTER-20261010">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.41.9</title>
+<title>ITTR ShopFlow v24.42.0</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -811,7 +811,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.41.9">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.42.0">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -876,9 +876,17 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
  header .mobileBackBtn.visible{order:-1;flex:none}
 }
 </style>
+<style id="ittrV24420InvCheck">
+.invCheckBox{max-width:640px!important}.invCheckBody{display:grid;gap:8px;max-height:70dvh;overflow:auto;padding:2px}
+.invCheckItem{border-left:4px solid #d0d5dd;border-radius:10px;padding:10px 12px;display:grid;gap:4px;font-size:14px}.invCheckItem .muted{font-size:13px;line-height:1.45}
+.invCheckItem button{justify-self:start;min-height:32px;padding:5px 10px;font-size:13px;margin-top:4px}.invCheckLvl{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+.invCheckAi{display:flex;justify-content:space-between;gap:12px;align-items:center;border:1px dashed #b2ccff;background:#f5f8ff;border-radius:10px;padding:10px 12px;margin-top:6px}.invCheckAi .muted{font-size:12px}
+.invCheckAi button{white-space:nowrap;min-height:36px}.invCheckSugg{display:grid;gap:8px}.invCheckSuggItem{border:1px solid #e4e7ec;border-radius:10px;padding:10px 12px;display:grid;gap:4px;font-size:14px}.invCheckSuggItem .muted{font-size:12px}.invCheckSuggItem button{justify-self:start;min-height:32px;padding:5px 10px;font-size:13px}
+@media(max-width:560px){.invCheckAi{flex-direction:column;align-items:stretch}}
+</style>
 </head>
 <body>
-<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.41.9 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.42.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1445,7 +1453,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.41.9';
+const FRONTEND_VERSION='24.42.0';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1732,7 +1740,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.41.9";
+const ROUTE_MODULE_VERSION="24.42.0";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -2662,7 +2670,7 @@ function applyKnownTranslations(root=document.body){if(currentLanguage!=="uk"||!
  aiApplying=true;try{for(const n of nodes){if(!shouldAITranslateNode(n))continue;const raw=n.nodeValue,src=raw.trim(),known=aiKnown(src);if(known){if(known!==src)n.nodeValue=raw.replace(src,known)}else if(aiTranslationEnabled&&!aiRejected.has(src)&&!aiInFlight.has(src))aiQueue.add(src)}}finally{aiApplying=false}}
 async function flushAITranslationQueue(){if(currentLanguage!=="uk"||!aiTranslationEnabled||!aiQueue.size||!cloudToken)return;const batch=[...aiQueue].slice(0,30);batch.forEach(t=>{aiQueue.delete(t);aiInFlight.add(t)});aiTranslationBusy++;updateAITranslationStatus();
  try{const r=await fetch(AI_TRANSLATION_ENDPOINT,{method:"POST",headers:authHeaders({"Content-Type":"application/json"}),body:JSON.stringify({texts:batch,sourceLanguage:"English",targetLanguage:"Ukrainian"})});const d=await r.json().catch(()=>({}));
-  if(!r.ok){if(r.status===503||r.status===401||r.status===403)aiTranslationEnabled=false;batch.forEach(t=>aiRejected.add(t));return}
+  if(!r.ok){if(r.status===503||r.status===401||r.status===403||r.status===429)aiTranslationEnabled=false;batch.forEach(t=>aiRejected.add(t));return}
   let changed=false;batch.forEach((t,i)=>{const tr=d.translations?.[i];if(tr&&aiValidTranslation(t,tr)){aiTranslationCache[`uk|${t}`]=String(tr).trim();aiOutputs.add(String(tr).trim());changed=true}else aiRejected.add(t)});
   if(changed){aiCacheSave(aiTranslationCache);requestAnimationFrame(()=>applyKnownTranslations(document.body))}
  }catch(e){batch.forEach(t=>aiRejected.add(t));console.warn("AI translation unavailable:",e?.message||e)}
@@ -5676,7 +5684,7 @@ function renderInvoiceEditor(){
      <div class="invoiceSummaryGrand"><span>Grand Total</span><b id="invPreviewTotal">${invMoney(i.total)}</b></div>
      <div class="invoiceSummaryRow"><span>Paid</span><b>${invMoney(i.amount_paid)}</b></div>
      <div class="invoiceBalanceLabel">Balance Due</div><div class="moneyBig" id="invPreviewBalance">${invMoney(i.balance_due)}</div>
-     <div class="actions invoiceAppOnly invoiceSummaryActions">${locked?'':`<button onclick="saveInvoiceHeader()">Save Changes</button>`}<button class="secondary" onclick="printInvoicePdf(${i.id})">Print</button><button class="secondary" onclick="downloadInvoicePDF(${i.id})">PDF</button>${i.status==='draft'?`<button class="success" onclick="finalizeInvoice(${i.id})">Finalize / Mark Sent</button>`:''}${['sent','partial'].includes(i.status)?`<button class="success" onclick="recordInvoicePayment(${i.id},${Number(i.balance_due||0)})">Record Payment</button>`:''}${i.status!=='void'&&Number(i.amount_paid||0)===0?`<button class="danger" onclick="voidInvoice(${i.id})">Void</button>`:''}${i.status!=='void'?`<button class="secondary" onclick="createInvoicePaymentLink(${i.id})">Payment Link</button><button id="invoiceEmailButton" class="secondary" onclick="emailInvoice(${i.id})">✉ Send to Customer</button>`:''}${session?.role==='admin'?`<button class="danger" onclick="permanentlyDeleteInvoice(${i.id},'${esc(i.invoice_number)}')">Delete Permanently</button>`:''}</div>
+     <div class="actions invoiceAppOnly invoiceSummaryActions">${locked?'':`<button onclick="saveInvoiceHeader()">Save Changes</button><button type="button" class="secondary invCheckBtn" onclick="checkInvoiceNow(${i.id})" title="Find unbilled parts and time, low labor hours, $0 lines and missing info">✓ Check invoice</button>`}<button class="secondary" onclick="printInvoicePdf(${i.id})">Print</button><button class="secondary" onclick="downloadInvoicePDF(${i.id})">PDF</button>${i.status==='draft'?`<button class="success" onclick="finalizeInvoice(${i.id})">Finalize / Mark Sent</button>`:''}${['sent','partial'].includes(i.status)?`<button class="success" onclick="recordInvoicePayment(${i.id},${Number(i.balance_due||0)})">Record Payment</button>`:''}${i.status!=='void'&&Number(i.amount_paid||0)===0?`<button class="danger" onclick="voidInvoice(${i.id})">Void</button>`:''}${i.status!=='void'?`<button class="secondary" onclick="createInvoicePaymentLink(${i.id})">Payment Link</button><button id="invoiceEmailButton" class="secondary" onclick="emailInvoice(${i.id})">✉ Send to Customer</button>`:''}${session?.role==='admin'?`<button class="danger" onclick="permanentlyDeleteInvoice(${i.id},'${esc(i.invoice_number)}')">Delete Permanently</button>`:''}</div>
      <h3>Payments</h3>${payments.map(p=>`<div class="historyitem payItem"><div><b>${invMoney(p.amount)}</b> · ${esc(p.method||'Other')}${p.reference?` <span class="payRef">${esc(p.reference)}</span>`:(['Check','Zelle','ACH'].includes(p.method)?' <span class="payRef missing">no transaction ID</span>':'')}<div class="muted">${esc(String(p.paid_at||'').slice(0,10))}${p.received_by?` · ${esc(p.received_by)}`:''}${p.note?` · ${esc(p.note)}`:''}</div></div><button type="button" class="secondary invoiceAppOnly payEdit" onclick="editInvoicePayment(${Number(i.id)},${Number(p.id)})">Edit</button></div>`).join('')||'<div class="muted">No payments recorded.</div>'}
    </div>
  </aside></div>
@@ -5777,6 +5785,29 @@ async function syncInvoiceFromWorkOrder(){
  }catch(e){invoiceSetSaveState('error','WO sync failed');showToast?.(e.message||'Work Order sync failed.','error',8000)}
 }
 
+// v24.42.0: "Check invoice" — rules first (free): unbilled parts/time, labor below the shop's usual hours, $0 or below-cost lines,
+// missing unit/VIN/mileage. Optional AI rewrites labor descriptions; nothing changes until "Use" is clicked.
+async function checkInvoiceNow(id){
+ try{await saveAllInvoiceLines()}catch(_){}
+ const m=document.createElement('div');m.className='payDlg';m.innerHTML=`<div class="payDlgBox invCheckBox" role="dialog" aria-modal="true" aria-label="Invoice check"><div class="payDlgHead"><div class="payDlgIcon">✓</div><div><h2>Invoice check</h2><div class="muted">Checking…</div></div><button type="button" class="payDlgX" data-ic="close" aria-label="Close">×</button></div><div class="invCheckBody"><div class="muted" style="padding:16px">Comparing with the work order and your usual labor times…</div></div></div>`;
+ document.body.appendChild(m);const close=()=>{m.remove();document.removeEventListener('keydown',onKey)},onKey=e=>{if(e.key==='Escape')close()};document.addEventListener('keydown',onKey);
+ const body=m.querySelector('.invCheckBody'),sub=m.querySelector('.payDlgHead .muted');
+ const paint=d=>{const lv={high:['Fix before sending','#b42318','#fef3f2'],medium:['Check','#b54708','#fffaeb'],low:['Good to have','#475467','#f2f4f7']};
+  sub.innerHTML=d.findings.length?`${d.findings.length} thing${d.findings.length===1?'':'s'} to look at · billed ${d.billedHours} h${d.workOrderId?` · timers ${d.realHours} h on WO #${esc(d.workOrderId)}`:''}`:'Looks good';
+  body.innerHTML=(d.findings.length?d.findings.map((f,k)=>`<div class="invCheckItem" style="border-left-color:${lv[f.level][1]};background:${lv[f.level][2]}"><div class="invCheckLvl" style="color:${lv[f.level][1]}">${lv[f.level][0]}</div><b>${esc(f.title)}</b>${f.detail?`<div class="muted">${esc(f.detail)}</div>`:''}${f.code==='LABOR_BELOW_USUAL'&&f.lineId&&f.suggestedHours?`<button type="button" class="secondary" data-ic="hours" data-line="${f.lineId}" data-h="${f.suggestedHours}">Set ${f.suggestedHours} h</button>`:''}${f.code==='PART_NOT_BILLED'&&d.workOrderId?`<button type="button" class="secondary" data-ic="sync">↻ Sync from work order</button>`:''}</div>`).join(''):`<div class="invCheckItem" style="border-left-color:#067647;background:#ecfdf3"><b>No problems found.</b><div class="muted">Parts, time and prices match the work order and your usual labor times.</div></div>`)+
+  `<div class="invCheckAi"><div><b>✦ Better wording</b><div class="muted">AI rewrites the labor descriptions into clear, professional English for the customer (translates Ukrainian notes). You choose which to use.</div></div><button type="button" data-ic="ai">Suggest wording</button></div><div class="invCheckSugg"></div>`};
+ let d;try{d=await apiJSON(`/api/invoices/${id}/check`);paint(d)}catch(e){body.innerHTML=`<div class="invCheckItem">${esc(e.message)}</div>`;return}
+ m.addEventListener('click',async e=>{if(e.target===m)return close();const b=e.target.closest('[data-ic]');if(!b)return;const a=b.dataset.ic;
+  try{
+   if(a==='close')return close();
+   if(a==='sync'){close();return syncInvoiceFromWorkOrder()}
+   if(a==='hours'){const row=document.querySelector(`[data-invoice-line="${b.dataset.line}"]`),q=row?.querySelector('.ilQty');if(!q)return;q.value=b.dataset.h;invoiceLinePreview(Number(b.dataset.line));await saveInvoiceLine(Number(b.dataset.line));b.textContent='✓ Set';b.disabled=true;return}
+   if(a==='ai'){b.disabled=true;b.textContent='Writing…';const box=m.querySelector('.invCheckSugg');const r=await apiJSON(`/api/invoices/${id}/check/wording`,{method:'POST',body:{}});b.textContent='Suggest again';b.disabled=false;
+    box.innerHTML=r.suggestions.length?r.suggestions.map(x=>`<div class="invCheckSuggItem"><div class="muted">Now: ${esc(x.current||'—')}</div><div><b>${esc(x.suggested)}</b></div><button type="button" class="secondary" data-ic="use" data-line="${x.lineId}" data-text="${esc(x.suggested)}">Use this</button></div>`).join(''):'<div class="muted" style="padding:8px 0">The descriptions already read well.</div>';return}
+   if(a==='use'){const row=document.querySelector(`[data-invoice-line="${b.dataset.line}"]`),inp=row?.querySelector('.ilDesc');if(!inp)return showToast('Open the invoice editor to apply this.','warning');inp.value=b.dataset.text;await saveInvoiceLine(Number(b.dataset.line));b.textContent='✓ Used';b.disabled=true;return}
+  }catch(err){b.disabled=false;if(a==='ai')b.textContent='Suggest wording';showToast(err.message,'error')}});
+}
+window.checkInvoiceNow=checkInvoiceNow;
 async function saveInvoiceHeader(){const i=activeInvoice.invoice;try{invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const r=await fetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(invoiceHeaderPayload())}),d=await r.json();if(!r.ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);await loadInvoices();invoiceSetSaveState('saved','All changes saved');showToast?.('Invoice saved.','success',2200);return true}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message,'error',7000)||alert(e.message);return false}}
 async function saveInvoiceLine(id){try{const i=activeInvoice.invoice;invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const r=await fetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(invoiceHeaderPayload())}),d=await r.json();if(!r.ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);invoiceSetSaveState('saved','All changes saved')}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message||'Save failed','error',7000)}}
 async function deleteInvoiceLine(lineId){if(!confirm('Remove this line? If this is a labor operation, its attached parts and charges will also be removed.'))return;if(!(await persistInvoiceDraftBeforeStructureChange('Preserving your invoice')))return;const i=activeInvoice.invoice,r=await fetch(`/api/invoices/${i.id}/lines/${lineId}`,{method:'DELETE',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to remove line');await openInvoice(i.id)}
@@ -5996,7 +6027,7 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
  </div>
 </div>
 
-<script src="./finance-shared.js?v=24.41.9"></script>
+<script src="./finance-shared.js?v=24.42.0"></script>
 <script src="./inspection-checklist.js?v=3"></script>
 <script src="./inspection-workflow.js?v=3"></script>
 </body>

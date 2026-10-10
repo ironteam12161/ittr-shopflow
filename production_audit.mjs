@@ -186,6 +186,13 @@ check('page titles match the menu',root.includes('<div class="toolbar"><h1>Findi
 check('mechanic screen: clock, jobs, then activities; one-row phone header',root.includes('id="ittrV24418Phone"')&&root.indexOf('id="mechanicJobs"')<root.indexOf('id="mechanicActivityPanel"'));
 check('delete work order sits apart from other actions',root.includes('class="dangerZone"'));
 check('AI translation: batch, validated answers, no jumping',server.includes('parseBatchTranslations(src,raw)')&&root.includes('function applyKnownTranslations(')&&root.includes('ittr_ai_translation_cache_v2')&&root.includes('function aiValidTranslation('));
+{const usage=read('ai_usage.mjs'),vb=read('vendor_bills.mjs'),ic=read('invoice_check.mjs'),rep=read('public/modules/reports.js');
+check('AI usage meter wraps every AI client + monthly budget',server.includes('aiMeter.meterAIClient(rawOpenAIClient,"openai")')&&server.includes('aiMeter.meterAIClient(rawOpenRouterClient,"openrouter")')&&!/new OpenAI\([^)]*\)\.chat/.test(server)&&usage.includes("e.code = 'AI_BUDGET_REACHED'")&&server.includes('aiContext.run({feature:featureForPath(req.path),req},next)'));
+check('AI translations shared in the database',server.includes('INSERT INTO ai_translation_cache')&&usage.includes('CREATE TABLE IF NOT EXISTS ai_translation_cache'));
+check('Vendor bills: by vendor + price/duplicate/math/overdue analysis',vb.includes('export function analyzeVendors(')&&vb.includes('cheaperElsewhere')&&vb.includes("app.post('/api/vendor-invoices/gmail/:messageId/scan'")&&rep.includes('function renderVendors(')&&read('public/modules/reports.html').includes('data-t="vendors"'));
+check('Received vendor bill replaces a filed one (no duplicate block)',server.includes("DELETE FROM parts_vendor_invoices WHERE status='filed'"));
+check('Invoice check: rules + optional AI wording, never auto-applied',ic.includes("'PART_NOT_BILLED'")&&ic.includes("'TIME_NOT_BILLED'")&&pub.includes('function checkInvoiceNow(')&&pub.includes('data-ic="use"'));
+check('Reports AI usage tab',rep.includes('function renderAiUsage(')&&server.includes('registerAICenterRoutes(app,'));}
 const failed=results.filter(x=>!x.ok);
 for(const r of results)console.log(`${r.ok?'PASS':'FAIL'}  ${r.name}${r.detail?'  '+r.detail:''}`);
 console.log(`\nITTR production audit: ${results.length-failed.length}/${results.length} passed`);
