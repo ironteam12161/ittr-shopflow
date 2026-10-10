@@ -2,6 +2,8 @@
 #invoices .invoice-module-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:16px}
 #invoices .invoice-module-head h1{margin:0 0 4px}
 #invoices .invoice-module-actions{display:flex;gap:8px;flex-wrap:wrap}
+#invoices .invoice-search{position:relative;margin:4px 0 12px}#invoices .invoice-search:before{content:'⌕';position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:18px;color:#98a2b3;pointer-events:none}
+#invoices .invoice-search input{width:100%;min-height:48px;border:2px solid #e4e7ec;border-radius:12px;padding:10px 14px 10px 40px;font-size:15px;background:#fff}#invoices .invoice-search input:focus{border-color:#175cd3;outline:0;box-shadow:0 0 0 4px rgba(23,92,211,.12)}
 #invoices .invoice-filter-card{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 16px}
 .invoiceCustomerVehicleCard,.invoiceLineItemsCard{overflow:visible}
 .invoiceSectionTitle{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:14px}
@@ -46,6 +48,7 @@
 </style>
 <div class="invoice-module-head"><div><h1>Invoices</h1><div class="muted">Open invoices in a dedicated full-screen billing workspace with inventory-connected parts, service labor, tax, discounts and customer-ready printing.</div></div><div class="invoice-module-actions"><button onclick="openManualInvoice()">+ New Invoice</button></div></div>
 <div id="invoiceKpis" class="statgrid"></div>
+<div class="invoice-search"><input id="invoiceSearch" type="search" placeholder="Search invoice #, customer, unit, VIN, PO, or a payment transaction ID (check #, Zelle…)" oninput="onInvoiceSearch(this.value)" autocomplete="off"></div><div id="invoicePaymentHits"></div>
 <div class="invoice-filter-card"><button class="filterbtn active" data-invfilter="all" onclick="setInvoiceFilter('all',this)">All</button><button class="filterbtn" data-invfilter="draft" onclick="setInvoiceFilter('draft',this)">Draft</button><button class="filterbtn" data-invfilter="sent" onclick="setInvoiceFilter('sent',this)">Open</button><button class="filterbtn" data-invfilter="overdue" onclick="setInvoiceFilter('overdue',this)">Overdue</button><button class="filterbtn" data-invfilter="paid" onclick="setInvoiceFilter('paid',this)">Paid</button><button class="filterbtn" data-invfilter="void" onclick="setInvoiceFilter('void',this)">Void</button></div>
 <div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Invoice</th><th>Customer / Unit</th><th>Date / Due</th><th>Status</th><th>Total</th><th>Paid</th><th>Balance</th><th></th></tr></thead><tbody id="invoiceTable"></tbody></table></div>
 
