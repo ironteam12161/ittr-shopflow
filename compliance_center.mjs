@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import { PDFDocument as PdfLibDocument, StandardFonts, rgb } from 'pdf-lib';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { getSetting } from './finance_center.mjs';
+import { getSetting, cleanMiles } from './finance_center.mjs';
 import { alertEmailHtml, sendResendEmail } from './email_templates.mjs';
 
 // ---------------------------------------------------------------- annual inspection documents
@@ -252,8 +252,8 @@ export function registerComplianceRoutes(app, deps) {
     if (!unitId && vin) unitId = (await db.query(`SELECT id FROM customer_units WHERE upper(coalesce(vin,''))=$1 LIMIT 1`, [vin])).rows[0]?.id || null;
     if (!unitId && label) unitId = (await db.query(`SELECT id FROM customer_units WHERE lower(unit_number)=lower($1) ORDER BY samsara_vehicle_id IS NULL LIMIT 1`, [label])).rows[0]?.id || null;
     if (!unitId && !vin && !label) fail(400, 'Pick a unit or enter a VIN / unit number.');
-    return { unitId, vin, label, type: t, name: str(b.name, 120) || SERVICE_TYPES[t].name, intervalMiles: b.intervalMiles === undefined ? SERVICE_TYPES[t].miles : intOrNull(b.intervalMiles), intervalDays: b.intervalDays === undefined ? SERVICE_TYPES[t].days : intOrNull(b.intervalDays),
-      warnMiles: intOrNull(b.warnMiles) ?? 1000, warnDays: intOrNull(b.warnDays) ?? 30, lastDate: iso(b.lastDoneDate), lastMiles: b.lastDoneMiles === '' || b.lastDoneMiles == null ? null : Number(b.lastDoneMiles) || null, dueDate: iso(b.dueDate), notes: str(b.notes, 500) };
+    return { unitId, vin, label, type: t, name: str(b.name, 120) || SERVICE_TYPES[t].name, intervalMiles: b.intervalMiles === undefined ? SERVICE_TYPES[t].miles : cleanMiles(b.intervalMiles), intervalDays: b.intervalDays === undefined ? SERVICE_TYPES[t].days : intOrNull(b.intervalDays),
+      warnMiles: cleanMiles(b.warnMiles) ?? 1000, warnDays: intOrNull(b.warnDays) ?? 30, lastDate: iso(b.lastDoneDate), lastMiles: cleanMiles(b.lastDoneMiles), dueDate: iso(b.dueDate), notes: str(b.notes, 500) };
   };
   app.post('/api/fleet-maintenance', auth, adminOnly, read(async (db, req) => {
     const bulk = Array.isArray(req.body?.items), list = bulk ? req.body.items.slice(0, 500) : [req.body || {}], ids = [], errors = [];
@@ -272,7 +272,7 @@ export function registerComplianceRoutes(app, deps) {
   }));
   app.post('/api/fleet-maintenance/:id/done', auth, adminOnly, tx(async (db, req) => {
     const it = (await db.query('SELECT f.*,u.odometer_miles,u.mileage FROM fleet_service_items f LEFT JOIN customer_units u ON u.id=f.unit_id WHERE f.id=$1::bigint FOR UPDATE OF f', [req.params.id])).rows[0]; if (!it) fail(404, 'Service item not found.');
-    const date = iso(req.body?.doneDate) || new Date().toISOString().slice(0, 10), miles = req.body?.doneMiles != null && req.body.doneMiles !== '' ? Number(req.body.doneMiles) : (it.odometer_miles ?? it.mileage ?? null);
+    const date = iso(req.body?.doneDate) || new Date().toISOString().slice(0, 10), miles = cleanMiles(req.body?.doneMiles) != null ? cleanMiles(req.body.doneMiles) : (it.odometer_miles ?? it.mileage ?? null);
     const nextDue = iso(req.body?.nextDueDate);
     await db.query('INSERT INTO fleet_service_history(item_id,done_date,done_miles,note,work_order_id,recorded_by) VALUES($1,$2::date,$3::numeric,$4,$5,$6)', [it.id, date, miles, str(req.body?.note, 500), str(req.body?.workOrderId, 20) || null, req.user.username]);
     await db.query('UPDATE fleet_service_items SET last_done_date=$2::date,last_done_miles=$3::numeric,due_date=$4::date,last_alert_level=NULL,updated_at=now() WHERE id=$1', [it.id, date, miles, nextDue]);

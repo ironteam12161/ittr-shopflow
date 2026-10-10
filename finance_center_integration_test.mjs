@@ -10,7 +10,7 @@ import {buildTimesheet,forgottenShiftCloseAt,closeForgottenShifts} from './time_
 import {compileJobTypes,classifyJob,DEFAULT_JOB_TYPES,leadMechanic,describe,compareMechanics,typicalTimes} from './labor_times.mjs';
 import {serviceStatus,cleanInspectionFields,renderInspectionTemplate} from './compliance_center.mjs';
 import {PDFDocument as PdfLib} from 'pdf-lib';
-import {parseZelleEmail,parseVendorBillEmail,scoreZelleMatch,encryptToken,decryptToken,tireFeeQuantities,estimateTotals,vendorNameFromSender} from './finance_center.mjs';
+import {cleanMiles,parseZelleEmail,parseVendorBillEmail,scoreZelleMatch,encryptToken,decryptToken,tireFeeQuantities,estimateTotals,vendorNameFromSender} from './finance_center.mjs';
 
 const assert=(v,label)=>{if(!v)throw new Error(label)};
 const near=(a,b,label)=>{if(Math.abs(Number(a)-Number(b))>0.005)throw new Error(`${label}: expected ${b}, got ${a}`)};
@@ -57,6 +57,7 @@ const near=(a,b,label)=>{if(Math.abs(Number(a)-Number(b))>0.005)throw new Error(
   const d=describe([2,2.5,3,2.2,8]);assert(d.median===2.5&&d.p25===2.2&&d.p75===3,'median and usual range');
   const jobs=[...[2,2,2].map(h=>({source:'invoice',type:'wheel_seal',mechanic:'a',mechHours:h,billed:2.5,actual:h})),...[3,3,3].map(h=>({source:'invoice',type:'wheel_seal',mechanic:'b',mechHours:h,billed:2.5,actual:h}))];
   const cm=compareMechanics(jobs,typicalTimes(jobs));assert(cm.mechanics[0].mechanic==='a'&&cm.mechanics[0].pct===-20&&cm.mechanics[1].pct===20,'mechanics compared with the shop typical time');assert(cm.mechanics[0].billedEff===125,'billed ÷ real hours');}
+ assert(cleanMiles('304,538')===304538&&cleanMiles('304.538')===304538&&cleanMiles(304.538)===304538&&cleanMiles('')===null&&cleanMiles(125000)===125000,'odometer readings parsed as whole miles');
  console.log('PASS finance parsers: Zelle (in/out), vendor bills, match scoring, token crypto, tire quantities, estimate totals');
 }
 
@@ -135,6 +136,9 @@ try{
  const locked=await request(`/api/estimates/${est.id}/lines`,{method:'POST',body:{lineType:'other',description:'x',quantity:1,unitPrice:1},allowError:true});assert(locked.status===409,'converted estimate is locked');
  console.log('PASS estimates: create, lines, tire fees (set semantics), PDF, approve, convert to invoice once');
 
+ // --- v24.41.1 mileage typed with separators
+ for(const typed of ['304,538','304.538','304 538',304.538]){await request(`/api/invoices/${conv.id}`,{method:'PUT',body:{mileage:typed}});near(Number((await request(`/api/invoices/${conv.id}`)).invoice.mileage),304538,`invoice mileage ${JSON.stringify(typed)} saved as 304538`)}
+ console.log('PASS mileage: comma, dot or space thousands separators all save as whole miles');
  // --- invoice tire fees + finalize paid draft => paid (audit fix)
  await request(`/api/invoices/${conv.id}/tire-fees`,{method:'POST',body:{newTires:2,otherDisposed:0}});
  const invAfter=await request(`/api/invoices/${conv.id}`);assert(invAfter.lines.filter(l=>l.metadata?.feeCode).length===2,'invoice tire fees not duplicated');

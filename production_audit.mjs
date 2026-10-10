@@ -169,6 +169,7 @@ check('labor times compare mechanics with the shop, not with padded billing',lt.
 check('startup log shows the real version',server.includes('console.log(`ITTR v${ITTR_APP_VERSION} Online running on port'));
 check('vendor list does not resync on every request',server.includes('vendorSyncAt'));
 
+check('mileage boxes accept 304,538 and save whole miles',root.includes('function enhanceMileageInput(')&&root.includes('document.addEventListener("submit"')&&read('finance_center.mjs').includes('export const cleanMiles')&&server.includes('mileage=mileage*1000 WHERE'));
 const failed=results.filter(x=>!x.ok);
 for(const r of results)console.log(`${r.ok?'PASS':'FAIL'}  ${r.name}${r.detail?'  '+r.detail:''}`);
 console.log(`\nITTR production audit: ${results.length-failed.length}/${results.length} passed`);

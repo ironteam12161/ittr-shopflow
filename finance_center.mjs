@@ -23,6 +23,8 @@ export const DEFAULT_GMAIL_QUERIES = Object.freeze({
 
 const money = v => { const n = Number(v); return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0; };
 const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+// Odometer readings never have decimals: "304,538", "304.538" and "304 538" all mean 304538 miles.
+export const cleanMiles = v => { if (v === null || v === undefined) return null; const d = (typeof v === 'number' ? (Number.isInteger(v) ? String(v) : v.toFixed(3)) : String(v)).replace(/[^\d]/g, ''); return d ? Math.min(Number(d), 99999999) : null; };
 const str = (v, max = 500) => String(v ?? '').trim().slice(0, max);
 const isoDate = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null;
 
@@ -577,7 +579,7 @@ export function registerFinanceRoutes(app, deps) {
     const num2 = await nextEstimateNumber(db), days = Math.max(1, Math.min(180, Math.floor(num(b.validDays) || 30)));
     const r = await db.query(`INSERT INTO customer_estimates(estimate_number,customer_id,customer_name,customer_email,unit_id,unit_number,vin,dot_number,mileage,po_number,estimate_date,valid_until,tax_rate,billing_address,billing_city,billing_state,billing_postal_code,customer_note,internal_note,created_by)
       VALUES($1,$2::bigint,$3,$4,$5::bigint,$6,$7,$8,$9::numeric,$10,CURRENT_DATE,CURRENT_DATE+$11::int,$12::numeric,$13,$14,$15,$16,$17,$18,$19) RETURNING id`,
-    [num2, c?.id || null, str(b.customerName || c?.customer_name || 'Customer', 200), str(b.customerEmail || c?.email || '', 254) || null, b.unitId || null, str(b.unitNumber, 60), str(b.vin, 40), str(b.dotNumber || c?.dot_number || '', 20), num(b.mileage) || null, str(b.poNumber, 80),
+    [num2, c?.id || null, str(b.customerName || c?.customer_name || 'Customer', 200), str(b.customerEmail || c?.email || '', 254) || null, b.unitId || null, str(b.unitNumber, 60), str(b.vin, 40), str(b.dotNumber || c?.dot_number || '', 20), cleanMiles(b.mileage), str(b.poNumber, 80),
       days, Math.max(0, Math.min(25, num(b.taxRate))), c?.billing_address || c?.address || null, c?.billing_city || c?.city || null, c?.billing_state || c?.state || null, c?.billing_postal_code || c?.postal_code || null, str(b.customerNote, 4000), str(b.internalNote, 4000), req.user.username]);
     await audit(req.user.username, 'estimate_created', { estimateId: r.rows[0].id, estimateNumber: num2 });
     return { ok: true, id: r.rows[0].id, estimateNumber: num2 };
@@ -602,7 +604,7 @@ export function registerFinanceRoutes(app, deps) {
       await db.query(`UPDATE customer_estimates SET customer_id=$2::bigint,customer_name=$3,customer_email=$4,unit_number=$5,vin=$6,mileage=$7::numeric,po_number=$8,valid_until=$9::date,tax_rate=$10::numeric,
         shop_supplies=$11::numeric,environmental_fee=$12::numeric,discount_type=$13,discount_value=$14::numeric,customer_note=$15,internal_note=$16,estimate_date=$17::date,updated_at=now() WHERE id=$1::bigint`,
       [cur.id, b.customerId === undefined ? cur.customer_id : (Number(b.customerId) || null), str(b.customerName ?? c?.customer_name ?? cur.customer_name, 200) || 'Customer', str(b.customerEmail ?? cur.customer_email ?? '', 254) || null, str(b.unitNumber ?? cur.unit_number, 60), str(b.vin ?? cur.vin, 40),
-        b.mileage !== undefined ? (num(b.mileage) || null) : cur.mileage, str(b.poNumber ?? cur.po_number, 80), isoDate(b.validUntil) || cur.valid_until, Math.max(0, Math.min(25, num(b.taxRate ?? cur.tax_rate))),
+        b.mileage !== undefined ? (cleanMiles(b.mileage)) : cur.mileage, str(b.poNumber ?? cur.po_number, 80), isoDate(b.validUntil) || cur.valid_until, Math.max(0, Math.min(25, num(b.taxRate ?? cur.tax_rate))),
         Math.max(0, num(b.shopSupplies ?? cur.shop_supplies)), Math.max(0, num(b.environmentalFee ?? cur.environmental_fee)), b.discountType === 'percent' ? 'percent' : (b.discountType === 'fixed' ? 'fixed' : cur.discount_type || 'fixed'),
         Math.max(0, num(b.discountValue ?? cur.discount_value)), str(b.customerNote ?? cur.customer_note, 4000), str(b.internalNote ?? cur.internal_note, 4000), isoDate(b.estimateDate) || cur.estimate_date]);
     }
