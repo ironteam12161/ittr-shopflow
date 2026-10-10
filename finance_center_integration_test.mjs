@@ -290,6 +290,10 @@ try{
  const lt2=await request('/api/reports/labor-times?from=2020-01-01&to=2030-12-31');assert(lt2.types.find(t=>t.key==='seals')?.standard===2,'owner-set job types and standard hours');
  await request('/api/reports/labor-times/job-types',{method:'PUT',body:{reset:true}});
  assert((await request('/api/reports/labor-times',{tok:mechToken,allowError:true})).status===403,'mechanics cannot read labor times');
+ {const ms=(await request('/api/state',{tok:mechToken})).shopflow;const wos=ms.payload.workorders.map(w=>String(w.id)==='9950'?{...w,inspection:{required:true,type:'truck',status:'In Progress',startedAt:new Date().toISOString(),startedBy:mechUser,results:{}}}:w);
+  await request('/api/state/shopflow',{method:'PUT',tok:mechToken,body:{expectedVersion:ms.version,payload:{...ms.payload,workorders:wos}}});
+  const meI=await request('/api/timeclock/me',{tok:mechToken});assert(meI.open&&meI.open.inSource==='auto:inspection','starting an inspection while clocked out clocks the mechanic in');
+  await request('/api/timeclock/punch',{method:'POST',tok:mechToken,body:{action:'out'}});}
  await db.query(`INSERT INTO mechanic_inspections(work_order_id,unit_number_snapshot,inspection_type,status,mechanic_username,started_at,completed_at) VALUES('9960','INSP-1','truck','Completed',$1,'2026-09-03T14:00:00Z','2026-09-03T15:30:00Z')`,[mechUser]);
  const pi=(await request('/api/reports/mechanics?from=2026-09-03&to=2026-09-03')).mechanics.find(m=>m.username===mechUser);
  near(pi.totals.inspectionMs/3600000,1.5,'inspection time counted');assert(pi.totals.inspections===1&&pi.totals.repairMs>=1.5*3600000-1000&&pi.days.find(d=>d.date==='2026-09-03')?.workOrders.includes('9960'),'inspection counts as job work on its work order, not idle');
