@@ -6,13 +6,13 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.41.1-MILEAGE-20260930">
+<meta name="ittr-build" content="ITTR-24.41.2-PAYMENTS-20260930">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.41.1</title>
+<title>ITTR ShopFlow v24.41.2</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -434,6 +434,29 @@ body{-webkit-text-size-adjust:100%}
 }
 
 
+.payDlg{position:fixed;inset:0;z-index:6500;background:rgba(15,23,42,.55);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:16px;animation:payFade .15s ease}
+@keyframes payFade{from{opacity:0}to{opacity:1}}
+.payDlgBox{background:#fff;border-radius:20px;width:100%;max-width:520px;padding:22px;box-shadow:0 30px 80px rgba(15,23,42,.35);max-height:94dvh;overflow:auto}
+.payDlgHead{display:flex;align-items:center;gap:12px;margin-bottom:16px}.payDlgHead h2{margin:0;font-size:20px}.payDlgHead>div:nth-child(2){flex:1}
+.payDlgIcon{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,#12b76a,#039855);color:#fff;font-weight:900;font-size:20px;display:flex;align-items:center;justify-content:center}
+.payDlgX{background:transparent!important;color:#667085!important;font-size:26px;min-height:auto!important;padding:0 6px!important;line-height:1}
+.payLbl{display:block;font-size:12px;font-weight:800;color:#344054;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 6px}
+.payAmtRow{display:flex;gap:8px;align-items:stretch}.payAmt{flex:1;display:flex;align-items:center;border:2px solid #d0d5dd;border-radius:12px;padding:0 12px;background:#fff}.payAmt:focus-within{border-color:#175cd3;box-shadow:0 0 0 4px rgba(23,92,211,.12)}
+.payAmt span{font-size:22px;font-weight:900;color:#667085}.payAmt input{border:0!important;box-shadow:none!important;outline:0;font-size:26px;font-weight:900;padding:10px 6px!important;width:100%;min-height:auto;font-variant-numeric:tabular-nums}
+.payChip{background:#ecfdf3!important;color:#067647!important;font-weight:800;border-radius:12px;padding:0 14px}
+.payMethods{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.payMethods button{display:flex;flex-direction:column;align-items:center;gap:4px;background:#f8fafc;color:#1d2939;border:2px solid #e4e7ec;min-height:72px;font-weight:800;border-radius:14px;padding:8px 6px;transition:all .12s}
+.payMethods button i{font-style:normal;font-size:22px;line-height:1}@media(hover:hover){.payMethods button:not(.on):hover{border-color:#b2ccff;background:#f5f8ff}}
+.payMethods button.on{background:#eff4ff;border-color:#175cd3;color:#175cd3;box-shadow:0 0 0 3px rgba(23,92,211,.12)}
+.payInput{width:100%;min-height:46px;border:2px solid #e4e7ec;border-radius:12px;padding:10px 12px;font-size:16px}.payInput:focus{border-color:#175cd3;outline:0;box-shadow:0 0 0 4px rgba(23,92,211,.12)}
+#payRefWrap small{display:block;margin-top:5px;font-size:12px}
+.payTwo{display:grid;grid-template-columns:1fr 1.4fr;gap:10px}
+.payDlgBar{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;padding-top:16px;border-top:1px solid #eef0f3}.payDlgBar button{min-height:46px;border-radius:12px;padding:0 18px}
+.payGo{background:#12b76a!important;color:#fff!important;font-weight:900}
+.payItem{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}.payItem .payEdit{min-height:30px;padding:4px 10px;font-size:12px}
+.payRef{display:inline-block;background:#eff8ff;color:#175cd3;border-radius:6px;padding:1px 7px;font-size:12px;font-weight:800}.payRef.missing{background:#fffaeb;color:#b54708}
+.payHits{display:grid;gap:6px;margin:0 0 12px}.payHits>b{font-size:13px;color:#475467}.payHit{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;text-align:left;background:#f8fafc;color:#101828;border:1px solid #e4e7ec;border-radius:10px;padding:10px 12px;font-weight:600}
+@media(max-width:480px){.payMethods{grid-template-columns:repeat(2,1fr)}.payTwo{grid-template-columns:1fr}.payDlgBox{padding:18px}}
 .mechanicActivityPanel{margin-bottom:14px}
 /* v24.41.0 time clock */
 .mechClock{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;margin-bottom:14px;border-left:6px solid #98a2b3}
@@ -753,7 +776,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.41.1">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.41.2">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -803,7 +826,7 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.41.1 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.41.2 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1369,7 +1392,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.41.1';
+const FRONTEND_VERSION='24.41.2';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1643,7 +1666,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.41.1";
+const ROUTE_MODULE_VERSION="24.41.2";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -5333,7 +5356,7 @@ const invMoney=n=>`$${Number(n||0).toLocaleString(undefined,{minimumFractionDigi
 function invStatus(i){const overdue=!['paid','void','draft'].includes(i.status)&&i.due_date&&new Date(String(i.due_date).slice(0,10)+'T23:59:59')<new Date();return overdue?'overdue':i.status}
 async function loadInvoices(){try{const r=await fetch('/api/invoices',{headers:authHeaders(),cache:'no-store'}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to load invoices');invoiceItems=d.items||[];renderInvoices()}catch(e){document.getElementById('invoiceTable').innerHTML=`<tr><td colspan="8" class="error">${esc(e.message)}</td></tr>`}}
 function setInvoiceFilter(v,b){invoiceFilter=v;document.querySelectorAll('[data-invfilter]').forEach(x=>x.classList.toggle('active',x===b));renderInvoices()}
-function renderInvoices(){const today=new Date(),items=invoiceItems.filter(i=>invoiceFilter==='all'||(invoiceFilter==='overdue'?invStatus(i)==='overdue':invoiceFilter==='sent'?['sent','partial'].includes(i.status):i.status===invoiceFilter));const open=invoiceItems.filter(i=>['sent','partial'].includes(i.status)),ar=open.reduce((a,i)=>a+Number(i.balance_due||0),0),over=open.filter(i=>invStatus(i)==='overdue').reduce((a,i)=>a+Number(i.balance_due||0),0),draft=invoiceItems.filter(i=>i.status==='draft').length;document.getElementById('invoiceKpis').innerHTML=`<div class="stat"><b>${invMoney(ar)}</b><span>Accounts Receivable</span></div><div class="stat"><b>${invMoney(over)}</b><span>Overdue</span></div><div class="stat"><b>${draft}</b><span>Drafts</span></div><div class="stat"><b>${invoiceItems.filter(i=>i.status==='paid').length}</b><span>Paid</span></div>`;document.getElementById('invoiceTable').innerHTML=items.map(i=>{const st=invStatus(i),due=String(i.due_date||'').slice(0,10);return `<tr><td><b>${esc(i.invoice_number)}</b>${i.work_order_id?`<div class="muted">WO #${esc(i.work_order_id)}</div>`:''}</td><td><b>${esc(i.customer_name)}</b><div class="muted">Unit ${esc(i.unit_number||'—')}</div></td><td>${esc(String(i.invoice_date||'').slice(0,10))}<div class="${st==='overdue'?'overdueText':'muted'}">Due ${esc(due||'—')}</div></td><td><span class="invoiceStatus is-${st==='overdue'?'sent':st}">${esc(st)}</span></td><td><b>${invMoney(i.total)}</b></td><td>${invMoney(i.amount_paid)}</td><td><b>${invMoney(i.balance_due)}</b></td><td><button class="secondary" onclick="openInvoiceWorkspace(${i.id})">Open</button></td></tr>`}).join('')||'<tr><td colspan="8" class="empty">No invoices in this view.</td></tr>';const badge=document.getElementById('invoiceNavBadge');if(badge){const n=open.filter(i=>invStatus(i)==='overdue').length;badge.textContent=n;badge.style.display=n?'inline-flex':'none'}}
+function renderInvoices(){const today=new Date(),items=invoiceItems.filter(invoiceMatchesSearch).filter(i=>invoiceFilter==='all'||(invoiceFilter==='overdue'?invStatus(i)==='overdue':invoiceFilter==='sent'?['sent','partial'].includes(i.status):i.status===invoiceFilter));const open=invoiceItems.filter(i=>['sent','partial'].includes(i.status)),ar=open.reduce((a,i)=>a+Number(i.balance_due||0),0),over=open.filter(i=>invStatus(i)==='overdue').reduce((a,i)=>a+Number(i.balance_due||0),0),draft=invoiceItems.filter(i=>i.status==='draft').length;document.getElementById('invoiceKpis').innerHTML=`<div class="stat"><b>${invMoney(ar)}</b><span>Accounts Receivable</span></div><div class="stat"><b>${invMoney(over)}</b><span>Overdue</span></div><div class="stat"><b>${draft}</b><span>Drafts</span></div><div class="stat"><b>${invoiceItems.filter(i=>i.status==='paid').length}</b><span>Paid</span></div>`;document.getElementById('invoiceTable').innerHTML=items.map(i=>{const st=invStatus(i),due=String(i.due_date||'').slice(0,10);return `<tr><td><b>${esc(i.invoice_number)}</b>${i.work_order_id?`<div class="muted">WO #${esc(i.work_order_id)}</div>`:''}</td><td><b>${esc(i.customer_name)}</b><div class="muted">Unit ${esc(i.unit_number||'—')}</div></td><td>${esc(String(i.invoice_date||'').slice(0,10))}<div class="${st==='overdue'?'overdueText':'muted'}">Due ${esc(due||'—')}</div></td><td><span class="invoiceStatus is-${st==='overdue'?'sent':st}">${esc(st)}</span></td><td><b>${invMoney(i.total)}</b></td><td>${invMoney(i.amount_paid)}</td><td><b>${invMoney(i.balance_due)}</b></td><td><button class="secondary" onclick="openInvoiceWorkspace(${i.id})">Open</button></td></tr>`}).join('')||'<tr><td colspan="8" class="empty">No invoices in this view.</td></tr>';const badge=document.getElementById('invoiceNavBadge');if(badge){const n=open.filter(i=>invStatus(i)==='overdue').length;badge.textContent=n;badge.style.display=n?'inline-flex':'none'}}
 let activeServiceOrder=null;
 async function createServiceOrderFromWO(id){try{const r=await fetch(`/api/service-orders/from-work-order/${id}`,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:'{}'}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to create service order');await openServiceOrder(d.id)}catch(e){alert(e.message)}}
 async function openServiceOrder(id){try{const r=await fetch(`/api/service-orders/${id}`,{headers:authHeaders(),cache:'no-store'}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to load service order');activeServiceOrder=d;const st=document.getElementById('serviceOrderTitle');if(st)st.textContent='Service Order Review';renderServiceOrder();document.getElementById('serviceOrderModal').classList.add('open');syncModalState()}catch(e){alert(e.message)}}
@@ -5634,7 +5657,7 @@ function renderInvoiceEditor(){
      <div class="invoiceSummaryRow"><span>Paid</span><b>${invMoney(i.amount_paid)}</b></div>
      <div class="invoiceBalanceLabel">Balance Due</div><div class="moneyBig" id="invPreviewBalance">${invMoney(i.balance_due)}</div>
      <div class="actions invoiceAppOnly invoiceSummaryActions">${locked?'':`<button onclick="saveInvoiceHeader()">Save Changes</button>`}<button class="secondary" onclick="printInvoicePdf(${i.id})">Print</button><button class="secondary" onclick="downloadInvoicePDF(${i.id})">PDF</button>${i.status==='draft'?`<button class="success" onclick="finalizeInvoice(${i.id})">Finalize / Mark Sent</button>`:''}${['sent','partial'].includes(i.status)?`<button class="success" onclick="recordInvoicePayment(${i.id},${Number(i.balance_due||0)})">Record Payment</button>`:''}${i.status!=='void'&&Number(i.amount_paid||0)===0?`<button class="danger" onclick="voidInvoice(${i.id})">Void</button>`:''}${i.status!=='void'?`<button class="secondary" onclick="createInvoicePaymentLink(${i.id})">Payment Link</button><button id="invoiceEmailButton" class="secondary" onclick="emailInvoice(${i.id})">✉ Send to Customer</button>`:''}${session?.role==='admin'?`<button class="danger" onclick="permanentlyDeleteInvoice(${i.id},'${esc(i.invoice_number)}')">Delete Permanently</button>`:''}</div>
-     <h3>Payments</h3>${payments.map(p=>`<div class="historyitem"><b>${invMoney(p.amount)}</b> · ${esc(p.method||'Other')}<div class="muted">${esc(String(p.paid_at||'').slice(0,19).replace('T',' '))} ${p.reference?`· ${esc(p.reference)}`:''}</div></div>`).join('')||'<div class="muted">No payments recorded.</div>'}
+     <h3>Payments</h3>${payments.map(p=>`<div class="historyitem payItem"><div><b>${invMoney(p.amount)}</b> · ${esc(p.method||'Other')}${p.reference?` <span class="payRef">${esc(p.reference)}</span>`:(['Check','Zelle','ACH'].includes(p.method)?' <span class="payRef missing">no transaction ID</span>':'')}<div class="muted">${esc(String(p.paid_at||'').slice(0,10))}${p.received_by?` · ${esc(p.received_by)}`:''}${p.note?` · ${esc(p.note)}`:''}</div></div><button type="button" class="secondary invoiceAppOnly payEdit" onclick="editInvoicePayment(${Number(i.id)},${Number(p.id)})">Edit</button></div>`).join('')||'<div class="muted">No payments recorded.</div>'}
    </div>
  </aside></div>
  <section class="invoiceWarrantyNotice invoiceLegalBlock">
@@ -5738,7 +5761,43 @@ async function saveInvoiceHeader(){const i=activeInvoice.invoice;try{invoiceSetS
 async function saveInvoiceLine(id){try{const i=activeInvoice.invoice;invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const r=await fetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(invoiceHeaderPayload())}),d=await r.json();if(!r.ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);invoiceSetSaveState('saved','All changes saved')}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message||'Save failed','error',7000)}}
 async function deleteInvoiceLine(lineId){if(!confirm('Remove this line? If this is a labor operation, its attached parts and charges will also be removed.'))return;if(!(await persistInvoiceDraftBeforeStructureChange('Preserving your invoice')))return;const i=activeInvoice.invoice,r=await fetch(`/api/invoices/${i.id}/lines/${lineId}`,{method:'DELETE',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to remove line');await openInvoice(i.id)}
 async function finalizeInvoice(id){if(!confirm('Finalize this invoice and mark it sent/open? Review prices, tax and customer PO first.'))return;if(!(await saveInvoiceHeader()))return;const r=await fetch(`/api/invoices/${id}/finalize`,{method:'POST',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to finalize');if(Array.isArray(d.warnings)&&d.warnings.length)showToast?.('Inventory warning: '+d.warnings.join(' · '),'warning',12000);await openInvoice(id);await loadInvoices()}
-async function recordInvoicePayment(id,balance){const amount=Number(prompt(`Payment amount (balance ${invMoney(balance)}):`,Number(balance).toFixed(2)));if(!amount)return;const method=prompt('Payment method (Check, ACH, Credit Card, Cash, Other):','Check')||'Other',reference=prompt('Check # / transaction reference (optional):','')||'';const r=await fetch(`/api/invoices/${id}/payments`,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({amount,method,reference})}),d=await r.json();if(!r.ok)return alert(d.error||'Payment failed');await openInvoice(id);await loadInvoices()}
+// v24.41.2 payment dialog: one form with the payment type and its transaction ID (check #, Zelle confirmation, ACH trace…).
+const PAY_METHODS=[["Cash","Cash","","💵"],["Check","Check","Check number","🧾"],["Zelle","Zelle","Zelle confirmation / transaction ID","⚡"],["ACH","ACH / Bank","ACH or wire reference","🏦"],["Credit Card","Credit card","Card transaction ID / last 4 digits","💳"],["Other","Other","Reference","•••"]];
+const PAY_NEEDS_REF=["Check","Zelle","ACH"];
+function paymentDialog({title,amount=null,balance=null,method="Check",reference="",note="",editing=false}){return new Promise(resolve=>{
+ const m=document.createElement("div");m.className="payDlg";const today=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+ m.innerHTML=`<div class="payDlgBox" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+  <div class="payDlgHead"><div class="payDlgIcon">$</div><div><h2>${esc(title)}</h2>${balance!=null?`<div class="muted">Balance due <b>${invMoney(balance)}</b></div>`:""}</div><button type="button" class="payDlgX" data-pay="cancel" aria-label="Close">×</button></div>
+  ${editing?"":`<label class="payLbl" for="payAmt">Amount</label><div class="payAmtRow"><div class="payAmt"><span>$</span><input id="payAmt" inputmode="decimal" value="${amount!=null?Number(amount).toFixed(2):""}"></div>${balance!=null?`<button type="button" class="payChip" data-pay="full">Full balance</button>`:""}</div>`}
+  <label class="payLbl">Payment type</label><div class="payMethods">${PAY_METHODS.map(([k,l,,ic])=>`<button type="button" data-pm="${k}" class="${k===method?"on":""}"><i>${ic}</i><span>${l}</span></button>`).join("")}</div>
+  <div id="payRefWrap"><label class="payLbl" id="payRefLabel" for="payRef"></label><input id="payRef" class="payInput" value="${esc(reference)}" autocomplete="off"><small class="muted">Saved with the payment so you can search for it later on the Invoices page.</small></div>
+  <div class="payTwo">${editing?"":`<div><label class="payLbl" for="payDate">Received on</label><input id="payDate" class="payInput" type="date" value="${today}" max="${today}"></div>`}<div><label class="payLbl" for="payNote">Note <span class="muted">(optional)</span></label><input id="payNote" class="payInput" value="${esc(note)}" placeholder="e.g. paid by driver"></div></div>
+  <div class="payDlgBar"><button type="button" class="secondary" data-pay="cancel">Cancel</button><button type="button" class="payGo" data-pay="ok">${editing?"Save changes":"Record payment"}</button></div></div>`;
+ document.body.appendChild(m);let cur=method;
+ const paint=()=>{const x=PAY_METHODS.find(r=>r[0]===cur)||PAY_METHODS[5];m.querySelectorAll("[data-pm]").forEach(b=>b.classList.toggle("on",b.dataset.pm===cur));const w=m.querySelector("#payRefWrap");w.style.display=cur==="Cash"?"none":"";m.querySelector("#payRefLabel").innerHTML=esc(x[2])+(PAY_NEEDS_REF.includes(cur)?"":' <span class="muted">(optional)</span>');m.querySelector("#payRef").placeholder=cur==="Check"?"e.g. 10452":cur==="Zelle"?"e.g. 7XK2P9QJ3":""};
+ paint();setTimeout(()=>(m.querySelector("#payAmt")||m.querySelector("#payRef"))?.focus(),30);
+ const done=v=>{m.remove();resolve(v)};
+ m.addEventListener("click",e=>{const pm=e.target.closest("[data-pm]");if(pm){cur=pm.dataset.pm;paint();if(cur!=="Cash")m.querySelector("#payRef").focus();return}
+  const a=e.target.closest("[data-pay]")?.dataset.pay;if(a==="cancel"||e.target===m)return done(null);if(a==="full"){m.querySelector("#payAmt").value=Number(balance).toFixed(2);return}
+  if(a==="ok"){const amt=editing?null:Number(String(m.querySelector("#payAmt").value).replace(/[$,\s]/g,""));if(!editing&&!(amt>0))return showToast("Enter the payment amount.","error");
+   const ref=cur==="Cash"?"":m.querySelector("#payRef").value.trim();
+   if(PAY_NEEDS_REF.includes(cur)&&!ref&&!confirm(`Save this ${cur} payment without a transaction ID? You can add it later.`))return m.querySelector("#payRef").focus();
+   done({amount:amt,method:cur,reference:ref,note:m.querySelector("#payNote").value.trim(),paidAt:m.querySelector("#payDate")?.value||null})}});
+ m.addEventListener("keydown",e=>{if(e.key==="Escape")done(null);if(e.key==="Enter"&&e.target.tagName==="INPUT")m.querySelector('[data-pay="ok"]').click()});
+})}
+async function sendPayment(url,method,body){let r=await fetch(url,{method,headers:authHeaders({"Content-Type":"application/json"}),body:JSON.stringify(body)}),d=await r.json().catch(()=>({}));
+ if(r.status===409&&d.code==="DUPLICATE_REFERENCE"){if(!confirm(`${d.error}\n\nRecord it anyway?`))return false;r=await fetch(url,{method,headers:authHeaders({"Content-Type":"application/json"}),body:JSON.stringify({...body,allowDuplicateReference:true})});d=await r.json().catch(()=>({}))}
+ if(!r.ok){alert(d.error||"Payment was not saved.");return false}return true}
+async function recordInvoicePayment(id,balance){const v=await paymentDialog({title:"Record payment",amount:balance,balance});if(!v)return;
+ if(await sendPayment(`/api/invoices/${id}/payments`,"POST",v)){showToast(`Payment of ${invMoney(v.amount)} recorded${v.reference?` · ${v.method} ${v.reference}`:""}.`,"success");await openInvoice(id);await loadInvoices()}}
+async function editInvoicePayment(invoiceId,paymentId){const p=(activeInvoice?.payments||[]).find(x=>String(x.id)===String(paymentId));if(!p)return;
+ const known=PAY_METHODS.some(r=>r[0]===p.method)?p.method:"Other";const v=await paymentDialog({title:`Edit ${invMoney(p.amount)} payment`,method:known,reference:p.reference||"",note:p.note||"",editing:true});if(!v)return;
+ if(await sendPayment(`/api/invoices/${invoiceId}/payments/${paymentId}`,"PATCH",{method:v.method,reference:v.reference,note:v.note})){showToast("Payment updated.","success");await openInvoice(invoiceId)}}
+// Invoice list search: invoice #, customer, unit, VIN, PO, or a payment's transaction ID.
+let invoiceSearchText="",invoicePaySearchTimer=0,invoicePayHitIds=new Set();
+function onInvoiceSearch(v){invoiceSearchText=String(v||"").trim().toLowerCase();invoicePayHitIds=new Set();renderInvoices();clearTimeout(invoicePaySearchTimer);const box=document.getElementById("invoicePaymentHits");if(!box)return;if(invoiceSearchText.length<3){box.innerHTML="";return}
+ invoicePaySearchTimer=setTimeout(async()=>{try{const d=await apiJSON(`/api/payments/search?q=${encodeURIComponent(invoiceSearchText)}`);invoicePayHitIds=new Set(d.items.map(p=>String(p.invoice_id)));renderInvoices();box.innerHTML=d.items.length?`<div class="card payHits"><b>Payments matching “${esc(v)}”</b>${d.items.map(p=>`<button type="button" class="payHit" onclick="openInvoiceWorkspace(${Number(p.invoice_id)})"><span><b>${esc(p.method||"Other")} ${esc(p.reference||"")}</b> · ${invMoney(p.amount)} · ${esc(String(p.paid_at||"").slice(0,10))}</span><span class="muted">Invoice ${esc(p.invoice_number)} · ${esc(p.customer_name||"")}${p.unit_number?` · Unit ${esc(p.unit_number)}`:""}</span></button>`).join("")}</div>`:""}catch(_){box.innerHTML=""}},300)}
+function invoiceMatchesSearch(i){if(!invoiceSearchText)return true;if(invoicePayHitIds.has(String(i.id)))return true;return [i.invoice_number,i.customer_name,i.unit_number,i.vin,i.po_number].some(x=>String(x||"").toLowerCase().includes(invoiceSearchText))}
 async function permanentlyDeleteInvoice(id,num){const typed=prompt(`OWNER DELETE — this permanently removes the invoice, line items and payment records. Type ${num} exactly to confirm:`,'');if(typed!==num){if(typed)showToast?.('Invoice number did not match. Nothing was deleted.','warning');return}try{await apiJSON(`/api/invoices/${id}`,{method:'DELETE',body:JSON.stringify({confirmInvoiceNumber:typed})});if(document.body.classList.contains('invoiceWorkspaceMode')){try{window.opener?.loadInvoices?.()}catch(_){ }showToast?.(`Invoice ${num} permanently deleted.`,'success');setTimeout(()=>closeInvoiceWorkspace(),500)}else{closeModal('invoiceModal');await loadInvoices();showToast?.(`Invoice ${num} permanently deleted.`,'success')}}catch(e){showToast?.(e.message,'error',8000)||alert(e.message)}}
 async function createInvoicePaymentLink(id){try{if(!(await persistInvoiceDraftBeforeStructureChange('Saving invoice before payment link')))return;const d=await apiJSON(`/api/invoices/${id}/payment-link`,{method:'POST',body:'{}'});if(d.url){await navigator.clipboard?.writeText(d.url).catch(()=>{});alert('Secure payment link created and copied to clipboard.')}}catch(e){alert(e.message)}}
 async function emailInvoice(id){
@@ -5891,7 +5950,7 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
  </div>
 </div>
 
-<script src="./finance-shared.js?v=24.41.1"></script>
+<script src="./finance-shared.js?v=24.41.2"></script>
 <script src="./inspection-checklist.js?v=3"></script>
 <script src="./inspection-workflow.js?v=3"></script>
 </body>

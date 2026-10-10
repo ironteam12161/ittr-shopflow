@@ -139,6 +139,23 @@ try{
  // --- v24.41.1 mileage typed with separators
  for(const typed of ['304,538','304.538','304 538',304.538]){await request(`/api/invoices/${conv.id}`,{method:'PUT',body:{mileage:typed}});near(Number((await request(`/api/invoices/${conv.id}`)).invoice.mileage),304538,`invoice mileage ${JSON.stringify(typed)} saved as 304538`)}
  console.log('PASS mileage: comma, dot or space thousands separators all save as whole miles');
+ // --- v24.41.2 payment transaction IDs
+ {const pid=(await db.query(`INSERT INTO customer_invoices(invoice_number,customer_name,status,invoice_date,created_by) VALUES('PAY-TEST-1','Pay Test LLC','sent',CURRENT_DATE,'test') RETURNING id`)).rows[0].id;
+  await db.query(`INSERT INTO customer_invoice_lines(invoice_id,line_type,description,quantity,unit_price) VALUES($1,'labor','Brake job',1,100)`,[pid]);await request(`/api/invoices/${pid}`,{method:'PUT',body:{terms:'Net 30'}});
+  const b0=(await request(`/api/invoices/${pid}`)).invoice;
+  await request(`/api/invoices/${pid}/payments`,{method:'POST',body:{amount:10,method:'zelle',reference:'ZEL-7XK2P9',note:'from driver',paidAt:'2026-10-01'}});
+  const dupRef=await request(`/api/invoices/${pid}/payments`,{method:'POST',body:{amount:5,method:'Zelle',reference:'zel-7xk2p9'},allowError:true});assert(dupRef.status===409&&dupRef.code==='DUPLICATE_REFERENCE','same Zelle transaction ID is caught');
+  await request(`/api/invoices/${pid}/payments`,{method:'POST',body:{amount:5,method:'Cash',reference:'should-drop'}});
+  let pays=(await request(`/api/invoices/${pid}`)).payments;const z=pays.find(p=>p.reference==='ZEL-7XK2P9'),c=pays.find(p=>p.method==='Cash'&&Number(p.amount)===5);
+  assert(z&&z.method==='Zelle'&&String(z.paid_at).startsWith('2026-10-01')&&c&&!c.reference,'method normalized, date kept, cash has no transaction ID');
+  await request(`/api/invoices/${pid}/payments/${c.id}`,{method:'PATCH',body:{method:'Check',reference:'10452'}});
+  pays=(await request(`/api/invoices/${pid}`)).payments;assert(pays.find(p=>p.id===c.id).reference==='10452','transaction ID can be added later');
+  const found=(await request('/api/payments/search?q=7xk2')).items;assert(found.some(p=>String(p.invoice_id)===String(pid)&&p.reference==='ZEL-7XK2P9'),'payments found by transaction ID');
+  assert((await request('/api/payments/search?q=10452')).items.length>=1,'payments found by check number');
+  assert((await request('/api/payments/search?q=7xk2',{tok:mechToken,allowError:true})).status===403,'mechanics cannot search payments');
+  near(Number((await request(`/api/invoices/${pid}`)).invoice.amount_paid),Number(b0.amount_paid||0)+15,'payments counted once');
+  await db.query(`UPDATE customer_invoices SET status='void' WHERE id=$1`,[pid]);
+  console.log('PASS payments: transaction IDs saved, duplicates caught, editable later, searchable');}
  // --- invoice tire fees + finalize paid draft => paid (audit fix)
  await request(`/api/invoices/${conv.id}/tire-fees`,{method:'POST',body:{newTires:2,otherDisposed:0}});
  const invAfter=await request(`/api/invoices/${conv.id}`);assert(invAfter.lines.filter(l=>l.metadata?.feeCode).length===2,'invoice tire fees not duplicated');
