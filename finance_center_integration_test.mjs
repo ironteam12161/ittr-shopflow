@@ -302,6 +302,14 @@ try{
  const ij=(await request('/api/reports/labor-times/jobs?from=2020-01-01&to=2030-12-31&type=vehicle_inspection')).items.find(j=>j.ref==='Invoice TC-INSP-1');
  assert(ij&&ij.billed===1&&ij.actual===1.5&&ij.mechanic===mechUser,'inspection time fills the invoice inspection line in labor times');
  await db.query(`UPDATE customer_invoices SET status='void' WHERE id=$1`,[iInv]);
+ {await db.query("UPDATE customer_invoices SET status='void' WHERE invoice_number='TC-LAB-1'");const st=(await request('/api/state')).shopflow,t0=Date.now()-2*3600000;
+  const wos=st.payload.workorders.map(w=>String(w.id)==='9950'?{...w,status:'Completed',completedAt:new Date().toISOString(),inspection:{required:true,type:'truck',status:'Completed',startedAt:new Date(t0).toISOString(),completedAt:new Date(t0+45*60000).toISOString(),startedBy:mechUser,completedBy:mechUser,results:{}}}:w);
+  await request('/api/state/shopflow',{method:'PUT',body:{expectedVersion:st.version,payload:{...st.payload,workorders:wos}}});
+  const so=await request('/api/service-orders/from-work-order/9950',{method:'POST',body:{}});const sod=await request(`/api/service-orders/${so.id}`);
+  const ir=sod.sessions.find(x=>x.task_uid==='inspection-9950');assert(ir&&Math.abs(ir.original_hours-0.75)<0.01&&ir.mechanic_username===mechUser.toLowerCase()&&sod.workOrder.tasks.some(t=>t.uid==='inspection-9950'&&t.t==='Truck inspection'),'service order review shows the inspection time');
+  const soInv=await request(`/api/service-orders/${so.id}/to-invoice`,{method:'POST',body:{}});const sl=(await request(`/api/invoices/${soInv.id}`)).lines.find(l=>l.line_type==='labor'&&l.job_uid==='inspection-9950');
+  assert(sl&&Number(sl.quantity)===0.75&&sl.description==='Truck inspection','inspection becomes an invoice labor line with its hours');
+  await db.query(`UPDATE customer_invoices SET status='void' WHERE id=$1`,[soInv.id]);}
  console.log('PASS time clock + inspections in productivity/labor times: punch in/out, auto clock-in, clock-out pauses work, admin edits with history, overtime, forgotten shifts; labor times by job type');
  // --- v24.39.0 compliance: annual inspections, fleet PM/CARB, owner reset
  const lk=await request('/api/annual-inspections/lookup?q=Tire Keeper');assert(lk.customers.some(c=>c.customer_name==='Tire Keeper Freight'),'carrier lookup finds customers');

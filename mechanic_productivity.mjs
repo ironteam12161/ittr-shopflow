@@ -116,6 +116,10 @@ export async function buildProductivityReport(db, { from, to, mechanic = '', now
     const tot = new Map(); for (const x of r) tot.set(x.task_uid, (tot.get(x.task_uid) || 0) + Number(x.secs));
     for (const x of r) shares.set(`${x.task_uid}|${x.mechanic_username}`, tot.get(x.task_uid) ? Number(x.secs) / tot.get(x.task_uid) : 0);
   }
+  // Inspection labor lines (job "inspection-<WO>") belong to the mechanic who did the inspection.
+  const inspUids = uids.filter(u => /^inspection-/.test(u));
+  if (inspUids.length) for (const x of (await db.query(`SELECT work_order_id,mechanic_username FROM mechanic_inspections WHERE ('inspection-'||work_order_id) = ANY($1::text[]) AND mechanic_username IS NOT NULL`, [inspUids]).catch(() => ({ rows: [] }))).rows)
+    shares.set(`inspection-${x.work_order_id}|${x.mechanic_username}`, 1);
 
   const days = []; for (let d = from; d <= to; d = addDays(d, 1)) days.push(d);
   const firstEver = new Map();
