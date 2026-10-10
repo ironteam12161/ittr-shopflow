@@ -345,6 +345,19 @@ async function gmailAccessToken(account) {
   return d.access_token;
 }
 const b64 = s => Buffer.from(String(s || '').replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+// v24.42.0: download one attachment of a stored Gmail finance message (used to scan vendor bill PDFs).
+export async function fetchGmailAttachment(db, messageId, index) {
+  const m = (await db.query('SELECT m.*,a.refresh_token_enc,a.email FROM gmail_finance_messages m JOIN gmail_accounts a ON a.id=m.account_id WHERE m.id=$1::bigint', [messageId])).rows[0];
+  if (!m) throw Object.assign(new Error('Email not found.'), { status: 404 });
+  const list = Array.isArray(m.attachments) ? m.attachments : [];
+  const i = Number.isInteger(Number(index)) && index !== '' && index != null ? Number(index) : list.findIndex(a => /pdf|image\//i.test(a?.mimeType || '') || /\.pdf$/i.test(a?.filename || ''));
+  const att = list[i];
+  if (!att?.attachmentId) throw Object.assign(new Error('This email has no PDF or photo attachment to scan.'), { status: 404 });
+  const token = await gmailAccessToken(m);
+  const d = await googleJson(`${googleUrls().gmail}/users/me/messages/${encodeURIComponent(m.gmail_message_id)}/attachments/${encodeURIComponent(att.attachmentId)}`, { headers: { Authorization: `Bearer ${token}` } });
+  const mimeType = /\.pdf$/i.test(att.filename || '') ? 'application/pdf' : String(att.mimeType || 'application/octet-stream');
+  return { message: m, filename: att.filename || 'invoice.pdf', mimeType, buffer: Buffer.from(String(d.data || '').replace(/-/g, '+').replace(/_/g, '/'), 'base64') };
+}
 function walkParts(part, out = { plain: '', html: '', attachments: [] }) {
   if (!part) return out;
   const mime = String(part.mimeType || '');

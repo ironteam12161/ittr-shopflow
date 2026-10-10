@@ -47,6 +47,8 @@
 .repSugg{margin-top:8px;display:grid;gap:6px}.repSugg button{display:flex;justify-content:space-between;gap:10px;background:#f8fafc;color:var(--rep-ink);border:1px solid var(--rep-line);text-align:left;font-weight:600;min-height:auto;padding:8px 10px;font-size:13px}
 .repSugg small{color:var(--rep-3);font-weight:500}
 .repPanel{display:none}.repPanel.active{display:block}
+.repForm.vbqForm{grid-template-columns:repeat(6,minmax(0,1fr))}.vbqForm .vbqVendor{grid-column:span 2}
+@media(max-width:700px){.repForm.vbqForm{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .repPrintHead{display:none}
 @media(max-width:1000px){.repKpis{grid-template-columns:repeat(3,minmax(0,1fr))}.repGrid{grid-template-columns:1fr}}
 @media(max-width:560px){.repKpis{grid-template-columns:repeat(2,minmax(0,1fr))}.repForm{grid-template-columns:1fr}.repKpi b{font-size:18px}}
@@ -68,7 +70,7 @@
   </div>
  </div>
  <div class="repTabs" role="tablist">
-  <button data-rep="tab" data-t="overview" class="active">Overview</button><button data-rep="tab" data-t="ar">Customers owe</button><button data-rep="tab" data-t="parts">Parts &amp; spending</button><button data-rep="tab" data-t="tires">Tire fees</button><button data-rep="tab" data-t="mech">Mechanics</button><button data-rep="tab" data-t="clock">Time clock</button><button data-rep="tab" data-t="labor">Labor times</button><button data-rep="tab" data-t="inbox">Money inbox (Gmail)</button>
+  <button data-rep="tab" data-t="overview" class="active">Overview</button><button data-rep="tab" data-t="ar">Customers owe</button><button data-rep="tab" data-t="parts">Parts &amp; spending</button><button data-rep="tab" data-t="tires">Tire fees</button><button data-rep="tab" data-t="mech">Mechanics</button><button data-rep="tab" data-t="clock">Time clock</button><button data-rep="tab" data-t="labor">Labor times</button><button data-rep="tab" data-t="vendors">Vendors</button><button data-rep="tab" data-t="ai">AI usage</button><button data-rep="tab" data-t="inbox">Money inbox (Gmail)</button>
  </div>
  <div id="repKpis" class="repKpis"></div>
  <div class="repPanel active" data-panel="overview" id="repOverview"></div>
@@ -78,6 +80,8 @@
  <div class="repPanel" data-panel="mech" id="repMech"></div>
  <div class="repPanel" data-panel="clock" id="repClock"></div>
  <div class="repPanel" data-panel="labor" id="repLabor"></div>
+ <div class="repPanel" data-panel="vendors" id="repVendors"></div>
+ <div class="repPanel" data-panel="ai" id="repAi"></div>
  <div class="repPanel" data-panel="inbox" id="repInbox"></div>
  <div id="repTip" class="repTip" role="tooltip"></div>
 </div>
