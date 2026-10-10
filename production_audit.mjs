@@ -173,6 +173,7 @@ check('mileage boxes accept 304,538 and save whole miles',root.includes('functio
 check('payments have a type list, transaction IDs and search',root.includes('function paymentDialog(')&&!root.includes("prompt('Payment method (Check")&&server.includes("app.get('/api/payments/search'")&&server.includes("code:'DUPLICATE_REFERENCE'"));
 check('vehicle inspections count as mechanic job work',read('mechanic_productivity.mjs').includes('FROM mechanic_inspections')&&read('labor_times.mjs').includes("T('vehicle_inspection'"));
 check('dashboard shows a mechanic doing an inspection as working',root.includes('function mechanicInspectionInProgress(')&&server.includes('autoClockInSafe(req.user,"inspection")'));
+check('mechanic time clock loads its real status on page refresh',root.includes('// v24.41.5: load the time clock on every page load/refresh')&&root.includes('id="mechClockBtn" class="mechClockBtn" onclick="punchMechanicClock()" disabled>Loading…'));
 const failed=results.filter(x=>!x.ok);
 for(const r of results)console.log(`${r.ok?'PASS':'FAIL'}  ${r.name}${r.detail?'  '+r.detail:''}`);
 console.log(`\nITTR production audit: ${results.length-failed.length}/${results.length} passed`);
