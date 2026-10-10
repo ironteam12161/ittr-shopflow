@@ -1762,8 +1762,8 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.41.6");
-app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPLABOR-20261010`}));
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.41.7");
+app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-UXAUDIT-20261010`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
@@ -2257,7 +2257,7 @@ app.post("/api/work-orders/:id/helpers",auth,async(req,res,next)=>{
   sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
   const w=sf.workorders.find(x=>String(x?.id)===workOrderId);
   if(!w){await db.query("ROLLBACK");return res.status(404).json({error:"Work order not found."});}
-  if(req.user.role!=="admin"&&!mechanicOwnsWorkOrder(req.user,w)){await db.query("ROLLBACK");return res.status(403).json({error:"You must already be assigned to this work order to add a helper."});}
+  if(!["admin","manager"].includes(req.user.role)&&!mechanicOwnsWorkOrder(req.user,w)){await db.query("ROLLBACK");return res.status(403).json({error:"You must already be assigned to this work order to add a helper."});}
   if(w.status==="Completed"){await db.query("ROLLBACK");return res.status(409).json({error:"Completed work orders cannot add helpers."});}
   const uq=await db.query("SELECT username,display_name FROM auth_users WHERE username=$1 AND role='mechanic' AND active=true",[target]);
   if(!uq.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Mechanic account not found."});}
@@ -2281,7 +2281,7 @@ app.delete("/api/work-orders/:id/helpers/:username",auth,async(req,res,next)=>{
   const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
   const w=sf.workorders.find(x=>String(x?.id)===workOrderId);if(!w){await db.query("ROLLBACK");return res.status(404).json({error:"Work order not found."});}
   const primary=String(w.mechanic||"").toLowerCase();
-  if(req.user.role!=="admin"&&String(req.user.username||"").toLowerCase()!==primary){await db.query("ROLLBACK");return res.status(403).json({error:"Only the primary mechanic or admin can remove a helper."});}
+  if(!["admin","manager"].includes(req.user.role)&&String(req.user.username||"").toLowerCase()!==primary){await db.query("ROLLBACK");return res.status(403).json({error:"Only the primary mechanic, a manager or the owner can remove a helper."});}
   const open=await db.query("SELECT 1 FROM task_time_sessions WHERE work_order_id=$1 AND mechanic_username=$2 AND ended_at IS NULL LIMIT 1",[workOrderId,target]);
   if(open.rowCount){await db.query("ROLLBACK");return res.status(409).json({error:"This mechanic has a running task on the work order. Pause or complete it first."});}
   w.helpers=(Array.isArray(w.helpers)?w.helpers:[]).filter(x=>String(x).toLowerCase()!==target);
@@ -2596,7 +2596,7 @@ app.get("/api/work-orders/:id/task-sessions",auth,async(req,res,next)=>{try{
   const sf=stateQ.rows[0].payload&&typeof stateQ.rows[0].payload==="object"?stateQ.rows[0].payload:{workorders:[]};
   const w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===workOrderId);
   if(!w)return res.status(404).json({error:"Work order not found."});
-  if(!mechanicOwnsWorkOrder(req.user,w) && req.user?.role!=="admin")
+  if(!mechanicOwnsWorkOrder(req.user,w) && !["admin","manager"].includes(req.user?.role))
     return res.status(403).json({error:"You do not have access to this work order."});
 
   const tasks=Array.isArray(w.tasks)?w.tasks:[];
@@ -3232,6 +3232,9 @@ app.post("/api/state/import-local",auth,ownerOnly,async(req,res,next)=>{try{
 
 app.get("/api/admin/staff",auth,managerPermission("employees"),async(req,res,next)=>{try{const q=await requireDb().query("SELECT username,display_name,role,email,permissions,language,active,created_at FROM auth_users ORDER BY role,display_name");res.json({items:q.rows.map(publicUser)})}catch(e){next(e)}});
 app.post("/api/admin/managers",auth,ownerOnly,async(req,res,next)=>{try{const username=cleanUsername(req.body?.username),display=String(req.body?.display||'').trim(),email=String(req.body?.email||'').trim(),password=String(req.body?.password||''),permissions=req.body?.permissions&&typeof req.body.permissions==='object'?req.body.permissions:{};if(!username||!display||password.length<12)return res.status(400).json({error:'Username, name and password of at least 12 characters are required.'});const hash=await bcrypt.hash(password,12);await requireDb().query("INSERT INTO auth_users(username,display_name,password_hash,role,email,permissions) VALUES($1,$2,$3,'manager',$4,$5::jsonb)",[username,display,hash,email||null,JSON.stringify(permissions)]);await audit(req.user.username,'manager_created',{username,permissions});res.json({ok:true})}catch(e){if(e?.code==='23505')return res.status(409).json({error:'That username already exists.'});next(e)}});
+// v24.41.7: the owner can see manager accounts and reset their passwords (create/edit/delete already existed).
+app.get("/api/admin/managers",auth,ownerOnly,async(req,res,next)=>{try{const r=await requireDb().query("SELECT username,display_name,email,permissions,active,created_at FROM auth_users WHERE role='manager' ORDER BY display_name");res.json({items:r.rows})}catch(e){next(e)}});
+app.patch("/api/admin/managers/:username/password",auth,ownerOnly,async(req,res,next)=>{try{const username=cleanUsername(req.params.username),password=String(req.body?.password||"");if(password.length<12)return res.status(400).json({error:"Manager passwords must be at least 12 characters."});const h=await bcrypt.hash(password,12);const q=await requireDb().query("UPDATE auth_users SET password_hash=$2,updated_at=now() WHERE username=$1 AND role='manager' RETURNING id",[username,h]);if(!q.rowCount)return res.status(404).json({error:"Manager not found."});await requireDb().query("DELETE FROM auth_sessions WHERE user_id=$1",[q.rows[0].id]);await audit(req.user.username,"manager_password_changed",{username});res.json({ok:true})}catch(e){next(e)}});
 app.put("/api/admin/managers/:username",auth,ownerOnly,async(req,res,next)=>{try{const username=cleanUsername(req.params.username),permissions=req.body?.permissions&&typeof req.body.permissions==='object'?req.body.permissions:{},display=String(req.body?.display||'').trim(),email=String(req.body?.email||'').trim();const q=await requireDb().query("UPDATE auth_users SET display_name=coalesce(nullif($2,''),display_name),email=nullif($3,''),permissions=$4::jsonb,updated_at=now() WHERE username=$1 AND role='manager' RETURNING *",[username,display,email,JSON.stringify(permissions)]);if(!q.rowCount)return res.status(404).json({error:'Manager not found.'});await audit(req.user.username,'manager_permissions_updated',{username,permissions});res.json({user:publicUser(q.rows[0])})}catch(e){next(e)}});
 app.delete("/api/admin/managers/:username",auth,ownerOnly,async(req,res,next)=>{try{const q=await requireDb().query("DELETE FROM auth_users WHERE username=$1 AND role='manager' RETURNING username",[cleanUsername(req.params.username)]);if(!q.rowCount)return res.status(404).json({error:'Manager not found.'});await audit(req.user.username,'manager_deleted',{username:req.params.username});res.json({ok:true})}catch(e){next(e)}});
 app.post("/api/admin/users",auth,managerPermission("employees"),async(req,res,next)=>{try{

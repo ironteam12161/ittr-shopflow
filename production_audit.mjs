@@ -176,6 +176,9 @@ check('dashboard shows a mechanic doing an inspection as working',root.includes(
 check('mechanic time clock loads its real status on page refresh',root.includes('// v24.41.5: load the time clock on every page load/refresh')&&root.includes('id="mechClockBtn" class="mechClockBtn" onclick="punchMechanicClock()" disabled>Loading…'));
 check('inspection time reaches the service order and invoice',server.includes('async function inspectionLabor(')&&(server.match(/inspectionLabor\(db,/g)||[]).length>=5);
 check('activity tiles ask before changing the activity',root.includes('function confirmBox(')&&root.includes('const yes=await confirmBox('));
+check('owner can list and manage manager accounts',server.includes('app.get("/api/admin/managers",auth,ownerOnly')&&root.includes('async function loadStaffAccounts(')&&root.includes('minlength="12"'));
+check('inspection actions wait for the latest save',root.includes('window.syncNow=async function'));
+check('work orders are cards on phones',root.includes('data-label="Scheduled"')&&root.includes('#workorders tr.woRow td[data-label]:before'));
 const failed=results.filter(x=>!x.ok);
 for(const r of results)console.log(`${r.ok?'PASS':'FAIL'}  ${r.name}${r.detail?'  '+r.detail:''}`);
 console.log(`\nITTR production audit: ${results.length-failed.length}/${results.length} passed`);

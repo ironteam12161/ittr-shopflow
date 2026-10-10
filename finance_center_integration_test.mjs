@@ -310,6 +310,18 @@ try{
   const soInv=await request(`/api/service-orders/${so.id}/to-invoice`,{method:'POST',body:{}});const sl=(await request(`/api/invoices/${soInv.id}`)).lines.find(l=>l.line_type==='labor'&&l.job_uid==='inspection-9950');
   assert(sl&&Number(sl.quantity)===0.75&&sl.description==='Truck inspection','inspection becomes an invoice labor line with its hours');
   await db.query(`UPDATE customer_invoices SET status='void' WHERE id=$1`,[soInv.id]);}
+ {// v24.41.7 audit: owner manages manager accounts; managers can add helpers and read timer history
+  assert((await request('/api/admin/managers',{method:'POST',body:{username:'auditmgr',display:'Audit Manager',password:'short-pass',permissions:{}},allowError:true})).status===400,'manager password must be 12+ characters');
+  await request('/api/admin/managers',{method:'POST',body:{username:'auditmgr',display:'Audit Manager',password:'Audit-Manager-2026!',permissions:{employees:false}}});
+  assert((await request('/api/admin/managers')).items.some(m=>m.username==='auditmgr'),'owner sees manager accounts');
+  await request('/api/admin/managers/auditmgr/password',{method:'PATCH',body:{password:'Audit-Manager-2027!'}});
+  const mgrTok=(await request('/api/auth/login',{method:'POST',tok:'',body:{username:'auditmgr',password:'Audit-Manager-2027!'}})).token;assert(mgrTok,'manager signs in with the new password');
+  assert((await request('/api/admin/managers',{tok:mgrTok,allowError:true})).status===403,'managers cannot list manager accounts');
+  assert((await request('/api/work-orders/9950/task-sessions',{tok:mgrTok,allowError:true})).status!==403,'managers can read a work order timer history');
+  const st=(await request('/api/state')).shopflow;const wos=st.payload.workorders.map(w=>String(w.id)==='9950'?{...w,status:'In Progress'}:w);await request('/api/state/shopflow',{method:'PUT',body:{expectedVersion:st.version,payload:{...st.payload,workorders:wos}}});
+  await db.query("INSERT INTO auth_users(username,display_name,password_hash,role) VALUES('helpermech','Helper Mech','x','mechanic') ON CONFLICT(username) DO NOTHING");
+  const hp=await request('/api/work-orders/9950/helpers',{method:'POST',tok:mgrTok,body:{username:'helpermech'},allowError:true});assert(hp.status===200,`managers can add a helper mechanic (got ${hp.status} ${hp.error||''})`);
+  await request('/api/admin/managers/auditmgr',{method:'DELETE'});}
  console.log('PASS time clock + inspections in productivity/labor times: punch in/out, auto clock-in, clock-out pauses work, admin edits with history, overtime, forgotten shifts; labor times by job type');
  // --- v24.39.0 compliance: annual inspections, fleet PM/CARB, owner reset
  const lk=await request('/api/annual-inspections/lookup?q=Tire Keeper');assert(lk.customers.some(c=>c.customer_name==='Tire Keeper Freight'),'carrier lookup finds customers');

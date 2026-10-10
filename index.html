@@ -6,13 +6,13 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.41.6-INSPLABOR-20260930">
+<meta name="ittr-build" content="ITTR-24.41.7-UXAUDIT-20260930">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.41.6</title>
+<title>ITTR ShopFlow v24.41.7</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -434,6 +434,16 @@ body{-webkit-text-size-adjust:100%}
 }
 
 
+.field label.checkline,label.checkline{display:flex!important;align-items:center;gap:10px;font-size:15px;font-weight:700;color:#101828;cursor:pointer;margin:4px 0 2px}label.checkline input[type=checkbox]{width:20px!important;height:20px;min-height:auto!important;margin:0;flex:none}
+/* v24.41.7 phones: work order rows become stacked cards instead of a sideways-scrolling table */
+@media(max-width:700px){#workorders table thead{display:none}#workorders table,#workorders tbody,#workorders tr.woRow,#workorders tr.woRow td{display:block;width:100%}
+ #workorders tr.woRow{border:1px solid #e4e7ec;border-radius:14px;margin:10px 0;padding:10px 12px;background:var(--stbg,#fff);border-left:6px solid var(--st,#98a2b3)}
+ #workorders tr.woRow td{background:transparent!important;box-shadow:none!important}
+ #workorders tr.woRow td{border:0!important;padding:4px 0!important;display:flex;justify-content:space-between;gap:12px;text-align:right}
+ #workorders tr.woRow td[data-label]:before{content:attr(data-label);font-size:12px;font-weight:800;color:#667085;text-transform:uppercase;letter-spacing:.03em;text-align:left;flex:none}
+ #workorders tr.woRow td.woRowActions{justify-content:flex-end;gap:8px;padding-top:8px!important}
+ #workorders .card[style*="overflow:auto"]{background:transparent;border:0;box-shadow:none}}
+.mechanicStatusCard.stale{border-color:#f79009!important;background:#fffaeb!important}.staleTimer{margin-top:8px;padding:8px 10px;border-radius:10px;background:#fef0c7;color:#93370d;font-weight:800;font-size:13px}
 .cfmDlg{position:fixed;inset:0;z-index:6600;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px;animation:payFade .12s ease}
 .cfmBox{background:#fff;border-radius:18px;max-width:420px;width:100%;padding:22px;box-shadow:0 30px 80px rgba(15,23,42,.35)}.cfmBox h2{margin:0 0 6px;font-size:21px}.cfmBox p{margin:0;color:#475467;font-size:15px}
 .cfmBar{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}.cfmBar button{min-height:54px;border-radius:12px;font-weight:900;font-size:16px}
@@ -780,7 +790,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.41.6">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.41.7">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -830,7 +840,7 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.41.6 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.41.7 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1128,13 +1138,13 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
       <div class="field"><label>Priority</label><select name="priority"><option>Normal</option><option>High</option><option>Emergency</option></select></div>
       <div class="field"><label>Parking spot #</label><input name="parking" placeholder="Example: P-12"></div>
       <div class="field"><label>Unit type</label>
-        <select name="unitType" id="unitType"><option value="customer">Customer Truck</option><option value="fleet">Our Fleet</option></select>
+        <select name="unitType" id="unitType" onchange="syncUnitTypeFields(this)"><option value="customer">Customer Truck</option><option value="fleet">Our Fleet</option></select>
       </div>
-      <div class="field full">
+      <div class="field full" data-unit-only="customer">
         <label class="checkline"><input type="checkbox" name="truckHere"> Truck is already here</label>
         <div class="muted">For customer trucks, mechanics will not see the work order until this is checked by admin.</div>
       </div>
-      <div class="field full">
+      <div class="field full" data-unit-only="fleet">
         <label class="checkline"><input type="checkbox" name="fleetAuto" checked> Fleet unit automatically visible to mechanic</label>
         <div class="muted">This applies to your fleet units so they do not require a “truck is here” mark.</div>
       </div>
@@ -1213,7 +1223,7 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
   </form>
 </div>
 </div>
-<div id="managerAccountModal" class="modal"><div class="modalbox" style="max-width:760px"><div class="modalhead"><div><h2>Create Manager Account</h2><div class="muted">Choose exactly what this manager can access.</div></div><button class="x" onclick="closeModal('managerAccountModal')">✕</button></div><form id="managerAccountForm"><div class="row"><div class="field"><label>Name</label><input name="display" required></div><div class="field"><label>Username</label><input name="username" required></div><div class="field"><label>Email</label><input name="email" type="email"></div><div class="field"><label>Temporary Password</label><input name="password" type="password" minlength="8" required></div></div><div class="card"><b>Permissions</b><div class="row" style="margin-top:10px"><label class="checkline"><input type="checkbox" name="invoices" checked> Invoices & payments</label><label class="checkline"><input type="checkbox" name="financials" checked> Financial totals</label><label class="checkline"><input type="checkbox" name="inventory" checked> Parts & inventory</label><label class="checkline"><input type="checkbox" name="customers" checked> Customers & vehicles</label><label class="checkline"><input type="checkbox" name="reports" checked> Reports</label><label class="checkline"><input type="checkbox" name="employees"> Manage employees</label></div></div><button type="submit">Create Manager</button></form></div></div>
+<div id="managerAccountModal" class="modal"><div class="modalbox" style="max-width:760px"><div class="modalhead"><div><h2 id="mgrModalTitle">Create Manager Account</h2><div class="muted">Choose exactly what this manager can access.</div></div><button class="x" onclick="closeModal('managerAccountModal')">✕</button></div><form id="managerAccountForm"><div class="row"><div class="field"><label>Name</label><input name="display" required></div><div class="field"><label>Username</label><input name="username" required></div><div class="field"><label>Email</label><input name="email" type="email"></div><div class="field" id="mgrPasswordField"><label>Temporary Password <span class="muted">(12+ characters)</span></label><input name="password" type="password" minlength="12" required autocomplete="new-password"></div></div><div class="card"><b>Permissions</b><div class="row" style="margin-top:10px"><label class="checkline"><input type="checkbox" name="invoices" checked> Invoices & payments</label><label class="checkline"><input type="checkbox" name="financials" checked> Financial totals</label><label class="checkline"><input type="checkbox" name="inventory" checked> Parts & inventory</label><label class="checkline"><input type="checkbox" name="customers" checked> Customers & vehicles</label><label class="checkline"><input type="checkbox" name="reports" checked> Reports</label><label class="checkline"><input type="checkbox" name="employees"> Manage employees</label></div></div><button type="submit" id="mgrSubmit">Create Manager</button></form></div></div>
 
 <div id="editModal" class="modal">
 <div class="modalbox">
@@ -1229,12 +1239,12 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
       <div class="field"><label>Priority</label><select name="priority" id="editPriority"><option>Normal</option><option>High</option><option>Emergency</option></select></div>
       <div class="field"><label>Parking spot #</label><input name="parking" id="editParking"></div>
       <div class="field"><label>Unit type</label>
-        <select name="unitType" id="editUnitType"><option value="customer">Customer Truck</option><option value="fleet">Our Fleet</option></select>
+        <select name="unitType" id="editUnitType" onchange="syncUnitTypeFields(this)"><option value="customer">Customer Truck</option><option value="fleet">Our Fleet</option></select>
       </div>
-      <div class="field full">
+      <div class="field full" data-unit-only="customer">
         <label class="checkline"><input type="checkbox" name="truckHere" id="editTruckHere"> Truck is here</label>
       </div>
-      <div class="field full">
+      <div class="field full" data-unit-only="fleet">
         <label class="checkline"><input type="checkbox" name="fleetAuto" id="editFleetAuto"> Fleet unit automatically visible to mechanic</label>
       </div>
       <div class="field full"><label>Jobs to perform (one per line)</label><textarea name="tasks" id="editTasks" required></textarea><div class="muted">Existing completion checks will be preserved for tasks with the same wording.</div></div>
@@ -1396,7 +1406,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.41.6';
+const FRONTEND_VERSION='24.41.7';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1640,8 +1650,8 @@ async function startMechanicActivity(){
  const code=document.getElementById("mechanicActivitySelect")?.value||"";
  const customText=(document.getElementById("mechanicCustomActivity")?.value||"").trim();
  const note=(document.getElementById("mechanicActivityNote")?.value||"").trim();
- if(!code)return alert(currentLanguage==="uk"?"Оберіть діяльність.":"Choose an activity.");
- if(code==="custom"&&!customText)return alert(currentLanguage==="uk"?"Введіть свою діяльність.":"Type your custom activity.");
+ if(!code)return showToast(currentLanguage==="uk"?"Оберіть діяльність у списку або натисніть одну з кнопок нижче.":"Pick an activity from the list, or tap one of the buttons below.","info");
+ if(code==="custom"&&!customText)return showToast(currentLanguage==="uk"?"Введіть свою діяльність.":"Type your custom activity.","info");
  if(await sendMechanicActivity({action:"start",code,customText,note})){const n=document.getElementById("mechanicActivityNote");if(n)n.value="";showToast(currentLanguage==="uk"?"Діяльність оновлено.":"Activity updated.","success")}
 }
 function clearMechanicActivity(){
@@ -1681,7 +1691,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.41.6";
+const ROUTE_MODULE_VERSION="24.41.7";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -2070,6 +2080,7 @@ const UI_TRANSLATIONS={
  "Idle":"Вільний",
  "No active work assigned.":"Немає активної роботи.",
  "Inspecting":"Проводить інспекцію",
+ "Timer running over 12 hours. Did they forget to pause it?":"Таймер працює понад 12 годин. Можливо, забули поставити на паузу?",
  "Truck inspection":"Інспекція трака",
  "Trailer inspection":"Інспекція причепа",
  "Unit":"Юніт",
@@ -2810,6 +2821,9 @@ if(state.workorders.length!==beforeDemoCleanup){
 
 let adminFilter="all";
 function save(){localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));queueCloudState("shopflow",state)}
+// v24.41.7: wait until the latest shop-data save has reached the server (saves go out ~0.2 s after a change).
+// Inspection actions that the server reads ("Add to work order", inspection PDF) call this first, so they never use older marks.
+window.syncNow=async function(){const until=Date.now()+5000;await new Promise(r=>setTimeout(r,260));while(Date.now()<until&&(cloudPending.has("shopflow")||cloudSaving.shopflow))await new Promise(r=>setTimeout(r,120))};
 function esc(s){return String(s??"").replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]))}
 // v24.41.1 mileage boxes: show "304,538" while typing (comma, dot or space all work as thousands separators).
 // Code that reads .value, and forms when they submit, always get plain digits ("304538").
@@ -2834,6 +2848,9 @@ document.addEventListener("submit",e=>{const boxes=[...(e.target.querySelectorAl
 new MutationObserver(list=>{for(const m of list)for(const n of m.addedNodes)if(n.nodeType===1)enhanceMileageInputs(n)}).observe(document.documentElement,{childList:true,subtree:true});
 document.addEventListener("DOMContentLoaded",()=>enhanceMileageInputs());enhanceMileageInputs();
 
+// v24.41.7: the work-order form shows only the visibility checkbox that applies to the unit type.
+function syncUnitTypeFields(sel){const f=sel?.form;if(!f)return;f.querySelectorAll('[data-unit-only]').forEach(x=>{x.style.display=x.dataset.unitOnly===sel.value?'':'none'})}
+document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('#unitType,#editUnitType').forEach(syncUnitTypeFields));
 function readyForMechanic(w){return w.status!=="Completed" && (w.unitType==="fleet" ? w.fleetAuto!==false : !!w.truckHere)}
 function assignedMechanicUsernames(w){
  const primary=String(w?.mechanic||"").trim().toLowerCase();
@@ -2895,7 +2912,7 @@ function openAddHelper(workOrderId){
  if(!["admin","manager"].includes(session?.role) && !mechanicAssignedToWorkOrder(w,session?.username))return alert(tr("You are not assigned to this work order."));
  const assigned=new Set(assignedMechanicUsernames(w));
  const available=mechanicAccounts().filter(m=>!assigned.has(String(m.username||"").toLowerCase()));
- if(!available.length)return alert(tr("Every mechanic is already assigned to this work order."));
+ if(!available.length)return showToast(tr("Every mechanic is already assigned to this work order."),"info");
  const sel=document.getElementById("helperMechanicSelect");
  sel.innerHTML=available.map(m=>`<option value="${esc(m.username)}">${esc(m.display)} (${esc(m.username)})</option>`).join("");
  document.getElementById("helperWorkOrderId").value=workOrderId;
@@ -2979,7 +2996,7 @@ function renderMechanicActivityHistory(){
  const days={};rows.forEach(r=>(days[r.dateKey]??=[]).push(r));
  box.innerHTML=Object.keys(days).sort().reverse().map(day=>{
   const recs=days[day],by={};recs.forEach(r=>(by[r.username]??=[]).push(r));
-  return `<div class="activityDayGroup"><div class="activityDayHeader"><b>${new Date(day+"T12:00:00").toLocaleDateString(currentLanguage==="uk"?"uk-UA":"en-US",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</b><span class="activityHistoryDuration">${activityHistoryDurationLabel(recs.reduce((s,r)=>s+activityHistoryDurationMs(r),0))}</span></div>${Object.entries(by).map(([username,list])=>`<div class="activityMechanicGroup"><div style="display:flex;justify-content:space-between;gap:10px"><div><b>${esc(list[0].display)}</b><div class="muted">@${esc(username)}</div></div><b>${activityHistoryDurationLabel(list.reduce((s,r)=>s+activityHistoryDurationMs(r),0))}</b></div>${list.sort((a,b)=>new Date(a.startedAt)-new Date(b.startedAt)).map(r=>`<div class="activityTimelineRow"><div><b>${new Date(r.startedAt).toLocaleTimeString(currentLanguage==="uk"?"uk-UA":"en-US",{hour:"numeric",minute:"2-digit"})}</b><div class="muted">${r.endedAt?new Date(r.endedAt).toLocaleTimeString(currentLanguage==="uk"?"uk-UA":"en-US",{hour:"numeric",minute:"2-digit"}):translateDynamicText("Still Active")}</div></div><div><div class="activityTimelineName">${esc(translateDynamicText(mechanicActivityLabel(r.code,r.customText)))}</div>${r.note?`<div class="muted">${esc(r.note)}</div>`:""}</div><div class="activityHistoryDuration">${activityHistoryDurationLabel(activityHistoryDurationMs(r))}</div></div>`).join("")}</div>`).join("")}</div>`;
+  return `<div class="activityDayGroup"><div class="activityDayHeader"><b>${new Date(day+"T12:00:00").toLocaleDateString(currentLanguage==="uk"?"uk-UA":"en-US",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</b><span class="activityHistoryDuration">${activityHistoryDurationLabel(recs.reduce((s,r)=>s+activityHistoryDurationMs(r),0))}</span></div>${Object.entries(by).map(([username,list])=>`<div class="activityMechanicGroup"><div style="display:flex;justify-content:space-between;gap:10px"><div><b>${esc(list[0].display)}</b><div class="muted">@${esc(username)}</div></div><b>${activityHistoryDurationLabel(list.reduce((s,r)=>s+activityHistoryDurationMs(r),0))}</b></div>${list.sort((a,b)=>new Date(a.startedAt)-new Date(b.startedAt)).map(r=>`<div class="activityTimelineRow"><div><b>${new Date(r.startedAt).toLocaleTimeString(currentLanguage==="uk"?"uk-UA":"en-US",{hour:"numeric",minute:"2-digit"})}</b><div class="muted">${r.endedAt?`${currentLanguage==="uk"?"до":"to"} ${new Date(r.endedAt).toLocaleTimeString(currentLanguage==="uk"?"uk-UA":"en-US",{hour:"numeric",minute:"2-digit"})}`:translateDynamicText("Still Active")}</div></div><div><div class="activityTimelineName">${esc(translateDynamicText(mechanicActivityLabel(r.code,r.customText)))}</div>${r.note?`<div class="muted">${esc(r.note)}</div>`:""}</div><div class="activityHistoryDuration">${activityHistoryDurationLabel(activityHistoryDurationMs(r))}</div></div>`).join("")}</div>`).join("")}</div>`;
  }).join("");
  applyTranslations();if(currentLanguage==="uk"&&typeof scheduleAITranslation==="function")scheduleAITranslation();
 }
@@ -3272,6 +3289,8 @@ function calendarJobCard(w){
  </div>`;
 }
 function renderCalendar(){
+ // v24.41.7: only the selected Day / Week / Month button is filled, so the current view is obvious.
+ for(const [m,id] of [['day','calDayBtn'],['week','calWeekBtn'],['month','calMonthBtn']]){const b=document.getElementById(id);if(b){b.classList.toggle('secondary',calendarMode!==m);b.setAttribute('aria-pressed',calendarMode===m)}}
  if(!["admin","manager"].includes(session?.role))return;
  const box=document.getElementById("shopCalendar");
  const title=document.getElementById("calendarTitle");
@@ -3378,13 +3397,14 @@ function renderMechanicLiveStatus(){
 
    if(current?.task){
      const elapsed=taskElapsed(current.task);
-     return `<div class="mechanicStatusCard running">
+     return `<div class="mechanicStatusCard running${elapsed>12*3600000?" stale":""}">
        <div class="mechanicStatusTop">
          <div><b>${esc(user.display||user.username)}</b><div class="muted">@${esc(user.username)}</div></div>
          <span class="badge b-done"><span class="liveDot"></span>Working</span>
        </div>
        <div class="statusTask">Unit ${esc(current.w.unit)} — ${esc(current.task.t)}</div>
        <div class="muted">Started ${fmtDateTime(current.task.startedAt)} · ${fmtDuration(elapsed)}</div>
+       ${elapsed>12*3600000?`<div class="staleTimer">⚠ ${translateDynamicText("Timer running over 12 hours. Did they forget to pause it?")}</div>`:""}
        ${upcoming?`<div class="muted" style="margin-top:8px">${upcoming} upcoming assigned truck${upcoming===1?"":"s"}</div>`:""}
        <button class="secondary" style="margin-top:10px" onclick="openDetail(${current.w.id})">Open Unit</button>
      </div>`;
@@ -4138,6 +4158,7 @@ function renderMechanicAccounts(){
    </td>
  </tr>`).join("");
  box.innerHTML=rows||'<tr><td colspan="4" class="muted">No mechanic accounts created.</td></tr>';
+ if(session?.role==='admin'&&!renderMechanicAccounts._mgr){renderMechanicAccounts._mgr=1;loadStaffAccounts().finally(()=>setTimeout(()=>{renderMechanicAccounts._mgr=0},30000))}
  if(typeof loadStaffAccounts==='function')loadStaffAccounts();
 }
 
@@ -4151,7 +4172,7 @@ function render(){
 
    const completedTable=document.getElementById("completedTable");
    if(completedTable){
-     completedTable.innerHTML=completed.map(w=>`<tr><td>#${w.id}</td><td><b>${esc(w.unit)}</b></td><td>${esc(w.customer)}</td><td>${esc(mechanicDisplay(w.mechanic))}</td><td>${esc(w.completedAt||"")}</td><td>${esc(w.parking||"—")}</td><td><button class="secondary" onclick="openDetail(${w.id})">View</button> <button class="secondary" onclick="downloadWorkOrderPDF(${w.id})">Download Work Order PDF</button> <button onclick="createServiceOrderFromWO(${w.id})">Review Service Order</button></td></tr>`).join("")||'<tr><td colspan="7" class="empty">No completed work orders yet.</td></tr>';
+     completedTable.innerHTML=completed.map(w=>`<tr><td>#${w.id}</td><td><b>${esc(w.unit)}</b></td><td>${esc(w.customer)}</td><td>${esc(mechanicDisplay(w.mechanic))}</td><td>${w.completedAt?esc(fmtDateTime(w.completedAt)):'<span class="muted">—</span>'}</td><td>${esc(w.parking||"—")}</td><td><button class="secondary" onclick="openDetail(${w.id})">View</button> <button class="secondary" onclick="downloadWorkOrderPDF(${w.id})">Download Work Order PDF</button> <button onclick="createServiceOrderFromWO(${w.id})">Review Service Order</button></td></tr>`).join("")||'<tr><td colspan="7" class="empty">No completed work orders yet.</td></tr>';
    }
 
    renderFindingsCenter();
@@ -4220,7 +4241,7 @@ function renderAdminTable(){
  if(adminFilter==="here")wo=wo.filter(w=>w.truckHere);
  if(adminFilter==="fleet")wo=wo.filter(w=>w.unitType==="fleet");
 
- table.innerHTML=wo.map(w=>`<tr class="woRow stage-${woStage(w)}"><td>#${w.id}</td><td><b>${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · ${w.unitType==="fleet"?"Fleet":"Customer"}</div></td><td>${esc(w.date)} ${esc(w.time)}</td><td>${esc(mechanicAssignmentsLabel(w))}</td><td>${esc(w.parking||"—")}</td><td>${availabilityBadge(w)}</td><td>${woStageBadge(w)}</td><td><button class="secondary" onclick="openDetail(${w.id})">Open</button> <button class="secondary" onclick="openEdit(${w.id})">Edit</button></td></tr>`).join("")||'<tr><td colspan="8" class="empty">No work orders in this view.</td></tr>';
+ table.innerHTML=wo.map(w=>`<tr class="woRow stage-${woStage(w)}"><td data-label="WO">#${w.id}</td><td data-label="Unit"><b>${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · ${w.unitType==="fleet"?"Fleet":"Customer"}</div></td><td data-label="Scheduled">${esc(w.date)} ${esc(w.time)}</td><td data-label="Mechanic">${esc(mechanicAssignmentsLabel(w))}</td><td data-label="Parking">${esc(w.parking||"—")}</td><td data-label="Truck">${availabilityBadge(w)}</td><td data-label="Status">${woStageBadge(w)}</td><td class="woRowActions"><button class="secondary" onclick="openDetail(${w.id})">Open</button> <button class="secondary" onclick="openEdit(${w.id})">Edit</button></td></tr>`).join("")||'<tr><td colspan="8" class="empty">No work orders in this view.</td></tr>';
 }
 function setAdminFilter(f,btn){adminFilter=f;document.querySelectorAll(".filterbtn").forEach(x=>x.classList.remove("active"));btn.classList.add("active");renderAdminTable()}
 function jobCard(w){return `<div class="card jobcard woCard stage-${woStage(w)}"><div class="jobtop"><div><b>#${w.id} — ${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · ${esc(mechanicAssignmentsLabel(w))} · ${esc(w.date)} ${esc(w.time)} · Parking ${esc(w.parking||"—")}</div></div>${woStageBadge(w)}</div><div style="margin-top:8px">${availabilityBadge(w)}</div><div style="margin-top:10px"><b>Assigned to you:</b>${w.tasks.map(t=>`<div class="muted">${t.done?"✓":(t.startedAt&&!t.stoppedAt?"▶":"○")} ${esc(t.t)}${t.done?` · ${fmtDuration(taskElapsed(t))}`:""}</div>`).join("")}</div><div style="margin-top:10px"><button class="secondary" onclick="openDetail(${w.id})">Open Work Order</button></div></div>`}
@@ -4497,7 +4518,7 @@ function addApprovedFindingToWorkOrder(id){
  save();render();
 }
 
-function openWorkOrder(){if(!requireAdmin())return;refreshMechanicSelects();renderWorkOrderVehicleMatch("new",null);hideUnitSuggestions("new");document.getElementById("woModal").classList.add("open");updateMobileBackButton()}
+function openWorkOrder(){if(!requireAdmin())return;refreshMechanicSelects();renderWorkOrderVehicleMatch("new",null);hideUnitSuggestions("new");const f=document.getElementById("woForm");if(f){if(f.elements.date&&!f.elements.date.value){const t=new Date();f.elements.date.value=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,"0")}-${String(t.getDate()).padStart(2,"0")}`}syncUnitTypeFields(f.elements.unitType)}document.getElementById("woModal").classList.add("open");updateMobileBackButton()}
 function openIssue(workOrderId=null){if(!requireMechanic())return;if(!state.workorders.length)return alert(tr("Create a work order first."));const sel=document.getElementById("issueWO");if(workOrderId!=null&&sel)[...sel.options].some(o=>String(o.value)===String(workOrderId))&&(sel.value=String(workOrderId));document.getElementById("issueModal").classList.add("open");updateMobileBackButton()}
 function closeModal(id){
  const modal=document.getElementById(id);
@@ -4568,7 +4589,7 @@ function openEdit(id){if(!requireAdmin())return;
  document.getElementById("editMechanic").value=w.mechanic||"";
  document.getElementById("editPriority").value=w.priority||"Normal";
  document.getElementById("editParking").value=w.parking||"";
- document.getElementById("editUnitType").value=w.unitType||"customer";
+ document.getElementById("editUnitType").value=w.unitType||"customer";syncUnitTypeFields(document.getElementById("editUnitType"));
  document.getElementById("editTruckHere").checked=!!w.truckHere;
  document.getElementById("editFleetAuto").checked=w.fleetAuto!==false;
  document.getElementById("editTasks").value=(w.tasks||[]).map(t=>t.t).join("\n");
@@ -5193,7 +5214,7 @@ function openDetail(id){
   <div class="muted">${esc(w.customer)} · ${esc(w.date)} ${esc(w.time)} · Parking: ${esc(w.parking||"—")}</div>${(w.vin||w.make||w.model||w.plate||w.dotNumber)?`<div class="vehicleMatchCard" style="margin-top:8px"><b>${esc([w.year,w.make,w.model].filter(Boolean).join(" ")||`Unit ${w.unit}`)}</b><div class="muted">${esc([w.vin?`VIN ${w.vin}`:"",w.plate?`Plate ${w.plate}`:"",w.dotNumber?`DOT ${w.dotNumber}`:"",w.mileage?`${Number(w.mileage).toLocaleString()} mi`:""].filter(Boolean).join(" · "))}</div></div>`:""}
   <div class="assignmentStrip">${assignmentChips(w)}</div>
   ${(["admin","manager"].includes(session?.role) || (session?.role==="mechanic"&&visibleToCurrentMechanic(w)))&&w.status!=="Completed"?`<div class="helperActions"><button type="button" class="secondary" onclick="openAddHelper(${w.id})">+ Add Helper Mechanic</button>${["admin","manager"].includes(session?.role)?(w.helpers||[]).map(u=>`<button type="button" class="danger" data-helper="${encodeURIComponent(u)}" onclick="removeHelperMechanic(${w.id},decodeURIComponent(this.dataset.helper))">Remove ${esc(mechanicDisplay(u))}</button>`).join(""):""}</div>`:""}
-  <p><b>Priority:</b> ${esc(w.priority)} &nbsp; <b>Status:</b> ${esc(w.status)} &nbsp; ${availabilityBadge(w)} ${w.isReactivated?'<span class="badge b-wait">Reactivated</span>':""}</p>
+  <p><b>Priority:</b> ${esc(w.priority||'Normal')} &nbsp; <b>Status:</b> ${esc(w.status)} &nbsp; ${availabilityBadge(w)} ${w.isReactivated?'<span class="badge b-wait">Reactivated</span>':""}</p>
   ${w.notes?`<div class="card" style="background:#fafafa"><b>Notes</b><div>${esc(w.notes)}</div></div>`:""}
   <h2 style="margin-top:16px">Assigned Jobs</h2>
   ${w.status==="Completed" && Number(w.outcomeWorkflowVersion||0)===0?`<div class="notice" style="margin-bottom:10px">This work order was completed before per-job outcomes were introduced. Missing outcomes are historical only and do not require action.</div>`:""}
@@ -5324,7 +5345,7 @@ async function verifyReleaseCompatibility(){
   const d=await r.json();
   const backend=coreReleaseVersion(d?.backend||"unknown");
   const expected=coreReleaseVersion(FRONTEND_VERSION);
-  const live=document.getElementById("onlineBetaBar");if(live)live.textContent=`ITTR v${expected} ONLINE · backend ${backend} · SMART WORKSPACE · PARTS + BARCODE INVENTORY · FULLBAY · R2`;
+  const live=document.getElementById("onlineBetaBar");if(live){live.textContent=`ITTR v${expected} · server ${backend} · online`;live.title="Version check (only the owner sees this bar)";live.style.display=session?.role==="admin"?"":"none"}
   const b=null;
   if(backend!==expected){
    if(b){
@@ -5882,9 +5903,32 @@ function openManagerAccount(){
   if(session?.role!=='admin')return alert('Only the owner/admin can create managers.');
   const form=document.getElementById('managerAccountForm');
   if(!form)return showToast?.('Manager account form is unavailable.','error');
-  form.reset();
+  form.reset();form.dataset.editing='';form.elements.username.readOnly=false;
+  const pw=form.elements.password;pw.required=true;document.getElementById('mgrPasswordField').style.display='';
+  document.getElementById('mgrModalTitle').textContent='Create Manager Account';document.getElementById('mgrSubmit').textContent='Create Manager';
   document.getElementById('managerAccountModal')?.classList.add('open');
 }
+// v24.41.7: managers are listed under Team Accounts with permissions, password reset and delete.
+let MANAGER_ACCOUNTS=[];
+async function loadStaffAccounts(){
+ const box=document.getElementById('managerAccountsTable');if(!box||session?.role!=='admin')return;
+ try{MANAGER_ACCOUNTS=(await apiJSON('/api/admin/managers')).items||[]}catch(e){box.innerHTML=`<tr><td colspan="4" class="muted">${esc(e.message)}</td></tr>`;return}
+ const P={invoices:'Invoices',financials:'Financials',inventory:'Parts',customers:'Customers',reports:'Reports',employees:'Employees'};
+ box.innerHTML=MANAGER_ACCOUNTS.map(m=>{const perms=Object.entries(P).filter(([k])=>m.permissions?.[k]!==false).map(([,l])=>`<span class="badge" style="margin:2px">${l}</span>`).join('');const u=encodeURIComponent(m.username);
+  return `<tr><td>${esc(m.display_name||m.username)}${m.email?`<div class="muted">${esc(m.email)}</div>`:''}</td><td>${esc(m.username)}</td><td>Manager<div>${perms||'<span class="muted">No access</span>'}</div></td><td>
+   <button class="secondary" data-username="${u}" onclick="openEditManager(decodeURIComponent(this.dataset.username))">Permissions</button>
+   <button class="secondary" data-username="${u}" onclick="changeManagerPassword(decodeURIComponent(this.dataset.username))">Change Password</button>
+   <button class="danger" data-username="${u}" onclick="deleteManagerAccount(decodeURIComponent(this.dataset.username))">Delete</button></td></tr>`}).join('');
+}
+function openEditManager(username){const m=MANAGER_ACCOUNTS.find(x=>x.username===username);if(!m)return;const form=document.getElementById('managerAccountForm');form.reset();form.dataset.editing=username;
+ form.elements.display.value=m.display_name||'';form.elements.username.value=m.username;form.elements.username.readOnly=true;form.elements.email.value=m.email||'';
+ form.elements.password.required=false;document.getElementById('mgrPasswordField').style.display='none';
+ for(const k of ['invoices','financials','inventory','customers','reports','employees'])if(form.elements[k])form.elements[k].checked=m.permissions?.[k]!==false&&(k!=='employees'||m.permissions?.employees===true);
+ document.getElementById('mgrModalTitle').textContent=`Edit ${m.display_name||m.username}`;document.getElementById('mgrSubmit').textContent='Save Permissions';
+ document.getElementById('managerAccountModal')?.classList.add('open')}
+async function changeManagerPassword(username){const pw=prompt(`New password for ${username} (at least 12 characters). They will be signed out everywhere.`);if(pw==null)return;if(pw.length<12)return alert('Manager passwords must be at least 12 characters.');
+ try{await apiJSON(`/api/admin/managers/${encodeURIComponent(username)}/password`,{method:'PATCH',body:{password:pw}});showToast('Password changed. The manager must sign in again.','success')}catch(e){alert(e.message)}}
+async function deleteManagerAccount(username){if(!confirm(`Delete manager account ${username}? They will lose access immediately.`))return;try{await apiJSON(`/api/admin/managers/${encodeURIComponent(username)}`,{method:'DELETE'});showToast('Manager deleted.','success');loadStaffAccounts()}catch(e){alert(e.message)}}
 async function openManualLibrary(){
   document.getElementById('manualLibraryModal')?.classList.add('open');
   await loadManualLibrary(true);
@@ -5928,11 +5972,13 @@ if(managerAccountFormEl)managerAccountFormEl.onsubmit=async e=>{
     customers:f.has('customers'),reports:f.has('reports'),employees:f.has('employees')
   };
   try{
-    await apiJSON('/api/admin/managers',{method:'POST',body:JSON.stringify({
+    const editing=e.target.dataset.editing;
+    if(editing)await apiJSON(`/api/admin/managers/${encodeURIComponent(editing)}`,{method:'PUT',body:JSON.stringify({display:f.get('display'),email:f.get('email'),permissions})});
+    else await apiJSON('/api/admin/managers',{method:'POST',body:JSON.stringify({
       username:f.get('username'),display:f.get('display'),email:f.get('email'),
       password:f.get('password'),permissions
     })});
-    closeModal('managerAccountModal');await loadStaffAccounts();
+    closeModal('managerAccountModal');showToast(editing?'Manager permissions saved.':'Manager account created.','success');await loadStaffAccounts();
   }catch(ex){alert(ex.message)}
 };
 const manualLibraryFormEl=document.getElementById('manualLibraryForm');
@@ -5992,7 +6038,7 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
  </div>
 </div>
 
-<script src="./finance-shared.js?v=24.41.6"></script>
+<script src="./finance-shared.js?v=24.41.7"></script>
 <script src="./inspection-checklist.js?v=3"></script>
 <script src="./inspection-workflow.js?v=3"></script>
 </body>
