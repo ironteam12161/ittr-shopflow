@@ -185,6 +185,7 @@ check('work orders: one status pill, search and mechanic filter',root.includes('
 check('page titles match the menu',root.includes('<div class="toolbar"><h1>Findings</h1></div>')&&read('public/modules/procenter.html').includes('<h1>Operations</h1>')&&read('public/modules/compliance.html').includes('<h1>Compliance</h1>'));
 check('mechanic screen: clock, jobs, then activities; one-row phone header',root.includes('id="ittrV24418Phone"')&&root.indexOf('id="mechanicJobs"')<root.indexOf('id="mechanicActivityPanel"'));
 check('delete work order sits apart from other actions',root.includes('class="dangerZone"'));
+check('AI translation: batch, validated answers, no jumping',server.includes('parseBatchTranslations(src,raw)')&&root.includes('function applyKnownTranslations(')&&root.includes('ittr_ai_translation_cache_v2')&&root.includes('function aiValidTranslation('));
 const failed=results.filter(x=>!x.ok);
 for(const r of results)console.log(`${r.ok?'PASS':'FAIL'}  ${r.name}${r.detail?'  '+r.detail:''}`);
 console.log(`\nITTR production audit: ${results.length-failed.length}/${results.length} passed`);
