@@ -1762,8 +1762,8 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.41.3");
-app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPECTIONS-20261010`}));
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.41.4");
+app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPECTING-20261010`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
@@ -1904,6 +1904,8 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{
   await db.query('COMMIT');
   await audit(req.user.username,"state_save",{key,expectedVersion,role:req.user?.role});
   if(key==="shopflow")broadcastShopStatus("shopflow_changed",{by:req.user.username,version:Number(q.rows[0].version)});
+  // v24.41.4: a mechanic who starts an inspection while clocked out is clocked in automatically, like starting a job timer.
+  if(key==="shopflow"&&req.user?.role==="mechanic"){const me=String(req.user.username).toLowerCase();if((nextPayload?.workorders||[]).some(w=>w?.inspection?.status==="In Progress"&&String(w.inspection.startedBy||"").toLowerCase()===me&&Date.now()-new Date(w.inspection.startedAt||0).getTime()<10*60000))await autoClockInSafe(req.user,"inspection")}
   db.release();res.json({ok:true,version:Number(q.rows[0].version),updatedAt:q.rows[0].updated_at});
  }catch(e){try{await db.query('ROLLBACK')}catch(_){};db.release();next(e)}
 });

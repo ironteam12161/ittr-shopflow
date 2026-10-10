@@ -172,6 +172,7 @@ check('vendor list does not resync on every request',server.includes('vendorSync
 check('mileage boxes accept 304,538 and save whole miles',root.includes('function enhanceMileageInput(')&&root.includes('document.addEventListener("submit"')&&read('finance_center.mjs').includes('export const cleanMiles')&&server.includes('mileage=mileage*1000 WHERE'));
 check('payments have a type list, transaction IDs and search',root.includes('function paymentDialog(')&&!root.includes("prompt('Payment method (Check")&&server.includes("app.get('/api/payments/search'")&&server.includes("code:'DUPLICATE_REFERENCE'"));
 check('vehicle inspections count as mechanic job work',read('mechanic_productivity.mjs').includes('FROM mechanic_inspections')&&read('labor_times.mjs').includes("T('vehicle_inspection'"));
+check('dashboard shows a mechanic doing an inspection as working',root.includes('function mechanicInspectionInProgress(')&&server.includes('autoClockInSafe(req.user,"inspection")'));
 const failed=results.filter(x=>!x.ok);
 for(const r of results)console.log(`${r.ok?'PASS':'FAIL'}  ${r.name}${r.detail?'  '+r.detail:''}`);
 console.log(`\nITTR production audit: ${results.length-failed.length}/${results.length} passed`);

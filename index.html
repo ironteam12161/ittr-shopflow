@@ -6,13 +6,13 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.41.3-INSPECTIONS-20260930">
+<meta name="ittr-build" content="ITTR-24.41.4-INSPECTING-20260930">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.41.3</title>
+<title>ITTR ShopFlow v24.41.4</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -776,7 +776,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.41.3">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.41.4">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -826,7 +826,7 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.41.3 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="background:#0b5;color:white;text-align:center;padding:5px 10px;font:600 12px system-ui">ITTR v24.41.4 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1392,7 +1392,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.41.3';
+const FRONTEND_VERSION='24.41.4';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1666,7 +1666,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.41.3";
+const ROUTE_MODULE_VERSION="24.41.4";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -2054,6 +2054,9 @@ const UI_TRANSLATIONS={
  "Working":"Працює",
  "Idle":"Вільний",
  "No active work assigned.":"Немає активної роботи.",
+ "Inspecting":"Проводить інспекцію",
+ "Truck inspection":"Інспекція трака",
+ "Trailer inspection":"Інспекція причепа",
  "Unit":"Юніт",
  "Labor":"Робочий час",
  "Started":"Почато",
@@ -3342,6 +3345,11 @@ function mechanicCurrentWork(username){
  const inProgress=assigned.find(w=>w.status==="In Progress" && readyForMechanic(w));
  return inProgress?{w:inProgress,task:null}:null;
 }
+function mechanicInspectionInProgress(username){
+ const me=String(username||"").toLowerCase(),cutoff=Date.now()-12*3600000;
+ const list=(state.workorders||[]).filter(w=>w&&w.status!=="Completed"&&w.inspection?.status==="In Progress"&&(!w.inspection.startedAt||new Date(w.inspection.startedAt).getTime()>cutoff));
+ return list.find(w=>String(w.inspection.startedBy||"").toLowerCase()===me)||list.find(w=>!w.inspection.startedBy&&mechanicAssignedToWorkOrder(w,username))||null;
+}
 function renderMechanicLiveStatus(){
  if(!["admin","manager"].includes(session?.role))return;
  const box=document.getElementById("mechanicLiveStatus");
@@ -3363,6 +3371,22 @@ function renderMechanicLiveStatus(){
        <div class="muted">Started ${fmtDateTime(current.task.startedAt)} · ${fmtDuration(elapsed)}</div>
        ${upcoming?`<div class="muted" style="margin-top:8px">${upcoming} upcoming assigned truck${upcoming===1?"":"s"}</div>`:""}
        <button class="secondary" style="margin-top:10px" onclick="openDetail(${current.w.id})">Open Unit</button>
+     </div>`;
+   }
+
+   // v24.41.4: a truck/trailer inspection in progress (started in the last 12 h) means the mechanic is working.
+   const insp=mechanicInspectionInProgress(user.username);
+   if(insp){
+     const i=insp.inspection,done=Object.values(i.results||{}).filter(r=>r&&r.status).length,type=i.type==="trailer"?"Trailer inspection":i.type==="truck"?"Truck inspection":"Inspection";
+     return `<div class="mechanicStatusCard running">
+       <div class="mechanicStatusTop">
+         <div><b>${esc(user.display||user.username)}</b><div class="muted">@${esc(user.username)}</div></div>
+         <span class="badge b-done"><span class="liveDot"></span>${translateDynamicText("Inspecting")}</span>
+       </div>
+       <div class="statusTask">Unit ${esc(insp.unit||"")} — ${esc(translateDynamicText(type))}</div>
+       <div class="muted">${i.startedAt?`Started ${fmtDateTime(i.startedAt)} · ${fmtDuration(Date.now()-new Date(i.startedAt).getTime())} · `:""}${done} item${done===1?"":"s"} checked</div>
+       ${upcoming?`<div class="muted" style="margin-top:8px">${upcoming} upcoming assigned truck${upcoming===1?"":"s"}</div>`:""}
+       <button class="secondary" style="margin-top:10px" onclick="openDetail(${insp.id})">Open Unit</button>
      </div>`;
    }
 
@@ -5950,7 +5974,7 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
  </div>
 </div>
 
-<script src="./finance-shared.js?v=24.41.3"></script>
+<script src="./finance-shared.js?v=24.41.4"></script>
 <script src="./inspection-checklist.js?v=3"></script>
 <script src="./inspection-workflow.js?v=3"></script>
 </body>
