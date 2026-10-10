@@ -290,7 +290,15 @@ try{
  const lt2=await request('/api/reports/labor-times?from=2020-01-01&to=2030-12-31');assert(lt2.types.find(t=>t.key==='seals')?.standard===2,'owner-set job types and standard hours');
  await request('/api/reports/labor-times/job-types',{method:'PUT',body:{reset:true}});
  assert((await request('/api/reports/labor-times',{tok:mechToken,allowError:true})).status===403,'mechanics cannot read labor times');
- console.log('PASS time clock: punch in/out, auto clock-in, clock-out pauses work, admin edits with history, overtime, forgotten shifts; labor times by job type');
+ await db.query(`INSERT INTO mechanic_inspections(work_order_id,unit_number_snapshot,inspection_type,status,mechanic_username,started_at,completed_at) VALUES('9960','INSP-1','truck','Completed',$1,'2026-09-03T14:00:00Z','2026-09-03T15:30:00Z')`,[mechUser]);
+ const pi=(await request('/api/reports/mechanics?from=2026-09-03&to=2026-09-03')).mechanics.find(m=>m.username===mechUser);
+ near(pi.totals.inspectionMs/3600000,1.5,'inspection time counted');assert(pi.totals.inspections===1&&pi.totals.repairMs>=1.5*3600000-1000&&pi.days.find(d=>d.date==='2026-09-03')?.workOrders.includes('9960'),'inspection counts as job work on its work order, not idle');
+ const iInv=(await db.query(`INSERT INTO customer_invoices(invoice_number,work_order_id,customer_name,status,invoice_date,created_by) VALUES('TC-INSP-1','9960','Clock Test','sent',CURRENT_DATE,'test') RETURNING id`)).rows[0].id;
+ await db.query(`INSERT INTO customer_invoice_lines(invoice_id,job_name,line_type,description,quantity,unit_price) VALUES($1,'Truck inspection','labor','Truck inspection',1,115)`,[iInv]);
+ const ij=(await request('/api/reports/labor-times/jobs?from=2020-01-01&to=2030-12-31&type=vehicle_inspection')).items.find(j=>j.ref==='Invoice TC-INSP-1');
+ assert(ij&&ij.billed===1&&ij.actual===1.5&&ij.mechanic===mechUser,'inspection time fills the invoice inspection line in labor times');
+ await db.query(`UPDATE customer_invoices SET status='void' WHERE id=$1`,[iInv]);
+ console.log('PASS time clock + inspections in productivity/labor times: punch in/out, auto clock-in, clock-out pauses work, admin edits with history, overtime, forgotten shifts; labor times by job type');
  // --- v24.39.0 compliance: annual inspections, fleet PM/CARB, owner reset
  const lk=await request('/api/annual-inspections/lookup?q=Tire Keeper');assert(lk.customers.some(c=>c.customer_name==='Tire Keeper Freight'),'carrier lookup finds customers');
  const lkNone=await request('/api/annual-inspections/lookup?q=zzqxnomatch');assert(!lkNone.customers.length&&Array.isArray(lkNone.carriers),'name lookup does not match every customer without a USDOT');

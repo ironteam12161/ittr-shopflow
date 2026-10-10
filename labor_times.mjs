@@ -31,7 +31,8 @@ export const DEFAULT_JOB_TYPES = Object.freeze([
   T('lights_electrical', 'Lights / wiring', ['light*', 'lamp*', 'bulb*', 'wiring', 'wire*', 'electrical', 'marker*', 'harness*', '7 way*', 'pigtail*', 'abs']),
   T('doors_body', 'Doors / body / mud flaps', ['door*', 'hinge*', 'roll up', 'rollup', 'panel*', 'mud flap*', 'mudflap*', 'bumper*', 'fender*', 'rear impact guard*', 'icc bumper*', 'conspicuity*', 'reflective tape*']),
   T('welding', 'Welding / fabrication', ['weld*', 'fabricat*', 'crack*']),
-  T('engine', 'Engine', ['engine*', 'injector*', 'turbo*', 'head gasket*', 'valve adjust*', 'overhead*', 'fuel filter*', 'fuel pump*'])
+  T('engine', 'Engine', ['engine*', 'injector*', 'turbo*', 'head gasket*', 'valve adjust*', 'overhead*', 'fuel filter*', 'fuel pump*']),
+  T('vehicle_inspection', 'Vehicle inspection (truck / trailer)', ['truck inspection*', 'trailer inspection*', 'vehicle inspection*', 'inspection*', 'inspect*', 'dvir'])
 ]);
 
 // ---------------------------------------------------------------- pure helpers (unit tested)
@@ -158,6 +159,18 @@ export async function loadLaborJobs(db, { from, to, source = 'all' }) {
       const tm = timer(uid); if (!tm.actual) continue;
       const date = String(t.completedAt || tm.last?.toISOString?.() || '').slice(0, 10); if (!date || date < from || date > to) continue;
       jobs.push({ source: 'work_order', id: `wo-${w.id}-${uid}`, date, ref: `WO #${w.id}`, workOrderId: String(w.id), unit: w.unit || '', customer: w.customer || '', text: String(t.t || ''), billed: null, actual: tm.actual, mechanic: tm.mechanic, mechHours: tm.mechHours, byMechanic: tm.by });
+    }
+    // Vehicle inspections (truck / trailer) have their own start and finish times. They fill in the real time of the
+    // invoice's inspection labor line on the same work order, or count as their own job when there is none.
+    const insp = (await db.query(`SELECT work_order_id,inspection_type,inspection_subtype,unit_number_snapshot,customer_name_snapshot,lower(mechanic_username) mechanic_username,started_at,completed_at
+      FROM mechanic_inspections WHERE started_at IS NOT NULL AND completed_at IS NOT NULL AND completed_at > started_at AND completed_at >= $1::date AND completed_at < ($2::date + 1)`, [from, to]).catch(() => ({ rows: [] }))).rows;
+    for (const r of insp) {
+      const hours = (new Date(r.completed_at) - new Date(r.started_at)) / 3600000; if (hours < 0.05 || hours > 12) continue;
+      const what = r.inspection_type === 'trailer' ? 'Trailer inspection' : r.inspection_type === 'truck' ? 'Truck inspection' : `${r.inspection_type} inspection`;
+      const inv = jobs.find(j => j.source === 'invoice' && String(j.workOrderId) === String(r.work_order_id) && !j.actual && /inspect|dvir/i.test(j.text));
+      if (inv) { Object.assign(inv, { actual: hours, mechanic: r.mechanic_username || null, mechHours: r.mechanic_username ? hours : null, byMechanic: r.mechanic_username ? { [r.mechanic_username]: Math.round(hours * 100) / 100 } : {} }); continue; }
+      jobs.push({ source: 'work_order', id: `insp-${r.work_order_id}`, date: new Date(r.completed_at).toISOString().slice(0, 10), ref: `WO #${r.work_order_id}`, workOrderId: String(r.work_order_id), unit: r.unit_number_snapshot || '', customer: r.customer_name_snapshot || '',
+        text: what, billed: null, actual: hours, mechanic: r.mechanic_username || null, mechHours: r.mechanic_username ? hours : null, byMechanic: {} });
     }
   }
   if (source !== 'shopflow') {
