@@ -95,6 +95,11 @@ export async function buildProductivityReport(db, { from, to, mechanic = '', now
   [new Date(rangeStart).toISOString(), new Date(rangeEnd).toISOString(), mechanic])).rows;
   const shiftRows = await db.query(`SELECT username,clock_in,clock_out FROM mechanic_shifts WHERE deleted_at IS NULL AND clock_in < $2::timestamptz AND coalesce(clock_out,now()) > $1::timestamptz AND ($3='' OR username=$3) ORDER BY clock_in`,
     [new Date(rangeStart).toISOString(), new Date(rangeEnd).toISOString(), mechanic]).then(r => r.rows).catch(() => []);
+  // Vehicle inspections done on work orders count as job work (start → finish). An unfinished inspection counts only
+  // while it is still today (capped at 4 h), so one left open can't fill whole days.
+  const inspRows = await db.query(`SELECT work_order_id,inspection_type,inspection_subtype,unit_number_snapshot,lower(mechanic_username) mechanic_username,started_at,completed_at,status FROM mechanic_inspections
+    WHERE started_at IS NOT NULL AND started_at < $2::timestamptz AND coalesce(completed_at,started_at + interval '4 hours') > $1::timestamptz AND ($3='' OR lower(mechanic_username)=$3)`,
+  [new Date(rangeStart).toISOString(), new Date(rangeEnd).toISOString(), mechanic]).then(r => r.rows).catch(() => []);
   const users = (await db.query(`SELECT payload FROM app_state WHERE state_key='users'`)).rows[0]?.payload || {};
   const sf = (await db.query(`SELECT payload FROM app_state WHERE state_key='shopflow'`)).rows[0]?.payload || {};
   const woById = new Map((Array.isArray(sf.workorders) ? sf.workorders : []).map(w => [String(w?.id), w]));
@@ -125,6 +130,13 @@ export async function buildProductivityReport(db, { from, to, mechanic = '', now
       return { start: new Date(s.started_at).getTime(), end: s.ended_at ? new Date(s.ended_at).getTime() : Math.min(now, rangeEnd), kind: 'repair',
         label: `WO #${s.work_order_id}${w.unit ? ` · Unit ${w.unit}` : ''} · ${s.task_name || 'Repair'}`, workOrderId: String(s.work_order_id), endReason: s.end_reason || (s.ended_at ? '' : 'running'), pauseReason: s.pause_reason || '' };
     });
+    for (const r of inspRows.filter(r => r.mechanic_username === String(username).toLowerCase())) {
+      const start = new Date(r.started_at).getTime();
+      let end = r.completed_at ? new Date(r.completed_at).getTime() : (localYmd(start, tz) === localYmd(now, tz) ? Math.min(now, start + 4 * 3600000) : NaN);
+      if (!Number.isFinite(end) || end <= start || end - start > 12 * 3600000) continue;
+      const what = r.inspection_type === 'trailer' ? `Trailer inspection${r.inspection_subtype ? ` (${String(r.inspection_subtype).replace(/_/g, ' ')})` : ''}` : r.inspection_type === 'truck' ? 'Truck inspection' : `${r.inspection_type} inspection`;
+      intervals.push({ start, end, kind: 'repair', code: 'inspection', label: `WO #${r.work_order_id}${r.unit_number_snapshot ? ` · Unit ${r.unit_number_snapshot}` : ''} · ${what}`, workOrderId: String(r.work_order_id), inspection: true, done: !!r.completed_at });
+    }
     const hist = Array.isArray(users[username]?.activityHistory) ? [...users[username].activityHistory].filter(a => a?.startedAt && a?.code).sort((a, b) => new Date(a.startedAt) - new Date(b.startedAt)) : [];
     const current = users[username]?.currentActivity;
     hist.forEach((a, i) => {
@@ -136,6 +148,7 @@ export async function buildProductivityReport(db, { from, to, mechanic = '', now
       if (end > start && end > rangeStart && start < rangeEnd) intervals.push({ start, end, kind: a.code === 'break' ? 'break' : 'activity', code: a.code, label: a.code === 'custom' ? (a.customText || 'Custom activity') : ACTIVITY_LABELS[a.code] || a.code, note: a.note || '' });
     });
     const shifts = shiftRows.filter(r => r.username === username).map(r => ({ start: new Date(r.clock_in).getTime(), end: r.clock_out ? new Date(r.clock_out).getTime() : Math.min(now, rangeEnd) }));
+    const insp = intervals.filter(i => i.inspection && i.end > rangeStart && i.start < rangeEnd);
     const tot = { clockedDays: 0, scheduledMs: 0, repairMs: 0, activityMs: 0, breakMs: 0, unaccountedMs: 0, idleMs: 0, overtimeMs: 0, byActivity: {}, daysWorked: 0, noActivityDays: 0, longestIdleMs: 0, gaps: 0 };
     const dayRows = [];
     // Days before a mechanic's first record (new hire, or before ShopFlow was used) are not counted as "no activity".
@@ -174,7 +187,7 @@ export async function buildProductivityReport(db, { from, to, mechanic = '', now
     mechanics.push({ username, display,
       totals: { ...tot, utilizationPct: tot.scheduledMs ? Math.round((tot.repairMs - tot.overtimeMs) / tot.scheduledMs * 1000) / 10 : 0,
         billedHours: Math.round(billedHours * 100) / 100, efficiencyPct: clockedH > 0.05 && billedHours > 0.01 ? Math.round(billedHours / clockedH * 1000) / 10 : null,
-        workOrders: new Set(inRange.map(s => String(s.work_order_id))).size, tasksCompleted: inRange.filter(s => s.end_reason === 'completed').length, pauseReasons },
+        workOrders: new Set([...inRange.map(s => String(s.work_order_id)), ...insp.map(i => i.workOrderId)]).size, inspections: insp.filter(i => i.done).length, inspectionMs: insp.reduce((n, i) => n + Math.min(i.end, rangeEnd) - Math.max(i.start, rangeStart), 0), tasksCompleted: inRange.filter(s => s.end_reason === 'completed').length, pauseReasons },
       days: dayRows });
   }
   mechanics.sort((a, b) => b.totals.repairMs - a.totals.repairMs);
