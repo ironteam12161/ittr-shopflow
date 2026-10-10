@@ -95,7 +95,7 @@ try{
  const fakePort=await freePort();await new Promise(r=>fake.listen(fakePort,'127.0.0.1',r));
  port=await freePort();
  await db.query("INSERT INTO auth_users(username,display_name,password_hash,role) VALUES($1,'Finance Admin',$2,'admin') ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash,active=true,role='admin'",[adminUser,await bcrypt.hash(adminPass,4)]).catch(()=>{});
- const env={...process.env,PORT:String(port),NODE_ENV:'test',BOOTSTRAP_ADMIN_USERNAME:adminUser,BOOTSTRAP_ADMIN_PASSWORD:adminPass,OPENAI_API_KEY:'',OPENROUTER_API_KEY:'',SAMSARA_API_TOKEN:'',
+ const env={...process.env,STRIPE_WEBHOOK_SECRET:'whsec_test_ittr',PORT:String(port),NODE_ENV:'test',BOOTSTRAP_ADMIN_USERNAME:adminUser,BOOTSTRAP_ADMIN_PASSWORD:adminPass,OPENAI_API_KEY:'',OPENROUTER_API_KEY:'',SAMSARA_API_TOKEN:'',
   GOOGLE_CLIENT_ID:'cid',GOOGLE_CLIENT_SECRET:'secret',APP_PUBLIC_URL:`http://127.0.0.1:${port}`,GMAIL_TOKEN_KEY:'ci-finance-token-key-0123456789',
   GOOGLE_OAUTH_AUTH_URL:`http://127.0.0.1:${fakePort}/auth`,GOOGLE_OAUTH_TOKEN_URL:`http://127.0.0.1:${fakePort}/token`,GOOGLE_OAUTH_REVOKE_URL:`http://127.0.0.1:${fakePort}/revoke`,GMAIL_API_BASE:`http://127.0.0.1:${fakePort}/gmail`};
  child=spawn(process.execPath,['server.js'],{env,stdio:['ignore','pipe','pipe']});
@@ -154,6 +154,14 @@ try{
   assert((await request('/api/payments/search?q=10452')).items.length>=1,'payments found by check number');
   assert((await request('/api/payments/search?q=7xk2',{tok:mechToken,allowError:true})).status===403,'mechanics cannot search payments');
   near(Number((await request(`/api/invoices/${pid}`)).invoice.amount_paid),Number(b0.amount_paid||0)+15,'payments counted once');
+  {const crypto=await import('node:crypto');const sign=(body,secret='whsec_test_ittr',t=Math.floor(Date.now()/1000))=>`t=${t},v1=${crypto.createHmac('sha256',secret).update(`${t}.${body}`).digest('hex')}`;
+   const before=Number((await request(`/api/invoices/${pid}`)).invoice.amount_paid);
+   const body=JSON.stringify({type:'checkout.session.completed',data:{object:{id:'cs_test_1',payment_intent:'pi_test_1',payment_status:'paid',amount_total:2500,created:Math.floor(Date.now()/1000),metadata:{invoice_id:String(pid)}}}});
+   const hook=(b,sig)=>fetch(`http://127.0.0.1:${port}/api/stripe/webhook`,{method:'POST',headers:{'Content-Type':'application/json','Stripe-Signature':sig},body:b});
+   assert((await hook(body,sign(body,'wrong-secret'))).status===400,'Stripe webhook rejects a bad signature');
+   const ok1=await (await hook(body,sign(body))).json();const ok2=await (await hook(body,sign(body))).json();
+   assert(ok1.recorded===true&&ok2.recorded===false,'Stripe payment recorded once');
+   const after=await request(`/api/invoices/${pid}`);near(Number(after.invoice.amount_paid),before+25,'online payment added to the invoice');assert(after.payments.some(p=>p.reference==='pi_test_1'&&p.method==='Credit Card'),'online payment shows as Credit Card with its Stripe ID');}
   await db.query(`UPDATE customer_invoices SET status='void' WHERE id=$1`,[pid]);
   console.log('PASS payments: transaction IDs saved, duplicates caught, editable later, searchable');}
  // --- invoice tire fees + finalize paid draft => paid (audit fix)
@@ -310,6 +318,18 @@ try{
   const soInv=await request(`/api/service-orders/${so.id}/to-invoice`,{method:'POST',body:{}});const sl=(await request(`/api/invoices/${soInv.id}`)).lines.find(l=>l.line_type==='labor'&&l.job_uid==='inspection-9950');
   assert(sl&&Number(sl.quantity)===0.75&&sl.description==='Truck inspection','inspection becomes an invoice labor line with its hours');
   await db.query(`UPDATE customer_invoices SET status='void' WHERE id=$1`,[soInv.id]);}
+ {// v24.41.7 audit: owner manages manager accounts; managers can add helpers and read timer history
+  assert((await request('/api/admin/managers',{method:'POST',body:{username:'auditmgr',display:'Audit Manager',password:'short-pass',permissions:{}},allowError:true})).status===400,'manager password must be 12+ characters');
+  await request('/api/admin/managers',{method:'POST',body:{username:'auditmgr',display:'Audit Manager',password:'Audit-Manager-2026!',permissions:{employees:false}}});
+  assert((await request('/api/admin/managers')).items.some(m=>m.username==='auditmgr'),'owner sees manager accounts');
+  await request('/api/admin/managers/auditmgr/password',{method:'PATCH',body:{password:'Audit-Manager-2027!'}});
+  const mgrTok=(await request('/api/auth/login',{method:'POST',tok:'',body:{username:'auditmgr',password:'Audit-Manager-2027!'}})).token;assert(mgrTok,'manager signs in with the new password');
+  assert((await request('/api/admin/managers',{tok:mgrTok,allowError:true})).status===403,'managers cannot list manager accounts');
+  assert((await request('/api/work-orders/9950/task-sessions',{tok:mgrTok,allowError:true})).status!==403,'managers can read a work order timer history');
+  const st=(await request('/api/state')).shopflow;const wos=st.payload.workorders.map(w=>String(w.id)==='9950'?{...w,status:'In Progress'}:w);await request('/api/state/shopflow',{method:'PUT',body:{expectedVersion:st.version,payload:{...st.payload,workorders:wos}}});
+  await db.query("INSERT INTO auth_users(username,display_name,password_hash,role) VALUES('helpermech','Helper Mech','x','mechanic') ON CONFLICT(username) DO NOTHING");
+  const hp=await request('/api/work-orders/9950/helpers',{method:'POST',tok:mgrTok,body:{username:'helpermech'},allowError:true});assert(hp.status===200,`managers can add a helper mechanic (got ${hp.status} ${hp.error||''})`);
+  await request('/api/admin/managers/auditmgr',{method:'DELETE'});}
  console.log('PASS time clock + inspections in productivity/labor times: punch in/out, auto clock-in, clock-out pauses work, admin edits with history, overtime, forgotten shifts; labor times by job type');
  // --- v24.39.0 compliance: annual inspections, fleet PM/CARB, owner reset
  const lk=await request('/api/annual-inspections/lookup?q=Tire Keeper');assert(lk.customers.some(c=>c.customer_name==='Tire Keeper Freight'),'carrier lookup finds customers');
