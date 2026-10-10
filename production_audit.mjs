@@ -179,6 +179,12 @@ check('activity tiles ask before changing the activity',root.includes('function 
 check('owner can list and manage manager accounts',server.includes('app.get("/api/admin/managers",auth,ownerOnly')&&root.includes('async function loadStaffAccounts(')&&root.includes('minlength="12"'));
 check('inspection actions wait for the latest save',root.includes('window.syncNow=async function'));
 check('work orders are cards on phones',root.includes('data-label="Scheduled"')&&root.includes('#workorders tr.woRow td[data-label]:before'));
+check('Stripe online payments are recorded automatically (signed webhook)',server.includes('app.post("/api/stripe/webhook",express.raw(')&&server.indexOf('app.post("/api/stripe/webhook"')<server.indexOf('app.use(express.json(')&&server.includes('timingSafeEqual'));
+check('invoice statuses have one color each and overdue days',root.includes('function invStatusPill(')&&root.includes('.invoiceStatus.is-overdue'));
+check('work orders: one status pill, search and mechanic filter',root.includes('id="woSearch"')&&root.includes('id="woMechFilter"')&&!root.includes('<th>Availability</th>'));
+check('page titles match the menu',root.includes('<div class="toolbar"><h1>Findings</h1></div>')&&read('public/modules/procenter.html').includes('<h1>Operations</h1>')&&read('public/modules/compliance.html').includes('<h1>Compliance</h1>'));
+check('mechanic screen: clock, jobs, then activities; one-row phone header',root.includes('id="ittrV24418Phone"')&&root.indexOf('id="mechanicJobs"')<root.indexOf('id="mechanicActivityPanel"'));
+check('delete work order sits apart from other actions',root.includes('class="dangerZone"'));
 const failed=results.filter(x=>!x.ok);
 for(const r of results)console.log(`${r.ok?'PASS':'FAIL'}  ${r.name}${r.detail?'  '+r.detail:''}`);
 console.log(`\nITTR production audit: ${results.length-failed.length}/${results.length} passed`);

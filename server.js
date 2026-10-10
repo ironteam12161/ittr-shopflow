@@ -150,6 +150,34 @@ app.use((req,res,next)=>{
  res.setHeader("X-Permitted-Cross-Domain-Policies","none");
  next();
 });
+// v24.41.8: Stripe "Pay online" payments are recorded on the invoice automatically. The raw body is needed to check
+// Stripe's signature, so this route is registered before the JSON body parser. Needs STRIPE_WEBHOOK_SECRET.
+function verifyStripeSignature(rawBody,header,secret,toleranceSec=300,nowSec=Math.floor(Date.now()/1000)){
+ const parts=Object.fromEntries(String(header||"").split(",").map(x=>x.split("=")).filter(x=>x.length===2).map(([k,v])=>[k.trim(),v]));
+ const sigs=String(header||"").split(",").filter(x=>x.trim().startsWith("v1=")).map(x=>x.trim().slice(3));
+ const t=Number(parts.t);if(!t||!sigs.length||Math.abs(nowSec-t)>toleranceSec)return false;
+ const expected=crypto.createHmac("sha256",secret).update(`${t}.${rawBody}`).digest("hex");
+ return sigs.some(s=>s.length===expected.length&&crypto.timingSafeEqual(Buffer.from(s),Buffer.from(expected)));
+}
+app.post("/api/stripe/webhook",express.raw({type:"*/*",limit:"1mb"}),async(req,res)=>{
+ const secret=String(process.env.STRIPE_WEBHOOK_SECRET||"").trim();if(!secret)return res.status(503).json({error:"STRIPE_WEBHOOK_SECRET is not set."});
+ const raw=Buffer.isBuffer(req.body)?req.body.toString("utf8"):"";
+ if(!verifyStripeSignature(raw,req.headers["stripe-signature"],secret))return res.status(400).json({error:"Bad signature."});
+ let ev;try{ev=JSON.parse(raw)}catch{return res.status(400).json({error:"Bad JSON."})}
+ if(ev?.type!=="checkout.session.completed"&&ev?.type!=="checkout.session.async_payment_succeeded")return res.json({received:true,ignored:ev?.type||""});
+ const ses=ev.data?.object||{};if(ses.payment_status&&ses.payment_status!=="paid")return res.json({received:true,pending:true});
+ const invoiceId=Number(ses.metadata?.invoice_id||0),amount=invoiceMoney(Number(ses.amount_total||0)/100),ref=String(ses.payment_intent||ses.id||"").slice(0,160);
+ if(!invoiceId||!(amount>0)||!ref)return res.json({received:true,skipped:"no invoice"});
+ const db=await requireDb().connect();
+ try{await db.query("BEGIN");const inv=(await db.query("SELECT id,status FROM customer_invoices WHERE id=$1::bigint FOR UPDATE",[invoiceId])).rows[0];
+  if(!inv||inv.status==="void"){await db.query("ROLLBACK");return res.json({received:true,skipped:"missing or void"})}
+  const dup=(await db.query("SELECT 1 FROM customer_invoice_payments WHERE invoice_id=$1::bigint AND reference=$2",[invoiceId,ref])).rowCount;
+  if(!dup){await db.query("INSERT INTO customer_invoice_payments(invoice_id,amount,method,reference,note,paid_at,received_by) VALUES($1::bigint,$2::numeric,'Credit Card',$3,'Paid online (Stripe)',to_timestamp($4),'stripe')",[invoiceId,amount,ref,Number(ses.created||Date.now()/1000)]);
+   await db.query("UPDATE customer_invoices SET amount_paid=amount_paid+$2::numeric,updated_at=now() WHERE id=$1::bigint",[invoiceId,amount]);await recalcInvoice(db,invoiceId)}
+  await db.query("COMMIT");if(!dup)await audit("stripe","invoice_payment",{invoiceId,amount,method:"Credit Card",reference:ref,online:true});
+  res.json({received:true,recorded:!dup})
+ }catch(e){try{await db.query("ROLLBACK")}catch{}console.error("[stripe webhook]",e?.message);res.status(500).json({error:"Could not record the payment."})}finally{db.release()}
+});
 app.use(express.json({limit:"3mb"}));
 
 // ITTR v24.16.1 hardened frontend path:
@@ -1762,8 +1790,8 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.41.7");
-app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-UXAUDIT-20261010`}));
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.41.8");
+app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-UXPOLISH-20261010`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
@@ -4094,7 +4122,7 @@ app.post('/api/invoices/:id/email',auth,managerPermission("invoices"),async(req,
  const rr=await fetch(String(process.env.RESEND_API_URL||'https://api.resend.com/emails'),{method:'POST',headers:{Authorization:`Bearer ${resendKey}`,'Content-Type':'application/json','Idempotency-Key':idempotencyKey},body:JSON.stringify({from:invoiceFromEmail,to,cc:cc.length?cc:undefined,reply_to:replyTo||undefined,subject,html:invoiceEmailHtml(i,message,x.lines),text:message,attachments,tags:[{name:'document',value:'invoice'},{name:'invoice_id',value:String(i.id)}]})});
  const d=await rr.json().catch(()=>({}));if(!rr.ok){const reason=resendFriendlyError(rr.status,d);await db.query("UPDATE invoice_email_deliveries SET status='failed',error_message=$2 WHERE id=$1::bigint",[deliveryId,reason]);await audit(req.user.username,'invoice_email_failed',{invoiceId:i.id,invoiceNumber:i.invoice_number,to,cc,deliveryId,error:reason});return res.status(502).json({error:reason})}
  await db.query("UPDATE invoice_email_deliveries SET status='sent',provider_message_id=$2,sent_at=now(),error_message=NULL WHERE id=$1::bigint",[deliveryId,d.id||null]);
- await db.query("UPDATE customer_invoices SET customer_email=$2,email_sent_at=now(),updated_at=now() WHERE id=$1::bigint",[i.id,to[0]]);
+ await db.query("UPDATE customer_invoices SET customer_email=$2,email_sent_at=now(),sent_at=CASE WHEN status<>'draft' THEN coalesce(sent_at,now()) ELSE sent_at END,updated_at=now() WHERE id=$1::bigint",[i.id,to[0]]);
  await audit(req.user.username,'invoice_emailed',{invoiceId:i.id,invoiceNumber:i.invoice_number,to,cc,subject,attachedPdf:attachments.length>0,resendId:d.id,deliveryId});res.json({ok:true,id:d.id,to,cc});
 }catch(e){if(deliveryId){try{await requireDb().query("UPDATE invoice_email_deliveries SET status='failed',error_message=$2 WHERE id=$1::bigint",[deliveryId,String(e?.message||'Email failed').slice(0,500)])}catch{}}if(e?.status)return res.status(e.status).json({error:e.message});next(e)}});
 const memoryCache=new Map();

@@ -6,13 +6,13 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.41.7-UXAUDIT-20260930">
+<meta name="ittr-build" content="ITTR-24.41.8-UXPOLISH-20260930">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
-<title>ITTR ShopFlow v24.41.7</title>
+<title>ITTR ShopFlow v24.41.8</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -443,6 +443,27 @@ body{-webkit-text-size-adjust:100%}
  #workorders tr.woRow td[data-label]:before{content:attr(data-label);font-size:12px;font-weight:800;color:#667085;text-transform:uppercase;letter-spacing:.03em;text-align:left;flex:none}
  #workorders tr.woRow td.woRowActions{justify-content:flex-end;gap:8px;padding-top:8px!important}
  #workorders .card[style*="overflow:auto"]{background:transparent;border:0;box-shadow:none}}
+/* v24.41.8 header + floating AI button */
+.liveStatusBadge{padding:4px 10px!important;border-radius:999px;background:#f2f4f7;color:#475467!important;font-size:12px!important}
+.liveStatusBadge[data-state="connected"]{background:#ecfdf3;color:#067647!important}.liveStatusBadge[data-state="reconnecting"]{background:#fffaeb;color:#b54708!important}.liveStatusBadge[data-state="offline"]{background:#fef3f2;color:#b42318!important}
+#shopAiFab{width:54px;height:54px;padding:0!important;justify-content:center;font-size:22px!important;transition:width .15s ease}
+#shopAiFab span{display:none}
+@media(hover:hover) and (min-width:761px){#shopAiFab:hover{width:auto;padding:0 18px!important}#shopAiFab:hover span{display:inline;font-size:15px}}
+@media(max-width:760px){#shopAiFab{width:48px;height:48px;padding:0!important}}
+/* v24.41.8 work order list */
+.woTools{display:grid;grid-template-columns:minmax(0,1fr) 240px;gap:10px;margin:4px 0 10px}.woTools input,.woTools select{min-height:44px;border:2px solid #e4e7ec;border-radius:12px;padding:8px 12px;font-size:15px;background:#fff}
+.woTools input:focus,.woTools select:focus{border-color:#175cd3;outline:0}
+.woNote{font-size:12px;font-weight:700;color:#b54708;margin-top:4px}.woNote.muted{color:#667085;font-weight:600}
+table.noParking .woParkCol{display:none!important}
+@media(max-width:700px){.woTools{grid-template-columns:1fr}}
+/* v24.41.8 invoice status colors */
+.invoiceStatus{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:850;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}
+.invoiceStatus.is-draft{background:#f2f4f7!important;color:#475467!important}.invoiceStatus.is-sent{background:#eff8ff!important;color:#175cd3!important}.invoiceStatus.is-partial{background:#fffaeb!important;color:#b54708!important}.invoiceStatus.is-paid{background:#ecfdf3!important;color:#067647!important}.invoiceStatus.is-void{background:#f2f4f7!important;color:#98a2b3!important;text-decoration:line-through}.invoiceStatus.is-overdue{background:#fef3f2!important;color:#b42318!important}
+.stat.statBad b{color:#b42318}
+.mechHelp{margin:14px 0;background:#fff;border:1px solid #e4e7ec;border-radius:12px;padding:10px 14px}.mechHelp summary{cursor:pointer;font-weight:800;color:#344054}.mechHelp div{margin-top:8px;line-height:1.5}
+.miniField{display:flex!important;flex-direction:column;gap:3px;margin:0}.miniField>span{font-size:11px;font-weight:800;color:#667085;text-transform:uppercase;letter-spacing:.03em}.miniField input{width:100%}
+.helperRemove{min-height:34px!important;padding:5px 12px!important;font-size:13px!important;color:#b42318!important}
+.dangerZone{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px dashed #fda29b}.dangerZone .muted{font-size:12px}
 .mechanicStatusCard.stale{border-color:#f79009!important;background:#fffaeb!important}.staleTimer{margin-top:8px;padding:8px 10px;border-radius:10px;background:#fef0c7;color:#93370d;font-weight:800;font-size:13px}
 .cfmDlg{position:fixed;inset:0;z-index:6600;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:16px;animation:payFade .12s ease}
 .cfmBox{background:#fff;border-radius:18px;max-width:420px;width:100%;padding:22px;box-shadow:0 30px 80px rgba(15,23,42,.35)}.cfmBox h2{margin:0 0 6px;font-size:21px}.cfmBox p{margin:0;color:#475467;font-size:15px}
@@ -592,9 +613,9 @@ body.modalOpen{overflow:hidden}
 
 .taskParts{margin-top:10px;border-top:1px solid #e5e7eb;padding-top:9px}
 .partRow{display:grid;grid-template-columns:minmax(100px,.8fr) minmax(160px,1.8fr) 70px auto;gap:7px;align-items:center;padding:6px 0;border-bottom:1px dashed #e5e7eb;font-size:13px}
-.partAddGrid{display:grid;grid-template-columns:minmax(100px,.8fr) minmax(160px,1.8fr) 70px auto;gap:7px;margin-top:8px}
+.partAddGrid{display:grid;grid-template-columns:minmax(100px,.8fr) minmax(160px,1.8fr) 70px auto;gap:7px;margin-top:8px;align-items:end}
 .partAddGrid input{min-width:0}
-@media(max-width:700px){.partRow{grid-template-columns:1fr 58px auto}.partRow .partDesc{grid-column:1/-1}.partAddGrid{grid-template-columns:1fr 70px}.partAddGrid .partDescInput{grid-column:1/-1}.partAddGrid button{grid-column:1/-1;width:100%}}
+@media(max-width:700px){.partRow{grid-template-columns:1fr 58px auto}.partRow .partDesc{grid-column:1/-1}.partAddGrid{grid-template-columns:1fr 70px}.partAddGrid .partDescInput,.partAddGrid .partDescLabel{grid-column:1/-1}.partAddGrid button{grid-column:1/-1;width:100%}}
 .productivityToolbar{display:grid;grid-template-columns:180px 180px 1fr;gap:10px;align-items:end;margin-bottom:12px}.productivityQuick{display:flex;gap:7px;flex-wrap:wrap}.productivityTable{width:100%;border-collapse:collapse;font-size:13px}.productivityTable th,.productivityTable td{padding:9px 8px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}.productivityTable th{font-size:11px;text-transform:uppercase;color:#667085;background:#f9fafb}.productivityDay{margin:14px 0}.productivityDay h3{margin:0 0 8px}.productivityDetail{background:#f9fafb;border:1px solid #eaecf0;border-radius:10px;padding:9px;margin-top:7px}.productivityDetailRow{display:grid;grid-template-columns:85px 1fr 90px;gap:8px;padding:5px 0;border-bottom:1px dashed #e5e7eb}.productivityDetailRow:last-child{border-bottom:0}.aiActionGrid{display:flex;gap:7px;flex-wrap:wrap}.aiResult{white-space:pre-wrap}.aiVerify{margin-top:8px;padding:9px 10px;border:1px solid #f0b429;background:#fffaeb;border-radius:9px;font-size:12px}.miniAiButton{margin-top:6px}.productivityLoading{padding:20px;text-align:center;color:#667085}
 @media(max-width:760px){.productivityToolbar{grid-template-columns:1fr}.productivityQuick{display:grid;grid-template-columns:1fr 1fr}.productivityQuick button{width:100%}.productivityTable{display:block;overflow-x:auto;white-space:nowrap}.productivityDetailRow{grid-template-columns:1fr}.aiActionGrid{display:grid;grid-template-columns:1fr}.aiActionGrid button{width:100%}}
 
@@ -790,7 +811,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.41.7">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.41.8">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -838,9 +859,26 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
 @media(min-width:761px) and (max-width:1500px){header>nav .navGroupLabel{display:none}}
 @media(min-width:761px) and (max-width:1180px){header>nav{gap:2px 10px}header>nav .navGroup+.navGroup{padding-left:10px}header>nav .navbtn{padding:11px 9px 10px;font-size:13px}}
 </style>
+<style id="ittrV24418Phone">
+/* v24.41.8: one button size inside tables everywhere */
+table td button{min-height:36px!important;padding:6px 14px!important;font-size:14px!important;border-radius:10px!important}
+/* v24.41.8: one-row header on phones (logo left; live dot, language and logout right) */
+@media(max-width:760px){
+ header{flex-direction:row!important;flex-wrap:nowrap!important;align-items:center!important;justify-content:space-between!important;padding:8px 10px!important;gap:6px!important;min-height:0!important}
+ header .brand{flex:1 1 auto!important;min-width:0;justify-content:flex-start!important}
+ header .brand .brandLogo{height:30px!important;width:auto!important}
+ header .brandText strong{font-size:16px!important}header .brandText small{display:none!important}
+ header .userbar{flex:0 0 auto!important;display:flex!important;flex-wrap:nowrap!important;gap:6px!important;width:auto!important;margin:0!important;justify-content:flex-end!important}
+ header .userbar #currentRole,header .userbar #liveStatusText{display:none!important}
+ header .userbar .liveStatusBadge{padding:6px!important}
+ header .userbar .languageSelect{min-height:36px!important;padding:4px 6px!important;font-size:13px!important;width:auto!important}
+ header .userbar .navbtn{min-height:36px!important;padding:6px 10px!important;font-size:13px!important}
+ header .mobileBackBtn.visible{order:-1;flex:none}
+}
+</style>
 </head>
 <body>
-<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.41.7 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.41.8 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -868,9 +906,9 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
     <option value="en">EN</option>
     <option value="uk">UA</option>
   </select>
-  <label class="aiTranslateToggle" title="Automatically translate missing English text with AI">
+  <label class="aiTranslateToggle" title="When on, text that has no Ukrainian translation yet is translated automatically with AI">
     <input id="aiTranslateEnabled" type="checkbox" onchange="setAITranslationEnabled(this.checked)">
-    <span>AI</span>
+    <span>AI translate</span>
   </label>
   <button class="navbtn" onclick="logout()">Logout</button>
 </div>
@@ -879,7 +917,7 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
    <div class="navGroup adminOnly"><span class="navGroupLabel">Money</span><button class="navbtn adminOnly" data-view="estimates"><span class="navIco" aria-hidden="true">✎</span>Estimates</button><button class="navbtn adminOnly" data-view="invoices"><span class="navIco" aria-hidden="true">$</span>Invoices <span id="invoiceNavBadge" class="notifyBadge" style="display:none">0</span></button><button class="navbtn adminOnly" data-view="reports"><span class="navIco" aria-hidden="true">▥</span>Reports</button></div>
    <div class="navGroup adminOnly"><span class="navGroupLabel">Records</span><button class="navbtn adminOnly" data-view="customers"><span class="navIco" aria-hidden="true">⌕</span>Customers &amp; Vehicles</button><button class="navbtn adminOnly" data-view="parts"><span class="navIco" aria-hidden="true">⚙</span>Parts <span id="partsNavBadge" class="partsNavBadge" style="display:none">0</span></button><button class="navbtn adminOnly" data-view="compliance"><span class="navIco" aria-hidden="true">✓</span>Compliance <span id="complianceNavBadge" class="notifyBadge" style="display:none">0</span></button></div>
    <div class="navGroup adminOnly navGroupEnd"><button class="navbtn adminOnly" data-view="procenter"><span class="navIco" aria-hidden="true">☰</span>Operations</button></div>
-   <button class="navbtn mechanicOnly" data-view="mechanic">My Work Orders</button><button class="navbtn mechanicOnly" data-view="inspection">Inspection</button><button class="navbtn mechanicOnly" data-view="mycompleted">Completed</button></nav>
+   <button class="navbtn mechanicOnly" data-view="mechanic">My Work Orders</button><button class="navbtn mechanicOnly" data-view="inspection">Findings</button><button class="navbtn mechanicOnly" data-view="mycompleted">Completed</button></nav>
 </header>
 
 <main>
@@ -922,6 +960,7 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
 
 <section id="workorders" class="hidden">
   <div class="toolbar"><div><h1>Work Orders</h1><div class="muted">Open, scheduled and active repair work in one place.</div></div><div><button class="secondary" onclick="showView('completed')">Completed History</button> <button class="adminOnly" onclick="openWorkOrder()">+ New Work Order</button></div></div>
+  <div class="woTools"><input id="woSearch" type="search" placeholder="Search WO #, unit, customer, VIN or job…" oninput="renderAdminTable()" autocomplete="off"><select id="woMechFilter" onchange="renderAdminTable()" aria-label="Mechanic"><option value="">All mechanics</option></select></div>
   <div class="filterbar">
     <button class="filterbtn active" onclick="setAdminFilter('all',this)">All</button>
     <button class="filterbtn" onclick="setAdminFilter('future',this)">Future / Waiting</button>
@@ -931,7 +970,7 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
   <div class="woStageLegend" aria-label="Work order colors"><span class="stage-scheduled"><i></i>Scheduled / on the way</span><span class="stage-ready"><i></i>Truck here</span><span class="stage-working"><i></i>Being worked on</span><span class="stage-paused"><i></i>Paused / waiting</span><span class="stage-done"><i></i>Completed</span></div>
   <div class="card" style="padding:0;overflow:auto">
     <table>
-      <thead><tr><th>WO</th><th>Unit / Truck</th><th>Scheduled</th><th>Mechanic</th><th>Parking</th><th>Availability</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>WO</th><th>Unit / Truck</th><th>Scheduled</th><th>Mechanic</th><th class="woParkCol">Parking</th><th>Status</th><th></th></tr></thead>
       <tbody id="workTable"></tbody>
     </table>
   </div>
@@ -945,7 +984,6 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
 
 <section id="mechanic" class="hidden">
   <div class="toolbar"><div><h1>My Work Orders</h1><div class="muted">Touch-first mechanic workspace</div></div><button type="button" class="mechanicAction mechanicPrimary" onclick="openMechanicStartWizard()">＋ Start New Job</button></div>
-  <div class="notice">You can start a walk-in job yourself using company DOT + VIN, or see work assigned to you before the truck arrives. When the truck arrives, press <b>Truck Is Here</b> to move it into your ready-to-work list.</div>
 
   <div id="mechanicClockCard" class="card mechClock">
     <div>
@@ -956,6 +994,13 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
     <button type="button" id="mechClockBtn" class="mechClockBtn" onclick="punchMechanicClock()" disabled>Loading…</button>
   </div>
 
+
+
+
+  <h2 style="margin:6px 0 8px">Ready to Work</h2>
+  <div class="jobs" id="mechanicJobs"></div>
+  <h2 style="margin:16px 0 8px">Upcoming / On the Way</h2>
+  <div class="jobs" id="mechanicUpcoming"></div>
   <div id="mechanicActivityPanel" class="card mechanicActivityPanel">
     <div class="mechanicActivityTop">
       <div>
@@ -1003,13 +1048,7 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
     </div>
     <div id="mechanicActivityCurrent" class="muted" style="margin-top:10px"></div>
   </div>
-
-
-  <h2 style="margin:16px 0 8px">Upcoming / On the Way</h2>
-  <div class="jobs" id="mechanicUpcoming"></div>
-
-  <h2 style="margin:20px 0 8px">Ready to Work</h2>
-  <div class="jobs" id="mechanicJobs"></div>
+  <details class="mechHelp"><summary>How My Work Orders works</summary><div class="muted">You can start a walk-in job yourself using company DOT + VIN, or see work assigned to you before the truck arrives. When the truck arrives, press <b>Truck Is Here</b> to move it into your ready-to-work list.</div></details>
 </section>
 
 <section id="completed" class="hidden">
@@ -1024,7 +1063,7 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
 
 
 <section id="approvals" class="hidden">
-  <div class="toolbar"><h1>Findings Center</h1></div>
+  <div class="toolbar"><h1>Findings</h1></div>
   <div class="notice">Findings are automatically organized by <b>date</b> and then by <b>truck/unit</b>. Items waiting for a decision stay in Action Required; resolved items remain in history.</div>
   <div class="findingSummary" id="findingSummary"></div>
   <div class="findingControls card">
@@ -1100,7 +1139,7 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
 </section>
 
 <section id="inspection" class="hidden">
-  <div class="toolbar"><h1>Inspection / Needs Attention</h1><button onclick="openIssue()">+ Add Finding</button></div>
+  <div class="toolbar"><div><h1>Findings</h1><div class="muted">Problems you found on a truck that need a decision or a repair.</div></div><button onclick="openIssue()">+ Add Finding</button></div>
   <div class="jobs" id="issues"></div>
 </section>
 
@@ -1111,7 +1150,7 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
 <div id="coreReportModal" class="modal"><div class="modalbox" style="max-width:1100px"><div class="modalhead"><div><h2>Cores Owed by Vendor Location</h2><div class="muted">Outstanding returns, returned cores awaiting credit, and the complete audited lifecycle.</div></div><button class="x" onclick="closeModal('coreReportModal')">×</button></div><div id="coreReportBody"><div class="muted">Loading core obligations…</div></div></div></div>
 <div id="partsScannerModal" class="modal"><div class="modalbox" style="max-width:680px"><div class="modalhead"><div><h2 id="partsScannerTitle">Barcode Scanner</h2><div id="partsScannerSubhead" class="muted">Scan or enter a barcode.</div></div><button class="x" onclick="closePartsScanner()">×</button></div><div class="scanHero"><b id="partsScannerPrompt">Scan a part barcode</b><div class="muted">Use the phone camera, a USB/Bluetooth scanner, or type the barcode.</div><div id="scannerViewport" class="scannerViewport hidden"><video id="partsScannerVideo" playsinline muted></video><div class="scannerAim"></div></div><div class="actions"><button type="button" onclick="startPartsCamera()">📷 Start Camera</button><button type="button" class="secondary" onclick="stopPartsCamera()">Stop Camera</button></div><div class="field full"><label>Barcode / Part Number</label><input id="partsScanInput" class="scanInput" autocomplete="off" placeholder="ITTR-P-000184" onkeydown="if(event.key==='Enter'){event.preventDefault();lookupScannedPart()}"></div><button type="button" onclick="lookupScannedPart()">Find Part</button><div id="partsScanResult" style="margin-top:12px"></div></div></div></div>
 
-<button id="shopAiFab" type="button" onclick="toggleShopAI()" title="ITTR Workshop Copilot">✦ <span>Workshop AI</span></button>
+<button id="shopAiFab" type="button" onclick="toggleShopAI()" title="Workshop AI: ask about trucks, repairs and manuals" aria-label="Workshop AI">✦ <span>Workshop AI</span></button>
 <div id="shopAiPanel" class="hidden">
   <div class="aiCopilotHead"><div class="aiCopilotBrand"><div class="aiCopilotIcon">AI</div><div><h3 style="margin:0">ITTR Workshop Copilot</h3><div class="muted">Shop history · unit intelligence · licensed manuals · multilingual</div></div></div><div class="actions"><button class="secondary" style="color:white;border-color:#64748b;background:transparent" onclick="openManualLibrary()">Manuals</button><button class="x" onclick="toggleShopAI(false)">×</button></div></div>
   <div><div class="aiContextBar"><div class="field"><label>Unit context</label><input id="shopAiUnit" list="unitDirectoryList" placeholder="Unit # or VIN — optional"></div><button class="secondary" onclick="clearShopAI()">New Chat</button></div><div class="aiQuick"><button onclick="shopAiAskQuick('When was the last oil service on this unit?')">Last oil service</button><button onclick="shopAiAskQuick('Summarize the recent repair history for this unit.')">Recent repairs</button><button onclick="shopAiAskQuick('What open or future repairs are recorded for this unit?')">Open / future work</button><button onclick="shopAiAskQuick('Find the torque specification or service procedure I ask for using the licensed workshop manual.')">Torque / specs</button><button onclick="shopAiAskQuick('Help me find the correct wiring diagram or manual section for this unit.')">Wiring / manual</button></div></div>
@@ -1406,7 +1445,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.41.7';
+const FRONTEND_VERSION='24.41.8';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1628,6 +1667,8 @@ async function punchMechanicClock(){
   await loadMechanicClock(true);if(typeof render==="function")render();
  }catch(e){if(e?.status===409||/already clocked in|not clocked in/i.test(e?.message||""))showToast(uk?"Статус оновлено.":"Your clock status was out of date. It is updated now.","info");else showToast(e.message||"Time clock error.","error",8000);await loadMechanicClock(true)}finally{if(b&&MECH_CLOCK)b.disabled=false}
 }
+// v24.41.8: Esc closes the Reports / Compliance pop-ups too (the main pop-ups already close with Esc).
+document.addEventListener("keydown",e=>{if(e.key!=="Escape")return;const x=[...document.querySelectorAll(".repModal,.cmpModal")].pop();if(x){x.remove();e.stopPropagation()}});
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&session?.role==="mechanic")loadMechanicClock(true)});
 // v24.41.6: a tap on an activity tile asks first, so a stray tap can't change what the mechanic is doing.
 function confirmBox({title,text="",ok="Yes",cancel="Cancel",tone="primary"}){return new Promise(resolve=>{const tr=translateDynamicText,m=document.createElement("div");m.className="cfmDlg";
@@ -1691,7 +1732,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.41.7";
+const ROUTE_MODULE_VERSION="24.41.8";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -1898,7 +1939,7 @@ function bindNavigation(){
  });
 }
 let liveSocket=null,liveReconnectTimer=null,liveReconnectAttempt=0,liveSocketStopped=false;
-function setLiveStatus(stateName,label){const dot=document.getElementById("liveStatusDot"),text=document.getElementById("liveStatusText");if(dot){dot.className=`liveStatusDot ${stateName}`}if(text)text.textContent=label}
+function setLiveStatus(stateName,label){const dot=document.getElementById("liveStatusDot"),text=document.getElementById("liveStatusText"),badge=document.getElementById("liveStatusBadge");if(dot){dot.className=`liveStatusDot ${stateName}`}if(badge){badge.dataset.state=stateName;badge.title=stateName==="connected"?"Live: changes from other people appear instantly":stateName==="offline"?"Offline: your changes are saved on this device and sync when you are back online":"Reconnecting to the shop server…"}if(text)text.textContent=stateName==="offline"?translateDynamicText("Offline · saved here"):translateDynamicText(label)}
 function stopLiveStatusSocket(){liveSocketStopped=true;clearTimeout(liveReconnectTimer);liveReconnectTimer=null;try{liveSocket?.close()}catch(_){}liveSocket=null}
 function connectLiveStatusSocket(){if(!cloudToken||!navigator.onLine)return;if(liveSocket&&[WebSocket.OPEN,WebSocket.CONNECTING].includes(liveSocket.readyState))return;liveSocketStopped=false;setLiveStatus("reconnecting",liveReconnectAttempt?"Reconnecting":"Connecting");const proto=location.protocol==="https:"?"wss":"ws";const ws=new WebSocket(`${proto}://${location.host}/ws/shop-status?token=${encodeURIComponent(cloudToken)}`);liveSocket=ws;ws.onopen=()=>{liveReconnectAttempt=0;setLiveStatus("connected","Live")};ws.onmessage=e=>{try{const msg=JSON.parse(e.data);if(["shopflow_changed","task_changed","work_order_created"].includes(msg.type))refreshCloudStateSilently()}catch(_){}};ws.onclose=()=>{liveSocket=null;if(liveSocketStopped||!navigator.onLine)return;liveReconnectAttempt++;const delay=Math.min(30000,1000*(2**Math.min(5,liveReconnectAttempt-1)))+Math.floor(Math.random()*500);setLiveStatus("reconnecting","Reconnecting");clearTimeout(liveReconnectTimer);liveReconnectTimer=setTimeout(connectLiveStatusSocket,delay)};ws.onerror=()=>{try{ws.close()}catch(_){}}}
 function updateOnlineState(){
@@ -1987,6 +2028,9 @@ const UI_TRANSLATIONS={
  "Admin Work Orders":"Наряди на роботи",
  "Completed Jobs":"Завершені роботи",
  "Findings":"Зауваження",
+ "Problems you found on a truck that need a decision or a repair.":"Проблеми, знайдені на траку, які потребують рішення або ремонту.",
+ "Offline · saved here":"Офлайн · збережено тут",
+ "AI translate":"AI переклад",
  "Mechanic Accounts":"Акаунти механіків",
  "Shop Calendar":"Календар майстерні",
  "Scheduled work orders by day, week, or month.":"Заплановані наряди на день, тиждень або місяць.",
@@ -2185,6 +2229,28 @@ Object.assign(UI_TRANSLATIONS,{
  "Truck Search":"Пошук трака",
  "Search":"Пошук",
  "Truck Search / Unit History":"Пошук трака / Історія юніта",
+ "Unit History":"Історія юніта",
+ "All mechanics":"Усі механіки",
+ "No customers match this search.":"Немає клієнтів за цим пошуком.",
+ "No findings in this view. Mechanics add findings from a work order or the Findings tab.":"Немає зауважень. Механіки додають їх із наряду або вкладки Зауваження.",
+ "Removes the work order, its timers and its inspection from history.":"Видаляє наряд, його таймери та інспекцію з історії.",
+ "Part #":"Запчастина #",
+ "Description":"Опис",
+ "Qty":"К-сть",
+ "How My Work Orders works":"Як працюють Мої наряди",
+ "Customers owe":"Клієнти винні",
+ "invoice":"рахунок",
+ "invoices":"рахунків",
+ "Partly paid":"Частково оплачено",
+ "Due":"До сплати",
+ "No invoices match this search.":"Немає рахунків за цим пошуком.",
+ "No invoices in this view. Create one with + New Invoice, or from a completed work order.":"Немає рахунків. Створіть через + Новий рахунок або із завершеного наряду.",
+ "Truck not marked as here":"Трак не позначено як прибулий",
+ "Fleet unit · hidden from mechanics":"Власний транспорт · приховано від механіків",
+ "Waiting for the truck":"Очікуємо трак",
+ "No work orders match this search.":"Немає нарядів за цим пошуком.",
+ "No open work orders. Press + New Work Order to schedule one.":"Немає відкритих нарядів. Натисніть + Новий наряд, щоб запланувати.",
+ "Compliance":"Відповідність",
  "Find a truck by unit number, customer, work performed, mechanic notes, future notes, findings, or recommendations.":"Знайдіть трак за номером юніта, клієнтом, виконаними роботами, примітками механіка, майбутніми роботами, зауваженнями або рекомендаціями.",
  "Search truck history":"Пошук в історії трака",
  "All work orders":"Усі наряди",
@@ -2882,6 +2948,10 @@ function upcomingForCurrentMechanic(w){
  if(w.unitType==="fleet")return w.fleetAuto===false;
  return !w.truckHere;
 }
+// v24.41.8: one date style everywhere ("Sep 30, 2026" and "8:00 AM").
+function fmtDay(v){if(!v)return "";const d=new Date(/^\d{4}-\d{2}-\d{2}$/.test(String(v))?`${v}T12:00:00`:v);return Number.isFinite(d.getTime())?d.toLocaleDateString(currentLanguage==="uk"?"uk-UA":"en-US",{month:"short",day:"numeric",year:"numeric"}):String(v)}
+function fmtClock(hhmm){const m=String(hhmm||"").match(/^(\d{1,2}):(\d{2})/);if(!m)return "";const d=new Date(2000,0,1,Number(m[1]),Number(m[2]));return d.toLocaleTimeString(currentLanguage==="uk"?"uk-UA":"en-US",{hour:"numeric",minute:"2-digit"})}
+function fmtScheduled(w){return [fmtDay(w?.date),fmtClock(w?.time)].filter(Boolean).join(" · ")||"—"}
 function availabilityBadge(w){
  if(w.unitType==="fleet" && w.fleetAuto!==false) return '<span class="badge b-here">Fleet Auto</span>';
  if(w.truckHere) return '<span class="badge b-here">Truck Here</span>';
@@ -3078,7 +3148,7 @@ function mechanicCompletedCard(w){
 
  return `<div class="card">
    <div class="jobtop">
-     <div><b>Unit ${esc(w.unit)}</b><div class="muted">${esc(w.customer||"")} · Parking ${esc(w.parking||"—")}</div></div>
+     <div><b>Unit ${esc(w.unit)}</b><div class="muted">${esc(w.customer||"")}${w.parking?` · Parking ${esc(w.parking)}`:""}</div></div>
      <span class="badge b-done">Completed</span>
    </div>
    <div style="margin-top:10px">
@@ -3782,7 +3852,7 @@ function debouncedCustomerDirectory(){clearTimeout(customerDirectoryTimer);custo
 async function renderCustomerDirectory(){
  if(!["admin","manager"].includes(session?.role))return;const tbody=document.getElementById("customerDirectoryTable");if(!tbody)return;const rawQ=document.getElementById("customerDirectorySearch")?.value?.trim()||"";if(rawQ.length>=2&&document.getElementById("smartDirectoryResults")&&!document.getElementById("smartDirectoryResults").classList.contains("hidden"))return;const q="";tbody.innerHTML='<tr><td colspan="6">Loading customers…</td></tr>';
  try{const d=await apiJSON(`/api/customers?q=${encodeURIComponent(q)}`);customerDirectoryCache=d.items||[];if(Array.isArray(d.warnings)&&d.warnings.length)console.warn("Customer CRM warnings:",d.warnings);const total=customerDirectoryCache.length,units=customerDirectoryCache.reduce((a,x)=>a+Number(x.unit_count||0),0),services=customerDirectoryCache.reduce((a,x)=>a+Number(x.service_count||0),0),active=customerDirectoryCache.filter(x=>x.active!==false).length;const stats=document.getElementById("customerDirectoryStats");if(stats)stats.innerHTML=`<div class="customerStat"><span class="muted">Customers</span><b>${total}</b></div><div class="customerStat"><span class="muted">Active</span><b>${active}</b></div><div class="customerStat"><span class="muted">Known Units</span><b>${units}</b></div><div class="customerStat"><span class="muted">Service Records</span><b>${services}</b></div>`;
- tbody.innerHTML=customerDirectoryCache.length?customerDirectoryCache.map(c=>`<tr><td><button class="customerNameLink" onclick="openCustomerProfile(${c.id})">${esc(cleanImportedDisplayText(c.customer_name)||"")}</button><div class="muted">${c.fullbay_id?`Fullbay ${esc(cleanVehicleMeta(c.fullbay_id))} · `:""}${c.active===false?"Inactive":"Active"}</div></td><td>${esc(cleanImportedDisplayText(c.contact_name)||"—")}<div class="muted">${esc(cleanImportedDisplayText(c.phone)||"—")}${c.email?` · ${esc(cleanImportedDisplayText(c.email))}`:""}</div></td><td>DOT ${esc(cleanVehicleMeta(c.dot_number)||"—")}<div class="muted">${esc(uniqueImportedParts([c.city,c.state,c.postal_code]).join(", ")||"—")}</div></td><td><b>${Number(c.unit_count||0)}</b></td><td><b>${Number(c.service_count||0)}</b></td><td><button class="secondary" onclick="openCustomerProfile(${c.id})">Open</button></td></tr>`).join(""):'<tr><td colspan="6" class="empty">No customers found.</td></tr>';applyTranslations();}
+ tbody.innerHTML=customerDirectoryCache.length?customerDirectoryCache.map(c=>`<tr><td><button class="customerNameLink" onclick="openCustomerProfile(${c.id})">${esc(cleanImportedDisplayText(c.customer_name)||"")}</button><div class="muted">${c.fullbay_id?`Fullbay ${esc(cleanVehicleMeta(c.fullbay_id))} · `:""}${c.active===false?"Inactive":"Active"}</div></td><td>${esc(cleanImportedDisplayText(c.contact_name)||"—")}<div class="muted">${esc(cleanImportedDisplayText(c.phone)||"—")}${c.email?` · ${esc(cleanImportedDisplayText(c.email))}`:""}</div></td><td>DOT ${esc(cleanVehicleMeta(c.dot_number)||"—")}<div class="muted">${esc(uniqueImportedParts([c.city,c.state,c.postal_code]).join(", ")||"—")}</div></td><td><b>${Number(c.unit_count||0)}</b></td><td><b>${Number(c.service_count||0)}</b></td><td><button class="secondary" onclick="openCustomerProfile(${c.id})">Open</button></td></tr>`).join(""):`<tr><td colspan="6" class="empty">${(document.getElementById('customerDirectorySearch')?.value||'').trim()?'No customers match this search.':'No customers yet. Press + Add Customer, or import them from Fullbay (Operations → Fullbay &amp; Samsara).'}</td></tr>`;applyTranslations();}
  catch(e){tbody.innerHTML=`<tr><td colspan="6" class="error">${esc(e.message||"Unable to load customers.")}</td></tr>`}
 }
 let fmcsaLookupTimer=null,fmcsaCustomerLookupCache=null,fmcsaLookupDot="";
@@ -4240,19 +4310,26 @@ function renderAdminTable(){
  if(adminFilter==="future")wo=wo.filter(w=>!readyForMechanic(w));
  if(adminFilter==="here")wo=wo.filter(w=>w.truckHere);
  if(adminFilter==="fleet")wo=wo.filter(w=>w.unitType==="fleet");
+ // v24.41.8: search + mechanic filter; one status pill; Parking column only when some work order has a spot.
+ const mf=document.getElementById("woMechFilter");if(mf){const cur=mf.value,opts=mechanicAccounts();mf.innerHTML=`<option value="">${esc(translateDynamicText("All mechanics"))}</option>`+opts.map(m=>`<option value="${esc(m.username)}" ${m.username===cur?"selected":""}>${esc(m.display)}</option>`).join("")}
+ const mech=mf?.value||"",q=String(document.getElementById("woSearch")?.value||"").trim().toLowerCase();
+ if(mech)wo=wo.filter(w=>mechanicAssignedToWorkOrder(w,mech));
+ if(q)wo=wo.filter(w=>[w.id,w.unit,w.customer,w.vin,w.plate,w.notes,...(w.tasks||[]).map(t=>t?.t)].some(x=>String(x||"").toLowerCase().includes(q)));
+ const tbl=table.closest("table");if(tbl)tbl.classList.toggle("noParking",!wo.some(w=>String(w.parking||"").trim()));
+ const woNote=w=>{const st=woStage(w);if((st==="working"||st==="paused")&&!readyForMechanic(w))return `<div class="woNote">${esc(translateDynamicText("Truck not marked as here"))}</div>`;if(st==="scheduled")return `<div class="woNote muted">${esc(translateDynamicText(w.unitType==="fleet"?"Fleet unit · hidden from mechanics":"Waiting for the truck"))}</div>`;return ""};
 
- table.innerHTML=wo.map(w=>`<tr class="woRow stage-${woStage(w)}"><td data-label="WO">#${w.id}</td><td data-label="Unit"><b>${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · ${w.unitType==="fleet"?"Fleet":"Customer"}</div></td><td data-label="Scheduled">${esc(w.date)} ${esc(w.time)}</td><td data-label="Mechanic">${esc(mechanicAssignmentsLabel(w))}</td><td data-label="Parking">${esc(w.parking||"—")}</td><td data-label="Truck">${availabilityBadge(w)}</td><td data-label="Status">${woStageBadge(w)}</td><td class="woRowActions"><button class="secondary" onclick="openDetail(${w.id})">Open</button> <button class="secondary" onclick="openEdit(${w.id})">Edit</button></td></tr>`).join("")||'<tr><td colspan="8" class="empty">No work orders in this view.</td></tr>';
+ table.innerHTML=wo.map(w=>`<tr class="woRow stage-${woStage(w)}"><td data-label="WO">#${w.id}</td><td data-label="Unit"><b>${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · ${w.unitType==="fleet"?"Fleet":"Customer"}</div></td><td data-label="Scheduled">${esc(fmtScheduled(w))}</td><td data-label="Mechanic">${esc(mechanicAssignmentsLabel(w))}</td><td data-label="Parking" class="woParkCol">${esc(w.parking||"—")}</td><td data-label="Status">${woStageBadge(w)}${woNote(w)}</td><td class="woRowActions"><button class="secondary" onclick="openDetail(${w.id})">Open</button> <button class="secondary" onclick="openEdit(${w.id})">Edit</button></td></tr>`).join("")||'<tr><td colspan="7" class="empty">${esc(translateDynamicText(q||mech?"No work orders match this search.":"No open work orders. Press + New Work Order to schedule one."))}</td></tr>';
 }
 function setAdminFilter(f,btn){adminFilter=f;document.querySelectorAll(".filterbtn").forEach(x=>x.classList.remove("active"));btn.classList.add("active");renderAdminTable()}
-function jobCard(w){return `<div class="card jobcard woCard stage-${woStage(w)}"><div class="jobtop"><div><b>#${w.id} — ${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · ${esc(mechanicAssignmentsLabel(w))} · ${esc(w.date)} ${esc(w.time)} · Parking ${esc(w.parking||"—")}</div></div>${woStageBadge(w)}</div><div style="margin-top:8px">${availabilityBadge(w)}</div><div style="margin-top:10px"><b>Assigned to you:</b>${w.tasks.map(t=>`<div class="muted">${t.done?"✓":(t.startedAt&&!t.stoppedAt?"▶":"○")} ${esc(t.t)}${t.done?` · ${fmtDuration(taskElapsed(t))}`:""}</div>`).join("")}</div><div style="margin-top:10px"><button class="secondary" onclick="openDetail(${w.id})">Open Work Order</button></div></div>`}
-function futureCard(w){return `<div class="card jobcard woCard stage-scheduled"><div class="jobtop"><div><b>#${w.id} — ${esc(w.unit)}</b><div class="muted">${esc(w.date)} ${esc(w.time)} · ${esc(mechanicDisplay(w.mechanic))} · Parking ${esc(w.parking||"—")}</div></div>${availabilityBadge(w)}</div><p class="muted">${esc(w.notes||"")}</p><div style="display:flex;gap:8px;flex-wrap:wrap">${w.unitType==="customer"?`<button class="success mechanicAction jobStateActive" onclick="markTruckHere(${w.id})">✓ Truck Is Here</button>`:""}<button class="secondary" onclick="openDetail(${w.id})">Open</button><button class="secondary" onclick="openEdit(${w.id})">Edit</button></div></div>`}
+function jobCard(w){return `<div class="card jobcard woCard stage-${woStage(w)}"><div class="jobtop"><div><b>#${w.id} — ${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · ${esc(mechanicAssignmentsLabel(w))} · ${esc(fmtScheduled(w))}${w.parking?` · Parking ${esc(w.parking)}`:""}</div></div>${woStageBadge(w)}</div><div style="margin-top:8px">${availabilityBadge(w)}</div><div style="margin-top:10px"><b>Assigned to you:</b>${w.tasks.map(t=>`<div class="muted">${t.done?"✓":(t.startedAt&&!t.stoppedAt?"▶":"○")} ${esc(t.t)}${t.done?` · ${fmtDuration(taskElapsed(t))}`:""}</div>`).join("")}</div><div style="margin-top:10px"><button class="secondary" onclick="openDetail(${w.id})">Open Work Order</button></div></div>`}
+function futureCard(w){return `<div class="card jobcard woCard stage-scheduled"><div class="jobtop"><div><b>#${w.id} — ${esc(w.unit)}</b><div class="muted">${esc(fmtScheduled(w))} · ${esc(mechanicDisplay(w.mechanic))}${w.parking?` · Parking ${esc(w.parking)}`:""}</div></div>${availabilityBadge(w)}</div><p class="muted">${esc(w.notes||"")}</p><div style="display:flex;gap:8px;flex-wrap:wrap">${w.unitType==="customer"?`<button class="success mechanicAction jobStateActive" onclick="markTruckHere(${w.id})">✓ Truck Is Here</button>`:""}<button class="secondary" onclick="openDetail(${w.id})">Open</button><button class="secondary" onclick="openEdit(${w.id})">Edit</button></div></div>`}
 function mechanicUpcomingCard(w){
  const assignedJobs=(w.tasks||[]).map(t=>`<div class="muted">○ ${esc(t.t)}</div>`).join("");
  return `<div class="card jobcard woCard stage-scheduled">
    <div class="jobtop">
      <div>
        <b>Unit ${esc(w.unit)}</b>
-       <div class="muted">${esc(w.customer||"")} · Scheduled ${esc(w.date)} ${esc(w.time)} · Parking ${esc(w.parking||"—")}</div>
+       <div class="muted">${esc(w.customer||"")} · Scheduled ${esc(fmtScheduled(w))}${w.parking?` · Parking ${esc(w.parking)}`:""}</div>
      </div>
      <span class="badge b-wait">On the Way</span>
    </div>
@@ -4269,7 +4346,7 @@ function mechanicUpcomingCard(w){
 }
 
 // MECHANIC UI RULE: never display internal work-order numbers; identify work by Unit Number only.
-function mechanicCard(w){return `<div class="card jobcard"><div class="jobtop"><div><b>Unit ${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · Parking ${esc(w.parking||"—")} · ${esc(w.date)} ${esc(w.time)}</div></div>${statusBadge(w.status)}</div><div style="margin-top:10px">${w.tasks.map(t=>`<div class="muted">${t.done?"✓":(t.startedAt&&!t.stoppedAt?"▶":"○")} ${esc(t.t)}${t.done?` · ${fmtDuration(taskElapsed(t))}`:""}</div>`).join("")}</div><div style="margin-top:10px"><button onclick="openDetail(${w.id})">Open Job</button></div></div>`}
+function mechanicCard(w){return `<div class="card jobcard"><div class="jobtop"><div><b>Unit ${esc(w.unit)}</b><div class="muted">${esc(w.customer)}${w.parking?` · Parking ${esc(w.parking)}`:""} · ${esc(fmtScheduled(w))}</div></div>${statusBadge(w.status)}</div><div style="margin-top:10px">${w.tasks.map(t=>`<div class="muted">${t.done?"✓":(t.startedAt&&!t.stoppedAt?"▶":"○")} ${esc(t.t)}${t.done?` · ${fmtDuration(taskElapsed(t))}`:""}</div>`).join("")}</div><div style="margin-top:10px"><button onclick="openDetail(${w.id})">Open Job</button></div></div>`}
 const findingPhotoUrlCache=new Map();
 function findingPhotoMarkup(i){
  const photoId=String(i?.photoId||"").trim();
@@ -4425,7 +4502,7 @@ function renderFindingsCenter(){
   const w=state.workorders.find(x=>x.id==i.wo);
   return [w?.unit,i.unitSnapshot,w?.customer,i.customerSnapshot,i.description,i.recommendation,i.adminNote,i.severity].some(v=>String(v||"").toLowerCase().includes(q));
  }).sort((a,b)=>findingDateValue(b)-findingDateValue(a));
- if(!filtered.length){box.innerHTML='<div class="findingEmpty">No findings in this view.</div>';return}
+ if(!filtered.length){box.innerHTML='<div class="findingEmpty">No findings in this view. Mechanics add findings from a work order or the Findings tab.</div>';return}
  const dates={};filtered.forEach(i=>(dates[findingDayKey(i)]||(dates[findingDayKey(i)]=[])).push(i));
  const dateKeys=Object.keys(dates).sort((a,b)=>a==="unknown"?1:b==="unknown"?-1:b.localeCompare(a));
  box.innerHTML=dateKeys.map(dk=>{
@@ -4999,9 +5076,9 @@ function taskPartsHTML(w,t,i){
    ${(["admin","manager"].includes(session?.role)||String(p.addedBy||"").toLowerCase()===String(session?.username||"").toLowerCase())&&w.status!=="Completed"?`<button type="button" class="danger" onclick="removeTaskPart(${w.id},'${esc(String(t.uid||""))}','${esc(String(p.id||""))}')">×</button>`:""}
  </div>`).join(""):`<div class="muted">No parts recorded for this job.</div>`;
  const add=((session?.role==="mechanic"&&visibleToCurrentMechanic(w))||["admin","manager"].includes(session?.role))&&w.status!=="Completed"?`<div class="partAddGrid">
-   <input id="partNo_${w.id}_${i}" list="fullbayPartNumberList" placeholder="Part Number" oninput="fullbayPartSuggest(this,${w.id},${i},'number')">
-   <input class="partDescInput" id="partDesc_${w.id}_${i}" list="fullbayPartDescriptionList" placeholder="Part Description" oninput="fullbayPartSuggest(this,${w.id},${i},'description')">
-   <input id="partQty_${w.id}_${i}" type="number" min="0.01" step="0.01" value="1" placeholder="Qty">
+   <label class="miniField"><span>Part #</span><input id="partNo_${w.id}_${i}" list="fullbayPartNumberList" placeholder="Part Number" oninput="fullbayPartSuggest(this,${w.id},${i},'number')"></label>
+   <label class="miniField partDescLabel"><span>Description</span><input class="partDescInput" id="partDesc_${w.id}_${i}" list="fullbayPartDescriptionList" placeholder="Part Description" oninput="fullbayPartSuggest(this,${w.id},${i},'description')"></label>
+   <label class="miniField"><span>Qty</span><input id="partQty_${w.id}_${i}" type="number" min="0.01" step="0.01" value="1" placeholder="Qty"></label>
    <button type="button" class="secondary" onclick="addTaskPart(${w.id},${i})">Add Part</button><button type="button" class="partScanBtn" onclick="openPartsScanner('workorder',${w.id},${i})">▥ Scan Part</button>
  </div>`:"";
  return `<div class="taskParts"><b>Parts Used</b>${rows}${add}</div>`;
@@ -5194,11 +5271,12 @@ function openDetail(id){
  const adminControls=(["admin","manager"].includes(session?.role) && w.status!=="Completed")?`
    <h2 style="margin-top:16px">Admin Controls</h2>
    <div class="field"><label>Parking spot #</label><input id="parkingEdit" value="${esc(w.parking||"")}" placeholder="P-12"></div>
-   <button class="secondary" onclick="saveParking(${w.id})">Save Parking Spot</button> <button class="secondary" onclick="closeModal('detailModal');openEdit(${w.id})">Edit Full Work Order</button> <button class="danger" onclick="deleteWorkOrder(${w.id})">Delete Work Order</button>
+   <button class="secondary" onclick="saveParking(${w.id})">Save Parking Spot</button> <button class="secondary" onclick="closeModal('detailModal');openEdit(${w.id})">Edit Full Work Order</button>
    ${w.unitType==="customer"?(w.truckHere?`<button class="purple" onclick="markTruckNotHere(${w.id})">Move Back to Future / Not Here</button>`:`<button class="success mechanicAction jobStateActive" onclick="markTruckHere(${w.id});openDetail(${w.id})">✓ Mark Truck Is Here</button>`):`<span class="badge b-here">Fleet unit auto-release: ${w.fleetAuto!==false?"ON":"OFF"}</span>`}
+   <div class="dangerZone"><span class="muted">Removes the work order, its timers and its inspection from history.</span><button class="danger" onclick="deleteWorkOrder(${w.id})">Delete Work Order</button></div>
  `:(["admin","manager"].includes(session?.role)?`
    <h2 style="margin-top:16px">Admin Controls</h2>
-   <button class="danger" onclick="deleteWorkOrder(${w.id})">Delete Work Order</button>
+   <div class="dangerZone"><span class="muted">Removes the work order, its timers and its inspection from history.</span><button class="danger" onclick="deleteWorkOrder(${w.id})">Delete Work Order</button></div>
  `:"");
  const mechanicControls=(session?.role==="mechanic" && visibleToCurrentMechanic(w))?`
   <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
@@ -5211,9 +5289,9 @@ function openDetail(id){
   <div style="margin-top:14px">${(w.completedBy===session.username || w.mechanic===session.username)?`<button class="secondary" onclick="closeModal('detailModal');openReactivate(${w.id})">Reactivate / Add Missed Work</button>`:`<div class="notice">You participated in this work order. Only the primary/completing mechanic can reactivate it.</div>`}</div>`:
  (session?.role==="mechanic"?`<div class="notice" style="margin-top:14px">This work order is not assigned/released to your mechanic account.</div>`:"")));
  document.getElementById("detailBody").innerHTML=`
-  <div class="muted">${esc(w.customer)} · ${esc(w.date)} ${esc(w.time)} · Parking: ${esc(w.parking||"—")}</div>${(w.vin||w.make||w.model||w.plate||w.dotNumber)?`<div class="vehicleMatchCard" style="margin-top:8px"><b>${esc([w.year,w.make,w.model].filter(Boolean).join(" ")||`Unit ${w.unit}`)}</b><div class="muted">${esc([w.vin?`VIN ${w.vin}`:"",w.plate?`Plate ${w.plate}`:"",w.dotNumber?`DOT ${w.dotNumber}`:"",w.mileage?`${Number(w.mileage).toLocaleString()} mi`:""].filter(Boolean).join(" · "))}</div></div>`:""}
+  <div class="muted">${esc(w.customer)} · ${esc(fmtScheduled(w))}${w.parking?` · Parking: ${esc(w.parking)}`:""}</div>${(w.vin||w.make||w.model||w.plate||w.dotNumber)?`<div class="vehicleMatchCard" style="margin-top:8px"><b>${esc([w.year,w.make,w.model].filter(Boolean).join(" ")||`Unit ${w.unit}`)}</b><div class="muted">${esc([w.vin?`VIN ${w.vin}`:"",w.plate?`Plate ${w.plate}`:"",w.dotNumber?`DOT ${w.dotNumber}`:"",w.mileage?`${Number(w.mileage).toLocaleString()} mi`:""].filter(Boolean).join(" · "))}</div></div>`:""}
   <div class="assignmentStrip">${assignmentChips(w)}</div>
-  ${(["admin","manager"].includes(session?.role) || (session?.role==="mechanic"&&visibleToCurrentMechanic(w)))&&w.status!=="Completed"?`<div class="helperActions"><button type="button" class="secondary" onclick="openAddHelper(${w.id})">+ Add Helper Mechanic</button>${["admin","manager"].includes(session?.role)?(w.helpers||[]).map(u=>`<button type="button" class="danger" data-helper="${encodeURIComponent(u)}" onclick="removeHelperMechanic(${w.id},decodeURIComponent(this.dataset.helper))">Remove ${esc(mechanicDisplay(u))}</button>`).join(""):""}</div>`:""}
+  ${(["admin","manager"].includes(session?.role) || (session?.role==="mechanic"&&visibleToCurrentMechanic(w)))&&w.status!=="Completed"?`<div class="helperActions"><button type="button" class="secondary" onclick="openAddHelper(${w.id})">+ Add Helper Mechanic</button>${["admin","manager"].includes(session?.role)?(w.helpers||[]).map(u=>`<button type="button" class="secondary helperRemove" title="Remove this helper from the work order" data-helper="${encodeURIComponent(u)}" onclick="removeHelperMechanic(${w.id},decodeURIComponent(this.dataset.helper))">Remove ${esc(mechanicDisplay(u))}</button>`).join(""):""}</div>`:""}
   <p><b>Priority:</b> ${esc(w.priority||'Normal')} &nbsp; <b>Status:</b> ${esc(w.status)} &nbsp; ${availabilityBadge(w)} ${w.isReactivated?'<span class="badge b-wait">Reactivated</span>':""}</p>
   ${w.notes?`<div class="card" style="background:#fafafa"><b>Notes</b><div>${esc(w.notes)}</div></div>`:""}
   <h2 style="margin-top:16px">Assigned Jobs</h2>
@@ -5419,7 +5497,16 @@ const invMoney=n=>`$${Number(n||0).toLocaleString(undefined,{minimumFractionDigi
 function invStatus(i){const overdue=!['paid','void','draft'].includes(i.status)&&i.due_date&&new Date(String(i.due_date).slice(0,10)+'T23:59:59')<new Date();return overdue?'overdue':i.status}
 async function loadInvoices(){try{const r=await fetch('/api/invoices',{headers:authHeaders(),cache:'no-store'}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to load invoices');invoiceItems=d.items||[];renderInvoices()}catch(e){document.getElementById('invoiceTable').innerHTML=`<tr><td colspan="8" class="error">${esc(e.message)}</td></tr>`}}
 function setInvoiceFilter(v,b){invoiceFilter=v;document.querySelectorAll('[data-invfilter]').forEach(x=>x.classList.toggle('active',x===b));renderInvoices()}
-function renderInvoices(){const today=new Date(),items=invoiceItems.filter(invoiceMatchesSearch).filter(i=>invoiceFilter==='all'||(invoiceFilter==='overdue'?invStatus(i)==='overdue':invoiceFilter==='sent'?['sent','partial'].includes(i.status):i.status===invoiceFilter));const open=invoiceItems.filter(i=>['sent','partial'].includes(i.status)),ar=open.reduce((a,i)=>a+Number(i.balance_due||0),0),over=open.filter(i=>invStatus(i)==='overdue').reduce((a,i)=>a+Number(i.balance_due||0),0),draft=invoiceItems.filter(i=>i.status==='draft').length;document.getElementById('invoiceKpis').innerHTML=`<div class="stat"><b>${invMoney(ar)}</b><span>Accounts Receivable</span></div><div class="stat"><b>${invMoney(over)}</b><span>Overdue</span></div><div class="stat"><b>${draft}</b><span>Drafts</span></div><div class="stat"><b>${invoiceItems.filter(i=>i.status==='paid').length}</b><span>Paid</span></div>`;document.getElementById('invoiceTable').innerHTML=items.map(i=>{const st=invStatus(i),due=String(i.due_date||'').slice(0,10);return `<tr><td><b>${esc(i.invoice_number)}</b>${i.work_order_id?`<div class="muted">WO #${esc(i.work_order_id)}</div>`:''}</td><td><b>${esc(i.customer_name)}</b><div class="muted">Unit ${esc(i.unit_number||'—')}</div></td><td>${esc(String(i.invoice_date||'').slice(0,10))}<div class="${st==='overdue'?'overdueText':'muted'}">Due ${esc(due||'—')}</div></td><td><span class="invoiceStatus is-${st==='overdue'?'sent':st}">${esc(st)}</span></td><td><b>${invMoney(i.total)}</b></td><td>${invMoney(i.amount_paid)}</td><td><b>${invMoney(i.balance_due)}</b></td><td><button class="secondary" onclick="openInvoiceWorkspace(${i.id})">Open</button></td></tr>`}).join('')||'<tr><td colspan="8" class="empty">No invoices in this view.</td></tr>';const badge=document.getElementById('invoiceNavBadge');if(badge){const n=open.filter(i=>invStatus(i)==='overdue').length;badge.textContent=n;badge.style.display=n?'inline-flex':'none'}}
+function invOverdueDays(i){if(invStatus(i)!=='overdue')return 0;return Math.max(1,Math.floor((Date.now()-new Date(String(i.due_date).slice(0,10)+'T23:59:59').getTime())/86400000))}
+// v24.41.8: one color per invoice status everywhere; dollar amounts with counts on the summary cards.
+const INV_ST={draft:['Draft','is-draft'],sent:['Sent','is-sent'],partial:['Partly paid','is-partial'],paid:['Paid','is-paid'],void:['Void','is-void'],overdue:['Overdue','is-overdue']};
+function invStatusPill(i){const st=invStatus(i),[label,cls]=INV_ST[st]||[st,''];const d=invOverdueDays(i);return `<span class="invoiceStatus ${cls}">${esc(translateDynamicText(label))}${d?` ${d} d`:''}</span>`}
+function renderInvoices(){const items=invoiceItems.filter(invoiceMatchesSearch).filter(i=>invoiceFilter==='all'||(invoiceFilter==='overdue'?invStatus(i)==='overdue':invoiceFilter==='sent'?['sent','partial'].includes(i.status):i.status===invoiceFilter));
+ const sum=list=>list.reduce((a,i)=>a+Number(i.balance_due||0),0),open=invoiceItems.filter(i=>['sent','partial'].includes(i.status)),overList=open.filter(i=>invStatus(i)==='overdue'),drafts=invoiceItems.filter(i=>i.status==='draft'),paid=invoiceItems.filter(i=>i.status==='paid');
+ const n=(c,w)=>`${c} ${translateDynamicText(c===1?w:w+'s')}`;
+ document.getElementById('invoiceKpis').innerHTML=`<div class="stat"><b>${invMoney(sum(open))}</b><span>${translateDynamicText('Customers owe')} · ${n(open.length,'invoice')}</span></div><div class="stat${overList.length?' statBad':''}"><b>${invMoney(sum(overList))}</b><span>${translateDynamicText('Overdue')} · ${n(overList.length,'invoice')}</span></div><div class="stat"><b>${invMoney(drafts.reduce((a,i)=>a+Number(i.total||0),0))}</b><span>${translateDynamicText('Drafts')} · ${n(drafts.length,'invoice')}</span></div><div class="stat"><b>${invMoney(paid.reduce((a,i)=>a+Number(i.total||0),0))}</b><span>${translateDynamicText('Paid')} · ${n(paid.length,'invoice')}</span></div>`;
+ document.getElementById('invoiceTable').innerHTML=items.map(i=>{const st=invStatus(i);return `<tr class="invRow inv-${st}"><td><b>${esc(i.invoice_number)}</b>${i.work_order_id?`<div class="muted">WO #${esc(i.work_order_id)}</div>`:''}</td><td><b>${esc(i.customer_name)}</b><div class="muted">Unit ${esc(i.unit_number||'—')}</div></td><td>${esc(fmtDay(String(i.invoice_date||'').slice(0,10)))}<div class="${st==='overdue'?'overdueText':'muted'}">${translateDynamicText('Due')} ${esc(i.due_date?fmtDay(String(i.due_date).slice(0,10)):'—')}</div></td><td>${invStatusPill(i)}</td><td><b>${invMoney(i.total)}</b></td><td>${invMoney(i.amount_paid)}</td><td><b>${invMoney(i.balance_due)}</b></td><td><button class="secondary" onclick="openInvoiceWorkspace(${i.id})">Open</button></td></tr>`}).join('')||`<tr><td colspan="8" class="empty">${esc(translateDynamicText(invoiceSearchText?'No invoices match this search.':'No invoices in this view. Create one with + New Invoice, or from a completed work order.'))}</td></tr>`;
+ const badge=document.getElementById('invoiceNavBadge');if(badge){const c=overList.length;badge.textContent=c;badge.style.display=c?'inline-flex':'none'}}
 let activeServiceOrder=null;
 async function createServiceOrderFromWO(id){try{const r=await fetch(`/api/service-orders/from-work-order/${id}`,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:'{}'}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to create service order');await openServiceOrder(d.id)}catch(e){alert(e.message)}}
 async function openServiceOrder(id){try{const r=await fetch(`/api/service-orders/${id}`,{headers:authHeaders(),cache:'no-store'}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to load service order');activeServiceOrder=d;const st=document.getElementById('serviceOrderTitle');if(st)st.textContent='Service Order Review';renderServiceOrder();document.getElementById('serviceOrderModal').classList.add('open');syncModalState()}catch(e){alert(e.message)}}
@@ -5876,7 +5963,7 @@ async function emailInvoice(id){
  }finally{if(btn){btn.disabled=false;btn.textContent=originalText}}
 }
 function openInvoiceEmailComposer(id,d){document.getElementById('invoiceEmailModal')?.remove();const m=document.createElement('div');m.id='invoiceEmailModal';m.className='modal open';
- m.innerHTML=`<style>#invoiceEmailModal label{display:block;margin:10px 0 0;font-weight:600;font-size:13px}#invoiceEmailModal input[type=text],#invoiceEmailModal textarea{display:block;width:100%;box-sizing:border-box;margin-top:4px;font-weight:400;font-family:inherit}#invoiceEmailModal textarea{min-height:190px;line-height:1.45}</style>
+ m.innerHTML=`<style>#invoiceEmailModal label{display:block;margin:10px 0 0;font-weight:600;font-size:13px}#invoiceEmailModal input[type=text],#invoiceEmailModal textarea{display:block;width:100%;box-sizing:border-box;margin-top:4px;font-weight:400;font-family:inherit}#invoiceEmailModal textarea{min-height:190px;line-height:1.45}#invoiceEmailModal input[type=checkbox]{width:18px!important;height:18px;min-height:auto!important;margin:0;flex:none}#invoiceEmailModal label.cbx{display:flex!important;gap:8px;align-items:center}</style>
  <div class="modalbox" style="max-width:640px"><div style="display:flex;justify-content:space-between;align-items:center"><h3 style="margin:0">Send invoice</h3><button class="secondary" onclick="document.getElementById('invoiceEmailModal').remove()">×</button></div>
  ${d.configured?'':'<div class="error" style="margin-top:10px">Email sending is not set up yet. Add RESEND_API_KEY and INVOICE_FROM_EMAIL in Railway.</div>'}
  ${d.lastSentAt?`<div class="muted" style="margin-top:6px">Last sent ${esc(new Date(d.lastSentAt).toLocaleString())}</div>`:''}
@@ -5884,11 +5971,12 @@ function openInvoiceEmailComposer(id,d){document.getElementById('invoiceEmailMod
  <label>CC <span class="muted">(optional)</span><input type="text" id="invEmailCc" value=""></label>
  <label>Subject<input type="text" id="invEmailSubject" value="${esc(d.subject||'')}"></label>
  <label>Message<textarea id="invEmailMessage">${esc(d.message||'')}</textarea></label>
- <div style="margin-top:10px;display:flex;gap:16px;flex-wrap:wrap;align-items:center"><label style="margin:0;font-weight:400"><input type="checkbox" id="invEmailAttach" checked> Attach invoice PDF</label><a href="#" onclick="previewInvoicePdf(${Number(id)});return false">Preview PDF</a>${d.hasPaymentLink?'<span class="muted">✓ Includes a “View & Pay” button</span>':`<a href="#" onclick="addInvoicePayLink(${Number(id)});return false">+ Add “Pay online” button</a>`}</div>
+ <div style="margin-top:10px;display:flex;gap:16px;flex-wrap:wrap;align-items:center"><label class="cbx" style="margin:0;font-weight:400"><input type="checkbox" id="invEmailAttach" checked> Attach invoice PDF</label><a href="#" onclick="previewInvoicePdf(${Number(id)});return false">Preview PDF</a>${d.hasPaymentLink?'<span class="muted">✓ Includes a “View & Pay” button</span>':`<a href="#" onclick="addInvoicePayLink(${Number(id)});return false">+ Add “Pay online” button</a>`}</div>
+ ${String(activeInvoice?.invoice?.id)===String(id)&&activeInvoice?.invoice?.status==='draft'?`<div class="notice" style="margin-top:10px"><label class="cbx" style="margin:0;font-weight:600;align-items:flex-start!important"><input type="checkbox" id="invEmailFinalize" checked style="margin-top:2px"> <span>Finalize this invoice when it is sent<br><span class="muted" style="font-weight:400">It moves from Draft to Sent, counts in “Customers owe”, and its parts are taken out of stock.</span></span></label></div>`:''}
  <div class="actions" style="margin-top:14px"><button id="invEmailSend" onclick="sendInvoiceEmail(${Number(id)})" ${d.configured?'':'disabled'}>Send email</button><button class="secondary" onclick="document.getElementById('invoiceEmailModal').remove()">Cancel</button></div></div>`;
  m.addEventListener('click',e=>{if(e.target===m)m.remove()});document.body.appendChild(m)}
 async function sendInvoiceEmail(id){const btn=document.getElementById('invEmailSend'),to=document.getElementById('invEmailTo').value.trim();if(!to)return alert('Enter the customer email.');btn.disabled=true;btn.textContent='Sending…';
- try{const requestId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`,r=await apiJSON(`/api/invoices/${id}/email`,{method:'POST',body:JSON.stringify({to,cc:document.getElementById('invEmailCc').value.trim(),subject:document.getElementById('invEmailSubject').value,message:document.getElementById('invEmailMessage').value,attachPdf:document.getElementById('invEmailAttach').checked,requestId})});document.getElementById('invoiceEmailModal')?.remove();if(typeof showToast==='function')showToast(`Invoice sent to ${r.to.join(', ')}`);else alert(`Invoice sent to ${r.to.join(', ')}`);try{await openInvoice(id)}catch(_){}}
+ try{const requestId=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`,r=await apiJSON(`/api/invoices/${id}/email`,{method:'POST',body:JSON.stringify({to,cc:document.getElementById('invEmailCc').value.trim(),subject:document.getElementById('invEmailSubject').value,message:document.getElementById('invEmailMessage').value,attachPdf:document.getElementById('invEmailAttach').checked,requestId})});const fin=document.getElementById('invEmailFinalize')?.checked;document.getElementById('invoiceEmailModal')?.remove();let msg=`Invoice sent to ${r.to.join(', ')}`;if(fin){try{await apiJSON(`/api/invoices/${id}/finalize`,{method:'POST',body:'{}'});msg+=' and marked Sent'}catch(fe){msg+=`. It was not finalized: ${fe.message}`}}if(typeof showToast==='function')showToast(msg,'success');else alert(msg);try{await openInvoice(id)}catch(_){}try{await loadInvoices()}catch(_){}}
  catch(e){alert(e.message||'Email failed.');btn.disabled=false;btn.textContent='Send email'}}
 async function addInvoicePayLink(id){try{await apiJSON(`/api/invoices/${id}/payment-link`,{method:'POST',body:'{}'});const d=await apiJSON(`/api/invoices/${id}/email-draft`);const keep={to:document.getElementById('invEmailTo')?.value,subject:document.getElementById('invEmailSubject')?.value,message:document.getElementById('invEmailMessage')?.value};openInvoiceEmailComposer(id,{...d,...keep})}catch(e){alert(e.message||'Could not create the payment link. Check the Stripe settings in Railway.')}}
 async function previewInvoicePdf(id,print=false){const w=window.open('','_blank');try{const r=await fetch(`/api/invoices/${id}/pdf?inline=1`,{headers:authHeaders(),cache:'no-store'});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'PDF failed');const url=URL.createObjectURL(await r.blob());if(w){w.location=url;if(print)setTimeout(()=>{try{w.print()}catch(_){}},1200)}else window.open(url,'_blank');setTimeout(()=>URL.revokeObjectURL(url),300000)}catch(e){if(w)w.close();alert(e.message)}}
@@ -6020,7 +6108,7 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
     <div class="mobileMoreGrid">
       <button class="mobileMoreItem" data-mobile-view="invoices" onclick="mobileMoreGo('invoices')"><span class="mi">$</span><b>Invoices</b><span>Billing, balances & payments</span></button>
       <button class="mobileMoreItem" data-mobile-view="estimates" onclick="mobileMoreGo('estimates')"><span class="mi">✎</span><b>Estimates</b><span>Quotes & customer approvals</span></button>
-      <button class="mobileMoreItem" data-mobile-view="compliance" onclick="mobileMoreGo('compliance')"><span class="mi">✓</span><b>Fleet &amp; Compliance</b><span>PM, CARB & annual inspections</span></button>
+      <button class="mobileMoreItem" data-mobile-view="compliance" onclick="mobileMoreGo('compliance')"><span class="mi">✓</span><b>Compliance</b><span>PM, CARB & annual inspections</span></button>
       <button class="mobileMoreItem" data-mobile-view="reports" onclick="mobileMoreGo('reports')"><span class="mi">▥</span><b>Reports</b><span>Money, owed, parts & tire fees</span></button>
       <button class="mobileMoreItem" data-mobile-view="approvals" onclick="mobileMoreGo('approvals')"><span class="mi">!</span><b>Findings</b><span>Customer decisions & approvals</span></button>
       <button class="mobileMoreItem" data-mobile-view="procenter" onclick="mobileMoreGo('procenter')"><span class="mi">⚙</span><b>Operations</b><span>Shop controls & reporting</span></button>
@@ -6038,7 +6126,7 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
  </div>
 </div>
 
-<script src="./finance-shared.js?v=24.41.7"></script>
+<script src="./finance-shared.js?v=24.41.8"></script>
 <script src="./inspection-checklist.js?v=3"></script>
 <script src="./inspection-workflow.js?v=3"></script>
 </body>

@@ -95,7 +95,7 @@ try{
  const fakePort=await freePort();await new Promise(r=>fake.listen(fakePort,'127.0.0.1',r));
  port=await freePort();
  await db.query("INSERT INTO auth_users(username,display_name,password_hash,role) VALUES($1,'Finance Admin',$2,'admin') ON CONFLICT(username) DO UPDATE SET password_hash=excluded.password_hash,active=true,role='admin'",[adminUser,await bcrypt.hash(adminPass,4)]).catch(()=>{});
- const env={...process.env,PORT:String(port),NODE_ENV:'test',BOOTSTRAP_ADMIN_USERNAME:adminUser,BOOTSTRAP_ADMIN_PASSWORD:adminPass,OPENAI_API_KEY:'',OPENROUTER_API_KEY:'',SAMSARA_API_TOKEN:'',
+ const env={...process.env,STRIPE_WEBHOOK_SECRET:'whsec_test_ittr',PORT:String(port),NODE_ENV:'test',BOOTSTRAP_ADMIN_USERNAME:adminUser,BOOTSTRAP_ADMIN_PASSWORD:adminPass,OPENAI_API_KEY:'',OPENROUTER_API_KEY:'',SAMSARA_API_TOKEN:'',
   GOOGLE_CLIENT_ID:'cid',GOOGLE_CLIENT_SECRET:'secret',APP_PUBLIC_URL:`http://127.0.0.1:${port}`,GMAIL_TOKEN_KEY:'ci-finance-token-key-0123456789',
   GOOGLE_OAUTH_AUTH_URL:`http://127.0.0.1:${fakePort}/auth`,GOOGLE_OAUTH_TOKEN_URL:`http://127.0.0.1:${fakePort}/token`,GOOGLE_OAUTH_REVOKE_URL:`http://127.0.0.1:${fakePort}/revoke`,GMAIL_API_BASE:`http://127.0.0.1:${fakePort}/gmail`};
  child=spawn(process.execPath,['server.js'],{env,stdio:['ignore','pipe','pipe']});
@@ -154,6 +154,14 @@ try{
   assert((await request('/api/payments/search?q=10452')).items.length>=1,'payments found by check number');
   assert((await request('/api/payments/search?q=7xk2',{tok:mechToken,allowError:true})).status===403,'mechanics cannot search payments');
   near(Number((await request(`/api/invoices/${pid}`)).invoice.amount_paid),Number(b0.amount_paid||0)+15,'payments counted once');
+  {const crypto=await import('node:crypto');const sign=(body,secret='whsec_test_ittr',t=Math.floor(Date.now()/1000))=>`t=${t},v1=${crypto.createHmac('sha256',secret).update(`${t}.${body}`).digest('hex')}`;
+   const before=Number((await request(`/api/invoices/${pid}`)).invoice.amount_paid);
+   const body=JSON.stringify({type:'checkout.session.completed',data:{object:{id:'cs_test_1',payment_intent:'pi_test_1',payment_status:'paid',amount_total:2500,created:Math.floor(Date.now()/1000),metadata:{invoice_id:String(pid)}}}});
+   const hook=(b,sig)=>fetch(`http://127.0.0.1:${port}/api/stripe/webhook`,{method:'POST',headers:{'Content-Type':'application/json','Stripe-Signature':sig},body:b});
+   assert((await hook(body,sign(body,'wrong-secret'))).status===400,'Stripe webhook rejects a bad signature');
+   const ok1=await (await hook(body,sign(body))).json();const ok2=await (await hook(body,sign(body))).json();
+   assert(ok1.recorded===true&&ok2.recorded===false,'Stripe payment recorded once');
+   const after=await request(`/api/invoices/${pid}`);near(Number(after.invoice.amount_paid),before+25,'online payment added to the invoice');assert(after.payments.some(p=>p.reference==='pi_test_1'&&p.method==='Credit Card'),'online payment shows as Credit Card with its Stripe ID');}
   await db.query(`UPDATE customer_invoices SET status='void' WHERE id=$1`,[pid]);
   console.log('PASS payments: transaction IDs saved, duplicates caught, editable later, searchable');}
  // --- invoice tire fees + finalize paid draft => paid (audit fix)
