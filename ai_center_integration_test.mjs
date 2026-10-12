@@ -199,7 +199,15 @@ try {
   assert.ok(sumP.never_stocked >= 1 && sumP.in_stock >= 2 && sumP.fluids >= 1);
   assert.ok((await call('/api/parts?filter=fluids', { token })).items.some(p => Number(p.id) === Number(coolant)));
   console.log('PASS parts center: in stock list, fluids list, out of stock ignores never-stocked catalog parts');
-  console.log('PASS fluids: drum part switched to gallons (qty, cost); work order in quarts reserves gallons; invoice in quarts moves 0.25 gal per qt; switching the line to gallons adjusts stock');
+  // v24.45.1: quart price is exactly ¼ of the gallon price (rounded to the cent): $100/gal cost → $25/qt, $11.50/gal sell → $2.88/qt.
+  const oil = (await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,quantity,cost,price,status,uom,inventory_managed,raw) VALUES('t-oil',NULL,'Motor oil 15W-40',55,100,11.5,'Active','gal',true,'{}'::jsonb) RETURNING id`)).rows[0].id;
+  { const r = await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'"), sf = r.rows[0].payload; sf.workorders.push({ id: 7002, unit: 'F2', customer: 'Fluid Co', status: 'Open', mechanic: adminUser, helpers: [], tasks: [{ uid: 'task-7002', t: 'Oil top off', parts: [] }] }); await db.query("UPDATE app_state SET payload=$1::jsonb WHERE state_key='shopflow'", [JSON.stringify(sf)]); }
+  await call('/api/work-orders/7002/tasks/by-uid/task-7002/parts', { method: 'POST', token, body: { inventoryPartId: Number(oil), description: 'Motor oil 15W-40', qty: 6, unit: 'qt', method: 'test' } });
+  { const r = await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'"), sf = r.rows[0].payload, w = sf.workorders.find(x => String(x.id) === '7002'); w.status = 'Completed'; w.tasks.forEach(t => { t.done = true; }); await db.query("UPDATE app_state SET payload=$1::jsonb WHERE state_key='shopflow'", [JSON.stringify(sf)]); }
+  const oilInv = await call('/api/invoices/from-work-order/7002', { method: 'POST', token, body: { taxRate: 0 } });
+  const oilLine = (await db.query(`SELECT quantity,unit_price,unit_cost,line_total,metadata FROM customer_invoice_lines WHERE invoice_id=$1 AND line_type='part'`, [oilInv.id])).rows[0];
+  assert.equal(Number(oilLine.unit_cost), 25); assert.equal(Number(oilLine.unit_price), 2.88); assert.equal(Number(oilLine.line_total), 17.28); assert.equal(oilLine.metadata.unit, 'qt');
+  console.log('PASS fluids: drum part switched to gallons (qty, cost); $100/gal → $25/qt cost, $11.50/gal → $2.88/qt price; work order in quarts reserves gallons; invoice in quarts moves 0.25 gal per qt; switching the line to gallons adjusts stock');
   console.log('PASS vendor bills: AI scan, filed by vendor, duplicates blocked, price increase, cheaper elsewhere, math check, paid/overdue, search, AI summary');
 
   // Invoice check + AI wording on a real invoice.
