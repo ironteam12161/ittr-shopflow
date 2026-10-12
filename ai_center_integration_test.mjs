@@ -198,6 +198,28 @@ try {
   const sumP = await call('/api/parts/summary', { token });
   assert.ok(sumP.never_stocked >= 1 && sumP.in_stock >= 2 && sumP.fluids >= 1);
   assert.ok((await call('/api/parts?filter=fluids', { token })).items.some(p => Number(p.id) === Number(coolant)));
+  // v24.45.2: undo gallons, not a fluid, delete/archive/restore.
+  const thermo = (await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,quantity,allocated,cost,price,reorder_point,status,uom,inventory_managed,raw) VALUES('t-thermo','TH-1','thermostat, coolant',4,0,40,80,2,'Active','EA',true,'{}'::jsonb) RETURNING id`)).rows[0].id;
+  await call('/api/parts/fluids/convert', { method: 'POST', token, body: { items: [{ id: Number(thermo), gallons: 2 }] } });
+  let th = (await db.query('SELECT quantity,cost,price,uom,reorder_point FROM fullbay_import_parts WHERE id=$1', [thermo])).rows[0];
+  assert.equal(th.uom, 'gal'); assert.equal(Number(th.quantity), 8);
+  const rv = await call(`/api/parts/${thermo}/fluids/revert`, { method: 'POST', token, body: {} });
+  assert.equal(rv.uom, 'EA'); assert.equal(rv.gallonsPerOldUnit, 2);
+  th = (await db.query('SELECT quantity,cost,price,uom,reorder_point,is_fluid FROM fullbay_import_parts WHERE id=$1', [thermo])).rows[0];
+  assert.deepEqual([Number(th.quantity), Number(th.cost), Number(th.price), th.uom, Number(th.reorder_point), th.is_fluid], [4, 40, 80, 'EA', 2, false]);
+  assert.ok(!(await call('/api/parts?filter=fluids', { token })).items.some(p => Number(p.id) === Number(thermo)));
+  const tank = (await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,quantity,cost,price,status,uom,inventory_managed,raw) VALUES('t-tank','TK-1','Coolant overflow bottle',1,10,20,'Active','EA',true,'{}'::jsonb) RETURNING id`)).rows[0].id;
+  await call(`/api/parts/${tank}/fluid-flag`, { method: 'POST', token, body: { isFluid: false } });
+  assert.ok(!(await call('/api/parts?filter=fluids', { token })).items.some(p => Number(p.id) === Number(tank)));
+  const del = await call('/api/parts/delete', { method: 'POST', token, body: { ids: [Number(tank), Number(thermo)] } });
+  assert.equal(del.deleted, 1); assert.equal(del.archived, 1); // tank never used → deleted; thermostat has stock history → archived
+  assert.equal((await db.query('SELECT count(*)::int n FROM fullbay_import_parts WHERE id=$1', [tank])).rows[0].n, 0);
+  assert.ok(!(await call('/api/parts?filter=all&limit=200', { token })).items.some(p => Number(p.id) === Number(thermo)));
+  assert.ok((await call('/api/parts?filter=archived', { token })).items.some(p => Number(p.id) === Number(thermo)));
+  assert.ok((await call('/api/parts/summary', { token })).archived >= 1);
+  await call(`/api/parts/${thermo}/restore`, { method: 'POST', token, body: {} });
+  assert.ok((await call('/api/parts?filter=all&q=TH-1', { token })).items.some(p => Number(p.id) === Number(thermo)));
+  console.log('PASS parts cleanup: undo gallons restores unit/qty/prices, not-a-fluid hides it, unused part deleted, used part archived + restored');
   console.log('PASS parts center: in stock list, fluids list, out of stock ignores never-stocked catalog parts');
   // v24.45.1: quart price is exactly ¼ of the gallon price (rounded to the cent): $100/gal cost → $25/qt, $11.50/gal sell → $2.88/qt.
   const oil = (await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,quantity,cost,price,status,uom,inventory_managed,raw) VALUES('t-oil',NULL,'Motor oil 15W-40',55,100,11.5,'Active','gal',true,'{}'::jsonb) RETURNING id`)).rows[0].id;
