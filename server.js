@@ -1120,20 +1120,29 @@ app.post('/api/parts',auth,managerPermission("inventory"),async(req,res,next)=>{
  }
  await db.query('COMMIT');await audit(req.user.username,'part_created',{partId:x.id,partNumber:pn,vendor:vendorContext.vendor||null,vendorBranch:vendorContext.branch||null,initialQuantity:qty});res.json({ok:true,item:x});
 }catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
-app.get("/api/parts/summary",auth,hidePartCostsFromMechanics,async(req,res,next)=>{try{const db=requireDb();const r=await db.query(`SELECT count(*)::int total,count(*) FILTER (WHERE coalesce(quantity,0)<=0)::int out_of_stock,count(*) FILTER (WHERE coalesce(quantity,0)>0 AND coalesce(quantity,0)<=coalesce(reorder_point,min_qty,0) AND coalesce(reorder_point,min_qty,0)>0)::int low_stock,coalesce(sum(coalesce(inventory_value,coalesce(quantity,0)*coalesce(cost,0))),0)::numeric inventory_value,coalesce(sum(coalesce(on_order,0)),0)::numeric on_order FROM fullbay_import_parts`);res.json(r.rows[0])}catch(e){next(e)}});
+app.get("/api/parts/summary",auth,hidePartCostsFromMechanics,async(req,res,next)=>{try{const db=requireDb();const tracked="(coalesce(reorder_point,0)>0 OR coalesce(min_qty,0)>0 OR last_purchase_at IS NOT NULL OR EXISTS(SELECT 1 FROM part_inventory_transactions t WHERE t.part_id=fullbay_import_parts.id))";const r=await db.query(`SELECT count(*)::int total,count(*) FILTER (WHERE coalesce(quantity,0)>0)::int in_stock,count(*) FILTER (WHERE coalesce(quantity,0)<=0 AND ${tracked})::int out_of_stock,count(*) FILTER (WHERE coalesce(quantity,0)<=0 AND NOT ${tracked})::int never_stocked,count(*) FILTER (WHERE lower(coalesce(uom,'')) IN ('gal','gallon','gallons'))::int fluids,count(*) FILTER (WHERE coalesce(quantity,0)>0 AND coalesce(quantity,0)<=coalesce(reorder_point,min_qty,0) AND coalesce(reorder_point,min_qty,0)>0)::int low_stock,coalesce(sum(coalesce(inventory_value,coalesce(quantity,0)*coalesce(cost,0))),0)::numeric inventory_value,coalesce(sum(coalesce(on_order,0)),0)::numeric on_order FROM fullbay_import_parts`);res.json(r.rows[0])}catch(e){next(e)}});
 app.get("/api/parts",auth,hidePartCostsFromMechanics,async(req,res,next)=>{try{
- const q=String(req.query.q||"").trim(),filter=String(req.query.filter||"all"),limit=Math.min(200,Math.max(1,Number(req.query.limit||100))),like=`%${q}%`,prefix=`${q}%`;
+ const q=String(req.query.q||"").trim(),filter=String(req.query.filter||"all"),like=`%${q}%`,prefix=`${q}%`;
+ // v24.44.0: "In stock" and "Fluids" show everything on the shelf (grouped in the app), so they may return more rows.
+ const limit=Math.min(['instock','fluids'].includes(filter)?2000:200,Math.max(1,Number(req.query.limit||100)));
  let extra="";
- if(filter==="low")extra=" AND (coalesce(quantity,0)<=0 OR (coalesce(quantity,0)<=coalesce(reorder_point,min_qty,0) AND coalesce(reorder_point,min_qty,0)>0))";
- if(filter==="out")extra=" AND coalesce(quantity,0)<=0";
+ // Out of stock / low only count parts the shop actually stocks (reorder level, a purchase or any stock movement),
+ // not the thousands of never-stocked parts imported from Fullbay.
+ const tracked="(coalesce(reorder_point,0)>0 OR coalesce(min_qty,0)>0 OR last_purchase_at IS NOT NULL OR EXISTS(SELECT 1 FROM part_inventory_transactions t WHERE t.part_id=fullbay_import_parts.id))";
+ if(filter==="low")extra=` AND ${tracked} AND (coalesce(quantity,0)<=0 OR (coalesce(quantity,0)<=coalesce(reorder_point,min_qty,0) AND coalesce(reorder_point,min_qty,0)>0))`;
+ if(filter==="out")extra=` AND ${tracked} AND coalesce(quantity,0)<=0`;
  if(filter==="order")extra=" AND coalesce(on_order,0)>0";
+ if(filter==="instock")extra=" AND coalesce(quantity,0)>0";
+ if(filter==="fluids")extra=` AND (lower(coalesce(uom,'')) IN ('gal','gallon','gallons') OR lower(coalesce(category,'')) LIKE '%fluid%' OR lower(coalesce(description,'')) ~ '(anti-?freeze|coolant|motor oil|engine oil|15w|10w|5w-|0w-|diesel exhaust|\\mdef\\M|\\matf\\M|transmission fluid|hydraulic|gear oil|gear lube|80w|75w|85w|brake fluid|washer fluid|steering fluid)') AND lower(coalesce(description,'')) !~ '(filter|gasket|seal|pump|hose|sensor|cap\\M)'`;
+ const sort=String(req.query.sort||"");
+ const order=sort==="qty"?"coalesce(quantity,0) DESC":sort==="value"?"coalesce(quantity,0)*coalesce(cost,0) DESC":sort==="location"?"location NULLS LAST,description":sort==="recent"?"last_purchase_at DESC NULLS LAST,updated_at DESC":sort==="name"?"lower(coalesce(nullif(description,''),part_number)) NULLS LAST":"";
  const db=requireDb();
  // Search is read-only: missing display barcodes are derived from the part id instead of
  // issuing one SELECT/UPDATE per result. This removes the previous N+1 database pattern.
  const r=await db.query(`SELECT id,part_number,description,status,uom,quantity,allocated,cost,price,min_qty,max_qty,reorder_point,on_order,location,vendor,category,manufacturer,notes,
    coalesce(nullif(internal_barcode,''),'ITTR-P-'||lpad(id::text,6,'0')) internal_barcode,
    barcode_aliases,purchase_taxable,sell_taxable,purchase_tax_rate,has_core,default_core_charge,updated_at,
-   (coalesce(quantity,0)-coalesce(allocated,0)) available
+   (coalesce(quantity,0)-coalesce(allocated,0)) available,last_purchase_at,last_purchase_cost
    FROM fullbay_import_parts
    WHERE ($1='' OR coalesce(part_number,'') ILIKE $2 OR coalesce(description,'') ILIKE $2 OR coalesce(manufacturer,'') ILIKE $2 OR coalesce(vendor,'') ILIKE $2 OR coalesce(location,'') ILIKE $2 OR coalesce(internal_barcode,'') ILIKE $2 OR barcode_aliases::text ILIKE $2)
    ${extra}
@@ -1143,7 +1152,7 @@ app.get("/api/parts",auth,hidePartCostsFromMechanics,async(req,res,next)=>{try{
      WHEN coalesce(part_number,'') ILIKE $4 THEN 1
      WHEN coalesce(description,'') ILIKE $4 THEN 2
      ELSE 3 END,
-     part_number NULLS LAST
+     ${order?order+',':''}part_number NULLS LAST
    LIMIT $3`,[q,like,limit,prefix]);
  res.json({items:r.rows})
 }catch(e){next(e)}});
@@ -1804,8 +1813,8 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.43.0");
-app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-FLUIDS-20261012`}));
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.44.0");
+app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-PARTS-20261012`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
@@ -2347,7 +2356,7 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/parts",auth,async(req,res,n
   if(!q.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Shop data not found."})}
   const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
   const w=sf.workorders.find(x=>String(x?.id)===workOrderId);if(!w){await db.query("ROLLBACK");return res.status(404).json({error:"Work order not found."})}
-  if(req.user?.role!=="admin"&&!mechanicOwnsWorkOrder(req.user,w)){await db.query("ROLLBACK");return res.status(403).json({error:"You do not have access to this work order."})}
+  if(!["admin","manager"].includes(req.user?.role)&&!mechanicOwnsWorkOrder(req.user,w)){await db.query("ROLLBACK");return res.status(403).json({error:"You do not have access to this work order."})}
   if(String(w.status)==="Completed"){await db.query("ROLLBACK");return res.status(409).json({error:"Completed work orders are locked."})}
   const matches=(Array.isArray(w.tasks)?w.tasks:[]).filter(t=>String(t?.uid||"")===uid);if(matches.length!==1){await db.query("ROLLBACK");return res.status(409).json({error:"Task identity could not be resolved."})}
   const t=matches[0];t.parts=Array.isArray(t.parts)?t.parts:[];
