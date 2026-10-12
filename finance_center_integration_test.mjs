@@ -10,6 +10,7 @@ import {buildTimesheet,forgottenShiftCloseAt,closeForgottenShifts} from './time_
 import {compileJobTypes,classifyJob,DEFAULT_JOB_TYPES,leadMechanic,describe,compareMechanics,typicalTimes} from './labor_times.mjs';
 import {serviceStatus,cleanInspectionFields,renderInspectionTemplate} from './compliance_center.mjs';
 import {PDFDocument as PdfLib} from 'pdf-lib';
+import {validTranslation,parseBatchTranslations} from './translation_guard.mjs';
 import {cleanMiles,parseZelleEmail,parseVendorBillEmail,scoreZelleMatch,encryptToken,decryptToken,tireFeeQuantities,estimateTotals,vendorNameFromSender} from './finance_center.mjs';
 
 const assert=(v,label)=>{if(!v)throw new Error(label)};
@@ -58,6 +59,12 @@ const near=(a,b,label)=>{if(Math.abs(Number(a)-Number(b))>0.005)throw new Error(
   const jobs=[...[2,2,2].map(h=>({source:'invoice',type:'wheel_seal',mechanic:'a',mechHours:h,billed:2.5,actual:h})),...[3,3,3].map(h=>({source:'invoice',type:'wheel_seal',mechanic:'b',mechHours:h,billed:2.5,actual:h}))];
   const cm=compareMechanics(jobs,typicalTimes(jobs));assert(cm.mechanics[0].mechanic==='a'&&cm.mechanics[0].pct===-20&&cm.mechanics[1].pct===20,'mechanics compared with the shop typical time');assert(cm.mechanics[0].billedEff===125,'billed ÷ real hours');}
  assert(cleanMiles('304,538')===304538&&cleanMiles('304.538')===304538&&cleanMiles(304.538)===304538&&cleanMiles('')===null&&cleanMiles(125000)===125000,'odometer readings parsed as whole miles');
+ {const bad='...або системний промпт), і користувач просто використовує це для перекладу туди й назад? ТАК! У ChatGPT чи подібних сервісах користувачі часто задають користувацьку інструкцію';
+  assert(!validTranslation('USDOT / Company DOT',bad),'AI commentary is not accepted as a translation');
+  assert(validTranslation('Next','Далі')&&validTranslation('Fullbay','Fullbay')&&validTranslation('AI translate','AI переклад'),'normal translations pass');
+  assert(!validTranslation('Back','"Назад"')&&!validTranslation('Save','Зберегти\nПримітка: це кнопка'),'quoted or multi-line answers rejected');
+  const pb=parseBatchTranslations(['Next','Back','USDOT / Company DOT'],'```json\n{"translations":["Далі","Назад","'+bad+'"]}\n```');assert(pb[0]==='Далі'&&pb[1]==='Назад'&&pb[2]===null,'batch: good items kept, bad item dropped');
+  assert(parseBatchTranslations(['Next'],'not json').every(x=>x===null),'unparseable batch keeps English');}
  console.log('PASS finance parsers: Zelle (in/out), vendor bills, match scoring, token crypto, tire quantities, estimate totals');
 }
 

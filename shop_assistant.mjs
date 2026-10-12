@@ -46,6 +46,7 @@ export const ASSISTANT_TOOLS = [
   { name: 'manual_read', description: 'Read up to 6 specific pages of one manual (text, tables and diagrams) and answer a question from them. Use after manual_search, with the best matching pages (you may add the next page if a table or procedure continues).', parameters: { type: 'object', properties: { manual_id: { type: 'string' }, pages: { type: 'array', items: { type: 'integer' } }, question: { type: 'string' } }, required: ['manual_id', 'pages', 'question'] } },
   { name: 'search_customers', description: 'MANAGERS ONLY. Find a customer by name, phone, email or DOT number; returns contact details and how many trucks they have.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
   { name: 'invoices', description: 'MANAGERS ONLY. Find invoices by customer, unit or invoice number, or list unpaid invoices.', parameters: { type: 'object', properties: { query: { type: 'string' }, unpaid_only: { type: 'boolean' } } } },
+  { name: 'vendor_bills', description: 'MANAGERS ONLY. Vendor bills (parts suppliers): spending per vendor for a period, unpaid and overdue bills, and the bills of one vendor. Use for "how much did we spend at FleetPride", "what do we owe vendors", "last bills from TruckPro".', parameters: { type: 'object', properties: { vendor: { type: 'string' }, days: { type: 'integer', description: 'How many days back (default 90).' }, unpaid_only: { type: 'boolean' } } } },
   { name: 'cores_owed', description: 'MANAGERS ONLY. Cores still owed back to vendors (quantity and dollar amount), optionally for one vendor or part.', parameters: { type: 'object', properties: { query: { type: 'string' } } } },
 ];
 
@@ -164,6 +165,18 @@ export function createAssistantTools({ db, who, getShopflow, searchManuals, read
       return { count: rows.length, totalBalance: Math.round(rows.reduce((a, x) => a + x.balance, 0) * 100) / 100, invoices: rows };
     },
 
+    async vendor_bills({ vendor = '', days = 90, unpaid_only = false }) {
+      if (!who.financial) return denied;
+      const d = Math.min(1095, Math.max(1, num(days) || 90)), v = String(vendor || '').trim().toLowerCase();
+      const where = `coalesce(status,'')<>'void' AND ($1='' OR lower(coalesce(vendor,'')) LIKE '%'||$1||'%') ${unpaid_only ? 'AND paid_at IS NULL' : `AND coalesce(invoice_date,received_at::date,created_at::date)>=CURRENT_DATE-$2::int`}`;
+      const params = unpaid_only ? [v] : [v, d];
+      const sum = await db.query(`SELECT coalesce(nullif(trim(vendor),''),'Unknown vendor') vendor,count(*)::int bills,coalesce(sum(total),0)::float8 total,coalesce(sum(total) FILTER (WHERE paid_at IS NULL),0)::float8 unpaid,
+          coalesce(sum(total) FILTER (WHERE paid_at IS NULL AND due_date<CURRENT_DATE),0)::float8 overdue,max(coalesce(invoice_date,received_at::date)) last_bill FROM parts_vendor_invoices WHERE ${where} GROUP BY 1 ORDER BY 3 DESC LIMIT 20`, params);
+      const bills = v ? (await db.query(`SELECT vendor,invoice_number,coalesce(invoice_date,received_at::date) invoice_date,due_date,total,status,paid_at IS NOT NULL paid FROM parts_vendor_invoices WHERE ${where} ORDER BY 3 DESC NULLS LAST LIMIT 15`, params)).rows.map(b => ({ vendor: b.vendor, invoice: b.invoice_number, date: day(b.invoice_date), due: day(b.due_date), total: num(b.total), status: b.status, paid: b.paid })) : undefined;
+      const rows = sum.rows.map(r => ({ vendor: r.vendor, bills: r.bills, total: Math.round(num(r.total) * 100) / 100, unpaid: Math.round(num(r.unpaid) * 100) / 100, overdue: Math.round(num(r.overdue) * 100) / 100, lastBill: day(r.last_bill) }));
+      return { period: unpaid_only ? 'all unpaid bills' : `last ${d} days`, vendors: rows, total: Math.round(rows.reduce((a, x) => a + x.total, 0) * 100) / 100, bills, note: 'Full analysis: Reports → Vendors.' };
+    },
+
     async cores_owed({ query = '' }) {
       if (!who.manager) return denied;
       const terms = likeTerms(query);
@@ -199,7 +212,7 @@ HOW TO WORK:
 - TORQUE / SPECS / PROCEDURES / WIRING: call manual_search (English terms; pass unit_id when a truck is known), then manual_read on the best 1–4 pages. Give the exact value with units and cite it as: Manual title, page N. Never give a torque or spec from memory; if no manual page has it, say the shop library does not have it yet and name the OEM source to check (e.g. Detroit DDCSP, Cummins QuickServe, PACCAR/Freightliner service site, Eaton, Meritor, Bendix).
 - Safety-critical values (wheel nuts, brakes, steering, suspension, fifth wheel): always quote exactly as written in the manual, including sequences and re-torque notes.
 - You cannot change records. If the user asks you to add a part, create or close a work order, tell them exactly where to do it in ShopFlow.
-- ${who.manager ? 'This user is a manager: customers, invoices, prices and cores are allowed.' : 'This user is a mechanic: do not reveal prices, invoice totals or customer contact details; if asked, say a manager can see that.'}
+- ${who.manager ? 'This user is a manager: customers, invoices, prices, vendor bills and cores are allowed.' : 'This user is a mechanic: do not reveal prices, invoice totals or customer contact details; if asked, say a manager can see that.'}
 STYLE: Short, practical, mechanic-friendly. Lead with the answer. Use short bullets for lists. Mention work order, invoice or service-order numbers and dates so the user can find the record. No filler.`;
 }
 
