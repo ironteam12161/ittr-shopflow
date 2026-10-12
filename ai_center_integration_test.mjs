@@ -6,7 +6,7 @@ import net from 'node:net';
 import pg from 'pg';
 import assert from 'node:assert/strict';
 import { estimateCost, featureForPath, cleanAIBudget } from './ai_usage.mjs';
-import { analyzeVendors, checkInvoiceMath, normInvoiceNo } from './vendor_bills.mjs';
+import { analyzeVendors, checkInvoiceMath, normInvoiceNo, splitDiscountLines } from './vendor_bills.mjs';
 import { checkInvoice, parseWordingAnswer } from './invoice_check.mjs';
 import { descTokens, packSize, stockFactor, scoreDescription, gallonsFactor } from './part_matching.mjs';
 import { looksLikeFluid, gallonsPerStockUnit, stockPerUnit } from './fluids.mjs';
@@ -71,6 +71,14 @@ assert.equal(gallonsFactor('Antifreeze 55 gal drum'), 55); assert.equal(gallonsF
 assert.ok(looksLikeFluid({ description: 'Shell Rotella 15W-40 motor oil' })); assert.ok(looksLikeFluid({ description: 'Red 50/50 Heavy Duty Antifreeze - 55 Gallon' })); assert.ok(!looksLikeFluid({ description: 'Oil filter LF9009' }));
 assert.equal(gallonsPerStockUnit({ description: 'Antifreeze - 55 Gallon' }), 55); assert.equal(gallonsPerStockUnit({ description: 'ATF 1 qt' }), 0.25);
 assert.equal(stockPerUnit('qt', 'gal'), 0.25); assert.equal(stockPerUnit('qt', 'EA'), 1);
+// v24.45.3: discount/credit lines on a vendor bill go to `discount`; a fee and its own reversal cancel out.
+{
+  const sb = splitDiscountLines({ subtotal: 1081.48, total: 1081.48, lines: [{ description: 'Phyron PLT01 16PLY 295/75R22.5 (trailer)', quantity: 2, unitCost: 220, lineTotal: 440 }, { description: 'Arisun AW788 16pl 295/75R22.5 (drive)', quantity: 8, unitCost: 270, lineTotal: 2160 }, { description: 'Tire User Fee', quantity: 10, unitCost: 2.5, lineTotal: 25 }, { description: 'Resale (Tire User Fee)', quantity: 10, unitCost: -2.5, lineTotal: -25 }, { description: 'Marketing Program 3rd Quarter 2%', quantity: 1, unitCost: -1518.52, lineTotal: -1518.52 }] });
+  assert.equal(sb.discount, 1518.52); assert.equal(sb.subtotal, 2600); assert.equal(sb.lines.length, 2);
+  assert.deepEqual(checkInvoiceMath(sb, sb.lines), []);
+  assert.equal(splitDiscountLines({ discount: 50, lines: [{ description: 'Volume rebate', quantity: 1, unitCost: -50, lineTotal: -50 }] }).discount, 50);
+  assert.deepEqual(checkInvoiceMath({ subtotal: 100, discount: 10, total: 100 }, []).map(p => p.code), ['TOTAL_MISMATCH']);
+}
 console.log('PASS AI center rules: usage cost + budget, vendor analysis (price up, cheaper elsewhere, duplicates, overdue, cores), bill math, invoice check, wording guard');
 
 if (process.env.ITTR_INVENTORY_TEST_DB !== '1' || !process.env.DATABASE_URL) {
@@ -163,6 +171,21 @@ try {
   const pwBills = (await db.query(`SELECT status,total FROM parts_vendor_invoices WHERE invoice_number='PW-77'`)).rows;
   assert.deepEqual(pwBills.map(b => b.status), ['received']);
   await call(`/api/vendor-invoices/${rcv.invoiceId}/receiving-draft`, { token, expect: 409 });
+  // v24.45.3: a bill with a discount is received at the line prices; only the bill total is lowered.
+  const tire = (await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,quantity,cost,price,status,inventory_managed,raw) VALUES('t-tire','PLT01','Phyron PLT01 16PLY 295/75R22.5',0,0,300,'Active',true,'{}'::jsonb) RETURNING id`)).rows[0].id;
+  const st = await call('/api/parts/receiving/receive', { method: 'POST', token, body: { invoice: { vendor: 'Semi Tire Center LLC', invoiceNumber: '22881', invoiceDate: '2026-10-12', subtotal: 440, discount: 44, tax: 0, freight: 0, total: 396 }, lines: [{ partNumber: 'PLT01', description: 'Phyron PLT01 16PLY 295/75R22.5 (trailer)', quantity: 2, unitCost: 220, lineTotal: 440, matchedPartId: tire }] } });
+  const tp2 = (await db.query('SELECT quantity,cost,price,last_purchase_cost FROM fullbay_import_parts WHERE id=$1', [tire])).rows[0];
+  assert.equal(Number(tp2.quantity), 2); assert.equal(Number(tp2.cost), 220); assert.equal(Number(tp2.last_purchase_cost), 220); assert.equal(Number(tp2.price), 300);
+  const stBill = await call(`/api/vendor-invoices/${st.invoiceId}`, { token });
+  assert.equal(Number(stBill.invoice.discount), 44); assert.equal(Number(stBill.invoice.total), 396); assert.deepEqual(stBill.mathProblems, []);
+  const anD = await call('/api/vendor-invoices/analysis?from=2026-01-01&to=2026-12-31', { token });
+  assert.equal(anD.vendors.find(v => /semi tire/i.test(v.vendor)).discount, 44);
+  // Typed in by hand: typed part # is matched, bill saved as manual.
+  const mm = await call('/api/parts/receiving/match', { method: 'POST', token, body: { lines: [{ partNumber: 'plt-01', description: '', quantity: 1 }] } });
+  assert.equal(Number(mm.lines[0].matchedPartId), Number(tire));
+  const man = await call('/api/parts/receiving/receive', { method: 'POST', token, body: { manualEntry: true, invoice: { vendor: 'Semi Tire Center LLC', invoiceNumber: '22900', subtotal: 220, total: 220 }, lines: [{ partNumber: 'PLT01', quantity: 1, unitCost: 220, matchedPartId: tire }] } });
+  assert.equal((await db.query('SELECT source_method FROM parts_vendor_invoices WHERE id=$1', [man.invoiceId])).rows[0].source_method, 'manual');
+  console.log('PASS vendor discount: part cost stays at line price ($220), bill total $396 after $44 discount, discount per vendor; typed-in bill matched + saved as manual');
   console.log('PASS receive filed bill: coolant without part # matched by description, 100 gal -> 1.82 drums at drum cost, new part without part #, filed bill replaced');
   // v24.43.0 fluids: switch the coolant to gallons, use it in quarts on a work order and an invoice.
   const conv = await call('/api/parts/fluids/convert', { method: 'POST', token, body: { items: [{ id: Number(coolant), gallons: 55 }] } });

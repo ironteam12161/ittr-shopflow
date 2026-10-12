@@ -1,4 +1,4 @@
-import { matchInvoiceLines } from './part_matching.mjs';
+import { matchInvoiceLines, descTokens } from './part_matching.mjs';
 // ITTR ShopFlow v24.42.0: vendor bills, separated and analysed by vendor.
 // Vendor invoices come from Smart Receiving (parts received into stock), from uploads scanned by AI ("filed", for
 // bookkeeping only) and from vendor-bill emails in Gmail. The analysis groups them by vendor and flags price increases,
@@ -16,6 +16,7 @@ export const normInvoiceNo = v => String(v || '').toLowerCase().replace(/[^a-z0-
 export async function ensureVendorBillSchema(pool) {
   await pool.query(`
   ALTER TABLE parts_vendor_invoices ADD COLUMN IF NOT EXISTS due_date DATE;
+  ALTER TABLE parts_vendor_invoices ADD COLUMN IF NOT EXISTS discount NUMERIC DEFAULT 0;
   ALTER TABLE parts_vendor_invoices ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
   ALTER TABLE parts_vendor_invoices ADD COLUMN IF NOT EXISTS paid_reference TEXT;
   ALTER TABLE parts_vendor_invoices ADD COLUMN IF NOT EXISTS paid_by TEXT;
@@ -26,18 +27,45 @@ export async function ensureVendorBillSchema(pool) {
   CREATE INDEX IF NOT EXISTS idx_parts_vendor_invoices_vendor ON parts_vendor_invoices(lower(coalesce(vendor,'')),invoice_date DESC);`);
 }
 
+// v24.45.3: discounts, rebates and credits on a vendor bill ("Marketing Program 2%  -1,518.52") lower what is owed, not
+// the cost of the parts. Negative lines are taken off the line list into `discount`; a fee and its own reversal
+// ("Tire User Fee" +25 / "Resale (Tire User Fee)" -25) cancel out and are both dropped. Mutates and returns `parsed`.
+export function splitDiscountLines(parsed) {
+  if (!parsed || typeof parsed !== 'object') return parsed;
+  const lines = Array.isArray(parsed.lines) ? parsed.lines : [];
+  const amt = l => { const lt = num(l.lineTotal); return lt || num(l.quantity) * num(l.unitCost); };
+  const neg = lines.filter(l => amt(l) < 0 || num(l.unitCost) < 0 || num(l.quantity) < 0);
+  const drop = new Set(neg);
+  let credit = 0;
+  for (const n of neg) {
+    const a = Math.abs(amt(n)) || Math.abs(num(n.quantity) * num(n.unitCost));
+    const nt = new Set(descTokens(`${n.description || ''} ${n.partNumber || ''}`));
+    const pair = lines.find(p => !drop.has(p) && Math.abs(amt(p) - a) < 0.01 && descTokens(`${p.description || ''} ${p.partNumber || ''}`).some(t => nt.has(t)));
+    if (pair) { drop.add(pair); continue; }
+    credit += a;
+  }
+  const aiDisc = Math.abs(num(parsed.discount));
+  credit = money(credit);
+  parsed.discount = money(!credit ? aiDisc : Math.abs(aiDisc - credit) < 0.02 || !aiDisc ? credit : aiDisc + credit);
+  if (drop.size) {
+    parsed.lines = lines.filter(l => !drop.has(l));
+    parsed.subtotal = money(parsed.lines.reduce((a, l) => a + amt(l), 0));
+  }
+  return parsed;
+}
+
 // Problems with the numbers printed on one bill. Tolerance: $1 or 1%, so rounding on the bill is not flagged.
 export function checkInvoiceMath(inv, lines = []) {
   const out = [], tol = x => Math.max(1, Math.abs(x) * 0.01);
-  const sub = num(inv.subtotal), tax = num(inv.tax), freight = num(inv.freight), total = num(inv.total);
+  const sub = num(inv.subtotal), tax = num(inv.tax), freight = num(inv.freight), total = num(inv.total), disc = Math.abs(num(inv.discount));
   const ls = lines.filter(l => num(l.quantity) || num(l.unit_cost ?? l.unitCost) || num(l.line_total ?? l.lineTotal));
   if (ls.length && sub > 0) {
     const sumLines = money(ls.reduce((a, l) => a + (num(l.line_total ?? l.lineTotal) || num(l.quantity) * num(l.unit_cost ?? l.unitCost)), 0));
     if (Math.abs(sumLines - sub) > tol(sub)) out.push({ code: 'LINES_NE_SUBTOTAL', message: `Lines add up to $${sumLines.toFixed(2)} but the subtotal says $${sub.toFixed(2)}.`, diff: money(sumLines - sub) });
   }
   if (total > 0 && (sub > 0 || tax > 0 || freight > 0)) {
-    const calc = money(sub + tax + freight);
-    if (Math.abs(calc - total) > tol(total)) out.push({ code: 'TOTAL_MISMATCH', message: `Subtotal + tax + freight = $${calc.toFixed(2)} but the total says $${total.toFixed(2)}.`, diff: money(total - calc) });
+    const calc = money(sub - disc + tax + freight);
+    if (Math.abs(calc - total) > tol(total)) out.push({ code: 'TOTAL_MISMATCH', message: `Subtotal${disc ? ' − discount' : ''} + tax + freight = $${calc.toFixed(2)} but the total says $${total.toFixed(2)}.`, diff: money(total - calc) });
   }
   ls.forEach((l, i) => {
     const q = num(l.quantity), u = num(l.unit_cost ?? l.unitCost), lt = num(l.line_total ?? l.lineTotal);
@@ -60,9 +88,9 @@ export function analyzeVendors({ invoices = [], lines = [], cores = [], from, to
   for (const i of invById.values()) { const k = vendorKey(i.vendor) || 'unknown'; const m = names.get(k) || new Map(); const n = String(i.vendor || '').trim() || 'Unknown vendor'; m.set(n, (m.get(n) || 0) + 1); names.set(k, m); }
   const vkey = v => { const m = names.get(vendorKey(v) || 'unknown'); return m ? [...m].sort((a, b) => b[1] - a[1])[0][0] : (String(v || '').trim() || 'Unknown vendor'); };
   const vendors = new Map();
-  const V = name => { const k = vkey(name).toLowerCase(); if (!vendors.has(k)) vendors.set(k, { vendor: vkey(name), bills: 0, total: 0, subtotal: 0, tax: 0, freight: 0, firstBill: null, lastBill: null, unpaidBills: 0, unpaid: 0, overdue: 0, coresOwed: 0, coresValue: 0, byMonth: {}, parts: new Map() }); return vendors.get(k); };
+  const V = name => { const k = vkey(name).toLowerCase(); if (!vendors.has(k)) vendors.set(k, { vendor: vkey(name), bills: 0, total: 0, subtotal: 0, tax: 0, freight: 0, discount: 0, firstBill: null, lastBill: null, unpaidBills: 0, unpaid: 0, overdue: 0, coresOwed: 0, coresValue: 0, byMonth: {}, parts: new Map() }); return vendors.get(k); };
   for (const i of ranged) {
-    const v = V(i.vendor); v.bills++; v.total += num(i.total); v.subtotal += num(i.subtotal); v.tax += num(i.tax); v.freight += num(i.freight);
+    const v = V(i.vendor); v.bills++; v.total += num(i.total); v.subtotal += num(i.subtotal); v.tax += num(i.tax); v.freight += num(i.freight); v.discount += Math.abs(num(i.discount));
     if (!v.firstBill || i.date < v.firstBill) v.firstBill = i.date; if (!v.lastBill || i.date > v.lastBill) v.lastBill = i.date;
     const m = i.date.slice(0, 7); v.byMonth[m] = money((v.byMonth[m] || 0) + num(i.total));
   }
@@ -127,7 +155,7 @@ export function analyzeVendors({ invoices = [], lines = [], cores = [], from, to
 
   const totalSpend = money([...vendors.values()].reduce((a, v) => a + v.total, 0));
   const list = [...vendors.values()].map(v => ({
-    vendor: v.vendor, bills: v.bills, total: money(v.total), subtotal: money(v.subtotal), tax: money(v.tax), freight: money(v.freight), avgBill: v.bills ? money(v.total / v.bills) : 0,
+    vendor: v.vendor, bills: v.bills, total: money(v.total), subtotal: money(v.subtotal), tax: money(v.tax), freight: money(v.freight), discount: money(v.discount), avgBill: v.bills ? money(v.total / v.bills) : 0,
     share: totalSpend ? Math.round(v.total / totalSpend * 1000) / 10 : 0, firstBill: v.firstBill, lastBill: v.lastBill,
     unpaidBills: v.unpaidBills, unpaid: money(v.unpaid), overdue: money(v.overdue), coresOwed: v.coresOwed, coresValue: money(v.coresValue), byMonth: v.byMonth,
     topParts: [...v.parts.values()].sort((a, b) => b.spend - a.spend).slice(0, 10).map(p => ({ ...p, spend: money(p.spend) })),
@@ -144,12 +172,12 @@ export function analyzeVendors({ invoices = [], lines = [], cores = [], from, to
 export async function buildVendorAnalysis(db, { from, to }) {
   const q = async (sql, p = []) => (await db.query(sql, p)).rows;
   // Bills in the range, plus one year before it for price history and duplicates.
-  const invoices = await q(`SELECT id,vendor,invoice_number,invoice_date,received_at,created_at,due_date,subtotal,tax,freight,total,status,paid_at FROM parts_vendor_invoices
+  const invoices = await q(`SELECT id,vendor,invoice_number,invoice_date,received_at,created_at,due_date,subtotal,discount,tax,freight,total,status,paid_at FROM parts_vendor_invoices
      WHERE coalesce(invoice_date,received_at::date,created_at::date) BETWEEN ($1::date - interval '365 days') AND $2::date`, [from, to]);
   const ids = invoices.map(i => i.id);
   const lines = ids.length ? await q(`SELECT invoice_id,vendor_part_number,description,quantity,unit_cost,line_total FROM parts_vendor_invoice_lines WHERE invoice_id=ANY($1::bigint[])`, [ids]) : [];
   // Unpaid bills outside the window still count as owed.
-  const older = await q(`SELECT id,vendor,invoice_number,invoice_date,received_at,created_at,due_date,subtotal,tax,freight,total,status,paid_at FROM parts_vendor_invoices
+  const older = await q(`SELECT id,vendor,invoice_number,invoice_date,received_at,created_at,due_date,subtotal,discount,tax,freight,total,status,paid_at FROM parts_vendor_invoices
      WHERE paid_at IS NULL AND coalesce(status,'')<>'void' AND coalesce(invoice_date,received_at::date,created_at::date) < ($1::date - interval '365 days')`, [from]);
   let cores = [];
   try { cores = await q(`SELECT c.vendor_name_snapshot vendor,p.part_number,c.open_quantity,c.open_amount,c.due_date FROM part_core_obligations c LEFT JOIN fullbay_import_parts p ON p.id=c.part_id WHERE c.status NOT IN ('closed','credited') AND c.open_quantity>0`); } catch (_) {}
@@ -171,7 +199,7 @@ export function cleanVendorDraft(b = {}) {
   const lines = (Array.isArray(b.lines) ? b.lines : []).slice(0, 300).map(l => ({ partNumber: str(l.partNumber, 80), manufacturer: str(l.manufacturer, 80), description: str(l.description, 300), quantity: num(l.quantity), unitCost: money(l.unitCost), coreCost: money(l.coreCost), lineTotal: money(l.lineTotal || num(l.quantity) * num(l.unitCost)) }))
     .filter(l => l.partNumber || l.description || l.quantity || l.lineTotal);
   return { vendor: str(inv.vendor, 160), invoiceNumber: str(inv.invoiceNumber, 80) || null, invoiceDate: d(inv.invoiceDate), dueDate: d(inv.dueDate), poNumber: str(inv.poNumber, 80) || null,
-    subtotal: money(inv.subtotal), tax: money(inv.tax), freight: money(inv.freight), total: money(inv.total), notes: str(inv.notes, 1000) || null, lines };
+    subtotal: money(inv.subtotal), discount: Math.abs(money(inv.discount)), tax: money(inv.tax), freight: money(inv.freight), total: money(inv.total), notes: str(inv.notes, 1000) || null, lines };
 }
 
 // deps: auth, managerPermission, requireDb, audit, resolveVendor, extractVendorInvoice(file)->parsed, textAI, storeFile, readFile, fetchGmailAttachment, reportRange
@@ -185,10 +213,10 @@ export function registerVendorBillRoutes(app, deps) {
   async function draftFrom(db, file, extra = {}) {
     const mime = String(file.mimetype || '');
     if (!mime.startsWith('image/') && mime !== 'application/pdf') fail(415, 'Use a PDF or a photo (JPG/PNG/WEBP) of the vendor invoice.');
-    const parsed = await extractVendorInvoice(file);
+    const parsed = splitDiscountLines(await extractVendorInvoice(file));
     const lines = (Array.isArray(parsed?.lines) ? parsed.lines : []).map(l => ({ partNumber: str(l.partNumber, 80), manufacturer: str(l.manufacturer, 80), description: str(l.description, 300), quantity: num(l.quantity), unitCost: num(l.unitCost), coreCost: num(l.coreCost), lineTotal: num(l.lineTotal) }));
     const vendor = parsed?.vendor ? await knownVendor(db, resolveVendor, parsed.vendor, false) : '';
-    const invoice = { vendor, invoiceNumber: str(parsed?.invoiceNumber, 80), invoiceDate: str(parsed?.invoiceDate, 10), dueDate: str(parsed?.dueDate, 10), poNumber: str(parsed?.poNumber, 80), terms: str(parsed?.terms, 60), subtotal: num(parsed?.subtotal), tax: num(parsed?.tax), freight: num(parsed?.freight), total: num(parsed?.total) };
+    const invoice = { vendor, invoiceNumber: str(parsed?.invoiceNumber, 80), invoiceDate: str(parsed?.invoiceDate, 10), dueDate: str(parsed?.dueDate, 10), poNumber: str(parsed?.poNumber, 80), terms: str(parsed?.terms, 60), subtotal: num(parsed?.subtotal), discount: num(parsed?.discount), tax: num(parsed?.tax), freight: num(parsed?.freight), total: num(parsed?.total) };
     if (!/^\d{4}-\d{2}-\d{2}$/.test(invoice.invoiceDate)) invoice.invoiceDate = '';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(invoice.dueDate)) invoice.dueDate = '';
     const net = /net\s*(\d{1,3})/i.exec(invoice.terms);
@@ -202,12 +230,12 @@ export function registerVendorBillRoutes(app, deps) {
   app.get('/api/vendor-invoices/analysis', auth, perm, wrap(async (db, req) => buildVendorAnalysis(db, reportRange(req.query))));
   app.get('/api/vendor-invoices', auth, perm, wrap(async (db, req) => {
     const { from, to } = reportRange(req.query), vendor = str(req.query.vendor, 160), search = str(req.query.q, 80).toLowerCase();
-    const rows = (await db.query(`SELECT i.id,i.vendor,i.invoice_number,coalesce(i.invoice_date,i.received_at::date,i.created_at::date) invoice_date,i.due_date,i.po_number,i.subtotal,i.tax,i.freight,i.total,i.status,i.source_method,i.paid_at,i.paid_reference,i.file_key IS NOT NULL has_file,i.gmail_message_id,
+    const rows = (await db.query(`SELECT i.id,i.vendor,i.invoice_number,coalesce(i.invoice_date,i.received_at::date,i.created_at::date) invoice_date,i.due_date,i.po_number,i.subtotal,i.discount,i.tax,i.freight,i.total,i.status,i.source_method,i.paid_at,i.paid_reference,i.file_key IS NOT NULL has_file,i.gmail_message_id,
         count(l.id)::int line_count FROM parts_vendor_invoices i LEFT JOIN parts_vendor_invoice_lines l ON l.invoice_id=i.id
       WHERE coalesce(i.invoice_date,i.received_at::date,i.created_at::date) BETWEEN $1::date AND $2::date AND ($3='' OR lower(coalesce(i.vendor,''))=lower($3))
         AND ($4='' OR lower(coalesce(i.invoice_number,'')||' '||coalesce(i.po_number,'')||' '||coalesce(i.vendor,'')) LIKE '%'||$4||'%' OR EXISTS(SELECT 1 FROM parts_vendor_invoice_lines x WHERE x.invoice_id=i.id AND lower(coalesce(x.vendor_part_number,'')||' '||coalesce(x.description,'')) LIKE '%'||$4||'%'))
       GROUP BY i.id ORDER BY 4 DESC,i.id DESC LIMIT 500`, [from, to, vendor, search])).rows;
-    return { items: rows.map(r => ({ ...r, invoice_date: day(r.invoice_date), due_date: day(r.due_date), subtotal: money(r.subtotal), tax: money(r.tax), freight: money(r.freight), total: money(r.total) })) };
+    return { items: rows.map(r => ({ ...r, invoice_date: day(r.invoice_date), due_date: day(r.due_date), subtotal: money(r.subtotal), discount: money(r.discount), tax: money(r.tax), freight: money(r.freight), total: money(r.total) })) };
   }));
   app.get('/api/vendor-invoices/:id', auth, perm, wrap(async (db, req) => {
     const i = (await db.query('SELECT * FROM parts_vendor_invoices WHERE id=$1::bigint', [req.params.id])).rows[0]; if (!i) fail(404, 'Vendor bill not found.');
@@ -222,7 +250,7 @@ export function registerVendorBillRoutes(app, deps) {
     if (i.status === 'void') fail(409, 'This bill is void.');
     const raw = (await db.query('SELECT vendor_part_number,manufacturer,description,quantity,unit_cost,core_cost,line_total FROM parts_vendor_invoice_lines WHERE invoice_id=$1 ORDER BY line_no,id', [i.id])).rows;
     const lines = await matchInvoiceLines(db, raw.map(l => ({ partNumber: l.vendor_part_number || '', manufacturer: l.manufacturer || '', description: l.description || '', quantity: num(l.quantity), unitCost: num(l.unit_cost) || (num(l.quantity) ? money(num(l.line_total) / num(l.quantity)) : 0), coreCost: num(l.core_cost), lineTotal: num(l.line_total) })));
-    return { filedBillId: i.id, hasFile: !!i.file_key, extract: { vendor: i.vendor || '', invoiceNumber: i.invoice_number || '', invoiceDate: day(i.invoice_date) || '', poNumber: i.po_number || '', subtotal: money(i.subtotal), tax: money(i.tax), freight: money(i.freight), total: money(i.total), lines } };
+    return { filedBillId: i.id, hasFile: !!i.file_key, extract: { vendor: i.vendor || '', invoiceNumber: i.invoice_number || '', invoiceDate: day(i.invoice_date) || '', poNumber: i.po_number || '', subtotal: money(i.subtotal), discount: money(i.discount), tax: money(i.tax), freight: money(i.freight), total: money(i.total), lines } };
   }));
   app.get('/api/vendor-invoices/:id/file', auth, perm, async (req, res, next) => {
     try {
@@ -255,10 +283,10 @@ export function registerVendorBillRoutes(app, deps) {
     const c = await db.connect();
     try {
       await c.query('BEGIN');
-      const total = d.total > 0 ? d.total : money(d.lines.reduce((a, l) => a + l.lineTotal, 0) + d.tax + d.freight);
-      const ins = await c.query(`INSERT INTO parts_vendor_invoices(vendor,invoice_number,invoice_date,due_date,po_number,subtotal,tax,freight,total,source_filename,source_method,status,raw_extract,created_by,gmail_message_id,file_key,file_mime,notes)
-        VALUES($1,$2,$3::date,$4::date,$5,$6,$7,$8,$9,$10,$11,'filed',$12::jsonb,$13,$14,$15,$16,$17) RETURNING id`,
-      [vendor, d.invoiceNumber, d.invoiceDate, d.dueDate, d.poNumber, d.subtotal || money(d.lines.reduce((a, l) => a + l.lineTotal, 0)), d.tax, d.freight, total, str(req.body?.file?.name, 255) || null, gmailId ? 'gmail' : (fileKey || req.body?.file?.name ? 'ai_file' : 'manual'), JSON.stringify(req.body?.invoice || {}), req.user.username, gmailId, fileKey, fileKey ? str(req.body?.file?.mime, 60) : null, d.notes]);
+      const total = d.total > 0 ? d.total : money(d.lines.reduce((a, l) => a + l.lineTotal, 0) - d.discount + d.tax + d.freight);
+      const ins = await c.query(`INSERT INTO parts_vendor_invoices(vendor,invoice_number,invoice_date,due_date,po_number,subtotal,tax,freight,total,source_filename,source_method,status,raw_extract,created_by,gmail_message_id,file_key,file_mime,notes,discount)
+        VALUES($1,$2,$3::date,$4::date,$5,$6,$7,$8,$9,$10,$11,'filed',$12::jsonb,$13,$14,$15,$16,$17,$18) RETURNING id`,
+      [vendor, d.invoiceNumber, d.invoiceDate, d.dueDate, d.poNumber, d.subtotal || money(d.lines.reduce((a, l) => a + l.lineTotal, 0)), d.tax, d.freight, total, str(req.body?.file?.name, 255) || null, gmailId ? 'gmail' : (fileKey || req.body?.file?.name ? 'ai_file' : 'manual'), JSON.stringify(req.body?.invoice || {}), req.user.username, gmailId, fileKey, fileKey ? str(req.body?.file?.mime, 60) : null, d.notes, d.discount]);
       const id = ins.rows[0].id;
       let n = 0; for (const l of d.lines) { n++; await c.query(`INSERT INTO parts_vendor_invoice_lines(invoice_id,line_no,vendor_part_number,manufacturer,description,quantity,unit_cost,core_cost,line_total,match_status,received_quantity) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'unmatched',0)`, [id, n, l.partNumber || null, l.manufacturer || null, l.description || null, l.quantity, l.unitCost, l.coreCost, l.lineTotal]); }
       if (gmailId) await c.query(`UPDATE gmail_finance_messages SET status='reviewed',handled_by=$2,handled_at=now() WHERE id=$1 AND status='new'`, [gmailId, req.user.username]);

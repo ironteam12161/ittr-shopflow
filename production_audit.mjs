@@ -198,6 +198,8 @@ check('Parts center: in stock grouped, fluids, need-to-order, vendor bills, use 
 check('Clock-in required before work (server + mechanic prompt)',read('time_clock.mjs').includes('export async function assertClockedIn(')&&(server.match(/assertClockedIn\(/g)||[]).length>=3&&pub.includes('async function ensureClockedIn(')&&pub.includes('miniField.partUnitHidden{display:none!important}'));
 check('Quart price = gallon price ÷ 4 to the cent (WO, invoice editor, unit switch)',server.includes('const unitPriceFor=(perStock,spu)=>Math.round(Number(perStock||0)*spu*100)/100')&&pub.includes('function invoiceFluidBase(')&&pub.includes('data-gal-price'));
 check('Parts cleanup: undo gallons, not a fluid, delete/archive/restore, WO empty text',pub.includes('function undoFluidGallons(')&&pub.includes('function deleteSelectedParts(')&&read('fluids.mjs').includes("'/api/parts/delete'")&&read('fluids.mjs').includes('/fluids/revert')&&!pub.includes("'<tr><td colspan=\"7\" class=\"empty\">$"+"{esc("));
+check('Vendor bill discount lowers the bill, not part cost',read('vendor_bills.mjs').includes('export function splitDiscountLines(')&&server.includes('splitDiscountLines(parsed)')&&pub.includes('id="recvDiscount"')&&read('public/modules/reports.js').includes('data-vbq="discount"'));
+check('Vendor invoice can be typed in by hand (manual receiving + line matching)',pub.includes('function startManualReceiving(')&&server.includes('"/api/parts/receiving/match"')&&pub.includes('id="receiveLayoutFix"'));
 check('Reports AI usage tab',rep.includes('function renderAiUsage(')&&server.includes('registerAICenterRoutes(app,'));}
 const failed=results.filter(x=>!x.ok);
 for(const r of results)console.log(`${r.ok?'PASS':'FAIL'}  ${r.name}${r.detail?'  '+r.detail:''}`);
