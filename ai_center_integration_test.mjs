@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { estimateCost, featureForPath, cleanAIBudget } from './ai_usage.mjs';
 import { analyzeVendors, checkInvoiceMath, normInvoiceNo } from './vendor_bills.mjs';
 import { checkInvoice, parseWordingAnswer } from './invoice_check.mjs';
+import { descTokens, packSize, stockFactor, scoreDescription } from './part_matching.mjs';
 
 // ---------------------------------------------------------------- pure rules
 assert.equal(featureForPath('/api/translate'), 'translate');
@@ -58,6 +59,13 @@ assert.deepEqual(checkInvoiceMath({ subtotal: 150, total: 150 }, [{ quantity: 2,
   assert.equal(clean.ok, true);
 }
 assert.deepEqual(parseWordingAnswer('```json\n{"lines":[{"id":"5","text":"Replaced the LF wheel seal."},{"id":"9","text":"x"},{"id":"6","text":"As an AI I cannot"}]}\n```', [5, 6]), [{ id: '5', text: 'Replaced the LF wheel seal.' }]);
+// v24.42.1 part matching for lines without a part number + pack sizes
+assert.deepEqual(descTokens('Red 50/50 Heavy Duty Antifreeze - Per Gallon'), ['red', '50x50', 'antifreeze']);
+assert.deepEqual(packSize('Antifreeze - 55 Gallon'), { kind: 'gal', size: 55 }); assert.deepEqual(packSize('Per Gallon'), { kind: 'gal', size: 1 });
+assert.equal(Math.round(100 * stockFactor('Red 50/50 Heavy Duty Antifreeze - Per Gallon', 'Red 50/50 Heavy Duty Antifreeze - 55 Gallon') * 100) / 100, 1.82);
+assert.equal(stockFactor('Brake chamber 30/30', 'Brake chamber 30/30'), null);
+assert.equal(scoreDescription('Red 50/50 Heavy Duty Antifreeze - Per Gallon', { description: 'Red 50/50 Heavy Duty Antifreeze - 55 Gallon' }), 1);
+assert.ok(scoreDescription('Red 50/50 Heavy Duty Antifreeze - Per Gallon', { description: 'Brake shoe kit' }) === 0);
 console.log('PASS AI center rules: usage cost + budget, vendor analysis (price up, cheaper elsewhere, duplicates, overdue, cores), bill math, invoice check, wording guard');
 
 if (process.env.ITTR_INVENTORY_TEST_DB !== '1' || !process.env.DATABASE_URL) {
@@ -137,6 +145,20 @@ try {
   assert.deepEqual(list.items.map(i => i.invoice_number), ['FP-1001']);
   const sum = await call('/api/vendor-invoices/analysis/summary', { method: 'POST', token, body: { from: '2026-01-01', to: '2026-12-31' } });
   assert.match(sum.summary, /FleetPride/i);
+  // v24.42.1: a filed coolant bill with no part number is received into stock by description, gallons -> 55-gallon drums.
+  const coolant = (await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,quantity,cost,price,status,inventory_managed,raw) VALUES('t-coolant',NULL,'Red 50/50 Heavy Duty Antifreeze - 55 Gallon',0,0,0,'Active',true,'{}'::jsonb) RETURNING id`)).rows[0].id;
+  const pw = await call('/api/vendor-invoices', { method: 'POST', token, body: { invoice: { vendor: 'PRO WORK Guide CORP', invoiceNumber: 'PW-77', invoiceDate: '2026-10-08', subtotal: 639, total: 639 }, lines: [{ description: 'Red 50/50 Heavy Duty Antifreeze - Per Gallon', quantity: 100, unitCost: 6.39, lineTotal: 639 }] } });
+  const rd = await call(`/api/vendor-invoices/${pw.id}/receiving-draft`, { token });
+  const cl = rd.extract.lines[0];
+  assert.equal(cl.matchBy, 'description'); assert.equal(Number(cl.matchedPartId), Number(coolant)); assert.equal(cl.stockQty, 1.82);
+  const rcv = await call('/api/parts/receiving/receive', { method: 'POST', token, body: { filedBillId: rd.filedBillId, invoice: rd.extract, lines: [{ ...cl, stockQty: cl.stockQty }, { description: 'Shop rags bale', quantity: 2, unitCost: 10, lineTotal: 20, createNew: true }] } });
+  assert.equal(rcv.received, 2); assert.equal(rcv.created, 1);
+  const cp = (await db.query('SELECT quantity,cost FROM fullbay_import_parts WHERE id=$1', [coolant])).rows[0];
+  assert.equal(Number(cp.quantity), 1.82); assert.ok(Math.abs(Number(cp.cost) - 639 / 1.82) < 0.01, `cost ${cp.cost}`);
+  const pwBills = (await db.query(`SELECT status,total FROM parts_vendor_invoices WHERE invoice_number='PW-77'`)).rows;
+  assert.deepEqual(pwBills.map(b => b.status), ['received']);
+  await call(`/api/vendor-invoices/${rcv.invoiceId}/receiving-draft`, { token, expect: 409 });
+  console.log('PASS receive filed bill: coolant without part # matched by description, 100 gal -> 1.82 drums at drum cost, new part without part #, filed bill replaced');
   console.log('PASS vendor bills: AI scan, filed by vendor, duplicates blocked, price increase, cheaper elsewhere, math check, paid/overdue, search, AI summary');
 
   // Invoice check + AI wording on a real invoice.

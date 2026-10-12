@@ -192,6 +192,7 @@ check('AI translations shared in the database',server.includes('INSERT INTO ai_t
 check('Vendor bills: by vendor + price/duplicate/math/overdue analysis',vb.includes('export function analyzeVendors(')&&vb.includes('cheaperElsewhere')&&vb.includes("app.post('/api/vendor-invoices/gmail/:messageId/scan'")&&rep.includes('function renderVendors(')&&read('public/modules/reports.html').includes('data-t="vendors"'));
 check('Received vendor bill replaces a filed one (no duplicate block)',server.includes("DELETE FROM parts_vendor_invoices WHERE status='filed'"));
 check('Invoice check: rules + optional AI wording, never auto-applied',ic.includes("'PART_NOT_BILLED'")&&ic.includes("'TIME_NOT_BILLED'")&&pub.includes('function checkInvoiceNow(')&&pub.includes('data-ic="use"'));
+check('Receiving: description match, stock-unit conversion, filed bill receive',server.includes('await matchInvoiceLines(db,parsed.lines);')&&server.includes('stockQty=Number(l.stockQty)>0')&&read('vendor_bills.mjs').includes("'/api/vendor-invoices/:id/receiving-draft'")&&pub.includes('function receiveFiledBill(')&&pub.includes('id="recvStock${i}"'));
 check('Reports AI usage tab',rep.includes('function renderAiUsage(')&&server.includes('registerAICenterRoutes(app,'));}
 const failed=results.filter(x=>!x.ok);
 for(const r of results)console.log(`${r.ok?'PASS':'FAIL'}  ${r.name}${r.detail?'  '+r.detail:''}`);

@@ -1,3 +1,4 @@
+import { matchInvoiceLines } from './part_matching.mjs';
 // ITTR ShopFlow v24.42.0: vendor bills, separated and analysed by vendor.
 // Vendor invoices come from Smart Receiving (parts received into stock), from uploads scanned by AI ("filed", for
 // bookkeeping only) and from vendor-bill emails in Gmail. The analysis groups them by vendor and flags price increases,
@@ -213,6 +214,15 @@ export function registerVendorBillRoutes(app, deps) {
     const lines = (await db.query('SELECT line_no,vendor_part_number,manufacturer,description,quantity,unit_cost,core_cost,line_total,received_quantity,matched_part_id FROM parts_vendor_invoice_lines WHERE invoice_id=$1 ORDER BY line_no,id', [i.id])).rows;
     const { raw_extract, file_key, ...rest } = i;
     return { invoice: { ...rest, has_file: !!file_key, invoice_date: day(i.invoice_date), due_date: day(i.due_date) }, lines, mathProblems: checkInvoiceMath(i, lines) };
+  }));
+  // v24.42.1: a filed bill (bookkeeping only) can be received into stock: Smart Receiving opens with its lines matched.
+  app.get('/api/vendor-invoices/:id/receiving-draft', auth, perm, wrap(async (db, req) => {
+    const i = (await db.query('SELECT * FROM parts_vendor_invoices WHERE id=$1::bigint', [req.params.id])).rows[0]; if (!i) fail(404, 'Vendor bill not found.');
+    if (i.status === 'received') fail(409, 'This bill was already received into stock.', 'ALREADY_RECEIVED');
+    if (i.status === 'void') fail(409, 'This bill is void.');
+    const raw = (await db.query('SELECT vendor_part_number,manufacturer,description,quantity,unit_cost,core_cost,line_total FROM parts_vendor_invoice_lines WHERE invoice_id=$1 ORDER BY line_no,id', [i.id])).rows;
+    const lines = await matchInvoiceLines(db, raw.map(l => ({ partNumber: l.vendor_part_number || '', manufacturer: l.manufacturer || '', description: l.description || '', quantity: num(l.quantity), unitCost: num(l.unit_cost) || (num(l.quantity) ? money(num(l.line_total) / num(l.quantity)) : 0), coreCost: num(l.core_cost), lineTotal: num(l.line_total) })));
+    return { filedBillId: i.id, hasFile: !!i.file_key, extract: { vendor: i.vendor || '', invoiceNumber: i.invoice_number || '', invoiceDate: day(i.invoice_date) || '', poNumber: i.po_number || '', subtotal: money(i.subtotal), tax: money(i.tax), freight: money(i.freight), total: money(i.total), lines } };
   }));
   app.get('/api/vendor-invoices/:id/file', auth, perm, async (req, res, next) => {
     try {
