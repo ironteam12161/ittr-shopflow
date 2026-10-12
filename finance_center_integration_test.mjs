@@ -255,6 +255,10 @@ try{
  console.log('PASS work orders: delete endpoint + normal save remove the WO and its inspection from vehicle history');
  // --- v24.37.1: mechanics can change their own Current Activity
  const badAct=await request('/api/mechanic/activity',{method:'POST',tok:mechToken,body:{action:'start',code:'hacking'},allowError:true});assert(badAct.status===400,'unknown activity rejected');
+ // v24.45.0: by default a mechanic must clock in first; the rest of this test uses the optional auto clock-in mode.
+ const noClock=await request('/api/mechanic/activity',{method:'POST',tok:mechToken,body:{action:'start',code:'parts'},allowError:true});assert(noClock.status===409&&noClock.code==='CLOCK_IN_REQUIRED','activity blocked before clock-in');
+ const tcs=(await request('/api/timeclock/settings')).settings;assert(tcs.requireClockIn===true&&tcs.autoClockIn===false,'clock-in required by default');
+ await request('/api/timeclock/settings',{method:'PUT',body:{requireClockIn:false,autoClockIn:true}});
  const act=await request('/api/mechanic/activity',{method:'POST',tok:mechToken,body:{action:'start',code:'parts',note:'NAPA run'}});
  assert(act.user.currentActivity.code==='parts','activity saved for mechanic');
  const adminView=await request('/api/state');assert(adminView.users.payload[mechUser]?.currentActivity?.code==='parts','admin sees mechanic activity');

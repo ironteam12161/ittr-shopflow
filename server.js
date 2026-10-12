@@ -21,7 +21,7 @@ import {extractPdfPages,slicePdf,manualSearchTerms} from "./manual_library.mjs";
 import {ensureFinanceSchema,registerFinanceRoutes,cleanMiles,reportRange,fetchGmailAttachment} from "./finance_center.mjs";
 import {documentEmailHtml} from "./email_templates.mjs";
 import {registerProductivityRoutes} from "./mechanic_productivity.mjs";
-import {ensureTimeClockSchema,registerTimeClockRoutes,startTimeClockScheduler,autoClockIn} from "./time_clock.mjs";
+import {ensureTimeClockSchema,registerTimeClockRoutes,startTimeClockScheduler,autoClockIn,assertClockedIn} from "./time_clock.mjs";
 import {registerLaborTimeRoutes} from "./labor_times.mjs";
 import {parseBatchTranslations,validTranslation} from "./translation_guard.mjs";
 import {aiContext,featureForPath,createAIMeter,ensureAIUsageSchema} from "./ai_usage.mjs";
@@ -1813,8 +1813,8 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.44.0");
-app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-PARTS-20261012`}));
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.45.0");
+app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-CLOCKIN-20261012`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
@@ -1886,6 +1886,8 @@ app.post("/api/mechanic/activity",auth,async(req,res,next)=>{
   if(!["start","stop"].includes(action))return res.status(400).json({error:"Unsupported activity action."});
   if(action==="start"&&!MECHANIC_ACTIVITY_CODES.includes(code))return res.status(400).json({error:"Choose an activity."});
   if(action==="start"&&code==="custom"&&!customText)return res.status(400).json({error:"Type your custom activity."});
+  // v24.45.0: no activity before clock-in (when the shop requires it).
+  if(action==="start"){try{await assertClockedIn(db,req.user)}catch(e){if(e?.code==="CLOCK_IN_REQUIRED")return res.status(409).json({error:e.message,code:e.code});throw e}}
   await db.query("BEGIN");
   const cur=(await db.query("SELECT payload FROM app_state WHERE state_key='users' FOR UPDATE")).rows[0];
   const users=cur?.payload&&typeof cur.payload==="object"?cur.payload:{},username=req.user.username,now=new Date().toISOString();
@@ -2231,6 +2233,7 @@ async function resolveSelfStartUnit(db,b,customerRow){
 
 app.post("/api/work-orders/self-start",auth,async(req,res,next)=>{
  if(req.user?.role!=="mechanic")return res.status(403).json({error:"Mechanic account required."});
+ {try{await assertClockedIn(requireDb(),req.user)}catch(e){if(e?.code==="CLOCK_IN_REQUIRED")return res.status(409).json({error:e.message,code:e.code});return next(e)}}
  const db=await requireDb().connect();
  try{
   const b=req.body||{},customer=String(b.customer||"").trim(),unit=String(b.unit||"").trim(),vin=cleanVin(b.vin||""),dotNumber=cleanUsdot(b.dotNumber||""),jobs=Array.isArray(b.jobs)?b.jobs.map(x=>String(x||"").trim()).filter(Boolean):[];
@@ -2430,6 +2433,8 @@ app.delete("/api/work-orders/:id/tasks/by-uid/:taskUid/parts/:partId",auth,async
  }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
 });
 app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/action",auth,async(req,res,next)=>{
+ // v24.45.0: no job timer before clock-in (when the shop requires it).
+ if(["start","resume"].includes(String(req.body?.action||""))){try{await assertClockedIn(requireDb(),req.user)}catch(e){if(e?.code==="CLOCK_IN_REQUIRED")return res.status(409).json({error:e.message,code:e.code});return next(e)}}
  const db=await requireDb().connect();
  try{
    const workOrderId=String(req.params.id);
