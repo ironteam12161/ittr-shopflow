@@ -4,7 +4,8 @@
 import { getSetting } from './finance_center.mjs';
 import { DEFAULT_SHOP_HOURS, zonedToUtc, localYmd } from './mechanic_productivity.mjs';
 
-export const DEFAULT_TIME_CLOCK = Object.freeze({ autoClockIn: true, maxShiftHours: 14, weeklyOvertimeHours: 40, weekStartsOn: 1 });
+// v24.45.0: requireClockIn (default on) blocks mechanics from starting a job, job timer or activity until they clock in.
+export const DEFAULT_TIME_CLOCK = Object.freeze({ requireClockIn: true, autoClockIn: false, maxShiftHours: 14, weeklyOvertimeHours: 40, weekStartsOn: 1 });
 const MIN = 60000, HOUR = 3600000;
 const addDays = (ymd, n) => { const [y, m, d] = ymd.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
 const weekday = ymd => { const [y, m, d] = ymd.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); };
@@ -29,7 +30,8 @@ export async function ensureTimeClockSchema(pool) {
 
 export function cleanTimeClockSettings(b = {}, cur = DEFAULT_TIME_CLOCK) {
   const num = (v, fb, lo, hi) => { const n = Number(v); return Number.isFinite(n) && n >= lo && n <= hi ? n : fb; };
-  return { autoClockIn: b.autoClockIn === undefined ? cur.autoClockIn !== false : b.autoClockIn === true,
+  return { requireClockIn: b.requireClockIn === undefined ? cur.requireClockIn !== false : b.requireClockIn === true,
+    autoClockIn: b.autoClockIn === undefined ? cur.autoClockIn !== false : b.autoClockIn === true,
     maxShiftHours: num(b.maxShiftHours, cur.maxShiftHours, 6, 24), weeklyOvertimeHours: num(b.weeklyOvertimeHours, cur.weeklyOvertimeHours, 0, 80),
     weekStartsOn: [0, 1].includes(Number(b.weekStartsOn)) ? Number(b.weekStartsOn) : cur.weekStartsOn };
 }
@@ -73,6 +75,14 @@ export async function openShift(db, username) {
   return shiftRow((await db.query('SELECT * FROM mechanic_shifts WHERE username=$1 AND clock_out IS NULL AND deleted_at IS NULL', [username])).rows[0]);
 }
 // Starting a task timer or an activity while off the clock opens a shift, flagged as automatic.
+// Throws 409 CLOCK_IN_REQUIRED when the shop requires clock-in and this mechanic has no open shift.
+export async function assertClockedIn(db, user) {
+  if (user?.role !== 'mechanic') return;
+  const cfg = await getSetting(db, 'time_clock', DEFAULT_TIME_CLOCK);
+  if (cfg.requireClockIn === false) return;
+  if (await openShift(db, user.username)) return;
+  throw Object.assign(new Error('Clock in first. Press “Start shift” on My Work Orders, then start the job.'), { status: 409, code: 'CLOCK_IN_REQUIRED' });
+}
 export async function autoClockIn(db, username, source) {
   const cfg = await getSetting(db, 'time_clock', DEFAULT_TIME_CLOCK);
   if (cfg.autoClockIn === false) return null;
@@ -151,7 +161,7 @@ export function registerTimeClockRoutes(app, { auth, ownerOnly, managerPermissio
     const t = await timesheetReport(db, { from: weekFrom, to: today, mechanic: req.user.username, now });
     const me = t.mechanics.find(m => m.username === req.user.username);
     return { open: await openShift(db, req.user.username), todayMs: me?.days.find(d => d.date === today)?.paidMs || 0, weekMs: me?.totals.paidMs || 0,
-      weeklyOvertimeHours: cfg.weeklyOvertimeHours, shifts: (me?.shifts || []).slice(-10).reverse(), serverNow: new Date(now).toISOString() };
+      weeklyOvertimeHours: cfg.weeklyOvertimeHours, requireClockIn: cfg.requireClockIn !== false, shifts: (me?.shifts || []).slice(-10).reverse(), serverNow: new Date(now).toISOString() };
   }));
   app.post('/api/timeclock/punch', auth, wrap(async req => {
     const action = String(req.body?.action || ''), note = str(req.body?.note, 300), username = req.user.username;

@@ -31,6 +31,11 @@ try{
  eq(Number((await db.query('SELECT count(*) n FROM fullbay_import_customers WHERE id=$1',[customer.id])).rows[0].n),0,'customer hard delete');eq(Number((await db.query('SELECT count(*) n FROM customer_deletion_events WHERE customer_id=$1',[customer.id])).rows[0].n),2,'deletion audit events');
  console.log('PASS customer deletion safety + audit trail');
 
+ // v24.45.0: a mechanic must clock in before starting work.
+ let clockBlocked=await request('/api/work-orders/self-start',{method:'POST',token:mechanic,body:{unit:'REQ-199',jobs:['PM service']},allowError:true});eq(clockBlocked.status,409,'starting a job before clock-in is blocked');eq(clockBlocked.code,'CLOCK_IN_REQUIRED','clock-in required code');
+ clockBlocked=await request('/api/mechanic/activity',{method:'POST',token:mechanic,body:{action:'start',code:'cleaning'},allowError:true});eq(clockBlocked.status,409,'starting an activity before clock-in is blocked');
+ await request('/api/timeclock/punch',{method:'POST',token:mechanic,body:{action:'in'}});
+ console.log('PASS clock-in required: job and activity blocked until the mechanic clocks in');
  let bad=await request('/api/work-orders/self-start',{method:'POST',token:mechanic,body:{jobs:['PM service']},allowError:true});eq(bad.status,400,'truck identity must be required');
  bad=await request('/api/work-orders/self-start',{method:'POST',token:mechanic,body:{unit:'REQ-200',jobs:[]},allowError:true});eq(bad.status,400,'at least one job must be required');
  const started=await request('/api/work-orders/self-start',{method:'POST',token:mechanic,body:{unit:'REQ-200',customer:'Required Fields Fleet',jobs:['PM service'],inspectionRequired:true,inspectionType:'truck'}});ok(started.workOrder.unitRecordId,'work order must carry stable unit id');
