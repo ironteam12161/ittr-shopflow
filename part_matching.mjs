@@ -30,6 +30,14 @@ export function stockFactor(lineText, partText) {
   return a.size / b.size;
 }
 const r2 = v => Math.round(v * 100) / 100;
+// Part stocked in gallons (v24.43.0): gallons in one billed unit ("55 gal drum" → 55, "1 qt" → 0.25, "case of 12 qt" → 3); null = 1 gallon or unknown.
+export function gallonsFactor(lineText) {
+  const t = String(lineText || '');
+  const cq = /\b(?:case|cs)\s+of\s+(\d+)\s*(?:x\s*)?(?:1\s*)?(?:qt|quarts?)\b|\b(\d+)\s*(?:x|\/)\s*(?:1\s*)?(?:qt|quarts?)\b/i.exec(t);
+  if (cq) return Number(cq[1] || cq[2]) / 4;
+  const ps = packSize(t);
+  return ps && ps.kind === 'gal' && ps.size > 0 && ps.size !== 1 ? ps.size : null;
+}
 
 export function scoreDescription(lineText, part) {
   const want = descTokens(lineText); if (!want.length) return 0;
@@ -64,7 +72,7 @@ export async function matchInvoiceLines(db, lines) {
     const clear = top && (line.matchBy === 'part_number' ? rows.length === 1 : top.score >= 0.75 && (!second || top.score - second.score >= 0.15));
     line.matchedPartId = clear ? top.id : null;
     line.matchStatus = line.matchBy === 'part_number' && rows.length === 1 ? 'matched' : rows.length ? 'possible' : 'new';
-    for (const p of rows) { const f = stockFactor(line.description, `${p.description || ''} ${p.uom || ''}`); if (f) { p.stockFactor = f; p.stockQty = r2(Number(line.quantity || 0) * f); } }
+    for (const p of rows) { const f = /^\s*gal/i.test(String(p.uom || '')) ? gallonsFactor(line.description) : stockFactor(line.description, `${p.description || ''} ${p.uom || ''}`); if (f) { p.stockFactor = f; p.stockQty = r2(Number(line.quantity || 0) * f); } }
     if (clear && top.stockFactor) { line.stockFactor = top.stockFactor; line.stockQty = top.stockQty; }
   }
   return lines;

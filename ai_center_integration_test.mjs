@@ -8,7 +8,8 @@ import assert from 'node:assert/strict';
 import { estimateCost, featureForPath, cleanAIBudget } from './ai_usage.mjs';
 import { analyzeVendors, checkInvoiceMath, normInvoiceNo } from './vendor_bills.mjs';
 import { checkInvoice, parseWordingAnswer } from './invoice_check.mjs';
-import { descTokens, packSize, stockFactor, scoreDescription } from './part_matching.mjs';
+import { descTokens, packSize, stockFactor, scoreDescription, gallonsFactor } from './part_matching.mjs';
+import { looksLikeFluid, gallonsPerStockUnit, stockPerUnit } from './fluids.mjs';
 
 // ---------------------------------------------------------------- pure rules
 assert.equal(featureForPath('/api/translate'), 'translate');
@@ -66,6 +67,10 @@ assert.equal(Math.round(100 * stockFactor('Red 50/50 Heavy Duty Antifreeze - Per
 assert.equal(stockFactor('Brake chamber 30/30', 'Brake chamber 30/30'), null);
 assert.equal(scoreDescription('Red 50/50 Heavy Duty Antifreeze - Per Gallon', { description: 'Red 50/50 Heavy Duty Antifreeze - 55 Gallon' }), 1);
 assert.ok(scoreDescription('Red 50/50 Heavy Duty Antifreeze - Per Gallon', { description: 'Brake shoe kit' }) === 0);
+assert.equal(gallonsFactor('Antifreeze 55 gal drum'), 55); assert.equal(gallonsFactor('Motor oil 15W40 case of 12 qt'), 3); assert.equal(gallonsFactor('DEF per gallon'), null);
+assert.ok(looksLikeFluid({ description: 'Shell Rotella 15W-40 motor oil' })); assert.ok(looksLikeFluid({ description: 'Red 50/50 Heavy Duty Antifreeze - 55 Gallon' })); assert.ok(!looksLikeFluid({ description: 'Oil filter LF9009' }));
+assert.equal(gallonsPerStockUnit({ description: 'Antifreeze - 55 Gallon' }), 55); assert.equal(gallonsPerStockUnit({ description: 'ATF 1 qt' }), 0.25);
+assert.equal(stockPerUnit('qt', 'gal'), 0.25); assert.equal(stockPerUnit('qt', 'EA'), 1);
 console.log('PASS AI center rules: usage cost + budget, vendor analysis (price up, cheaper elsewhere, duplicates, overdue, cores), bill math, invoice check, wording guard');
 
 if (process.env.ITTR_INVENTORY_TEST_DB !== '1' || !process.env.DATABASE_URL) {
@@ -159,6 +164,31 @@ try {
   assert.deepEqual(pwBills.map(b => b.status), ['received']);
   await call(`/api/vendor-invoices/${rcv.invoiceId}/receiving-draft`, { token, expect: 409 });
   console.log('PASS receive filed bill: coolant without part # matched by description, 100 gal -> 1.82 drums at drum cost, new part without part #, filed bill replaced');
+  // v24.43.0 fluids: switch the coolant to gallons, use it in quarts on a work order and an invoice.
+  const conv = await call('/api/parts/fluids/convert', { method: 'POST', token, body: { items: [{ id: Number(coolant), gallons: 55 }] } });
+  assert.equal(conv.converted, 1);
+  let cg = (await db.query('SELECT quantity,cost,uom FROM fullbay_import_parts WHERE id=$1', [coolant])).rows[0];
+  assert.equal(cg.uom, 'gal'); assert.equal(Number(cg.quantity), 100.1); assert.ok(Math.abs(Number(cg.cost) - 639 / 1.82 / 55) < 0.001);
+  const fl = await call('/api/parts/fluids', { token }); assert.ok(fl.converted.some(p => Number(p.id) === Number(coolant)));
+  await db.query(`UPDATE app_state SET payload=$1::jsonb WHERE state_key='shopflow'`, [JSON.stringify({ workorders: [{ id: 7001, unit: 'F1', customer: 'Fluid Co', status: 'Open', mechanic: adminUser, helpers: [], tasks: [{ uid: 'task-7001', t: 'Top off coolant', parts: [] }] }], issues: [] })]);
+  const wp = await call('/api/work-orders/7001/tasks/by-uid/task-7001/parts', { method: 'POST', token, body: { inventoryPartId: Number(coolant), description: 'Coolant', qty: 6, unit: 'qt', method: 'test' } });
+  assert.equal(wp.part.unit, 'qt'); assert.equal(wp.part.reservedQty, 1.5);
+  assert.equal(Number((await db.query('SELECT allocated FROM fullbay_import_parts WHERE id=$1', [coolant])).rows[0].allocated), 1.5);
+  const finv = await call('/api/invoices', { method: 'POST', token, body: { customerName: 'Fluid Co', unitNumber: 'F1', taxRate: 0 } });
+  const fl1 = await call(`/api/invoices/${finv.id}/lines`, { method: 'POST', token, body: { lineType: 'part', description: 'Coolant', quantity: 4, unitPrice: 2.5, taxable: false, jobName: 'Fluids', inventoryPartId: Number(coolant), unit: 'qt' } });
+  let ln = (await db.query('SELECT metadata FROM customer_invoice_lines WHERE id=$1', [fl1.id])).rows[0].metadata;
+  assert.equal(ln.unit, 'qt'); assert.equal(ln.stockPerUnit, 0.25);
+  await call(`/api/invoices/${finv.id}/finalize`, { method: 'POST', token, body: {} });
+  cg = (await db.query('SELECT quantity FROM fullbay_import_parts WHERE id=$1', [coolant])).rows[0];
+  assert.equal(Number(cg.quantity), 99.1); // 4 qt = 1 gal
+  await call(`/api/invoices/${finv.id}/lines/${fl1.id}`, { method: 'PUT', token, body: { lineType: 'part', description: 'Coolant', quantity: 2, unitPrice: 10, taxable: false, jobName: 'Fluids', inventoryPartId: Number(coolant), unit: 'gal' } });
+  cg = (await db.query('SELECT quantity FROM fullbay_import_parts WHERE id=$1', [coolant])).rows[0];
+  assert.equal(Number(cg.quantity), 98.1); // changed to 2 gal after finalizing: one more gallon out
+  { const r = await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'"), sf = r.rows[0].payload, w = sf.workorders.find(x => String(x.id) === '7001'); w.status = 'Completed'; w.tasks.forEach(t => { t.done = true; }); await db.query("UPDATE app_state SET payload=$1::jsonb WHERE state_key='shopflow'", [JSON.stringify(sf)]); }
+  const woInv = await call('/api/invoices/from-work-order/7001', { method: 'POST', token, body: { taxRate: 0 } });
+  const woLine = (await db.query(`SELECT quantity,unit_cost,metadata FROM customer_invoice_lines WHERE invoice_id=$1 AND line_type='part'`, [woInv.id])).rows[0];
+  assert.equal(Number(woLine.quantity), 6); assert.equal(woLine.metadata.unit, 'qt'); assert.ok(Math.abs(Number(woLine.unit_cost) - 639 / 1.82 / 55 / 4) < 0.001, `qt cost ${woLine.unit_cost}`);
+  console.log('PASS fluids: drum part switched to gallons (qty, cost); work order in quarts reserves gallons; invoice in quarts moves 0.25 gal per qt; switching the line to gallons adjusts stock');
   console.log('PASS vendor bills: AI scan, filed by vendor, duplicates blocked, price increase, cheaper elsewhere, math check, paid/overdue, search, AI summary');
 
   // Invoice check + AI wording on a real invoice.

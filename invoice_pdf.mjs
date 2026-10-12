@@ -22,6 +22,8 @@ export function shopProfile(env = process.env) {
 const INK = '#0f172a', MUTED = '#64748b', LINE = '#e2e8f0', SOFT = '#f8fafc', ACCENT = String(process.env.SHOP_ACCENT_COLOR || '#c2410c'), NAVY = '#1e293b';
 const money = v => { const n = Number(v || 0); return `${n < 0 ? '-' : ''}$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; };
 const qtyText = v => { const n = Number(v || 0); return Number.isInteger(n) ? String(n) : n.toFixed(2); };
+// v24.43.0: fluids billed in gallons or quarts show the unit ("4 qts", "2.50 gal").
+const fluidUnit = l => { const m = l?.metadata && typeof l.metadata === 'object' ? l.metadata : {}; return m.unit === 'qt' ? (Number(l.quantity) === 1 ? ' qt' : ' qts') : m.unit === 'gal' ? ' gal' : ''; };
 
 export async function renderCustomerDocumentPdf({ PDFDocument, kind = 'INVOICE', invoice: i, lines = [], payments = [], shop, logoPath, text = s => String(s ?? ''), dateText = d => String(d || '') }) {
   const doc = new PDFDocument({ size: 'LETTER', margin: 36, bufferPages: true, info: { Title: `${kind === 'ESTIMATE' ? 'Estimate' : 'Invoice'} ${i.invoice_number || i.estimate_number || ''}` } });
@@ -109,7 +111,7 @@ export async function renderCustomerDocumentPdf({ PDFDocument, kind = 'INVOICE',
       ensure(h + 2);
       doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(6.6); t(p.line_type === 'part' ? 'PART' : String(p.line_type || 'ITEM').toUpperCase(), COL.desc + 26, y + 2, { width: 30 });
       doc.fillColor('#334155').font('Helvetica').fontSize(8.2); t(d, COL.desc + 56, y + 1, { width: COL.qty - COL.desc - 64 });
-      t(qtyText(p.quantity), COL.qty, y + 1, { width: 64, align: 'right' }); t(money(p.unit_price), COL.rate, y + 1, { width: 64, align: 'right' });
+      t(`${qtyText(p.quantity)}${fluidUnit(p)}`, COL.qty, y + 1, { width: 64, align: 'right' }); t(money(p.unit_price), COL.rate, y + 1, { width: 64, align: 'right' });
       doc.fillColor(INK); t(money(netOf(p)), COL.amt, y + 1, { width: 68, align: 'right' });
       y += h;
     }
@@ -122,7 +124,7 @@ export async function renderCustomerDocumentPdf({ PDFDocument, kind = 'INVOICE',
     for (const p of others) {
       const d = [p.part_number || '', text(p.description || '')].filter(Boolean).join(' — ') || 'Item';
       doc.font('Helvetica').fontSize(8.4); const h = Math.max(15, doc.heightOfString(d, { width: COL.qty - COL.desc - 10 }) + 4); ensure(h);
-      doc.fillColor('#334155'); t(d, COL.desc, y + 1, { width: COL.qty - COL.desc - 10 }); t(qtyText(p.quantity), COL.qty, y + 1, { width: 64, align: 'right' }); t(money(p.unit_price), COL.rate, y + 1, { width: 64, align: 'right' }); doc.fillColor(INK); t(money(netOf(p)), COL.amt, y + 1, { width: 68, align: 'right' });
+      doc.fillColor('#334155'); t(d, COL.desc, y + 1, { width: COL.qty - COL.desc - 10 }); t(`${qtyText(p.quantity)}${fluidUnit(p)}`, COL.qty, y + 1, { width: 64, align: 'right' }); t(money(p.unit_price), COL.rate, y + 1, { width: 64, align: 'right' }); doc.fillColor(INK); t(money(netOf(p)), COL.amt, y + 1, { width: 68, align: 'right' });
       y += h;
     }
     hline(y + 2); y += 8;
