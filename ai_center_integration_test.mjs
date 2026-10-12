@@ -188,6 +188,17 @@ try {
   const woInv = await call('/api/invoices/from-work-order/7001', { method: 'POST', token, body: { taxRate: 0 } });
   const woLine = (await db.query(`SELECT quantity,unit_cost,metadata FROM customer_invoice_lines WHERE invoice_id=$1 AND line_type='part'`, [woInv.id])).rows[0];
   assert.equal(Number(woLine.quantity), 6); assert.equal(woLine.metadata.unit, 'qt'); assert.ok(Math.abs(Number(woLine.unit_cost) - 639 / 1.82 / 55 / 4) < 0.001, `qt cost ${woLine.unit_cost}`);
+  // v24.44.0 Parts center filters: in stock, fluids, and out-of-stock only for parts the shop really stocks.
+  await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,quantity,cost,price,status,uom,inventory_managed,raw) VALUES('t-never','NEVER-1','Imported never stocked',0,1,2,'Active','EA',true,'{}'::jsonb),('t-shelf','SHELF-1','Lube filter',3,5,9,'Active','EA',true,'{}'::jsonb),('t-gone','GONE-1','Wiper blade',0,4,8,'Active','EA',true,'{}'::jsonb) ON CONFLICT DO NOTHING`);
+  await db.query(`UPDATE fullbay_import_parts SET reorder_point=2 WHERE source_key='t-gone'`);
+  const inStock = (await call('/api/parts?filter=instock&sort=name&limit=2000', { token })).items;
+  assert.ok(inStock.length && inStock.every(p => Number(p.quantity) > 0)); assert.ok(inStock.some(p => p.part_number === 'SHELF-1'));
+  const outs = (await call('/api/parts?filter=out', { token })).items.map(p => p.part_number);
+  assert.ok(outs.includes('GONE-1')); assert.ok(!outs.includes('NEVER-1'));
+  const sumP = await call('/api/parts/summary', { token });
+  assert.ok(sumP.never_stocked >= 1 && sumP.in_stock >= 2 && sumP.fluids >= 1);
+  assert.ok((await call('/api/parts?filter=fluids', { token })).items.some(p => Number(p.id) === Number(coolant)));
+  console.log('PASS parts center: in stock list, fluids list, out of stock ignores never-stocked catalog parts');
   console.log('PASS fluids: drum part switched to gallons (qty, cost); work order in quarts reserves gallons; invoice in quarts moves 0.25 gal per qt; switching the line to gallons adjusts stock');
   console.log('PASS vendor bills: AI scan, filed by vendor, duplicates blocked, price increase, cheaper elsewhere, math check, paid/overdue, search, AI summary');
 
