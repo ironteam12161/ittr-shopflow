@@ -28,7 +28,7 @@ import {aiContext,featureForPath,createAIMeter,ensureAIUsageSchema} from "./ai_u
 import {registerAICenterRoutes} from "./ai_center.mjs";
 import {ensureVendorBillSchema} from "./vendor_bills.mjs";
 import {matchInvoiceLines} from "./part_matching.mjs";
-import {registerFluidRoutes,isGallonUom,FLUID_UNITS} from "./fluids.mjs";
+import {registerFluidRoutes,registerPartDeleteRoutes,isGallonUom,FLUID_UNITS,ensureFluidSchema} from "./fluids.mjs";
 import {ensureComplianceSchema,registerComplianceRoutes,startFleetScheduler} from "./compliance_center.mjs";
 import os from "os";
 import bwipjs from "bwip-js";
@@ -1120,7 +1120,7 @@ app.post('/api/parts',auth,managerPermission("inventory"),async(req,res,next)=>{
  }
  await db.query('COMMIT');await audit(req.user.username,'part_created',{partId:x.id,partNumber:pn,vendor:vendorContext.vendor||null,vendorBranch:vendorContext.branch||null,initialQuantity:qty});res.json({ok:true,item:x});
 }catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
-app.get("/api/parts/summary",auth,hidePartCostsFromMechanics,async(req,res,next)=>{try{const db=requireDb();const tracked="(coalesce(reorder_point,0)>0 OR coalesce(min_qty,0)>0 OR last_purchase_at IS NOT NULL OR EXISTS(SELECT 1 FROM part_inventory_transactions t WHERE t.part_id=fullbay_import_parts.id))";const r=await db.query(`SELECT count(*)::int total,count(*) FILTER (WHERE coalesce(quantity,0)>0)::int in_stock,count(*) FILTER (WHERE coalesce(quantity,0)<=0 AND ${tracked})::int out_of_stock,count(*) FILTER (WHERE coalesce(quantity,0)<=0 AND NOT ${tracked})::int never_stocked,count(*) FILTER (WHERE lower(coalesce(uom,'')) IN ('gal','gallon','gallons'))::int fluids,count(*) FILTER (WHERE coalesce(quantity,0)>0 AND coalesce(quantity,0)<=coalesce(reorder_point,min_qty,0) AND coalesce(reorder_point,min_qty,0)>0)::int low_stock,coalesce(sum(coalesce(inventory_value,coalesce(quantity,0)*coalesce(cost,0))),0)::numeric inventory_value,coalesce(sum(coalesce(on_order,0)),0)::numeric on_order FROM fullbay_import_parts`);res.json(r.rows[0])}catch(e){next(e)}});
+app.get("/api/parts/summary",auth,hidePartCostsFromMechanics,async(req,res,next)=>{try{const db=requireDb();const tracked="(coalesce(reorder_point,0)>0 OR coalesce(min_qty,0)>0 OR last_purchase_at IS NOT NULL OR EXISTS(SELECT 1 FROM part_inventory_transactions t WHERE t.part_id=fullbay_import_parts.id))";const r=await db.query(`SELECT (SELECT count(*)::int FROM fullbay_import_parts WHERE status='Inactive') archived,count(*)::int total,count(*) FILTER (WHERE coalesce(quantity,0)>0)::int in_stock,count(*) FILTER (WHERE coalesce(quantity,0)<=0 AND ${tracked})::int out_of_stock,count(*) FILTER (WHERE coalesce(quantity,0)<=0 AND NOT ${tracked})::int never_stocked,count(*) FILTER (WHERE lower(coalesce(uom,'')) IN ('gal','gallon','gallons'))::int fluids,count(*) FILTER (WHERE coalesce(quantity,0)>0 AND coalesce(quantity,0)<=coalesce(reorder_point,min_qty,0) AND coalesce(reorder_point,min_qty,0)>0)::int low_stock,coalesce(sum(coalesce(inventory_value,coalesce(quantity,0)*coalesce(cost,0))),0)::numeric inventory_value,coalesce(sum(coalesce(on_order,0)),0)::numeric on_order FROM fullbay_import_parts WHERE coalesce(status,'Active')<>'Inactive'`);res.json(r.rows[0])}catch(e){next(e)}});
 app.get("/api/parts",auth,hidePartCostsFromMechanics,async(req,res,next)=>{try{
  const q=String(req.query.q||"").trim(),filter=String(req.query.filter||"all"),like=`%${q}%`,prefix=`${q}%`;
  // v24.44.0: "In stock" and "Fluids" show everything on the shelf (grouped in the app), so they may return more rows.
@@ -1133,7 +1133,9 @@ app.get("/api/parts",auth,hidePartCostsFromMechanics,async(req,res,next)=>{try{
  if(filter==="out")extra=` AND ${tracked} AND coalesce(quantity,0)<=0`;
  if(filter==="order")extra=" AND coalesce(on_order,0)>0";
  if(filter==="instock")extra=" AND coalesce(quantity,0)>0";
- if(filter==="fluids")extra=` AND (lower(coalesce(uom,'')) IN ('gal','gallon','gallons') OR lower(coalesce(category,'')) LIKE '%fluid%' OR lower(coalesce(description,'')) ~ '(anti-?freeze|coolant|motor oil|engine oil|15w|10w|5w-|0w-|diesel exhaust|\\mdef\\M|\\matf\\M|transmission fluid|hydraulic|gear oil|gear lube|80w|75w|85w|brake fluid|washer fluid|steering fluid)') AND lower(coalesce(description,'')) !~ '(filter|gasket|seal|pump|hose|sensor|cap\\M)'`;
+ // v24.45.2: archived (deleted but still in history) parts only show under "Archived".
+ extra=filter==="archived"?" AND status='Inactive'":extra+" AND coalesce(status,'Active')<>'Inactive'";
+ if(filter==="fluids")extra=` AND is_fluid IS DISTINCT FROM false AND (is_fluid IS TRUE OR lower(coalesce(uom,'')) IN ('gal','gallon','gallons') OR lower(coalesce(category,'')) LIKE '%fluid%' OR lower(coalesce(description,'')) ~ '(anti-?freeze|coolant|motor oil|engine oil|15w|10w|5w-|0w-|diesel exhaust|\\mdef\\M|\\matf\\M|transmission fluid|hydraulic|gear oil|gear lube|80w|75w|85w|brake fluid|washer fluid|steering fluid)') AND (lower(coalesce(uom,'')) IN ('gal','gallon','gallons') OR is_fluid IS TRUE OR lower(coalesce(description,'')) !~ '(filter|gasket|seal|pump|hose|sensor|cap\\M|tank|thermostat|housing|radiator|valve)')`;
  const sort=String(req.query.sort||"");
  const order=sort==="qty"?"coalesce(quantity,0) DESC":sort==="value"?"coalesce(quantity,0)*coalesce(cost,0) DESC":sort==="location"?"location NULLS LAST,description":sort==="recent"?"last_purchase_at DESC NULLS LAST,updated_at DESC":sort==="name"?"lower(coalesce(nullif(description,''),part_number)) NULLS LAST":"";
  const db=requireDb();
@@ -1243,6 +1245,7 @@ app.post("/api/parts/inventory-count/:sessionId/cancel",auth,managerPermission("
 
 // v24.43.0 fluids in gallons (registered before /api/parts/:id so "fluids" is not read as a part id)
 registerFluidRoutes(app,{auth,managerPermission,requireDb,audit});
+registerPartDeleteRoutes(app,{auth,managerPermission,requireDb,audit});
 app.get("/api/parts/:id",auth,hidePartCostsFromMechanics,async(req,res,next)=>{try{const db=requireDb();const r=await db.query(`SELECT *,coalesce(quantity,0)-coalesce(allocated,0) available FROM fullbay_import_parts WHERE id=$1`,[req.params.id]);if(!r.rowCount)return res.status(404).json({error:"Part not found."});r.rows[0].internal_barcode=await ensurePartBarcode(db,r.rows[0].id);const tx=await db.query("SELECT * FROM part_inventory_transactions WHERE part_id=$1 ORDER BY created_at DESC LIMIT 100",[req.params.id]);res.json({item:r.rows[0],transactions:tx.rows})}catch(e){next(e)}});
 app.get("/api/parts/:id/barcode.svg",auth,async(req,res,next)=>{try{const db=requireDb(),code=await ensurePartBarcode(db,req.params.id);if(!code)return res.status(404).send("Part not found");const svg=bwipjs.toSVG({bcid:"code128",text:code,scale:3,height:12,includetext:false});res.type("image/svg+xml").send(svg)}catch(e){next(e)}});
 app.patch("/api/parts/:id",auth,managerPermission("inventory"),async(req,res,next)=>{try{const db=requireDb(),cur=await db.query("SELECT * FROM fullbay_import_parts WHERE id=$1",[req.params.id]);if(!cur.rowCount)return res.status(404).json({error:"Part not found."});const c=cur.rows[0],aliases=Array.isArray(req.body?.barcodeAliases)?req.body.barcodeAliases.map(x=>String(x||"").trim()).filter(Boolean).slice(0,20):(Array.isArray(c.barcode_aliases)?c.barcode_aliases:[]);const val=(k,old)=>Object.prototype.hasOwnProperty.call(req.body||{},k)?String(req.body[k]??"").trim()||null:old,num=(k,old)=>Object.prototype.hasOwnProperty.call(req.body||{},k)?(Number.isFinite(Number(req.body[k]))?Number(req.body[k]):null):old;const vendorRaw=val("vendor",c.vendor),vendor=vendorRaw?await resolveVendor(db,vendorRaw,true):null;const bool=(k,old)=>Object.prototype.hasOwnProperty.call(req.body||{},k)?Boolean(req.body[k]):old;const vals=[val("location",c.location),vendor,num("minQty",c.min_qty),num("maxQty",c.max_qty),num("reorderPoint",c.reorder_point),JSON.stringify(aliases),num("price",c.price),bool("purchaseTaxable",c.purchase_taxable),bool("sellTaxable",c.sell_taxable),num("purchaseTaxRate",c.purchase_tax_rate),bool("hasCore",c.has_core),Math.max(0,num("defaultCoreCharge",c.default_core_charge)||0),req.params.id];const r=await db.query(`UPDATE fullbay_import_parts SET location=$1,vendor=$2,min_qty=$3,max_qty=$4,reorder_point=$5,barcode_aliases=$6::jsonb,price=$7,purchase_taxable=$8,sell_taxable=$9,purchase_tax_rate=$10,has_core=$11,default_core_charge=$12,updated_at=now() WHERE id=$13 RETURNING *`,vals);await audit(req.user.username,"part_profile_updated",{partId:req.params.id});res.json({ok:true,item:r.rows[0]})}catch(e){next(e)}});
@@ -1813,8 +1816,8 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.45.1");
-app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-QTPRICE-20261012`}));
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.45.2");
+app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-CLEANUP-20261012`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
@@ -4516,6 +4519,7 @@ initDb()
   .then(()=>ensureTimeClockSchema(pool))
   .then(()=>pool&&ensureAIUsageSchema(pool))
   .then(()=>pool&&ensureVendorBillSchema(pool))
+  .then(()=>pool&&ensureFluidSchema(pool))
   // v24.41.1: odometer readings typed with a dot as thousands separator ("304.538") were saved as 304.538 miles. Repair once.
   .then(async()=>{if(!pool)return;for(const t of ["customer_invoices","customer_estimates"]){try{const r=await pool.query(`UPDATE ${t} SET mileage=mileage*1000 WHERE mileage IS NOT NULL AND mileage<>trunc(mileage) AND scale(mileage)=3 AND mileage<100000`);if(r.rowCount)console.log(`Repaired ${r.rowCount} ${t} mileage value(s) typed with a dot.`)}catch(e){console.warn("mileage repair",t,e?.message)}}})
   .then(()=>{if(process.env.NODE_ENV!=='test')startTimeClockScheduler({pool,stopMechanicWork,onChange:()=>broadcastShopStatus("task_changed",{timeclock:true})})})
