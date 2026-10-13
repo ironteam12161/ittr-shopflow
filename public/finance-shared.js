@@ -77,6 +77,15 @@
  async function refreshComplianceBadge(){let role='';try{role=session?.role||''}catch(_){}if(!['admin','manager'].includes(role))return;
   try{const d=await apiJSON('/api/fleet-maintenance/summary'),n=Number(d.overdue||0)+Number(d.dueSoon||0),el=document.getElementById('complianceNavBadge');if(el){el.textContent=String(n);el.style.display=n?'':'none';el.title=`${d.overdue} overdue, ${d.dueSoon} due soon`}}catch(_){}}
  setTimeout(refreshComplianceBadge,4000);setInterval(refreshComplianceBadge,10*60*1000);
+ // v24.47.0: back from connecting the shop's Google email for sending (/?emailSender=connected&emailSenderAddress=…).
+ try{
+  const u=new URL(location.href),e=u.searchParams.get('emailSender');
+  if(e){const addr=u.searchParams.get('emailSenderAddress')||'';u.searchParams.delete('emailSender');u.searchParams.delete('emailSenderAddress');history.replaceState(history.state,'',u.pathname+(u.search||'')+u.hash);
+   sessionStorage.setItem('ittr_reports_tab','inbox');let tries=0;
+   const go=()=>{if(++tries>60)return;let ready=false;try{ready=!!session&&typeof showView==='function'}catch(_){}if(!ready)return setTimeout(go,250);
+    showToast?.(`Email connected${addr?`: ${addr}`:''}. Invoices, estimates and PM reminders will be sent from this address. Use “Send test email” to check.`,'success',10000);setTimeout(()=>showView('reports'),400)};
+   go()}
+ }catch(_){}
  // Google sends the owner back to /?gmail=connected|error after the Gmail consent screen.
  try{
   const u=new URL(location.href),g=u.searchParams.get('gmail');

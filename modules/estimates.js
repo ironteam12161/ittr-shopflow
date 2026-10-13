@@ -140,7 +140,7 @@ async function partSearch(input){
 function defaultRate(){const lab=S.cur?.lines?.find(l=>l.line_type==='labor'&&Number(l.unit_price)>0);return Number(lab?.unit_price||window.invoiceDefaultLaborRate?.()||115)}
 async function openEmail(id){
  const d=await api(`/api/estimates/${id}/email-draft`);
- if(!d.configured)return toast('Email is not set up yet (Resend). Add RESEND_API_KEY and INVOICE_FROM_EMAIL in Railway.','error');
+ if(!d.configured)return toast('Email is not connected yet. The owner can connect the shop Google email in Reports → Money inbox → Email sending.','error',8000);
  $('#estEmailBox')?.remove();
  const box=document.createElement('div');box.id='estEmailBox';box.className='estEditor';box.style.zIndex='60';
  box.innerHTML=`<div class="estEditorBox" style="max-width:640px"><div class="estHead"><h2>Email estimate</h2><div class="estHeadActions"><button class="secondary" data-est="email-close">Cancel</button></div></div><div style="padding:16px 22px">

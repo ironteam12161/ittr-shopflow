@@ -2,7 +2,7 @@
 // Estimates, tire fees, accountant reports and Gmail (Zelle + vendor bill) inbox.
 // Everything here is additive: new tables only, no changes to existing invoice data.
 import crypto from 'node:crypto';
-import { documentEmailHtml, sendResendEmail } from './email_templates.mjs';
+import { documentEmailHtml, sendShopEmail, emailSenderStatus, registerGoogleSender, buildMimeMessage, resendConfigured } from './email_templates.mjs';
 
 export const TIRE_FEE_CODES = Object.freeze({ user: 'tire_user_fee', disposal: 'tire_disposal_fee' });
 export const DEFAULT_TIRE_FEES = Object.freeze({
@@ -16,6 +16,8 @@ export const DEFAULT_TIRE_FEES = Object.freeze({
 const ESTIMATE_STATUSES = ['draft', 'sent', 'approved', 'declined', 'converted', 'expired'];
 const LINE_TYPES = ['labor', 'part', 'fee', 'sublet', 'other'];
 const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+// v24.47.0: separate connection used only to SEND (invoices, estimates, PM reminders) from the shop's Google address.
+const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send openid email';
 export const DEFAULT_GMAIL_QUERIES = Object.freeze({
   zelle: 'zelle -in:chats -in:spam',
   vendor: '(invoice OR "amount due" OR "balance due" OR statement) has:attachment -zelle -from:me -in:chats -in:spam'
@@ -70,6 +72,11 @@ export async function ensureFinanceSchema(pool) {
   );
   CREATE TABLE IF NOT EXISTS gmail_oauth_states(
     state TEXT PRIMARY KEY, username TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL
+  );
+  ALTER TABLE gmail_oauth_states ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT 'inbox';
+  CREATE TABLE IF NOT EXISTS email_sender(
+    id INT PRIMARY KEY DEFAULT 1 CHECK(id=1), email TEXT NOT NULL, refresh_token_enc TEXT NOT NULL,
+    connected_by TEXT NOT NULL, connected_at TIMESTAMPTZ DEFAULT now(), last_sent_at TIMESTAMPTZ, last_error TEXT, last_error_at TIMESTAMPTZ
   );
   CREATE TABLE IF NOT EXISTS gmail_finance_messages(
     id BIGSERIAL PRIMARY KEY, account_id BIGINT NOT NULL REFERENCES gmail_accounts(id) ON DELETE CASCADE,
@@ -718,7 +725,7 @@ export function registerFinanceRoutes(app, deps) {
   const estimateMessage = e => { const shop = shopProfile(); return `Hello${e.customer_name ? ` ${String(e.customer_name).split(/\s+/).slice(0, 3).join(' ')}` : ''},\n\nThank you for the opportunity to quote your repair. Estimate ${e.estimate_number}${e.unit_number ? ` for Unit ${e.unit_number}` : ''} is attached.\n\nReply to this email or call us${shop.phone ? ` at ${shop.phone}` : ''} to approve the work.\n\nThank you,\n${shop.name}`; };
   app.get('/api/estimates/:id/email-draft', auth, invoicesPerm, read(async (db, req) => {
     const x = await estimateBundle(db, req.params.id); if (!x) fail(404, 'Estimate not found.');
-    const e = x.estimate; return { to: e.customer_email || e.profile_customer_email || '', subject: `Estimate ${e.estimate_number} from ${shopProfile().name}${e.unit_number ? ` — Unit ${e.unit_number}` : ''}`, message: estimateMessage(e), configured: Boolean(process.env.RESEND_API_KEY && process.env.INVOICE_FROM_EMAIL) };
+    const e = x.estimate; return { to: e.customer_email || e.profile_customer_email || '', subject: `Estimate ${e.estimate_number} from ${shopProfile().name}${e.unit_number ? ` — Unit ${e.unit_number}` : ''}`, message: estimateMessage(e), ...(s => ({ configured: s.configured, from: s.from, provider: s.provider }))(await emailSenderStatus()) };
   }));
   app.post('/api/estimates/:id/email', auth, invoicesPerm, read(async (db, req) => {
     const x = await estimateBundle(db, req.params.id); if (!x) fail(404, 'Estimate not found.');
@@ -727,12 +734,12 @@ export function registerFinanceRoutes(app, deps) {
     if (!to.length) fail(400, 'Customer email is required.'); const bad = [...to, ...cc].find(a => !ok(a)); if (bad) fail(400, `"${bad}" is not a valid email address.`);
     const subject = str(req.body?.subject || `Estimate ${e.estimate_number} from ${shopProfile().name}`, 200).replace(/[\r\n]+/g, ' '), message = String(req.body?.message || estimateMessage(e)).slice(0, 5000);
     const base = String(process.env.APP_PUBLIC_URL || '').replace(/\/$/, ''), shop = shopProfile();
-    const r = await sendResendEmail({ to, cc, subject, text: message, replyTo: String(process.env.INVOICE_REPLY_TO || shop.email || ''), idempotencyKey: `estimate-${e.id}-${str(req.body?.requestId, 80).replace(/[^A-Za-z0-9_-]/g, '') || crypto.randomUUID()}`,
+    const r = await sendShopEmail({ to, cc, subject, text: message, replyTo: String(process.env.INVOICE_REPLY_TO || shop.email || ''), idempotencyKey: `estimate-${e.id}-${str(req.body?.requestId, 80).replace(/[^A-Za-z0-9_-]/g, '') || crypto.randomUUID()}`,
       html: documentEmailHtml({ kind: 'estimate', doc: e, lines: x.lines, message, shop, logoUrl: base ? `${base}/assets/iron-team-logo.png` : '', accent: String(process.env.SHOP_ACCENT_COLOR || '#c2410c') }),
       attachments: [{ filename: `${String(e.estimate_number).replace(/[^A-Za-z0-9_-]/g, '_')}.pdf`, content: (await estimatePdf(x)).toString('base64') }], tags: [{ name: 'document', value: 'estimate' }] });
     if (!r.ok) fail(502, r.error);
     await db.query(`UPDATE customer_estimates SET customer_email=$2,status=CASE WHEN status='draft' THEN 'sent' ELSE status END,sent_at=coalesce(sent_at,now()),updated_at=now() WHERE id=$1::bigint`, [e.id, to[0]]);
-    await audit(req.user.username, 'estimate_emailed', { estimateId: e.id, to, cc, resendId: r.id });
+    await audit(req.user.username, 'estimate_emailed', { estimateId: e.id, to, cc, provider: r.provider, messageId: r.id });
     return { ok: true, id: r.id, to };
   }));
   app.get('/api/estimates/:id/pdf', auth, invoicesPerm, async (req, res, next) => {
@@ -747,6 +754,48 @@ export function registerFinanceRoutes(app, deps) {
 
   // ----- reports
   app.get('/api/reports/finance', auth, reportsPerm, invoicesPerm, read(async (db, req) => buildFinanceReport(db, reportRange(req.query))));
+
+  // ----- v24.47.0: send email from the shop's Google account (Gmail API, gmail.send scope)
+  const friendlyGoogleError = e => { const m = String(e?.message || ''); return /invalid_grant|expired|revoked/i.test(m) ? 'Google sign-in for sending email expired or was removed. The owner needs to press "Connect Google email" again (Reports → Money inbox → Email sending).' : /insufficient|scope|permission/i.test(m) ? 'Google did not allow sending. Reconnect the email and tick "Send email on your behalf".' : m.slice(0, 300) || 'Google email failed.'; };
+  registerGoogleSender({
+    async status() { const r = (await requireDb().query('SELECT email,connected_by,connected_at,last_sent_at,last_error,last_error_at FROM email_sender WHERE id=1')).rows[0]; return r ? { connected: true, ...r } : { connected: false }; },
+    async send(msg) {
+      const db = requireDb(), acc = (await db.query('SELECT * FROM email_sender WHERE id=1')).rows[0]; if (!acc) return { ok: false, error: 'Google email is not connected.' };
+      try {
+        const token = await gmailAccessToken(acc), shopName = String(shopProfile()?.name || process.env.SHOP_NAME || 'ShopFlow').replace(/["\r\n<>]/g, '');
+        const raw = buildMimeMessage({ ...msg, from: `"${shopName}" <${acc.email}>`, to: msg.to, cc: msg.cc || [], replyTo: msg.replyTo && String(msg.replyTo).toLowerCase() !== acc.email ? msg.replyTo : '' });
+        const d = await googleJson(`${googleUrls().gmail}/users/me/messages/send`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ raw: Buffer.from(raw, 'utf8').toString('base64url') }) });
+        await db.query('UPDATE email_sender SET last_sent_at=now(),last_error=NULL,last_error_at=NULL WHERE id=1');
+        return { ok: true, id: d.id };
+      } catch (e) { const error = friendlyGoogleError(e); await db.query('UPDATE email_sender SET last_error=$1,last_error_at=now() WHERE id=1', [error]).catch(() => {}); return { ok: false, error }; }
+    }
+  });
+  app.get('/api/email/status', auth, invoicesPerm, read(async () => ({ ...(await emailSenderStatus()), googleSetup: gmailPublicStatus(), resend: resendConfigured() })));
+  app.post('/api/email/google/connect', auth, ownerOnly, read(async (db, req) => {
+    const cfg = gmailConfig(); if (!cfg.configured) fail(503, `Google is not set up on the server yet. Add ${cfg.missing.join(', ')} in Railway.`, 'GMAIL_NOT_CONFIGURED');
+    const state = crypto.randomBytes(24).toString('base64url');
+    await db.query("DELETE FROM gmail_oauth_states WHERE expires_at<now()");
+    await db.query("INSERT INTO gmail_oauth_states(state,username,expires_at,purpose) VALUES($1,$2,now()+interval '10 minutes','send')", [state, req.user.username]);
+    const u = new URL(googleUrls().auth);
+    Object.entries({ client_id: cfg.clientId, redirect_uri: cfg.redirectUri, response_type: 'code', scope: GMAIL_SEND_SCOPE, access_type: 'offline', prompt: 'consent', state }).forEach(([k, v]) => u.searchParams.set(k, v));
+    return { url: u.toString() };
+  }));
+  app.delete('/api/email/google', auth, ownerOnly, read(async (db, req) => {
+    const a = (await db.query('SELECT * FROM email_sender WHERE id=1')).rows[0]; if (!a) return { ok: true };
+    try { await fetch(`${googleUrls().revoke}?token=${encodeURIComponent(decryptToken(a.refresh_token_enc))}`, { method: 'POST' }); } catch (_) { /* best effort */ }
+    await db.query('DELETE FROM email_sender WHERE id=1');
+    await audit(req.user.username, 'email_sender_disconnected', { email: a.email });
+    return { ok: true };
+  }));
+  app.post('/api/email/test', auth, ownerOnly, read(async (db, req) => {
+    const st = await emailSenderStatus(); if (!st.configured) fail(503, 'Connect the Google email first.');
+    const to = String(req.body?.to || st.from || '').trim().toLowerCase(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) fail(400, 'Enter a valid email address for the test.');
+    const shop = shopProfile(), text = `This is a test from ${shop.name} ShopFlow.\n\nIf you can read this, invoices, estimates and PM reminders will be sent from ${st.from}.`;
+    const r = await sendShopEmail({ to: [to], subject: `ShopFlow test email — ${shop.name}`, text, html: `<div style="font-family:Arial,sans-serif;font-size:15px;line-height:1.5"><h2 style="margin:0 0 8px">✅ Email is working</h2><p>${text.replace(/\n\n/g, '</p><p>')}</p></div>` });
+    if (!r.ok) fail(502, r.error);
+    await audit(req.user.username, 'email_test_sent', { to, provider: r.provider });
+    return { ok: true, to, provider: r.provider, from: r.from || st.from };
+  }));
 
   // ----- Gmail
   function gmailPublicStatus() { const c = gmailConfig(); return { configured: c.configured, missing: c.missing, redirectUri: c.redirectUri }; }
@@ -770,11 +819,22 @@ export function registerFinanceRoutes(app, deps) {
     try {
       const db = requireDb(), state = str(req.query.state, 200), code = str(req.query.code, 2000);
       if (req.query.error) return done('error', `Google: ${req.query.error}`);
-      const st = (await db.query('DELETE FROM gmail_oauth_states WHERE state=$1 AND expires_at>now() RETURNING username', [state])).rows[0];
+      const st = (await db.query('DELETE FROM gmail_oauth_states WHERE state=$1 AND expires_at>now() RETURNING username,purpose', [state])).rows[0];
       if (!st || !code) return done('error', 'The Gmail sign-in link expired. Try Connect Gmail again.');
       const cfg = gmailConfig();
       const tok = await googleJson(googleUrls().token, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code, client_id: cfg.clientId, client_secret: cfg.clientSecret, redirect_uri: cfg.redirectUri, grant_type: 'authorization_code' }) });
       if (!tok.refresh_token) return done('error', 'Google did not return offline access. Remove ITTR from your Google account permissions and connect again.');
+      if (st.purpose === 'send') {
+        // Email address from the OpenID id_token (gmail.send alone cannot read the profile). It came straight from Google's token endpoint over TLS.
+        let email = '';
+        try { email = str(JSON.parse(Buffer.from(String(tok.id_token || '').split('.')[1] || '', 'base64url').toString('utf8')).email, 254).toLowerCase(); } catch (_) {}
+        if (!email) { try { email = str((await googleJson(process.env.GOOGLE_USERINFO_URL || 'https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: `Bearer ${tok.access_token}` } })).email, 254).toLowerCase(); } catch (_) {} }
+        if (!email) return done('error', 'Google did not share the email address. Try again and allow all requested permissions.');
+        if (!String(tok.scope || GMAIL_SEND_SCOPE).includes('gmail.send')) return done('error', 'Sending was not allowed. Connect again and tick "Send email on your behalf".');
+        await db.query(`INSERT INTO email_sender(id,email,refresh_token_enc,connected_by) VALUES(1,$1,$2,$3) ON CONFLICT(id) DO UPDATE SET email=excluded.email,refresh_token_enc=excluded.refresh_token_enc,connected_by=excluded.connected_by,connected_at=now(),last_error=NULL,last_error_at=NULL`, [email, encryptToken(tok.refresh_token), st.username]);
+        await audit(st.username, 'email_sender_connected', { email });
+        return res.redirect(302, `/?emailSender=connected&emailSenderAddress=${encodeURIComponent(email)}`);
+      }
       const profile = await googleJson(`${googleUrls().gmail}/users/me/profile`, { headers: { Authorization: `Bearer ${tok.access_token}` } });
       const email = str(profile.emailAddress, 254).toLowerCase();
       await db.query(`INSERT INTO gmail_accounts(email,refresh_token_enc,connected_by) VALUES($1,$2,$3) ON CONFLICT(email) DO UPDATE SET refresh_token_enc=excluded.refresh_token_enc,connected_by=excluded.connected_by,connected_at=now(),active=true,last_sync_error=NULL`, [email, encryptToken(tok.refresh_token), st.username]);

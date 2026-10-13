@@ -19,7 +19,7 @@ import {runShopAssistant,createAssistantTools,assistantRole} from "./shop_assist
 import {renderCustomerDocumentPdf,shopProfile} from "./invoice_pdf.mjs";
 import {extractPdfPages,slicePdf,manualSearchTerms} from "./manual_library.mjs";
 import {ensureFinanceSchema,registerFinanceRoutes,cleanMiles,reportRange,fetchGmailAttachment} from "./finance_center.mjs";
-import {documentEmailHtml} from "./email_templates.mjs";
+import {documentEmailHtml,sendShopEmail,emailSenderStatus,EMAIL_NOT_CONNECTED} from "./email_templates.mjs";
 import {registerProductivityRoutes} from "./mechanic_productivity.mjs";
 import {ensureTimeClockSchema,registerTimeClockRoutes,startTimeClockScheduler,autoClockIn,assertClockedIn} from "./time_clock.mjs";
 import {registerLaborTimeRoutes} from "./labor_times.mjs";
@@ -1819,8 +1819,8 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.46.3");
-app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-PARTLIST-20261013`}));
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.47.0");
+app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-EMAIL-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
@@ -4178,9 +4178,9 @@ function escHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<'
 // v24.39.0: colorful branded template shared with estimates (email_templates.mjs).
 function invoiceEmailHtml(i,message,lines=[]){const base=process.env.APP_PUBLIC_URL?String(process.env.APP_PUBLIC_URL).replace(/\/$/,''):'';
  return documentEmailHtml({kind:'invoice',doc:i,lines,message,shop:shopProfile(),logoUrl:base?`${base}/assets/iron-team-logo.png`:'',payUrl:i.payment_url||'',payLabel:'View &amp; Pay Invoice',accent:String(process.env.SHOP_ACCENT_COLOR||'#c2410c')})}
-app.get('/api/invoices/:id/email-draft',auth,managerPermission("invoices"),async(req,res,next)=>{try{const x=await getInvoiceBundle(requireDb(),req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const d=invoiceEmailDefaults(x.invoice);res.json({...d,to:d.to||x.invoice.profile_customer_email||'',configured:Boolean(resendKey&&invoiceFromEmail),from:invoiceFromEmail,hasPaymentLink:Boolean(x.invoice.payment_url),lastSentAt:x.invoice.email_sent_at||null})}catch(e){next(e)}});
+app.get('/api/invoices/:id/email-draft',auth,managerPermission("invoices"),async(req,res,next)=>{try{const x=await getInvoiceBundle(requireDb(),req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const d=invoiceEmailDefaults(x.invoice);const es=await emailSenderStatus();res.json({...d,to:d.to||x.invoice.profile_customer_email||'',configured:es.configured,from:es.from,provider:es.provider,hasPaymentLink:Boolean(x.invoice.payment_url),lastSentAt:x.invoice.email_sent_at||null})}catch(e){next(e)}});
 app.post('/api/invoices/:id/email',auth,managerPermission("invoices"),async(req,res,next)=>{let deliveryId=null;try{
- if(!resendKey||!invoiceFromEmail)return res.status(503).json({error:'Email is not configured. Add RESEND_API_KEY and INVOICE_FROM_EMAIL in Railway.'});
+ if(!(await emailSenderStatus()).configured)return res.status(503).json({error:EMAIL_NOT_CONNECTED});
  const db=requireDb(),x=await getInvoiceBundle(db,req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const i=x.invoice,def=invoiceEmailDefaults(i);
  const list=v=>String(v||'').split(/[,;\s]+/).map(e=>e.trim().toLowerCase()).filter(Boolean);const emailOk=e=>e.length<=254&&/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
  const to=list(req.body?.to||req.body?.email||def.to||i.profile_customer_email),cc=list(req.body?.cc);
@@ -4198,11 +4198,12 @@ app.post('/api/invoices/:id/email',auth,managerPermission("invoices"),async(req,
  deliveryId=delivery.id;
  const attachments=attachPdf?[{filename:`${String(i.invoice_number).replace(/[^A-Za-z0-9_-]/g,'_')}.pdf`,content:(await invoicePdfBuffer(x)).toString('base64')}]:[];
  const shop=shopProfile(),replyTo=String(process.env.INVOICE_REPLY_TO||shop.email||'').trim();
- const rr=await fetch(String(process.env.RESEND_API_URL||'https://api.resend.com/emails'),{method:'POST',headers:{Authorization:`Bearer ${resendKey}`,'Content-Type':'application/json','Idempotency-Key':idempotencyKey},body:JSON.stringify({from:invoiceFromEmail,to,cc:cc.length?cc:undefined,reply_to:replyTo||undefined,subject,html:invoiceEmailHtml(i,message,x.lines),text:message,attachments,tags:[{name:'document',value:'invoice'},{name:'invoice_id',value:String(i.id)}]})});
- const d=await rr.json().catch(()=>({}));if(!rr.ok){const reason=resendFriendlyError(rr.status,d);await db.query("UPDATE invoice_email_deliveries SET status='failed',error_message=$2 WHERE id=$1::bigint",[deliveryId,reason]);await audit(req.user.username,'invoice_email_failed',{invoiceId:i.id,invoiceNumber:i.invoice_number,to,cc,deliveryId,error:reason});return res.status(502).json({error:reason})}
+ // v24.47.0: shop's connected Google email first, Resend as backup (email_templates.mjs).
+ const d=await sendShopEmail({to,cc,replyTo,subject,html:invoiceEmailHtml(i,message,x.lines),text:message,attachments,idempotencyKey,tags:[{name:'document',value:'invoice'},{name:'invoice_id',value:String(i.id)}]});
+ if(!d.ok){const reason=d.provider==='resend'?resendFriendlyError(d.status||502,{message:d.error}):d.error;await db.query("UPDATE invoice_email_deliveries SET status='failed',error_message=$2 WHERE id=$1::bigint",[deliveryId,reason]);await audit(req.user.username,'invoice_email_failed',{invoiceId:i.id,invoiceNumber:i.invoice_number,to,cc,deliveryId,error:reason,provider:d.provider});return res.status(d.status===503?503:502).json({error:reason})}
  await db.query("UPDATE invoice_email_deliveries SET status='sent',provider_message_id=$2,sent_at=now(),error_message=NULL WHERE id=$1::bigint",[deliveryId,d.id||null]);
  await db.query("UPDATE customer_invoices SET customer_email=$2,email_sent_at=now(),sent_at=CASE WHEN status<>'draft' THEN coalesce(sent_at,now()) ELSE sent_at END,updated_at=now() WHERE id=$1::bigint",[i.id,to[0]]);
- await audit(req.user.username,'invoice_emailed',{invoiceId:i.id,invoiceNumber:i.invoice_number,to,cc,subject,attachedPdf:attachments.length>0,resendId:d.id,deliveryId});res.json({ok:true,id:d.id,to,cc});
+ await audit(req.user.username,'invoice_emailed',{invoiceId:i.id,invoiceNumber:i.invoice_number,to,cc,subject,attachedPdf:attachments.length>0,provider:d.provider,messageId:d.id,deliveryId});res.json({ok:true,id:d.id,to,cc});
 }catch(e){if(deliveryId){try{await requireDb().query("UPDATE invoice_email_deliveries SET status='failed',error_message=$2 WHERE id=$1::bigint",[deliveryId,String(e?.message||'Email failed').slice(0,500)])}catch{}}if(e?.status)return res.status(e.status).json({error:e.message});next(e)}});
 const memoryCache=new Map();
 function aiErrorResponse(res,err,fallback){
