@@ -44,6 +44,14 @@ try{
  const inspection=(await db.query('SELECT * FROM mechanic_inspections WHERE work_order_id=$1',[String(w.id)])).rows[0];eq(String(inspection.unit_id),String(started.unit.id),'inspection stable unit link');eq(inspection.status,'Completed','inspection status');
  const profile=await request(`/api/customer-units/${started.unit.id}/profile`,{token:admin});ok(profile.history.some(x=>x.source==='inspection'&&String(x.workOrderId)===String(w.id)),'vehicle history must include inspection');
  console.log('PASS required WO fields + inspection-to-vehicle history');
+ const added=await request(`/api/work-orders/${w.id}/inspection/items/brakes/add-to-work-order`,{method:'POST',token:mechanic,body:{}});
+ const repairTask=added.shopflow.workorders.find(x=>String(x.id)===String(w.id)).tasks.find(t=>t.uid===added.taskUid);
+ eq(repairTask.t,'Brake condition — Left steer worn','inspection repair task name has no "Inspection:" prefix');eq(repairTask.source,'inspection','inspection repair task source');
+ console.log('PASS inspection finding -> repair task named without prefix');
+ await db.query(`UPDATE app_state SET payload=jsonb_set(payload,'{workorders,0,tasks}',(payload#>'{workorders,0,tasks}')||'[{"uid":"legacy-insp-1","t":"Inspection: Front LH hubcap — oil level / leaks","source":"inspection"}]'::jsonb) WHERE state_key='shopflow'`);
+ await stop();await start();
+ for(let i=0;i<40;i++){const t=(await db.query(`SELECT payload#>'{workorders,0,tasks}' tasks FROM app_state WHERE state_key='shopflow'`)).rows[0].tasks.find(x=>x.uid==='legacy-insp-1');if(t.t==='Front LH hubcap — oil level / leaks')break;if(i===39)throw new Error(`legacy inspection task was not renamed: ${t.t}`);await sleep(150)}
+ console.log('PASS legacy "Inspection:" task names cleaned at startup');
 
  const part=(await request('/api/parts',{method:'POST',token:admin,body:{partNumber:'CORE-TRANS-1',description:'Reman transmission',quantity:0,cost:0,price:2500,hasCore:true,defaultCoreCharge:400}})).item;
  async function receive(number,date,cost,{core=false}={}){return request('/api/parts/receiving/receive',{method:'POST',token:admin,body:{invoice:{vendor:'TransChicago',vendorBranch:'Elmhurst',invoiceNumber:number,invoiceDate:date,total:cost},lines:[{matchedPartId:part.id,partNumber:'CORE-TRANS-1',description:'Reman transmission',quantity:1,unitCost:cost,coreCost:core?400:0,hasCore:core,coreDueDate:'2026-12-31',taxable:false}]}})}
