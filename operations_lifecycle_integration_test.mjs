@@ -44,6 +44,10 @@ try{
  const inspection=(await db.query('SELECT * FROM mechanic_inspections WHERE work_order_id=$1',[String(w.id)])).rows[0];eq(String(inspection.unit_id),String(started.unit.id),'inspection stable unit link');eq(inspection.status,'Completed','inspection status');
  const profile=await request(`/api/customer-units/${started.unit.id}/profile`,{token:admin});ok(profile.history.some(x=>x.source==='inspection'&&String(x.workOrderId)===String(w.id)),'vehicle history must include inspection');
  console.log('PASS required WO fields + inspection-to-vehicle history');
+ state=await request('/api/state',{token:mechanic});sf=state.shopflow.payload;const stale=sf.workorders.find(x=>String(x.id)===String(w.id));stale.inspection={...stale.inspection,status:'In Progress',completedAt:''};
+ await request('/api/state/shopflow',{method:'PUT',token:mechanic,body:{payload:sf,expectedVersion:state.shopflow.version}});
+ const after=(await request('/api/state',{token:admin})).shopflow.payload.workorders.find(x=>String(x.id)===String(w.id));eq(after.inspection.status,'Completed','a stale whole-shop save must not reopen a completed inspection');ok(after.inspection.completedAt,'completedAt kept');
+ console.log('PASS completed inspection is not put back to In Progress by a stale save');
  const added=await request(`/api/work-orders/${w.id}/inspection/items/brakes/add-to-work-order`,{method:'POST',token:mechanic,body:{}});
  const repairTask=added.shopflow.workorders.find(x=>String(x.id)===String(w.id)).tasks.find(t=>t.uid===added.taskUid);
  eq(repairTask.t,'Brake condition — Left steer worn','inspection repair task name has no "Inspection:" prefix');eq(repairTask.source,'inspection','inspection repair task source');
