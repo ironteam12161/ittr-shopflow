@@ -75,6 +75,18 @@ export function documentEmailHtml({ kind = 'invoice', doc = {}, lines = [], mess
 </td></tr></table></body></html>`;
 }
 
+// v24.47.0: PM / service reminder sent to the customer (friendly, branded, no internal links).
+export function customerReminderHtml({ name = '', rows = [], shop = {}, logoUrl = '', accent = '#c2410c' }) {
+  const overdue = rows.some(r => r.status === 'overdue');
+  const list = rows.map(r => `<tr><td style="padding:10px 12px;border-bottom:1px solid #eef0f3;font-weight:700;color:#101828">${escHtml(r.unit)}</td><td style="padding:10px 12px;border-bottom:1px solid #eef0f3;color:#344054">${escHtml(r.service)}</td><td style="padding:10px 12px;border-bottom:1px solid #eef0f3"><span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700;${r.status === 'overdue' ? 'background:#fef3f2;color:#b42318' : 'background:#fffaeb;color:#b54708'}">${r.status === 'overdue' ? 'Overdue' : 'Due soon'}</span><div style="color:#667085;font-size:12px;margin-top:3px">${escHtml(r.detail || '')}</div></td></tr>`).join('');
+  return `<!doctype html><html><body style="margin:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 10px"><tr><td align="center"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#fff;border-radius:14px;overflow:hidden;border:1px solid #e4e7ec">
+<tr><td style="background:${accent};padding:18px 24px;color:#fff">${logoUrl ? `<img src="${escHtml(logoUrl)}" alt="" height="44" style="vertical-align:middle;margin-right:10px;border-radius:6px">` : ''}<span style="font-size:19px;font-weight:800;vertical-align:middle">${escHtml(shop.name || '')}</span></td></tr>
+<tr><td style="padding:22px 24px 8px;color:#101828;font-size:15px;line-height:1.55"><p style="margin:0 0 10px">Hello${name ? ` ${escHtml(name)}` : ''},</p><p style="margin:0">${overdue ? 'Our records show your truck service is <b>due or overdue</b>:' : 'A friendly reminder — this service is <b>coming due</b>:'}</p></td></tr>
+<tr><td style="padding:8px 24px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eef0f3;border-radius:10px;font-size:14px">${list}</table></td></tr>
+<tr><td style="padding:14px 24px 24px;color:#344054;font-size:15px;line-height:1.55">Reply to this email${shop.phone ? ` or call <b>${escHtml(shop.phone)}</b>` : ''} to book a time. Keeping up with service avoids breakdowns and downtime.<br><br>Thank you,<br><b>${escHtml(shop.name || '')}</b>${shop.address1 || shop.address2 ? `<div style="color:#667085;font-size:13px;margin-top:6px">${escHtml([shop.address1, shop.address2].filter(Boolean).join(', '))}</div>` : ''}</td></tr>
+</table></td></tr></table></body></html>`;
+}
+
 // Internal digest (e.g. fleet PM / CARB reminders) sent to the shop.
 export function alertEmailHtml({ title, intro = '', rows = [], shop, appUrl = '', accent = '#c2410c' }) {
   const color = s => s === 'overdue' ? ['#fef2f2', '#b91c1c', 'OVERDUE'] : ['#fffbeb', '#b45309', 'DUE SOON'];
@@ -87,6 +99,47 @@ export function alertEmailHtml({ title, intro = '', rows = [], shop, appUrl = ''
  <tr><td style="padding:6px 22px 18px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows.map(r => { const [bg, fg, lbl] = color(r.status); return `<tr><td style="padding:10px 0;border-bottom:1px solid ${PALETTE.line}"><span style="display:inline-block;background:${bg};color:${fg};font-size:11px;font-weight:800;padding:4px 8px;border-radius:999px">${lbl}</span> <b style="font-size:14px;color:${PALETTE.ink}">${escHtml(r.unit)}</b> <span style="font-size:14px;color:${PALETTE.ink}">— ${escHtml(r.service)}</span><div style="font-size:12px;color:${PALETTE.muted};margin-top:3px">${escHtml(r.detail)}</div></td></tr>`; }).join('')}</table></td></tr>
  ${appUrl ? `<tr><td style="padding:0 22px 22px"><a href="${escHtml(appUrl)}" style="display:inline-block;background:${accent};color:#fff;padding:11px 18px;border-radius:9px;text-decoration:none;font-weight:800">Open fleet maintenance</a></td></tr>` : ''}
 </table></td></tr></table></body></html>`;
+}
+
+// v24.47.0: one way to send shop email. The owner's connected Google account (Gmail / Workspace) is used first, so
+// customers get mail from the shop's real address and it shows in Sent; Resend is used when no Google sender is
+// connected, or as a backup when Google fails and Resend is set up.
+let googleSender = null; // { status(): Promise<{connected,email}>, send(msg): Promise<{ok,id,error}> }
+export function registerGoogleSender(sender) { googleSender = sender; }
+export const resendConfigured = () => Boolean(String(process.env.RESEND_API_KEY || '').trim() && String(process.env.INVOICE_FROM_EMAIL || '').trim());
+export async function emailSenderStatus() {
+  const g = googleSender ? await googleSender.status().catch(() => ({ connected: false })) : { connected: false };
+  const resend = resendConfigured();
+  return { configured: !!g.connected || resend, provider: g.connected ? 'gmail' : resend ? 'resend' : '', from: g.connected ? g.email : (resend ? String(process.env.INVOICE_FROM_EMAIL || '') : ''), google: g, resend };
+}
+export const EMAIL_NOT_CONNECTED = 'Email is not connected yet. The owner can connect the shop Google email in Reports → Money inbox → Email sending.';
+export async function sendShopEmail(msg) {
+  const g = googleSender ? await googleSender.status().catch(() => ({ connected: false })) : { connected: false };
+  if (g.connected) {
+    const r = await googleSender.send(msg).catch(e => ({ ok: false, error: String(e?.message || 'Google email failed.') }));
+    if (r.ok || !resendConfigured()) return { ...r, provider: 'gmail', from: g.email };
+    const rr = await sendResendEmail(msg);
+    return rr.ok ? { ...rr, provider: 'resend', googleError: r.error } : { ok: false, provider: 'gmail', error: `${r.error} (Resend backup also failed: ${rr.error})` };
+  }
+  if (resendConfigured()) return { ...(await sendResendEmail(msg)), provider: 'resend' };
+  return { ok: false, status: 503, error: EMAIL_NOT_CONNECTED };
+}
+// RFC 2822 message for the Gmail API (text + html alternatives, attachments as base64 parts).
+export function buildMimeMessage({ from, to = [], cc = [], replyTo, subject, text = '', html = '', attachments = [] }) {
+  const clean = v => String(v ?? '').replace(/[\r\n]+/g, ' ').trim();
+  const word = v => (/^[\x20-\x7e]*$/.test(v) ? v : `=?UTF-8?B?${Buffer.from(v, 'utf8').toString('base64')}?=`);
+  const wrap = b64 => b64.replace(/.{1,76}/g, '$&\r\n');
+  const rnd = () => Math.random().toString(36).slice(2, 12);
+  const mix = `ittr_mix_${rnd()}`, alt = `ittr_alt_${rnd()}`;
+  const list = a => (Array.isArray(a) ? a : [a]).map(clean).filter(Boolean).join(', ');
+  const part = (type, body) => `Content-Type: ${type}; charset="UTF-8"\r\nContent-Transfer-Encoding: base64\r\n\r\n${wrap(Buffer.from(String(body || ''), 'utf8').toString('base64'))}`;
+  const head = [`From: ${clean(from)}`, `To: ${list(to)}`, list(cc) ? `Cc: ${list(cc)}` : '', clean(replyTo) ? `Reply-To: ${clean(replyTo)}` : '', `Subject: ${word(clean(subject))}`, 'MIME-Version: 1.0', `Content-Type: multipart/mixed; boundary="${mix}"`].filter(Boolean).join('\r\n');
+  let out = `${head}\r\n\r\n--${mix}\r\nContent-Type: multipart/alternative; boundary="${alt}"\r\n\r\n--${alt}\r\n${part('text/plain', text)}\r\n--${alt}\r\n${part('text/html', html || escHtml(text).replace(/\n/g, '<br>'))}\r\n--${alt}--\r\n`;
+  for (const a of attachments || []) {
+    const name = clean(a.filename || 'attachment').replace(/["\\]/g, '_'), type = a.contentType || (/\.pdf$/i.test(name) ? 'application/pdf' : 'application/octet-stream');
+    out += `--${mix}\r\nContent-Type: ${type}; name="${name}"\r\nContent-Disposition: attachment; filename="${name}"\r\nContent-Transfer-Encoding: base64\r\n\r\n${wrap(String(a.content || '').replace(/\s+/g, ''))}\r\n`;
+  }
+  return `${out}--${mix}--\r\n`;
 }
 
 export async function sendResendEmail({ to, cc, subject, html, text, attachments = [], replyTo, idempotencyKey, tags }) {

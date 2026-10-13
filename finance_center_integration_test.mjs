@@ -78,10 +78,11 @@ const freePort=()=>new Promise((res,rej)=>{const s=net.createServer();s.once('er
 
 // Fake Google: OAuth token endpoint + Gmail list/get/profile.
 const zelleBody=amount=>Buffer.from(`ACME TRUCKING LLC sent you $${amount}\nMemo: IT-INVOICE-PLACEHOLDER`).toString('base64url');
-let fakeInvoiceNumber='';
+let fakeInvoiceNumber='';const sentMail=[];
 const fake=http.createServer((req,res)=>{
  const u=new URL(req.url,'http://x');const json=d=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify(d))};
- if(u.pathname==='/token')return json({access_token:'fake-access',refresh_token:'fake-refresh',expires_in:3600});
+ if(u.pathname==='/token')return json({access_token:'fake-access',refresh_token:'fake-refresh',expires_in:3600,scope:'https://www.googleapis.com/auth/gmail.send openid email',id_token:`x.${Buffer.from(JSON.stringify({email:'Shop@Example.com'})).toString('base64url')}.y`});
+ if(u.pathname==='/gmail/users/me/messages/send'&&req.method==='POST'){let b='';req.on('data',c=>b+=c);req.on('end',()=>{const raw=Buffer.from(JSON.parse(b).raw,'base64url').toString('utf8');sentMail.push(raw);json({id:`sent${sentMail.length}`})});return}
  if(u.pathname==='/gmail/users/me/profile')return json({emailAddress:'shop@example.com'});
  if(u.pathname==='/gmail/users/me/messages'){const q=u.searchParams.get('q')||'';return json({messages:/zelle -in/.test(q)?[{id:'z1'}]:[{id:'v1'}]})}
  if(u.pathname==='/gmail/users/me/messages/z1')return json({id:'z1',threadId:'t1',internalDate:String(Date.now()),snippet:'sent you money',payload:{mimeType:'text/plain',headers:[{name:'From',value:'Chase <no.reply.alerts@chase.com>'},{name:'Subject',value:'You received money with Zelle®'}],body:{data:Buffer.from(`ACME TRUCKING LLC sent you $500.00\nMemo: ${fakeInvoiceNumber}`).toString('base64url')}}});
@@ -361,6 +362,31 @@ try{
  const sum=await request('/api/fleet-maintenance/summary');assert(sum.overdue===1&&sum.dueSoon===1,'dashboard badge counts');
  await request(`/api/fleet-maintenance/${carb.id}/done`,{method:'POST',body:{doneDate:'2026-09-30',nextDueDate:'2027-09-30'}});
  fm=await request('/api/fleet-maintenance');assert(fm.items.find(i=>i.id===carb.id).status==='ok','marking done clears the alert');
+ // --- v24.47.0 send email from the shop's Google account; customer PM reminders
+ const es0=await request('/api/email/status');assert(es0.configured===false&&es0.googleSetup.configured,'email not connected yet, Google setup present');
+ const noMech=await request('/api/email/google/connect',{method:'POST',tok:mechToken,body:{},allowError:true});assert(noMech.status===403,'mechanics cannot connect the shop email');
+ const ec=await request('/api/email/google/connect',{method:'POST',body:{}});const eu=new URL(ec.url);assert(/gmail\.send/.test(eu.searchParams.get('scope'))&&!/readonly/.test(eu.searchParams.get('scope')),'send-only scope requested');
+ const ecb=await request(`/api/gmail/oauth/callback?state=${eu.searchParams.get('state')}&code=sendcode`,{tok:'',redirect:'manual'});assert(/emailSender=connected/.test(ecb.headers.get('location')||''),`send connection completes (${ecb.headers.get('location')})`);
+ const sender=(await db.query('SELECT email,refresh_token_enc FROM email_sender')).rows[0];assert(sender.email==='shop@example.com'&&!sender.refresh_token_enc.includes('fake-refresh'),'sender stored with encrypted token');
+ const es1=await request('/api/email/status');assert(es1.configured&&es1.provider==='gmail'&&es1.from==='shop@example.com','status shows Google sender');
+ const emInv=(await db.query("SELECT id FROM customer_invoices ORDER BY id LIMIT 1")).rows[0].id;
+ const draftE=await request(`/api/invoices/${emInv}/email-draft`);assert(draftE.configured&&draftE.from==='shop@example.com','invoice email dialog shows the Google sender');
+ const sentInv=await request(`/api/invoices/${emInv}/email`,{method:'POST',body:{to:'customer@example.com',subject:'Invoice — test',message:'Hello'}});assert(sentInv.ok,'invoice emailed through Google');
+ const rawInv=sentMail.at(-1);assert(/^To: customer@example\.com/m.test(rawInv)&&/^From: ".*" <shop@example\.com>/m.test(rawInv)&&/Content-Type: application\/pdf/.test(rawInv)&&/Subject: =\?UTF-8\?B\?/.test(rawInv),'invoice MIME: to, from, PDF attachment, encoded subject');
+ const tst=await request('/api/email/test',{method:'POST',body:{to:'owner@example.com'}});assert(tst.ok&&/^To: owner@example\.com/m.test(sentMail.at(-1)),'test email sent');
+ await db.query("INSERT INTO fullbay_import_customers(source_key,customer_name,email) VALUES('pm-test','Iron Team Fleet','fleet@example.com')");
+ const before=sentMail.length;const al=await request('/api/fleet-maintenance/alerts/send',{method:'POST',body:{}});
+ assert(al.customers.sent===1&&al.customers.emails[0]==='fleet@example.com','customer gets an automatic PM reminder');
+ const custMail=sentMail.slice(before).find(m=>/^To: fleet@example\.com/m.test(m));assert(custMail&&/Service due soon/i.test(Buffer.from((custMail.match(/Subject: =\?UTF-8\?B\?([^?]+)\?=/)||[])[1]||'','base64').toString()+custMail),'reminder subject says due soon');
+ const al2=await request('/api/fleet-maintenance/alerts/send',{method:'POST',body:{}});assert(al2.customers.sent===0,'customer reminder goes out once per status');
+ let fm2=await request('/api/fleet-maintenance');const oil2=fm2.items.find(i=>i.service_type==='oil_change');assert(oil2.customer_email==='fleet@example.com'&&oil2.customer_reminder_level==='due_soon'&&oil2.customer_reminded_at,'reminder recorded on the service');
+ const man=await request(`/api/fleet-maintenance/${oil2.id}/remind-customer`,{method:'POST',body:{to:'dispatch@example.com'}});assert(man.ok&&/^To: dispatch@example\.com/m.test(sentMail.at(-1)),'manual Remind button sends to the typed address');
+ await request(`/api/fleet-maintenance/customers/${oil2.customer_id}/reminders`,{method:'PUT',body:{enabled:false}});
+ await db.query('UPDATE fleet_service_items SET customer_reminder_level=NULL WHERE id=$1',[oil2.id]);
+ const al3=await request('/api/fleet-maintenance/alerts/send',{method:'POST',body:{}});assert(al3.customers.sent===0,'no automatic reminder when the customer is switched off');
+ await request('/api/email/google',{method:'DELETE'});const es2=await request('/api/email/status');assert(!es2.configured,'disconnect removes the sender');
+ const off=await request(`/api/invoices/${emInv}/email`,{method:'POST',body:{to:'customer@example.com'},allowError:true});assert(off.status===503&&/Money inbox/.test(off.error),'clear message when email is not connected');
+ console.log('PASS email: Google send-only connection, invoice + test email via Gmail API (MIME + PDF), PM reminders to customers (auto once per status, manual, per-customer off), disconnect');
  await request('/api/estimates',{method:'POST',body:{customerName:'Reset Test'}});
  const pv=await request('/api/admin/reset-data/preview');assert(pv.scopes.billing.rows>0,'reset preview counts billing rows');
  const noConfirm=await request('/api/admin/reset-data',{method:'POST',body:{scopes:['billing'],confirm:'yes'},allowError:true});assert(noConfirm.status===400,'reset needs typed confirmation');

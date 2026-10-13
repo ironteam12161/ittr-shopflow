@@ -7,7 +7,11 @@ assert.match(server,/invoiceEmailHtml\(i,message(,x\.lines)?\)/,'branded HTML in
 assert.match(server,/View &amp; Pay Invoice/,'secure payment call-to-action missing');
 assert.match(server,/attachments=attachPdf\?/,'optional current invoice PDF attachment missing');
 assert.match(server,/CREATE TABLE IF NOT EXISTS invoice_email_deliveries/,'delivery audit schema missing');
-assert.match(server,/'Idempotency-Key':idempotencyKey/,'Resend idempotency header missing');
+// v24.47.0: invoices go through sendShopEmail (Google first, Resend backup); duplicate sends are blocked by the
+// delivery table's idempotency_key, and Resend still receives the same key as its Idempotency-Key header.
+assert.match(server,/sendShopEmail\(\{to,cc,replyTo,subject,html:invoiceEmailHtml\(i,message,x\.lines\),text:message,attachments,idempotencyKey,/,'invoice email must pass the idempotency key to the sender');
+assert.match(fs.readFileSync('email_templates.mjs','utf8'),/'Idempotency-Key': idempotencyKey/,'Resend idempotency header missing');
+assert.match(server,/prior\?\.status==='sent'\)return res\.json\(\{ok:true,id:prior\.provider_message_id/,'a repeated request must not send the invoice twice');
 assert.match(server,/invoice_email_failed/,'failed delivery audit event missing');
 assert.match(server,/invoice_emailed/,'successful delivery audit event missing');
 assert.match(server,/replace\(\/\[\\r\\n\]\+\/g,' '\)/,'email subject must strip header newlines');

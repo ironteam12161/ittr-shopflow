@@ -7,7 +7,8 @@ import { PDFDocument as PdfLibDocument, StandardFonts, rgb } from 'pdf-lib';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { getSetting, cleanMiles } from './finance_center.mjs';
-import { alertEmailHtml, sendResendEmail } from './email_templates.mjs';
+import { alertEmailHtml, customerReminderHtml, sendShopEmail } from './email_templates.mjs';
+import { shopProfile as envShopProfile } from './invoice_pdf.mjs';
 
 // ---------------------------------------------------------------- annual inspection documents
 // The shop's own annual inspection forms (truck/tractor and trailer) are stored as blank PDF templates.
@@ -106,6 +107,12 @@ export async function ensureComplianceSchema(pool) {
     created_by TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
   );
   CREATE INDEX IF NOT EXISTS idx_fleet_service_items_unit ON fleet_service_items(unit_id);
+  ALTER TABLE fleet_service_items ADD COLUMN IF NOT EXISTS customer_reminder_level TEXT;
+  ALTER TABLE fleet_service_items ADD COLUMN IF NOT EXISTS customer_reminded_at TIMESTAMPTZ;
+  ALTER TABLE fleet_service_items ADD COLUMN IF NOT EXISTS customer_reminded_to TEXT;
+  DO $$ BEGIN IF to_regclass('public.fullbay_import_customers') IS NOT NULL THEN
+    ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS pm_reminders BOOLEAN NOT NULL DEFAULT TRUE;
+  END IF; END $$;
   CREATE TABLE IF NOT EXISTS fleet_service_history(
     id BIGSERIAL PRIMARY KEY, item_id BIGINT NOT NULL REFERENCES fleet_service_items(id) ON DELETE CASCADE,
     done_date DATE NOT NULL, done_miles NUMERIC, note TEXT, work_order_id TEXT, recorded_by TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT now()
@@ -129,8 +136,12 @@ export async function syncSamsaraOdometers(db, samsaraPaged) {
 }
 
 async function fleetItemsWithStatus(db) {
-  const rows = (await db.query(`SELECT f.*,u.unit_number,u.vin AS unit_vin,u.customer_name,u.odometer_miles,u.odometer_at,u.odometer_source,u.mileage AS unit_mileage
-    FROM fleet_service_items f LEFT JOIN customer_units u ON u.id=f.unit_id WHERE f.active=true ORDER BY f.id`)).rows;
+  // v24.47.0: the truck's customer (by id, or by name for older units) for PM reminder emails.
+  const rows = (await db.query(`SELECT f.*,u.unit_number,u.vin AS unit_vin,coalesce(c.customer_name,u.customer_name) customer_name,u.odometer_miles,u.odometer_at,u.odometer_source,u.mileage AS unit_mileage,
+      c.id customer_id,nullif(trim(c.email),'') customer_email,coalesce(c.pm_reminders,true) customer_pm_reminders
+    FROM fleet_service_items f LEFT JOIN customer_units u ON u.id=f.unit_id
+    LEFT JOIN LATERAL (SELECT x.id,x.customer_name,x.email,x.pm_reminders FROM fullbay_import_customers x WHERE x.id=u.customer_id OR (u.customer_id IS NULL AND u.customer_name IS NOT NULL AND lower(x.customer_name)=lower(u.customer_name)) ORDER BY (x.id=u.customer_id) DESC LIMIT 1) c ON true
+    WHERE f.active=true ORDER BY f.id`)).rows;
   return rows.map(r => {
     const currentMiles = r.odometer_miles != null ? Number(r.odometer_miles) : r.unit_mileage != null ? Number(r.unit_mileage) : null;
     return { ...r, unit_display: r.unit_number ? `Unit ${r.unit_number}` : (r.unit_label || r.vin || 'Unit'), currentMiles, milesSource: r.odometer_source === 'samsara' ? 'Samsara' : currentMiles != null ? 'Last recorded' : '', ...serviceStatus(r, { currentMiles }) };
@@ -147,14 +158,33 @@ export async function runFleetAlerts(db, { force = false } = {}) {
   if (cfg.enabled !== false && to) {
     const detail = i => [i.milesLeft != null ? (i.milesLeft <= 0 ? `${Math.abs(i.milesLeft).toLocaleString()} mi past due` : `${i.milesLeft.toLocaleString()} mi left`) : '', i.daysLeft != null ? (i.daysLeft < 0 ? `${Math.abs(i.daysLeft)} days past due (${i.dueDate})` : `due ${i.dueDate} (${i.daysLeft} days)`) : '', i.currentMiles != null ? `odometer ${Math.round(i.currentMiles).toLocaleString()} mi` : ''].filter(Boolean).join(' · ');
     const base = String(process.env.APP_PUBLIC_URL || '').replace(/\/$/, '');
-    const r = await sendResendEmail({ to: [to], subject: `Fleet maintenance: ${fresh.filter(i => i.status === 'overdue').length} overdue, ${fresh.filter(i => i.status === 'due_soon').length} due soon`,
+    const r = await sendShopEmail({ to: [to], subject: `Fleet maintenance: ${fresh.filter(i => i.status === 'overdue').length} overdue, ${fresh.filter(i => i.status === 'due_soon').length} due soon`,
       html: alertEmailHtml({ title: 'Fleet maintenance reminders', intro: 'These trucks need service soon. Mark each one done in ShopFlow after the work is finished.', rows: fresh.map(i => ({ unit: i.unit_display, service: i.name, status: i.status, detail: detail(i) })), shop, appUrl: base ? `${base}/?view=compliance` : '' }),
       text: fresh.map(i => `${i.status === 'overdue' ? 'OVERDUE' : 'DUE SOON'}: ${i.unit_display} — ${i.name} — ${detail(i)}`).join('\n'),
       idempotencyKey: `fleet-alert-${crypto.createHash('sha1').update(fresh.map(i => `${i.id}:${i.status}`).join('|')).digest('hex')}-${new Date().toISOString().slice(0, 10)}` });
     sent = r.ok; error = r.ok ? '' : r.error;
   }
   if (sent || !to || cfg.enabled === false) for (const i of fresh) await db.query('UPDATE fleet_service_items SET last_alert_level=$2,last_alert_at=now() WHERE id=$1', [i.id, i.status]);
-  return { sent, count: fresh.length, to, error };
+  // v24.47.0: customers get their own reminder once per status change (due soon, then overdue), unless turned off.
+  const customers = cfg.customerReminders === false ? { sent: 0, skipped: 'off' } : await sendCustomerReminders(db, items.filter(i => ['due_soon', 'overdue'].includes(i.status) && i.customer_reminder_level !== i.status && i.customer_pm_reminders !== false && i.customer_email));
+  return { sent, count: fresh.length, to, error, customers };
+}
+export const reminderDetail = i => [i.milesLeft != null ? (i.milesLeft <= 0 ? `${Math.abs(i.milesLeft).toLocaleString('en-US')} miles past due` : `due in about ${i.milesLeft.toLocaleString('en-US')} miles`) : '', i.daysLeft != null ? (i.daysLeft < 0 ? `${Math.abs(i.daysLeft)} days past due (${i.dueDate})` : `due by ${i.dueDate}`) : ''].filter(Boolean).join(' · ');
+// One email per customer listing all their trucks that need service. `to` overrides the customer's address (manual send).
+export async function sendCustomerReminders(db, items, { to: override = '', by = 'auto' } = {}) {
+  const groups = new Map();
+  for (const i of items) { const to = String(override || i.customer_email || '').trim().toLowerCase(); if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) continue; if (!groups.has(to)) groups.set(to, []); groups.get(to).push(i); }
+  const shop = envShopProfile(), base = String(process.env.APP_PUBLIC_URL || '').replace(/\/$/, ''), out = { sent: 0, failed: 0, emails: [], errors: [] };
+  for (const [to, list] of groups) {
+    const name = list[0].customer_name || '', overdue = list.some(i => i.status === 'overdue');
+    const rows = list.map(i => ({ unit: i.unit_display, service: i.name, status: i.status, detail: reminderDetail(i) }));
+    const subject = `${overdue ? 'Service overdue' : 'Service due soon'}: ${list.length === 1 ? `${list[0].unit_display} — ${list[0].name}` : `${list.length} trucks`} | ${shop.name}`;
+    const text = `Hello${name ? ` ${name}` : ''},\n\nOur records show the following service is ${overdue ? 'due or overdue' : 'coming due'}:\n\n${rows.map(r => `• ${r.unit} — ${r.service}: ${r.detail || (r.status === 'overdue' ? 'overdue' : 'due soon')}`).join('\n')}\n\nReply to this email${shop.phone ? ` or call ${shop.phone}` : ''} to book a time.\n\nThank you,\n${shop.name}`;
+    const r = await sendShopEmail({ to: [to], subject, text, replyTo: String(process.env.INVOICE_REPLY_TO || shop.email || ''), html: customerReminderHtml({ name, rows, shop, logoUrl: base ? `${base}/assets/iron-team-logo.png` : '', accent: String(process.env.SHOP_ACCENT_COLOR || '#c2410c') }), tags: [{ name: 'document', value: 'pm_reminder' }] });
+    if (r.ok) { out.sent++; out.emails.push(to); for (const i of list) await db.query('UPDATE fleet_service_items SET customer_reminder_level=$2,customer_reminded_at=now(),customer_reminded_to=$3 WHERE id=$1', [i.id, i.status, `${to}${by === 'auto' ? '' : ` (${by})`}`]); }
+    else { out.failed++; out.errors.push(`${to}: ${r.error}`); }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- owner data reset
@@ -266,7 +296,7 @@ export function registerComplianceRoutes(app, deps) {
   }));
   app.put('/api/fleet-maintenance/:id', auth, adminOnly, read(async (db, req) => {
     const x = await itemInput(db, req.body || {});
-    const r = await db.query(`UPDATE fleet_service_items SET unit_id=$2::bigint,unit_label=$3,vin=$4,service_type=$5,name=$6,interval_miles=$7,interval_days=$8,warn_miles=$9,warn_days=$10,last_done_date=$11::date,last_done_miles=$12::numeric,due_date=$13::date,notes=$14,last_alert_level=NULL,updated_at=now() WHERE id=$1::bigint`,
+    const r = await db.query(`UPDATE fleet_service_items SET unit_id=$2::bigint,unit_label=$3,vin=$4,service_type=$5,name=$6,interval_miles=$7,interval_days=$8,warn_miles=$9,warn_days=$10,last_done_date=$11::date,last_done_miles=$12::numeric,due_date=$13::date,notes=$14,last_alert_level=NULL,customer_reminder_level=NULL,updated_at=now() WHERE id=$1::bigint`,
       [req.params.id, x.unitId, x.label, x.vin, x.type, x.name, x.intervalMiles, x.intervalDays, x.warnMiles, x.warnDays, x.lastDate, x.lastMiles, x.dueDate, x.notes]);
     if (!r.rowCount) fail(404, 'Service item not found.'); return { ok: true };
   }));
@@ -275,19 +305,36 @@ export function registerComplianceRoutes(app, deps) {
     const date = iso(req.body?.doneDate) || new Date().toISOString().slice(0, 10), miles = cleanMiles(req.body?.doneMiles) != null ? cleanMiles(req.body.doneMiles) : (it.odometer_miles ?? it.mileage ?? null);
     const nextDue = iso(req.body?.nextDueDate);
     await db.query('INSERT INTO fleet_service_history(item_id,done_date,done_miles,note,work_order_id,recorded_by) VALUES($1,$2::date,$3::numeric,$4,$5,$6)', [it.id, date, miles, str(req.body?.note, 500), str(req.body?.workOrderId, 20) || null, req.user.username]);
-    await db.query('UPDATE fleet_service_items SET last_done_date=$2::date,last_done_miles=$3::numeric,due_date=$4::date,last_alert_level=NULL,updated_at=now() WHERE id=$1', [it.id, date, miles, nextDue]);
+    await db.query('UPDATE fleet_service_items SET last_done_date=$2::date,last_done_miles=$3::numeric,due_date=$4::date,last_alert_level=NULL,customer_reminder_level=NULL,updated_at=now() WHERE id=$1', [it.id, date, miles, nextDue]);
     await audit(req.user.username, 'fleet_service_done', { itemId: it.id, date, miles }); return { ok: true };
   }));
   app.get('/api/fleet-maintenance/:id/history', auth, adminOnly, read(async (db, req) => ({ items: (await db.query('SELECT * FROM fleet_service_history WHERE item_id=$1::bigint ORDER BY done_date DESC,id DESC', [req.params.id])).rows })));
   app.delete('/api/fleet-maintenance/:id', auth, adminOnly, read(async (db, req) => { await db.query('UPDATE fleet_service_items SET active=false,updated_at=now() WHERE id=$1::bigint', [req.params.id]); return { ok: true }; }));
   app.post('/api/fleet-maintenance/sync-miles', auth, adminOnly, read(async db => { if (!samsaraConfigured()) fail(503, 'Samsara is not configured. Add SAMSARA_API_TOKEN in Railway.'); return { ok: true, ...(await syncSamsaraOdometers(db, samsaraPaged)) }; }));
   app.put('/api/fleet-maintenance/settings/alerts', auth, ownerOnly, read(async (db, req) => {
-    const v = { enabled: req.body?.enabled !== false, email: str(req.body?.email, 254) };
+    const v = { enabled: req.body?.enabled !== false, email: str(req.body?.email, 254), customerReminders: req.body?.customerReminders !== false };
     if (v.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.email)) fail(400, 'Enter a valid email address.');
     await db.query(`INSERT INTO shop_settings(setting_key,value,updated_by,updated_at) VALUES('fleet_alerts',$1::jsonb,$2,now()) ON CONFLICT(setting_key) DO UPDATE SET value=excluded.value,updated_by=excluded.updated_by,updated_at=now()`, [JSON.stringify(v), req.user.username]);
     return { ok: true, alerts: v };
   }));
   app.post('/api/fleet-maintenance/alerts/send', auth, ownerOnly, read(async db => runFleetAlerts(db, { force: true })));
+  // v24.47.0: "Remind customer" button: emails this truck's customer now (any status), optionally to another address.
+  app.post('/api/fleet-maintenance/:id/remind-customer', auth, adminOnly, read(async (db, req) => {
+    const it = (await fleetItemsWithStatus(db)).find(x => String(x.id) === String(req.params.id)); if (!it) fail(404, 'Service item not found.');
+    const to = str(req.body?.to, 254).toLowerCase() || it.customer_email || '';
+    if (!to) fail(400, 'This customer has no email address. Type one in, or add it to the customer.');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) fail(400, `"${to}" is not a valid email address.`);
+    const r = await sendCustomerReminders(db, [it], { to, by: req.user.username });
+    if (!r.sent) fail(502, (r.errors[0] || 'Email failed.').replace(/^[^:]+:\s*/, ''));
+    await audit(req.user.username, 'pm_reminder_sent', { itemId: it.id, to });
+    return { ok: true, to };
+  }));
+  app.put('/api/fleet-maintenance/customers/:id/reminders', auth, adminOnly, read(async (db, req) => {
+    const r = await db.query('UPDATE fullbay_import_customers SET pm_reminders=$2 WHERE id=$1::bigint RETURNING id,customer_name,pm_reminders', [req.params.id, req.body?.enabled !== false]);
+    if (!r.rowCount) fail(404, 'Customer not found.');
+    await audit(req.user.username, 'pm_reminders_toggled', { customerId: r.rows[0].id, enabled: r.rows[0].pm_reminders });
+    return { ok: true, ...r.rows[0] };
+  }));
   app.get('/api/fleet-maintenance/summary', auth, adminOnly, read(async db => { const items = await fleetItemsWithStatus(db); return { overdue: items.filter(i => i.status === 'overdue').length, dueSoon: items.filter(i => i.status === 'due_soon').length }; }));
 
   // --- owner data reset
