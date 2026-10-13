@@ -10,7 +10,7 @@ import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
+import rateLimit,{ipKeyGenerator} from "express-rate-limit";
 import pg from "pg";
 import sharp from "sharp";
 import PDFKitDocument from "pdfkit";
@@ -224,7 +224,8 @@ const loginLimiter=rateLimit({
  message:{error:"Too many login attempts. Please try again later."}
 });
 app.use("/api/auth",authLimiter);
-const aiLimiter=rateLimit({windowMs:60*1000,max:24,standardHeaders:true,legacyHeaders:false,message:{error:"Too many AI requests. Please wait a moment and try again."}});
+// v24.46.1: counted per logged-in user (several mechanics share the shop Wi-Fi / one IP); per IP when not logged in.
+const aiLimiter=rateLimit({windowMs:60*1000,max:24,keyGenerator:req=>{const t=String(req.headers.authorization||"").replace(/^Bearer\s+/i,"");return t?`u:${crypto.createHash("sha256").update(t).digest("hex").slice(0,32)}`:ipKeyGenerator(req.ip||"")},standardHeaders:true,legacyHeaders:false,message:{error:"Too many AI requests. Please wait a moment and try again."}});
 const uploadLimiter=rateLimit({windowMs:60*1000,max:20,standardHeaders:true,legacyHeaders:false,message:{error:"Too many uploads. Please wait a moment and try again."}});
 app.use("/api/ai",aiLimiter);
 app.use("/api/translate",aiLimiter);
@@ -1818,8 +1819,8 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.46.0");
-app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-MOBILEAPP-20261013`}));
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.46.1");
+app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-UAJOBS-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
@@ -4262,7 +4263,9 @@ const NOTE_MODES={
  grammar:"Keep the original language. Correct grammar, spelling and clarity only; do not translate unless needed to make mixed-language text internally consistent.",
  ukrainian:"Translate into natural professional Ukrainian used by truck/diesel mechanics.",
  technical:"Detect the input language automatically. Translate to concise professional American English describing only the observed problem/finding.",
- recommendation:"Detect the input language automatically. Translate to concise professional American English describing only the recommended repair/action."
+ recommendation:"Detect the input language automatically. Translate to concise professional American English describing only the recommended repair/action.",
+ // v24.46.1: mechanic job list typed in Ukrainian (or mixed) -> English job titles, line for line.
+ jobs:"The input is a list of repair jobs for a truck work order, one job per line, often in Ukrainian, Russian or mixed with English. Translate every line into a short professional American English job title (for example 'Replace front brake pads', 'Diagnose air leak', 'PM service'). Output exactly one line per input line, in the same order, with no numbering, bullets, quotes or extra lines. A line already in English only gets spelling fixed."
 };
 function manualIntent(q){return /\b(torque|torque spec|specification|wiring|diagram|schematic|procedure|repair manual|service manual|tighten|ft[- ]?lb|nm|момент|схем|мануал|проводк|процедур|затяжк)\b/i.test(String(q||''))}
 async function findWorkshopManuals(db,unit,question){

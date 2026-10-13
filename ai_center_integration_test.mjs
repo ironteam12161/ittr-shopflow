@@ -95,6 +95,7 @@ const fake = http.createServer((req, res) => {
     const userText = (m => typeof m?.content === 'string' ? m.content : (m?.content || []).map(c => c.text || '').join(' '))(msgs[msgs.length - 1]);
     let content = 'ok';
     if (/user-interface text/.test(sys)) { calls.push('translate'); content = JSON.stringify({ translations: JSON.parse(userText).texts.map(t => `UK ${t}`) }); }
+    else if (/list of repair jobs/.test(sys + userText)) { calls.push('jobs'); content = '1. Replace front brake pads\n- Diagnose air leak'; }
     else if (/parts vendor invoice/.test(userText)) { calls.push('vendor'); content = JSON.stringify({ vendor: 'FleetPride Inc.', invoiceNumber: 'FP-1001', invoiceDate: '2026-10-01', terms: 'Net 30', poNumber: 'PO7', subtotal: 150, tax: 12, freight: 0, total: 162, lines: [{ partNumber: 'WS-370', description: 'Wheel seal', quantity: 2, unitCost: 50, lineTotal: 100 }, { partNumber: 'BRK-1', description: 'Brake shoe kit', quantity: 1, unitCost: 40, lineTotal: 40 }] }); }
     else if (/purchasing analyst/.test(sys)) { calls.push('summary'); content = '• Most money went to FleetPride.'; }
     else if (/invoice labor descriptions/.test(sys)) { calls.push('wording'); const inp = JSON.parse(userText); content = JSON.stringify({ lines: inp.lines.map(l => ({ id: l.id, text: `Replaced the left front wheel seal and checked hub for leaks.` })) }); }
@@ -185,6 +186,9 @@ try {
   assert.equal(Number(mm.lines[0].matchedPartId), Number(tire));
   const man = await call('/api/parts/receiving/receive', { method: 'POST', token, body: { manualEntry: true, invoice: { vendor: 'Semi Tire Center LLC', invoiceNumber: '22900', subtotal: 220, total: 220 }, lines: [{ partNumber: 'PLT01', quantity: 1, unitCost: 220, matchedPartId: tire }] } });
   assert.equal((await db.query('SELECT source_method FROM parts_vendor_invoices WHERE id=$1', [man.invoiceId])).rows[0].source_method, 'manual');
+  // v24.46.1: Ukrainian job list -> English, one line per job (numbering/bullets cleaned on the client).
+  const tj = await call('/api/ai/note', { method: 'POST', token, body: { text: 'Замінити передні колодки\nЗнайти витік повітря', mode: 'jobs' } });
+  assert.equal(tj.result.split('\n').length, 2); assert.match(tj.result, /brake pads/);
   console.log('PASS vendor discount: part cost stays at line price ($220), bill total $396 after $44 discount, discount per vendor; typed-in bill matched + saved as manual');
   console.log('PASS receive filed bill: coolant without part # matched by description, 100 gal -> 1.82 drums at drum cost, new part without part #, filed bill replaced');
   // v24.43.0 fluids: switch the coolant to gallons, use it in quarts on a work order and an invoice.

@@ -201,6 +201,7 @@ check('Parts cleanup: undo gallons, not a fluid, delete/archive/restore, WO empt
 check('Vendor bill discount lowers the bill, not part cost',read('vendor_bills.mjs').includes('export function splitDiscountLines(')&&server.includes('splitDiscountLines(parsed)')&&pub.includes('id="recvDiscount"')&&read('public/modules/reports.js').includes('data-vbq="discount"'));
 check('Vendor invoice can be typed in by hand (manual receiving + line matching)',pub.includes('function startManualReceiving(')&&server.includes('"/api/parts/receiving/match"')&&pub.includes('id="receiveLayoutFix"'));
 check('Phone app: Capacitor shell, Android build workflow, /app download page, login kept in app',read('mobile/capacitor.config.json').includes('web-production-44bc4.up.railway.app')&&read('.github/workflows/android-app.yml').includes('assembleRelease')&&server.includes('app.get("/app"')&&pub.includes('ittr_app_')&&!/BEGIN|PRIVATE KEY/.test(read('mobile/android/app/build.gradle')));
+check('Mechanic jobs/notes typed in Ukrainian are translated to English (button + on create), AI limit per user',pub.includes('function translateFieldToEnglish(')&&pub.includes('mechStartJobsTrBtn')&&pub.includes('reactivateTasksTrBtn')&&server.includes(' jobs:"The input is a list of repair jobs')&&server.includes('keyGenerator:req=>'));
 check('Reports AI usage tab',rep.includes('function renderAiUsage(')&&server.includes('registerAICenterRoutes(app,'));}
 const failed=results.filter(x=>!x.ok);
 for(const r of results)console.log(`${r.ok?'PASS':'FAIL'}  ${r.name}${r.detail?'  '+r.detail:''}`);
