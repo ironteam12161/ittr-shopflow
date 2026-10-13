@@ -48,6 +48,23 @@ try{
  await request('/api/state/shopflow',{method:'PUT',token:mechanic,body:{payload:sf,expectedVersion:state.shopflow.version}});
  const after=(await request('/api/state',{token:admin})).shopflow.payload.workorders.find(x=>String(x.id)===String(w.id));eq(after.inspection.status,'Completed','a stale whole-shop save must not reopen a completed inspection');ok(after.inspection.completedAt,'completedAt kept');
  console.log('PASS completed inspection is not put back to In Progress by a stale save');
+ {
+  // v24.47.6: leaving an unfinished inspection (job, activity, Available) clears "Inspecting"; reopening sets it again.
+  const st=await request('/api/work-orders/self-start',{method:'POST',token:mechanic,body:{unit:'AWAY-1',customer:'Required Fields Fleet',jobs:['Brake adjust'],inspectionRequired:true,inspectionType:'truck'}});
+  const woId=String(st.workOrder.id),now=()=>new Date().toISOString();
+  const insp=async()=>(await request('/api/state',{token:admin})).shopflow.payload.workorders.find(x=>String(x.id)===woId).inspection;
+  const open=async()=>{await request('/api/mechanic/focus-inspection',{method:'POST',token:mechanic,body:{workOrderId:woId}});await request(`/api/work-orders/${woId}/inspection`,{method:'POST',token:mechanic,body:{inspection:{status:'In Progress',startedAt:now(),startedBy:'opsmech',lastOpenedAt:now(),lastOpenedBy:'opsmech',away:false}}})};
+  await open();eq((await insp()).away,false,'open inspection is active');
+  await request('/api/mechanic/activity',{method:'POST',token:mechanic,body:{action:'start',code:'cleaning'}});eq((await insp()).away,true,'starting an activity leaves the inspection');
+  await open();eq((await insp()).away,false,'reopening makes it active again');
+  await request('/api/mechanic/activity',{method:'POST',token:mechanic,body:{action:'stop'}});eq((await insp()).away,true,'Available leaves the inspection');
+  await open();const task=(await request('/api/state',{token:mechanic})).shopflow.payload.workorders.find(x=>String(x.id)===woId).tasks[0];
+  await request(`/api/work-orders/${woId}/tasks/by-uid/${encodeURIComponent(task.uid)}/action`,{method:'POST',token:mechanic,body:{action:'start'}});const i1=await insp();eq(i1.away,true,'starting a job leaves the inspection');eq(i1.status,'In Progress','answers/status kept');
+  await open();eq((await insp()).away,false,'reopen while job paused by focus');
+  await request(`/api/work-orders/${woId}/tasks/by-uid/${encodeURIComponent(task.uid)}/action`,{method:'POST',token:mechanic,body:{action:'resume'}});
+  await request(`/api/work-orders/${woId}/tasks/by-uid/${encodeURIComponent(task.uid)}/action`,{method:'POST',token:mechanic,body:{action:'pause',reason:'Waiting for parts'}});eq((await insp()).away,true,'after job pause the inspection stays left');
+  console.log('PASS leaving an unfinished inspection clears Inspecting (activity, Available, job start/pause)');
+ }
  const added=await request(`/api/work-orders/${w.id}/inspection/items/brakes/add-to-work-order`,{method:'POST',token:mechanic,body:{}});
  const repairTask=added.shopflow.workorders.find(x=>String(x.id)===String(w.id)).tasks.find(t=>t.uid===added.taskUid);
  eq(repairTask.t,'Brake condition — Left steer worn','inspection repair task name has no "Inspection:" prefix');eq(repairTask.source,'inspection','inspection repair task source');

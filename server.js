@@ -1820,7 +1820,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.47.5");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.47.6");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
@@ -1898,6 +1898,7 @@ app.post("/api/mechanic/activity",auth,async(req,res,next)=>{
   await db.query("BEGIN");
   // v24.47.2: starting an activity pauses the mechanic's running job timer (one thing at a time).
   const switched=action==="start"&&req.user.role==="mechanic"?await stopMechanicWork(db,req.user.username,Date.now(),"Switched to activity"):{paused:0};
+  const leftInsp=switched.left||(action==="stop"&&req.user.role==="mechanic"?await leaveMechanicInspections(db,req.user.username,new Date().toISOString()):0);
   const cur=(await db.query("SELECT payload FROM app_state WHERE state_key='users' FOR UPDATE")).rows[0];
   const users=cur?.payload&&typeof cur.payload==="object"?cur.payload:{},username=req.user.username,now=new Date().toISOString();
   const u=users[username]&&typeof users[username]==="object"?users[username]:{role:req.user.role,display:req.user.display_name||username};
@@ -1911,6 +1912,7 @@ app.post("/api/mechanic/activity",auth,async(req,res,next)=>{
   await db.query("COMMIT");
   await audit(username,"mechanic_activity",{action,code});
   if(action==="start")await autoClockInSafe(req.user,"activity");
+  if(leftInsp)broadcastShopStatus("shopflow_changed",{by:username});
   broadcastShopStatus("task_changed",{by:username,activity:true});
   res.json({ok:true,user:{currentActivity:u.currentActivity,activityHistory:u.activityHistory.slice(0,50)},version:Number(q.rows[0]?.version||0),pausedTasks:switched.paused||0,shopflow:switched.shopflow||null,shopflowVersion:switched.version??null});
  }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
@@ -1999,8 +2001,25 @@ function taskRunningMechanic(task,w){return String(task?.runningBy||((task?.star
 
 // v24.41.0: clocking out (or the automatic close of a forgotten shift) pauses the mechanic's running task timer
 // at the clock-out time and ends their current activity, so nothing keeps counting overnight. db is inside a transaction.
-async function stopMechanicWork(db,username,atMs,reason){
- const who=String(username||"").trim().toLowerCase(),iso=new Date(atMs).toISOString();let paused=0,activity=false;
+// v24.47.6: a mechanic who starts/pauses/finishes a job, starts an activity or taps Available has left any unfinished
+// inspection: it stays "In Progress" (answers kept) but no longer shows them as Inspecting. Opening it again clears this.
+function markInspectionsLeft(sf,username,iso,exceptWorkOrderId=""){
+ const who=String(username||"").trim().toLowerCase();let n=0;
+ for(const w of Array.isArray(sf?.workorders)?sf.workorders:[]){const i=w?.inspection;
+  if(!i||i.status!=="In Progress"||i.away===true||String(w.id)===String(exceptWorkOrderId))continue;
+  if(![i.startedBy,i.lastOpenedBy].some(x=>String(x||"").trim().toLowerCase()===who))continue;
+  i.away=true;i.lastClosedAt=iso;i.lastClosedBy=String(username);n++;
+ }
+ return n;
+}
+async function leaveMechanicInspections(db,username,iso){
+ const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE"),sf=q.rows[0]?.payload;
+ if(!sf||!markInspectionsLeft(sf,username,iso))return 0;
+ await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow'",[JSON.stringify(sf),username]);
+ return 1;
+}
+async function stopMechanicWork(db,username,atMs,reason,exceptWorkOrderId=""){
+ const who=String(username||"").trim().toLowerCase(),iso=new Date(atMs).toISOString();let paused=0,activity=false,left=0;
  const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE"),sf=q.rows[0]?.payload;
  if(sf&&Array.isArray(sf.workorders)){
   for(const w of sf.workorders)for(const t of (Array.isArray(w?.tasks)?w.tasks:[])){
@@ -2008,12 +2027,13 @@ async function stopMechanicWork(db,username,atMs,reason){
    t.elapsedMs=Number(t.elapsedMs||0)+Math.max(0,atMs-new Date(t.startedAt).getTime());
    Object.assign(t,{stoppedAt:iso,runningBy:"",paused:true,pausedAt:iso,pauseReason:reason,pauseNote:""});paused++;
   }
-  if(paused)await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow'",[JSON.stringify(sf),username]);
+  left=markInspectionsLeft(sf,username,iso,exceptWorkOrderId);
+  if(paused||left)await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow'",[JSON.stringify(sf),username]);
  }
  await db.query("UPDATE task_time_sessions SET ended_at=greatest(started_at,$2::timestamptz),end_reason='paused',pause_reason=$3 WHERE lower(mechanic_username)=$1 AND ended_at IS NULL",[who,iso,reason]);
  activity=await endMechanicActivity(db,username,iso);
- const sfv=paused?(await db.query("SELECT version FROM app_state WHERE state_key='shopflow'")).rows[0]?.version:null;
- return {paused,activity,shopflow:paused?sf:null,version:sfv!=null?Number(sfv):null};
+ const sfv=paused||left?(await db.query("SELECT version FROM app_state WHERE state_key='shopflow'")).rows[0]?.version:null;
+ return {paused,activity,left,shopflow:paused||left?sf:null,version:sfv!=null?Number(sfv):null};
 }
 // v24.47.2: end the mechanic's current activity (cleaning, yard, …) on the server. db is inside a transaction.
 async function endMechanicActivity(db,username,iso=new Date().toISOString()){
@@ -2032,8 +2052,9 @@ app.post("/api/mechanic/focus-inspection",auth,async(req,res,next)=>{
  const db=await requireDb().connect();
  try{
   await db.query("BEGIN");
-  const r=await stopMechanicWork(db,req.user.username,Date.now(),"Switched to inspection");
+  const r=await stopMechanicWork(db,req.user.username,Date.now(),"Switched to inspection",String(req.body?.workOrderId||""));
   await db.query("COMMIT");
+  if(r.left)broadcastShopStatus("shopflow_changed",{by:req.user.username,version:r.version});
   if(r.paused||r.activity){await audit(req.user.username,"mechanic_switched_to_inspection",{workOrderId:String(req.body?.workOrderId||""),pausedTasks:r.paused,endedActivity:r.activity});broadcastShopStatus("task_changed",{by:req.user.username,activity:r.activity})}
   res.json({ok:true,...r});
  }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
@@ -2616,6 +2637,7 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/action",auth,async(req,res,
      await closeOpenTaskSession(db,workOrderId,uid,req.user.username,"completed");
    }
 
+   if(req.user.role==="mechanic")markInspectionsLeft(sf,req.user.username,now.toISOString());
    const u=await db.query(
      "UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",
      [JSON.stringify(sf),req.user.username]
