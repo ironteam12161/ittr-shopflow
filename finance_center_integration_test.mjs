@@ -283,6 +283,16 @@ try{
  const actP=await request('/api/mechanic/activity',{method:'POST',tok:mechToken,body:{action:'start',code:'helping'}});assert(actP.pausedTasks===1,'starting an activity pauses the running job timer');
  const tpA=(await request('/api/state')).shopflow.payload.workorders.find(w=>String(w.id)==='9950').tasks[0];assert(tpA.paused&&tpA.pauseReason==='Switched to activity','job shows paused: switched to activity');
  const rsm=await request('/api/work-orders/9950/tasks/by-uid/tc-task-1/action',{method:'POST',tok:mechToken,body:{action:'resume'}});assert(rsm.endedActivity===true&&!(await request('/api/state')).users.payload[mechUser].currentActivity.code,'resuming the job ends the activity');
+ // v24.47.3: inspection answers save on their own endpoint (no whole-shop version conflicts), merged per item.
+ const stV=(await request('/api/state')).shopflow.version;
+ await request('/api/state/shopflow',{method:'PUT',body:{expectedVersion:stV,payload:{...(await request('/api/state')).shopflow.payload,ownerTouched:1}}});
+ await request('/api/work-orders/9950/inspection',{method:'POST',tok:mechToken,body:{inspection:{required:true,type:'truck',status:'In Progress',results:{brakes:{status:'ok'}}}}});
+ await request('/api/work-orders/9950/inspection',{method:'POST',tok:mechToken,body:{inspection:{status:'In Progress',results:{tires:{status:'repair',note:'LF low tread'}}}}});
+ let iw=(await request('/api/state')).shopflow.payload.workorders.find(w=>String(w.id)==='9950');assert(iw.inspection.results.brakes?.status==='ok'&&iw.inspection.results.tires?.status==='repair'&&iw.inspection.type==='truck','inspection answers merge per item across saves');
+ await request('/api/work-orders/9950/inspection',{method:'POST',tok:mechToken,body:{inspection:{status:'Completed',completedAt:new Date().toISOString(),summary:{ok:1,repair:1}},history:[{type:'inspection_completed',at:new Date().toISOString(),by:mechUser}]}});
+ iw=(await request('/api/state')).shopflow.payload.workorders.find(w=>String(w.id)==='9950');assert(iw.inspection.status==='Completed'&&iw.history.some(h=>h.type==='inspection_completed'),'completion saved with history entry');
+ assert((await db.query("SELECT 1 FROM mechanic_inspections WHERE work_order_id='9950' AND status='Completed'")).rowCount===1,'completed inspection reaches vehicle history');
+ await request('/api/work-orders/9950/inspection',{method:'POST',tok:mechToken,body:{inspection:{status:'In Progress'}}});assert((await request('/api/state')).shopflow.payload.workorders.find(w=>String(w.id)==='9950').inspection.status==='Completed','mechanics cannot reopen a completed inspection');
  const fi=await request('/api/mechanic/focus-inspection',{method:'POST',tok:mechToken,body:{workOrderId:'9950'}});assert(fi.paused===1,'opening an inspection pauses the running job');
  await request('/api/work-orders/9950/tasks/by-uid/tc-task-1/action',{method:'POST',tok:mechToken,body:{action:'resume'}});
  await request('/api/mechanic/activity',{method:'POST',tok:mechToken,body:{action:'stop'}});

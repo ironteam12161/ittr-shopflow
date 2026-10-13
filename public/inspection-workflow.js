@@ -15,7 +15,43 @@ function flatItems(w){return visibleSections(w).flatMap(s=>s.items.map(item=>({.
 function displayVehicle(w){if(w?.unitGenerated){if(w?.vin)return `VIN ${w.vin}`;return 'Unidentified vehicle'}return String(w?.unit||w?.vin||'Unidentified vehicle')}
 function canInspect(w){if(!w)return false;const role=typeof session!=='undefined'?session?.role:'';if(role==='admin'||role==='manager')return true;if(role!=='mechanic')return false;try{if(typeof visibleToCurrentMechanic==='function'&&visibleToCurrentMechanic(w))return true}catch(_){}return w.mechanic===currentUser()||(Array.isArray(w.helpers)&&w.helpers.includes(currentUser()))||w.completedBy===currentUser()}
 function ensureInspection(w){if(!w.inspection||typeof w.inspection!=='object')w.inspection={required:false,status:'Not Required',type:'',subtype:'',results:{},currentSection:0};if(!w.inspection.results||typeof w.inspection.results!=='object')w.inspection.results={};if(!Number.isFinite(Number(w.inspection.currentSection)))w.inspection.currentSection=0;return w.inspection}
-function persist(){try{if(typeof save==='function')save()}catch(e){console.error('[inspection save]',e)}}
+// v24.47.3: inspection answers go to their own endpoint (one work order, merged per item) instead of saving the whole shop
+// state, which failed with "Cloud sync" conflicts whenever anyone else changed something in the meantime.
+let inspSaveTimer=0,inspSaveChain=Promise.resolve(),inspPending=new Map(),inspRetry=0;
+// The mechanic's own answers, kept apart from the shared shop data so a background refresh (someone else saved) can
+// never drop them; re-applied after every refresh until the server has confirmed them.
+const inspLocal=new Map();
+function rememberInspection(w){const id=String(w.id),r=inspLocal.get(id)||{results:{},fields:{}},i=w.inspection||{};const {results,...fields}=i;r.fields={...r.fields,...fields};r.results={...r.results,...(results||{})};r.at=Date.now();inspLocal.set(id,r);return r}
+window.reapplyInspectionEdits=function(){
+ for(const [id,r] of inspLocal){if(Date.now()-r.at>120000&&!inspPending.has(id)){inspLocal.delete(id);continue}const w=getWorkOrder(id);if(!w)continue;const i=ensureInspection(w);
+  i.results={...(i.results||{}),...r.results};for(const [k,v] of Object.entries(r.fields))if(v!==undefined&&!(k==='status'&&i.status==='Completed'))i[k]=v}
+};
+function persist(historyEntry){
+ const w=getWorkOrder(activeInspectionId);
+ try{localStorage.setItem('ittr_shopflow_v2',JSON.stringify(state))}catch(_){}
+ if(!w||typeof apiJSON!=='function'){try{if(typeof save==='function')save()}catch(e){console.error('[inspection save]',e)}return}
+ rememberInspection(w);
+ const p=inspPending.get(String(w.id))||{history:[]};if(historyEntry)p.history.push(historyEntry);inspPending.set(String(w.id),p);
+ clearTimeout(inspSaveTimer);inspSaveTimer=setTimeout(flushInspectionSaves,historyEntry?0:250);
+}
+function flushInspectionSaves(){
+ const jobs=[...inspPending.entries()];inspPending.clear();
+ for(const [id,job] of jobs){
+  inspSaveChain=inspSaveChain.then(async()=>{
+   const r=inspLocal.get(id)||{results:{},fields:{}};
+   try{
+    const d=await apiJSON(`/api/work-orders/${encodeURIComponent(id)}/inspection`,{method:'POST',body:JSON.stringify({inspection:{...r.fields,results:r.results},history:job.history})});
+    inspRetry=0;
+    try{if(typeof cloudVersions==='object'&&Number(cloudVersions.shopflow)===Number(d.version)-1)cloudVersions.shopflow=Number(d.version)}catch(_){}
+   }catch(e){
+    const again=inspPending.get(id)||{history:[]};again.history=[...job.history,...again.history];inspPending.set(id,again);
+    if(++inspRetry<=3){clearTimeout(inspSaveTimer);inspSaveTimer=setTimeout(flushInspectionSaves,1500*inspRetry)}
+    else typeof showToast==='function'&&showToast(`Inspection not saved yet: ${e.message||'no connection'}. It will retry when you tap again.`,'warning',7000);
+   }
+  });
+ }
+}
+window.addEventListener('online',()=>{if(inspPending.size){inspRetry=0;flushInspectionSaves()}});
 function summary(w){const i=ensureInspection(w),items=flatItems(w),counts={ok:0,attention:0,repair:0,na:0,answered:0,total:items.length};for(const item of items){const s=i.results?.[item.id]?.status;if(counts[s]!=null){counts[s]++;counts.answered++}}return counts}
 function typeLabel(i){if(i?.type==='truck')return 'Truck / Трак';if(i?.type==='trailer'){const m={dry_van:'Dry Van',reefer:'Reefer',conestoga:'Conestoga'};return `Trailer / Трейлер${i.subtype?` · ${m[i.subtype]||i.subtype}`:''}`}return 'Inspection'}
 function flaggedItems(w){const i=ensureInspection(w),res=i.results||{};return flatItems(w).map(item=>({...item,r:res[item.id]||{}})).filter(x=>x.r.status==='repair'||x.r.status==='attention').sort((a,b)=>(a.r.status==='repair'?0:1)-(b.r.status==='repair'?0:1))}
@@ -60,7 +96,7 @@ window.setInspectionItemNote=function(itemId,note){const w=getWorkOrder(activeIn
 function currentSectionAnswered(w){const section=visibleSections(w)[activeSectionIndex],i=ensureInspection(w);return section.items.every(item=>Boolean(i.results[item.id]?.status))}
 window.inspectionSectionNext=function(){const w=getWorkOrder(activeInspectionId);if(!w)return;if(!currentSectionAnswered(w)){typeof showToast==='function'&&showToast('Check every item in this section. Use N/A when it does not apply.','warning',6000);return}activeSectionIndex++;ensureInspection(w).currentSection=activeSectionIndex;persist();renderInspection();document.querySelector('#inspectionWorkflowModal .modalbox')?.scrollTo({top:0,behavior:'smooth'})}
 window.inspectionSectionBack=function(){const w=getWorkOrder(activeInspectionId);if(!w)return;activeSectionIndex=Math.max(0,activeSectionIndex-1);ensureInspection(w).currentSection=activeSectionIndex;persist();renderInspection();document.querySelector('#inspectionWorkflowModal .modalbox')?.scrollTo({top:0,behavior:'smooth'})}
-window.completeInspectionWorkflow=function(){const w=getWorkOrder(activeInspectionId);if(!w)return;const i=ensureInspection(w),items=flatItems(w),missing=items.filter(item=>!i.results[item.id]?.status);if(missing.length){typeof showToast==='function'&&showToast(`${missing.length} inspection item(s) are still unanswered. Use N/A when appropriate.`,'warning',7000);return}const all=items.map(item=>({id:item.id,label:item.label,section:item.sectionTitle,status:i.results[item.id].status,note:i.results[item.id].note||''})),findings=all.filter(x=>x.status==='attention'||x.status==='repair'),s=summary(w);i.status='Completed';i.completedAt=new Date().toISOString();i.completedBy=currentUser();i.currentSection=visibleSections(w).length-1;i.summary={...s};i.findings=findings;w.history=Array.isArray(w.history)?w.history:[];const eventData={inspectionType:i.type,inspectionSubtype:i.subtype||'',summary:{...s},findings,vehicleVin:w.vin||'',vehicleUnit:w.unitGenerated?'':(w.unit||'')};try{w.history.push(typeof workOrderHistoryEntry==='function'?workOrderHistoryEntry('inspection_completed',eventData):{type:'inspection_completed',at:new Date().toISOString(),by:currentUser(),...eventData})}catch(_){w.history.push({type:'inspection_completed',at:new Date().toISOString(),by:currentUser(),...eventData})}persist();try{typeof render==='function'&&render()}catch(_){}window.closeInspectionWorkflow();typeof showToast==='function'&&showToast(`Inspection completed: ${s.ok} OK, ${s.attention} attention, ${s.repair} repair.`,'success',7000);try{typeof openDetail==='function'&&openDetail(w.id)}catch(_){}}
+window.completeInspectionWorkflow=function(){const w=getWorkOrder(activeInspectionId);if(!w)return;const i=ensureInspection(w),items=flatItems(w),missing=items.filter(item=>!i.results[item.id]?.status);if(missing.length){typeof showToast==='function'&&showToast(`${missing.length} inspection item(s) are still unanswered. Use N/A when appropriate.`,'warning',7000);return}const all=items.map(item=>({id:item.id,label:item.label,section:item.sectionTitle,status:i.results[item.id].status,note:i.results[item.id].note||''})),findings=all.filter(x=>x.status==='attention'||x.status==='repair'),s=summary(w);i.status='Completed';i.completedAt=new Date().toISOString();i.completedBy=currentUser();i.currentSection=visibleSections(w).length-1;i.summary={...s};i.findings=findings;w.history=Array.isArray(w.history)?w.history:[];const eventData={inspectionType:i.type,inspectionSubtype:i.subtype||'',summary:{...s},findings,vehicleVin:w.vin||'',vehicleUnit:w.unitGenerated?'':(w.unit||'')};try{w.history.push(typeof workOrderHistoryEntry==='function'?workOrderHistoryEntry('inspection_completed',eventData):{type:'inspection_completed',at:new Date().toISOString(),by:currentUser(),...eventData})}catch(_){w.history.push({type:'inspection_completed',at:new Date().toISOString(),by:currentUser(),...eventData})}persist(w.history[w.history.length-1]);try{typeof render==='function'&&render()}catch(_){}window.closeInspectionWorkflow();typeof showToast==='function'&&showToast(`Inspection completed: ${s.ok} OK, ${s.attention} attention, ${s.repair} repair.`,'success',7000);try{typeof openDetail==='function'&&openDetail(w.id)}catch(_){}}
 
 function setupStartWizard(){
  const modal=document.getElementById('mechanicStartModal');if(!modal)return;
