@@ -1820,8 +1820,8 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.47.2");
-app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-FOCUS-20261013`}));
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.47.3");
+app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
@@ -2457,6 +2457,35 @@ app.delete("/api/work-orders/:id/tasks/by-uid/:taskUid/parts/:partId",auth,async
   const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
   await db.query("COMMIT");await audit(req.user.username,"task_part_removed",{workOrderId,taskUid:uid,partId,stockMode:p.stockMode||"legacy"});
   res.json({ok:true,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
+ }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
+});
+// v24.47.3: inspection answers are saved on their own (no whole-shop version check), so a mechanic tapping OK / Change
+// no longer gets "Cloud sync" conflicts when anyone else changed the shop data in the meantime.
+app.post("/api/work-orders/:id/inspection",auth,async(req,res,next)=>{
+ const db=await requireDb().connect();
+ try{
+  const id=String(req.params.id||"").trim(),inc=req.body?.inspection;
+  if(!inc||typeof inc!=="object"||Array.isArray(inc))return res.status(400).json({error:"inspection required"});
+  const clean=(v,depth=0)=>{if(depth>8)return null;if(typeof v==="string")return v.replace(/[<>]/g,"").slice(0,4000);if(typeof v==="number"||typeof v==="boolean"||v==null)return v;if(Array.isArray(v))return v.slice(0,500).map(x=>clean(x,depth+1));if(typeof v==="object"){const o={};for(const [k,x] of Object.entries(v).slice(0,600)){if(["__proto__","prototype","constructor"].includes(k))continue;o[k]=clean(x,depth+1)}return o}return null};
+  await db.query("BEGIN");
+  const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE"),sf=q.rows[0]?.payload;
+  const w=(Array.isArray(sf?.workorders)?sf.workorders:[]).find(x=>String(x?.id||"")===id);
+  if(!w){await db.query("ROLLBACK");return res.status(404).json({error:"Work order not found."})}
+  if(!["admin","manager"].includes(req.user.role)&&!mechanicOwnsWorkOrder(req.user,w)){await db.query("ROLLBACK");return res.status(403).json({error:"You do not have access to this inspection."})}
+  const old=w.inspection&&typeof w.inspection==="object"?w.inspection:{},x=clean(inc);
+  // Answers merge per item, so two saves (or two phones) never wipe each other's answers.
+  const merged={...old,...x,results:{...(old.results&&typeof old.results==="object"?old.results:{}),...(x.results&&typeof x.results==="object"?x.results:{})}};
+  for(const k of ["required","type","subtype"])if(old[k]!==undefined&&old[k]!==""&&old[k]!==null)merged[k]=old[k];
+  if(old.status==="Completed"&&merged.status!=="Completed"&&req.user.role==="mechanic")merged.status="Completed";
+  w.inspection=merged;
+  const hist=Array.isArray(req.body?.history)?req.body.history.slice(0,5).map(h=>clean(h)).filter(h=>h&&typeof h==="object"):[];
+  if(hist.length){w.history=Array.isArray(w.history)?w.history:[];w.history.push(...hist)}
+  const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version",[JSON.stringify(sf),req.user.username]);
+  await syncMechanicInspections(db,sf);
+  await db.query("COMMIT");
+  if(merged.status==="Completed"&&old.status!=="Completed")await audit(req.user.username,"inspection_completed",{workOrderId:id,type:merged.type||""});
+  broadcastShopStatus("task_changed",{by:req.user.username,inspection:true});
+  res.json({ok:true,version:Number(u.rows[0].version),inspection:merged});
  }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
 });
 app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/action",auth,async(req,res,next)=>{
