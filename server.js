@@ -1820,7 +1820,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.47.4");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.47.5");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
@@ -1944,6 +1944,12 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{
       if(!ownedIds.has(String(old?.id||'')))return old;
       const proposed=incomingById.get(String(old?.id||''));if(!proposed)return old;
       const merged=clean(proposed);for(const k of protectedKeys)merged[k]=old[k];
+      // v24.47.5: a whole-shop save from a phone holding an older copy never puts a finished inspection back to
+      // "In Progress" (the mechanic then showed as inspecting all day) and never drops answers already saved.
+      if(old?.inspection&&typeof old.inspection==="object"){
+       const oi=old.inspection,ni=merged.inspection&&typeof merged.inspection==="object"?merged.inspection:{};
+       merged.inspection=oi.status==="Completed"&&ni.status!=="Completed"?oi:{...oi,...ni,results:{...(oi.results||{}),...(ni.results||{})}};
+      }
       const oldHistory=Array.isArray(old.history)?old.history:[],newHistory=Array.isArray(merged.history)?merged.history:[];
       merged.history=[...oldHistory,...newHistory.slice(oldHistory.length).map(x=>clean(x))];
       if(Array.isArray(merged.tasks)){const oldTasks=new Map((Array.isArray(old.tasks)?old.tasks:[]).map(t=>[String(t?.uid||''),t]));merged.tasks=merged.tasks.map(t=>{const prior=oldTasks.get(String(t?.uid||''));if(!prior||!prior.findingId)return t;return {...t,findingId:prior.findingId,source:prior.source,findingDecision:prior.findingDecision,approvalChangedAt:prior.approvalChangedAt,approvalChangedBy:prior.approvalChangedBy,cancelled:prior.cancelled,declinedAt:prior.declinedAt,declinedBy:prior.declinedBy}})}
