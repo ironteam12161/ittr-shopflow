@@ -279,9 +279,15 @@ try{
  const st0=(await request('/api/state')).shopflow;
  await request('/api/state/shopflow',{method:'PUT',body:{expectedVersion:st0.version,payload:{...st0.payload,workorders:[...st0.payload.workorders,{id:'9950',status:'Open',unit:'TC-1',customer:'Clock Test',mechanic:mechUser,tasks:[{uid:'tc-task-1',t:'Replace wheel seal LH',done:false}]}]}}});
  await request('/api/work-orders/9950/tasks/by-uid/tc-task-1/action',{method:'POST',tok:mechToken,body:{action:'start'}});
- await request('/api/mechanic/activity',{method:'POST',tok:mechToken,body:{action:'start',code:'helping'}});
+ // v24.47.2: one thing at a time — an activity pauses the job, resuming the job ends the activity.
+ const actP=await request('/api/mechanic/activity',{method:'POST',tok:mechToken,body:{action:'start',code:'helping'}});assert(actP.pausedTasks===1,'starting an activity pauses the running job timer');
+ const tpA=(await request('/api/state')).shopflow.payload.workorders.find(w=>String(w.id)==='9950').tasks[0];assert(tpA.paused&&tpA.pauseReason==='Switched to activity','job shows paused: switched to activity');
+ const rsm=await request('/api/work-orders/9950/tasks/by-uid/tc-task-1/action',{method:'POST',tok:mechToken,body:{action:'resume'}});assert(rsm.endedActivity===true&&!(await request('/api/state')).users.payload[mechUser].currentActivity.code,'resuming the job ends the activity');
+ const fi=await request('/api/mechanic/focus-inspection',{method:'POST',tok:mechToken,body:{workOrderId:'9950'}});assert(fi.paused===1,'opening an inspection pauses the running job');
+ await request('/api/work-orders/9950/tasks/by-uid/tc-task-1/action',{method:'POST',tok:mechToken,body:{action:'resume'}});
+ await request('/api/mechanic/activity',{method:'POST',tok:mechToken,body:{action:'stop'}});
  const outP=await request('/api/timeclock/punch',{method:'POST',tok:mechToken,body:{action:'out'}});
- assert(outP.stopped.paused===1&&outP.stopped.activity===true,'clock-out pauses the running task and ends the activity');
+ assert(outP.stopped.paused===1,'clock-out pauses the running task');
  const t1=(await request('/api/state')).shopflow.payload.workorders.find(w=>String(w.id)==='9950').tasks[0];assert(t1.paused&&t1.pauseReason==='Clocked out'&&!t1.runningBy,'task shows paused: clocked out');
  assert((await db.query("SELECT 1 FROM task_time_sessions WHERE task_uid='tc-task-1' AND ended_at IS NULL")).rowCount===0,'timer session closed at clock-out');
  assert(!(await request('/api/state')).users.payload[mechUser].currentActivity.code,'activity ended at clock-out');

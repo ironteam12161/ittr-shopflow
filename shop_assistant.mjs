@@ -44,13 +44,14 @@ export const ASSISTANT_TOOLS = [
   { name: 'search_repair_history', description: 'Search ALL repair history across every truck (Fullbay history and ITTR invoices) for a repair, part or complaint, e.g. "DPF cleaning", "turbo", "air leak". Use when no single truck is given.', parameters: { type: 'object', properties: { text: { type: 'string' }, since_days: { type: 'integer' } }, required: ['text'] } },
   { name: 'manual_search', description: 'Search the shop\'s workshop manuals (OEM service manuals, wiring diagrams, torque charts) page by page. Returns matching pages with manual title, page number and a text snippet. Use for torque specs, tightening sequences, clearances, fluid capacities, procedures and wiring/diagram questions. Search with English technical terms.', parameters: { type: 'object', properties: { query: { type: 'string', description: 'English technical terms, e.g. "wheel nut torque", "cylinder head bolt torque sequence", "ABS modulator wiring"' }, unit_id: { type: 'string', description: 'optional unit_id from find_truck to prefer manuals for that make/model' }, manual_id: { type: 'string' } }, required: ['query'] } },
   { name: 'manual_read', description: 'Read up to 6 specific pages of one manual (text, tables and diagrams) and answer a question from them. Use after manual_search, with the best matching pages (you may add the next page if a table or procedure continues).', parameters: { type: 'object', properties: { manual_id: { type: 'string' }, pages: { type: 'array', items: { type: 'integer' } }, question: { type: 'string' } }, required: ['manual_id', 'pages', 'question'] } },
+  { name: 'samsara_vehicle', description: 'LIVE Samsara telematics for one truck: where it is right now (address + map link, speed, when last seen), odometer miles, engine hours, engine on/off, fuel %, assigned driver and active fault codes. Use for "where is unit 25", "what mileage is on the truck", "is it running", "what codes does it have". Query: unit number / Samsara name, full VIN or its last digits, or plate.', parameters: { type: 'object', properties: { query: { type: 'string', description: 'Unit number, Samsara vehicle name, VIN or last digits, or plate' } }, required: ['query'] } },
   { name: 'search_customers', description: 'MANAGERS ONLY. Find a customer by name, phone, email or DOT number; returns contact details and how many trucks they have.', parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } },
   { name: 'invoices', description: 'MANAGERS ONLY. Find invoices by customer, unit or invoice number, or list unpaid invoices.', parameters: { type: 'object', properties: { query: { type: 'string' }, unpaid_only: { type: 'boolean' } } } },
   { name: 'vendor_bills', description: 'MANAGERS ONLY. Vendor bills (parts suppliers): spending per vendor for a period, unpaid and overdue bills, and the bills of one vendor. Use for "how much did we spend at FleetPride", "what do we owe vendors", "last bills from TruckPro".', parameters: { type: 'object', properties: { vendor: { type: 'string' }, days: { type: 'integer', description: 'How many days back (default 90).' }, unpaid_only: { type: 'boolean' } } } },
   { name: 'cores_owed', description: 'MANAGERS ONLY. Cores still owed back to vendors (quantity and dollar amount), optionally for one vendor or part.', parameters: { type: 'object', properties: { query: { type: 'string' } } } },
 ];
 
-export function createAssistantTools({ db, who, getShopflow, searchManuals, readManual }) {
+export function createAssistantTools({ db, who, getShopflow, searchManuals, readManual, samsaraVehicle }) {
   let sfCache = null;
   const sf = async () => (sfCache ||= (await getShopflow()) || {});
   const allWo = async () => (Array.isArray((await sf()).workorders) ? (await sf()).workorders : []).filter(w => w && typeof w === 'object');
@@ -193,6 +194,10 @@ export function createAssistantTools({ db, who, getShopflow, searchManuals, read
       if (!hits.length) return { found: 0, note: 'No manual page matches. The shop may not have uploaded a manual that covers this — say so and recommend the OEM source.' };
       return { found: hits.length, pages: hits };
     },
+    async samsara_vehicle(args) {
+      if (!samsaraVehicle) return { note: 'Samsara is not connected to ShopFlow.' };
+      return await samsaraVehicle(args || {});
+    },
     async manual_read({ manual_id, pages = [], question = '' }) {
       if (!readManual) return { note: 'Manual reading is not available.' };
       return await readManual({ manualId: manual_id, pages, question });
@@ -206,6 +211,7 @@ LANGUAGE: Always reply in the language the user writes in (Ukrainian, Russian or
 HOW TO WORK:
 - Use the lookup tools to get facts. Never guess a repair, date, mileage, stock quantity, price, part number, torque or spec. If the tools return nothing, say so plainly.
 - When a truck is mentioned, call find_truck first, then truck_history (with a keyword when the question is about one system, e.g. "brake", "oil", "PM").
+- WHERE IS A TRUCK / live mileage, fuel, engine hours, engine on/off, Samsara fault codes: call samsara_vehicle. Give the address, how long ago it was seen and the map link; say the data comes from Samsara. If it is not in Samsara, say so.
 - For stock questions use search_parts and report available = on hand minus reserved, plus shelf location.
 - If several trucks or parts match, list them briefly and ask which one.
 - Remember the earlier messages in this conversation ("it", "that truck", "the same part").

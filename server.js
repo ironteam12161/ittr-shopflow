@@ -16,6 +16,7 @@ import sharp from "sharp";
 import PDFKitDocument from "pdfkit";
 import {invoiceEnglishText,invoiceDateText} from "./invoice_customer_text.mjs";
 import {runShopAssistant,createAssistantTools,assistantRole} from "./shop_assistant.mjs";
+import {createSamsaraLookup} from "./samsara_assistant.mjs";
 import {renderCustomerDocumentPdf,shopProfile} from "./invoice_pdf.mjs";
 import {extractPdfPages,slicePdf,manualSearchTerms} from "./manual_library.mjs";
 import {ensureFinanceSchema,registerFinanceRoutes,cleanMiles,reportRange,fetchGmailAttachment} from "./finance_center.mjs";
@@ -1819,8 +1820,8 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.47.1");
-app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-ACTIVITY-20261013`}));
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.47.2");
+app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-FOCUS-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
@@ -4457,7 +4458,7 @@ app.post("/api/ai/shop-chat",auth,async(req,res)=>{try{
  // ITTR Workshop AI v2 — the model looks up only what it needs. Falls back to the classic path on any provider error.
  {const chatFn=assistantChatFn();if(chatFn&&String(process.env.AI_ASSISTANT_V2||'on').toLowerCase()!=='off'){try{
   const db2=requireDb(),who=assistantRole(req.user),explicitUnit=String(req.body?.unit||'').trim();
-  const tools=createAssistantTools({db:db2,who,getShopflow:async()=>(await db2.query("SELECT payload FROM app_state WHERE state_key='shopflow'")).rows[0]?.payload||{},searchManuals:a=>searchManualPages(db2,a),readManual:a=>{const pv=selectedAIProvider(),cc=pv==='openrouter'?openRouterClient:client;return cc?readManualPages(db2,{...a,chatClient:cc,model:assistantModelName()}):{error:'AI provider not configured.'}}});
+  const tools=createAssistantTools({db:db2,who,samsaraVehicle:createSamsaraLookup({paged:samsaraPaged,configured:samsaraTokenPresent,db:db2}),getShopflow:async()=>(await db2.query("SELECT payload FROM app_state WHERE state_key='shopflow'")).rows[0]?.payload||{},searchManuals:a=>searchManualPages(db2,a),readManual:a=>{const pv=selectedAIProvider(),cc=pv==='openrouter'?openRouterClient:client;return cc?readManualPages(db2,{...a,chatClient:cc,model:assistantModelName()}):{error:'AI provider not configured.'}}});
   const today=new Date().toLocaleDateString('en-CA',{timeZone:process.env.SHOP_TIMEZONE||'America/Chicago'});
   const out=await runShopAssistant({question,history:Array.isArray(req.body?.history)?req.body.history:[],who,tools,chat:chatFn,today,extraContext:explicitUnit?`The user selected unit ${explicitUnit} in the unit box.`:''});
   if(out.answer){

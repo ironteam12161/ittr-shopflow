@@ -79,6 +79,25 @@ assert.equal(stockPerUnit('qt', 'gal'), 0.25); assert.equal(stockPerUnit('qt', '
   assert.equal(splitDiscountLines({ discount: 50, lines: [{ description: 'Volume rebate', quantity: 1, unitCost: -50, lineTotal: -50 }] }).discount, 50);
   assert.deepEqual(checkInvoiceMath({ subtotal: 100, discount: 10, total: 100 }, []).map(p => p.code), ['TOTAL_MISMATCH']);
 }
+// v24.47.2: Samsara lookup for the Workshop AI chat (fake Samsara API).
+{
+  const { createSamsaraLookup, samsaraMatchScore } = await import('./samsara_assistant.mjs');
+  const fleet = [{ id: '11', name: 'Unit 25', vin: '1FUJHHDR8MLML6600', licensePlate: 'P123456', make: 'Freightliner', model: 'Cascadia', year: '2021', staticAssignedDriver: { name: 'Taras' } }, { id: '12', name: 'Unit 26', vin: '3AKJHHDR1NSAB1234' }];
+  const calls = [];
+  const paged = async (path, q = {}) => { calls.push([path, q.types || '']); if (path === '/fleet/vehicles') return fleet;
+    if (/gps/.test(q.types)) return [{ id: '11', gps: [{ time: new Date(Date.now() - 5 * 60000).toISOString(), latitude: 41.66, longitude: -87.7, speedMilesPerHour: 0, reverseGeo: { formattedLocation: '12161 S Central Ave, Alsip, IL' } }], obdOdometerMeters: [{ value: 1609344 * 412.5 }] }];
+    if (/engineStates/.test(q.types)) return [{ id: '11', engineStates: [{ value: 'Off' }], fuelPercents: [{ value: 63 }], obdEngineSeconds: [{ value: 3600 * 18234.4 }] }];
+    return [{ id: '11', faultCodes: [{ value: { j1939: { diagnosticTroubleCodes: [{ spnId: 3251, fmiId: 0, spnDescription: 'DPF differential pressure' }] } } }] }]; };
+  const look = createSamsaraLookup({ paged, configured: () => true });
+  assert.equal(samsaraMatchScore(fleet[0], '25'), 95); assert.equal(samsaraMatchScore(fleet[0], '6600'), 85); assert.equal(samsaraMatchScore(fleet[0], 'p123456'), 100);
+  const r = await look({ query: 'unit 25' }), v = r.vehicles[0];
+  assert.equal(r.found, 1); assert.equal(v.location.address, '12161 S Central Ave, Alsip, IL'); assert.match(v.location.mapLink, /maps\.google\.com\/\?q=41\.66,-87\.7/); assert.match(v.location.seen, /min ago/);
+  assert.equal(v.odometerMiles, 412500000 / 1000); assert.equal(v.engineHours, 18234.4); assert.equal(v.fuelPercent, 63); assert.equal(v.engineState, 'Off'); assert.equal(v.driver, 'Taras');
+  assert.equal(v.activeFaultCodes[0].spn, 3251);
+  assert.equal((await look({ query: '1234' })).vehicles[0].samsaraName, 'Unit 26', 'last VIN digits find the truck');
+  assert.equal((await look({ query: 'zzz-none' })).found, 0); assert.equal((await createSamsaraLookup({ paged, configured: () => false })({ query: '25' })).note.includes('not connected'), true);
+  assert.ok(calls.filter(c => c[0] === '/fleet/vehicles').length === 1, 'vehicle list cached between questions');
+}
 console.log('PASS AI center rules: usage cost + budget, vendor analysis (price up, cheaper elsewhere, duplicates, overdue, cores), bill math, invoice check, wording guard');
 
 if (process.env.ITTR_INVENTORY_TEST_DB !== '1' || !process.env.DATABASE_URL) {
