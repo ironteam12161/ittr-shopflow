@@ -1,0 +1,78 @@
+name: ITTR Android App
+
+# Builds the ShopFlow phone app (mobile/) into an installable APK.
+# - Pull requests that touch mobile/: the APK is attached to the workflow run (Artifacts).
+# - Pushes to main that touch mobile/, or "Run workflow": the APK is also published as the
+#   "android-latest" release, so mechanics can download it from
+#   https://github.com/ironteam12161/ittr-shopflow/releases/latest/download/ITTR-ShopFlow.apk
+# Signing: add the repository secrets ITTR_KEYSTORE_BASE64 and ITTR_KEYSTORE_PASSWORD (see mobile/README.md).
+# Without them the APK is signed with a throw-away debug key (installs fine, but updates need a reinstall).
+
+on:
+  push:
+    branches: [main]
+    paths: ['mobile/**', '.github/workflows/android-app.yml']
+  pull_request:
+    branches: [main]
+    paths: ['mobile/**', '.github/workflows/android-app.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install Capacitor
+        run: npm ci --no-audit --no-fund
+      - name: Copy web files into the Android project
+        run: npx cap sync android
+      - name: Signing key
+        env:
+          KS_B64: ${{ secrets.ITTR_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/shopflow.jks"
+            echo "ITTR_KEYSTORE_FILE=$RUNNER_TEMP/shopflow.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::ITTR_KEYSTORE_BASE64 is not set - APK is signed with a temporary debug key."
+          fi
+      - name: Build APK
+        working-directory: mobile/android
+        env:
+          ITTR_KEYSTORE_PASSWORD: ${{ secrets.ITTR_KEYSTORE_PASSWORD }}
+          ITTR_KEY_ALIAS: shopflow
+          ITTR_VERSION_CODE: ${{ github.run_number }}
+          ITTR_VERSION_NAME: 1.0.${{ github.run_number }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/ITTR-ShopFlow.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ITTR-ShopFlow-android
+          path: ITTR-ShopFlow.apk
+      - name: Publish download (main only)
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete android-latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create android-latest ITTR-ShopFlow.apk --latest \
+            --title "ShopFlow Android app 1.0.${{ github.run_number }}" \
+            --notes "Install on Android: download ITTR-ShopFlow.apk on the phone, open it, allow 'Install unknown apps' for your browser, then open ITTR ShopFlow and log in."

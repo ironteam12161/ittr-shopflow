@@ -1,0 +1,19 @@
+{
+  "name": "ittr-shopflow-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ITTR ShopFlow phone app (Android / iOS). Opens the live ShopFlow website full-screen.",
+  "scripts": {
+    "sync": "cap sync",
+    "android:build": "cap sync android && cd android && ./gradlew assembleRelease"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.4.3",
+    "@capacitor/core": "8.4.3",
+    "@capacitor/ios": "8.4.3"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "8.4.3"
+  }
+}

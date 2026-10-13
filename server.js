@@ -26,7 +26,7 @@ import {registerLaborTimeRoutes} from "./labor_times.mjs";
 import {parseBatchTranslations,validTranslation} from "./translation_guard.mjs";
 import {aiContext,featureForPath,createAIMeter,ensureAIUsageSchema} from "./ai_usage.mjs";
 import {registerAICenterRoutes} from "./ai_center.mjs";
-import {ensureVendorBillSchema} from "./vendor_bills.mjs";
+import {ensureVendorBillSchema,splitDiscountLines} from "./vendor_bills.mjs";
 import {matchInvoiceLines} from "./part_matching.mjs";
 import {registerFluidRoutes,registerPartDeleteRoutes,isGallonUom,FLUID_UNITS,ensureFluidSchema} from "./fluids.mjs";
 import {ensureComplianceSchema,registerComplianceRoutes,startFleetScheduler} from "./compliance_center.mjs";
@@ -195,6 +195,8 @@ app.use(express.json({limit:"3mb"}));
 // ITTR v24.16.1 hardened frontend path:
 // Only files inside /public are web-addressable. Server source, SQL, audit files,
 // package metadata and deployment files remain outside the static web root.
+// v24.46.0: phone app download page (Android APK + iPhone Add to Home Screen).
+app.get("/app",(req,res)=>res.sendFile(path.join(__dirname,"public","app.html")));
 app.get("/vendor/html5-qrcode.min.js",(req,res)=>res.sendFile(path.join(__dirname,"node_modules","html5-qrcode","html5-qrcode.min.js")));
 const publicDir=path.join(__dirname,"public");
 const authoritativeIndex=path.join(publicDir,"index.html");
@@ -1816,8 +1818,8 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.45.2");
-app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-CLEANUP-20261012`}));
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.46.0");
+app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-MOBILEAPP-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
@@ -3311,7 +3313,7 @@ app.delete("/api/admin/users/:username",auth,managerPermission("employees"),asyn
 
 function parseAiJson(text){let t=String(text||'').trim();t=t.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');return JSON.parse(t)}
 // v24.42.0: also reads the due date / terms so vendor bills can be tracked as paid or overdue.
-const VENDOR_INVOICE_PROMPT=`Extract this heavy-duty truck parts vendor invoice. Return ONLY strict JSON with this shape: {"vendor":"","invoiceNumber":"","invoiceDate":"YYYY-MM-DD or empty","dueDate":"YYYY-MM-DD or empty","terms":"","poNumber":"","subtotal":0,"tax":0,"freight":0,"total":0,"lines":[{"partNumber":"","manufacturer":"","description":"","quantity":0,"unitCost":0,"coreCost":0,"lineTotal":0}]}. "vendor" is the company that SOLD the parts (the letterhead), never the shop being billed (Iron Team Truck & Trailer Repair). Preserve part numbers exactly. Never invent missing values. Costs and quantities must be numbers. If a quantity or cost is unclear use 0. Carefully distinguish unit cost, core charge, tax, freight and line total. If only payment terms like "Net 30" are printed, put them in "terms" and leave dueDate empty.`;
+const VENDOR_INVOICE_PROMPT=`Extract this heavy-duty truck parts vendor invoice. Return ONLY strict JSON with this shape: {"vendor":"","invoiceNumber":"","invoiceDate":"YYYY-MM-DD or empty","dueDate":"YYYY-MM-DD or empty","terms":"","poNumber":"","subtotal":0,"discount":0,"tax":0,"freight":0,"total":0,"lines":[{"partNumber":"","manufacturer":"","description":"","quantity":0,"unitCost":0,"coreCost":0,"lineTotal":0}]}. "vendor" is the company that SOLD the parts (the letterhead), never the shop being billed (Iron Team Truck & Trailer Repair). Preserve part numbers exactly. Never invent missing values. Costs and quantities must be numbers. If a quantity or cost is unclear use 0. Carefully distinguish unit cost, core charge, tax, freight and line total. Discounts, rebates, marketing or volume programs and credits are NOT lines: add them up as a positive number in "discount". If only payment terms like "Net 30" are printed, put them in "terms" and leave dueDate empty.`;
 async function extractVendorInvoiceAny(file){
  const mime=String(file.mimetype||'');
  if(openRouterClient){const r=await openRouterInvoiceExtract(file);return r.parsed||{}}
@@ -3338,11 +3340,18 @@ app.post("/api/parts/receiving/scan-invoice",auth,managerPermission("inventory")
  const mime=String(req.file.mimetype||''); if(!mime.startsWith('image/')&&mime!=="application/pdf")return res.status(415).json({error:"Use an invoice photo (JPG/PNG/WEBP) or PDF."});
  const result=await openRouterInvoiceExtract(req.file);
  const parsed=result.parsed; parsed.lines=Array.isArray(parsed.lines)?parsed.lines:[];
+ // v24.45.3: discount/credit lines lower the bill total, never the part cost.
+ splitDiscountLines(parsed);
  const db=requireDb(); if(parsed.vendor)parsed.vendor=await resolveVendor(db,parsed.vendor,true);
  // v24.42.1: match by part number, then by description (bulk fluids often have no part number), with pack-size conversion.
  await matchInvoiceLines(db,parsed.lines);
  res.json({extract:parsed,filename:req.file.originalname||'invoice',warnings:[],ai:{provider:'openrouter',model:result.model,usage:result.usage}});
  }catch(e){return aiErrorResponse(res,e,'Invoice scan failed')}});
+// v24.45.3: a vendor invoice typed in by hand — match each typed line to inventory the same way a scan is matched.
+app.post("/api/parts/receiving/match",auth,managerPermission("inventory"),async(req,res,next)=>{try{
+ const lines=(Array.isArray(req.body?.lines)?req.body.lines:[]).slice(0,100).map(l=>({partNumber:String(l?.partNumber||'').trim().slice(0,80),description:String(l?.description||'').trim().slice(0,300),quantity:Number(l?.quantity)||0}));
+ await matchInvoiceLines(requireDb(),lines);res.json({lines});
+}catch(e){next(e)}});
 app.post("/api/parts/receiving/receive",auth,managerPermission("inventory"),async(req,res,next)=>{const db=await requireDb().connect();let stage="validate";try{
  const inv=req.body?.invoice||{},lines=Array.isArray(req.body?.lines)?req.body.lines:[];
  if(!String(inv.vendor||'').trim())return res.status(400).json({error:'Vendor is required so purchase history and cores are owed to the correct company.'});
@@ -3356,7 +3365,7 @@ app.post("/api/parts/receiving/receive",auth,managerPermission("inventory"),asyn
  stage="vendor";const vendorContext=await resolveVendorPurchaseContext(db,inv.vendor,inv.vendorBranch);inv.vendor=vendorContext.vendor;inv.vendorBranch=vendorContext.branch;
  // v24.42.0: a bill that was only filed (scanned for bookkeeping) is replaced by the received one, keeping its file and payment.
  stage="filed_bill";const filedId=Number(req.body?.filedBillId)||0;const filedBill=(invoiceNumber||filedId)?(await db.query(`DELETE FROM parts_vendor_invoices WHERE status='filed' AND (id=$3::bigint OR ($2<>'' AND lower(coalesce(vendor,''))=lower($1) AND lower(coalesce(invoice_number,''))=lower($2))) RETURNING due_date,paid_at,paid_reference,paid_by,gmail_message_id,file_key,file_mime,notes`,[inv.vendor||'',invoiceNumber||'',filedId])).rows[0]:null;
- stage="invoice";const ir=await db.query(`INSERT INTO parts_vendor_invoices(vendor,vendor_id,vendor_location_id,vendor_branch_snapshot,invoice_number,invoice_date,po_number,subtotal,tax,freight,total,tax_rate,tax_included_in_cost,source_filename,source_method,status,raw_extract,created_by,received_at) VALUES($1::text,$2::bigint,$3::bigint,$4::text,$5::text,$6::date,$7::text,$8::numeric,$9::numeric,$10::numeric,$11::numeric,$12::numeric,$13::boolean,$14::text,'scan','received',$15::jsonb,$16::text,now()) RETURNING id`,[inv.vendor||null,vendorContext.vendorId,vendorContext.locationId,vendorContext.branch||null,invoiceNumber,invoiceDate,String(inv.poNumber||'').trim()||null,Number(inv.subtotal||0),Number(inv.tax||0),Number(inv.freight||0),Number(inv.total||0),Number(inv.taxRate||0),Boolean(inv.taxIncludedInCost),String(req.body?.filename||'').slice(0,255)||null,JSON.stringify(inv),req.user.username]);
+ stage="invoice";const ir=await db.query(`INSERT INTO parts_vendor_invoices(vendor,vendor_id,vendor_location_id,vendor_branch_snapshot,invoice_number,invoice_date,po_number,subtotal,tax,freight,total,tax_rate,tax_included_in_cost,source_filename,source_method,status,raw_extract,created_by,received_at,discount) VALUES($1::text,$2::bigint,$3::bigint,$4::text,$5::text,$6::date,$7::text,$8::numeric,$9::numeric,$10::numeric,$11::numeric,$12::numeric,$13::boolean,$14::text,$18::text,'received',$15::jsonb,$16::text,now(),$17::numeric) RETURNING id`,[inv.vendor||null,vendorContext.vendorId,vendorContext.locationId,vendorContext.branch||null,invoiceNumber,invoiceDate,String(inv.poNumber||'').trim()||null,Number(inv.subtotal||0),Number(inv.tax||0),Number(inv.freight||0),Number(inv.total||0),Number(inv.taxRate||0),Boolean(inv.taxIncludedInCost),String(req.body?.filename||'').slice(0,255)||null,JSON.stringify(inv),req.user.username,Math.abs(Number(inv.discount||0))||0,req.body?.manualEntry?'manual':'scan']);
  const invoiceId=ir.rows[0].id;let received=0,created=0;
  if(filedBill)await db.query(`UPDATE parts_vendor_invoices SET due_date=$2,paid_at=$3,paid_reference=$4,paid_by=$5,gmail_message_id=$6,file_key=$7,file_mime=$8,notes=$9 WHERE id=$1`,[invoiceId,filedBill.due_date,filedBill.paid_at,filedBill.paid_reference,filedBill.paid_by,filedBill.gmail_message_id,filedBill.file_key,filedBill.file_mime,filedBill.notes]);
  const taxableBase=usable.reduce((a,{l})=>a+(l.taxable===false?0:Math.max(0,Number(l.quantity||0))*Math.max(0,Number(l.unitCost||0))),0);

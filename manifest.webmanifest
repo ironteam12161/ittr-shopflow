@@ -1,10 +1,24 @@
 {
   "name": "ITTR ShopFlow",
   "short_name": "ShopFlow",
-  "start_url": "./index.html",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#f5f7fb",
   "theme_color": "#111827",
   "description": "Truck and trailer repair workflow for ITTR",
-  "icons": []
+  "icons": [
+    {
+      "src": "/assets/app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "scope": "/"
 }
