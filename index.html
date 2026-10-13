@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.46.1-UAJOBS-20261013">
+<meta name="ittr-build" content="ITTR-24.46.3-PARTLIST-20261013">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -26,7 +26,7 @@
  P.removeItem=function(k){rm.call(this,k);if(this===sessionStorage&&keys[k])try{rm.call(localStorage,'ittr_app_'+k)}catch(e){}};
 }catch(e){}})();
 </script>
-<title>ITTR ShopFlow v24.46.1</title>
+<title>ITTR ShopFlow v24.46.3</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -825,7 +825,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.46.1">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.46.3">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -936,6 +936,20 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 @media(max-width:600px){.fluidRow{grid-template-columns:auto minmax(0,1fr)}.fluidGal{grid-column:2}}
 .recvStockRow{margin-top:8px;display:grid;gap:3px}.recvStockRow label{font-size:12px;font-weight:700;color:#344054}.recvStockRow input{max-width:140px}.recvStockRow .muted{font-size:12px;line-height:1.35}
 </style>
+<style id="partSuggestStyles">
+/* v24.46.3: solid, high-contrast part suggestions (replaces the faint built-in phone popup) */
+.partSuggestBox{grid-column:1/-1;display:flex;flex-direction:column;gap:0;max-height:320px;overflow-y:auto;background:#fff;border:1.5px solid #2563eb;border-radius:12px;box-shadow:0 10px 28px rgba(15,23,42,.18);margin:2px 0 4px;position:relative;z-index:5;opacity:1;filter:none;backdrop-filter:none}
+.partSuggestBox .psItem{display:flex;flex-direction:column;align-items:stretch;gap:2px;text-align:left;width:100%;min-height:52px;padding:10px 12px;margin:0;border:0;border-bottom:1px solid #eaecf0;border-radius:0;background:#fff;color:#101828;font:inherit;font-size:15px;line-height:1.3;cursor:pointer;box-shadow:none}
+.partSuggestBox .psItem:last-child{border-bottom:0}
+.partSuggestBox .psItem:hover,.partSuggestBox .psItem.active{background:#eef4ff}
+.partSuggestBox .psTop{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.partSuggestBox .psTop b{color:#101828;font-size:15px}
+.partSuggestBox .psDesc{color:#344054;font-size:14px}
+.partSuggestBox .psLoc{color:#667085;font-size:12px}
+.partSuggestBox .psStock{font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.partSuggestBox .psStock.in{background:#ecfdf3;color:#067647}
+.partSuggestBox .psStock.out{background:#fef3f2;color:#b42318}
+</style>
 <style id="aiTranslateFields">
 .aiTrBar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-top:6px}
 .aiTrBtn{min-height:36px;padding:6px 12px;font-size:14px;border-radius:9px}
@@ -967,7 +981,7 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.46.1 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.46.3 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1475,7 +1489,7 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 </div>
 </div>
 
-<div class="modal" id="mechanicStartModal"><div class="modalbox mechanicWizardBox"><div class="modalhead"><div><h2>Start a Truck / New Work Order</h2><div class="muted">Mechanic self check-in · ITTR + FMCSA + NHTSA lookup</div></div><button class="x" type="button" onclick="closeMechanicStartWizard()">×</button></div><div class="mechanicWizardProgress"><div id="mechStepDot1" class="mechanicWizardStepDot active">1 · USDOT / VIN</div><div id="mechStepDot2" class="mechanicWizardStepDot">2 · Confirm</div><div id="mechStepDot3" class="mechanicWizardStepDot">3 · Jobs</div></div><form id="mechanicStartForm" onsubmit="submitMechanicStartWizard(event)"><div id="mechWizard1" class="mechanicWizardPane active"><div class="notice"><b>1.</b> Enter the customer USDOT number. <b>2.</b> Enter the 17-character VIN. ShopFlow checks your own records first, then official FMCSA/NHTSA sources when available.</div><div class="row"><div class="field"><label>Company USDOT *</label><input id="mechStartDot" name="dotNumber" inputmode="numeric" autocomplete="off" placeholder="Example: 1234567" oninput="this.value=this.value.replace(/\D/g,'').slice(0,10);scheduleMechanicLookup()" onblur="mechanicWizardLookup(true)"></div><div class="field"><label>VIN *</label><input id="mechStartVin" name="vin" maxlength="17" autocomplete="off" style="text-transform:uppercase" placeholder="17-character VIN" oninput="this.value=this.value.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g,'').slice(0,17);scheduleMechanicLookup()" onblur="mechanicWizardLookup(true)"></div></div><div class="field"><label>Unit / Truck #</label><input id="mechStartUnitSearch" autocomplete="off" placeholder="Optional if known" oninput="scheduleMechanicLookup()"></div><button type="button" class="mechanicAction mechanicPrimary" style="width:100%" onclick="mechanicWizardLookup()">Look Up Customer & Truck</button><div id="mechStartLookupStatus" class="muted" style="margin-top:10px"></div><div id="mechStartSourceSummary" class="mechanicLookupSources"></div><div id="mechStartMatches" class="mechanicMatchList"></div></div><div id="mechWizard2" class="mechanicWizardPane"><input id="mechStartUnitId" type="hidden"><input id="mechStartCustomerId" type="hidden"><input id="mechStartYear" type="hidden"><input id="mechStartMake" type="hidden"><input id="mechStartModel" type="hidden"><input id="mechStartPlate" type="hidden"><input id="mechStartMileage" type="hidden"><input id="mechStartEngine" type="hidden"><input id="mechStartTransmission" type="hidden"><div id="mechStartMatchedCard" class="vehicleMatchCard"></div><div class="row" style="margin-top:12px"><div class="field"><label>Customer *</label><input id="mechStartCustomer" required></div><div class="field"><label>Unit # *</label><input id="mechStartUnit" required placeholder="Internal unit/truck number"></div></div><div class="row"><div class="field"><label>Year</label><input id="mechStartYearDisplay" oninput="document.getElementById('mechStartYear').value=this.value"></div><div class="field"><label>Make</label><input id="mechStartMakeDisplay" oninput="document.getElementById('mechStartMake').value=this.value"></div><div class="field"><label>Model</label><input id="mechStartModelDisplay" oninput="document.getElementById('mechStartModel').value=this.value"></div><div class="field"><label>Mileage</label><input id="mechStartMileageDisplay" inputmode="numeric" oninput="document.getElementById('mechStartMileage').value=this.value.replace(/\D/g,'')"></div></div><div class="notice">Verify the customer and vehicle before continuing. Existing database records are reused; new customer/unit records are created only after you submit the work order.</div></div><div id="mechWizard3" class="mechanicWizardPane"><div class="field full"><label>Jobs / Labor Requested *</label><textarea id="mechStartJobs" required rows="6" placeholder="One job per line&#10;Example: PM service&#10;Diagnose air leak&#10;Можна писати українською" oninput="markUkrainianField(this)"></textarea><div class="aiTrBar"><button type="button" class="secondary aiTrBtn" id="mechStartJobsTrBtn" onclick="translateFieldToEnglish('mechStartJobs','jobs')">🌐 Translate to English</button><span class="aiTrNote" id="mechStartJobsTrNote"></span></div></div><div class="row"><div class="field"><label>Priority</label><select id="mechStartPriority"><option>Normal</option><option>High</option><option>Urgent</option></select></div><div class="field"><label>Parking / Bay</label><input id="mechStartParking" placeholder="Bay 2 / Yard"></div></div><div class="field full"><label>Mechanic Notes</label><textarea id="mechStartNotes" rows="3" placeholder="Customer complaint or initial notes" oninput="markUkrainianField(this)"></textarea><div class="aiTrBar"><button type="button" class="secondary aiTrBtn" id="mechStartNotesTrBtn" onclick="translateFieldToEnglish('mechStartNotes','professional')">🌐 Translate to English</button><span class="aiTrNote" id="mechStartNotesTrNote"></span></div></div><div class="notice jobStateActive"><b>Truck Is Here</b> will be set automatically and this work order will be assigned to <b>your mechanic account</b>.</div></div><div class="mechanicWizardNav"><button id="mechWizardBackBtn" type="button" class="secondary" onclick="mechanicWizardBack()" disabled>← Back</button><button id="mechWizardNextBtn" type="button" class="mechanicPrimary" onclick="mechanicWizardNext()">Next →</button><button id="mechWizardCreateBtn" type="submit" class="success hidden">Create Work Order →</button></div></form></div></div>
+<div class="modal" id="mechanicStartModal"><div class="modalbox mechanicWizardBox"><div class="modalhead"><div><h2>Start a Truck / New Work Order</h2><div class="muted">Mechanic self check-in · ITTR + FMCSA + NHTSA lookup</div></div><button class="x" type="button" onclick="confirmCloseMechanicStartWizard()">×</button></div><div class="mechanicWizardProgress"><div id="mechStepDot1" class="mechanicWizardStepDot active">1 · USDOT / VIN</div><div id="mechStepDot2" class="mechanicWizardStepDot">2 · Confirm</div><div id="mechStepDot3" class="mechanicWizardStepDot">3 · Jobs</div></div><form id="mechanicStartForm" onsubmit="submitMechanicStartWizard(event)"><div id="mechWizard1" class="mechanicWizardPane active"><div class="notice"><b>1.</b> Enter the customer USDOT number. <b>2.</b> Enter the 17-character VIN. ShopFlow checks your own records first, then official FMCSA/NHTSA sources when available.</div><div class="row"><div class="field"><label>Company USDOT *</label><input id="mechStartDot" name="dotNumber" inputmode="numeric" autocomplete="off" placeholder="Example: 1234567" oninput="this.value=this.value.replace(/\D/g,'').slice(0,10);scheduleMechanicLookup()" onblur="mechanicWizardLookup(true)"></div><div class="field"><label>VIN *</label><input id="mechStartVin" name="vin" maxlength="17" autocomplete="off" style="text-transform:uppercase" placeholder="17-character VIN" oninput="this.value=this.value.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g,'').slice(0,17);scheduleMechanicLookup()" onblur="mechanicWizardLookup(true)"></div></div><div class="field"><label>Unit / Truck #</label><input id="mechStartUnitSearch" autocomplete="off" placeholder="Optional if known" oninput="scheduleMechanicLookup()"></div><button type="button" class="mechanicAction mechanicPrimary" style="width:100%" onclick="mechanicWizardLookup()">Look Up Customer & Truck</button><div id="mechStartLookupStatus" class="muted" style="margin-top:10px"></div><div id="mechStartSourceSummary" class="mechanicLookupSources"></div><div id="mechStartMatches" class="mechanicMatchList"></div></div><div id="mechWizard2" class="mechanicWizardPane"><input id="mechStartUnitId" type="hidden"><input id="mechStartCustomerId" type="hidden"><input id="mechStartYear" type="hidden"><input id="mechStartMake" type="hidden"><input id="mechStartModel" type="hidden"><input id="mechStartPlate" type="hidden"><input id="mechStartMileage" type="hidden"><input id="mechStartEngine" type="hidden"><input id="mechStartTransmission" type="hidden"><div id="mechStartMatchedCard" class="vehicleMatchCard"></div><div class="row" style="margin-top:12px"><div class="field"><label>Customer *</label><input id="mechStartCustomer" required></div><div class="field"><label>Unit # *</label><input id="mechStartUnit" required placeholder="Internal unit/truck number"></div></div><div class="row"><div class="field"><label>Year</label><input id="mechStartYearDisplay" oninput="document.getElementById('mechStartYear').value=this.value"></div><div class="field"><label>Make</label><input id="mechStartMakeDisplay" oninput="document.getElementById('mechStartMake').value=this.value"></div><div class="field"><label>Model</label><input id="mechStartModelDisplay" oninput="document.getElementById('mechStartModel').value=this.value"></div><div class="field"><label>Mileage</label><input id="mechStartMileageDisplay" inputmode="numeric" oninput="document.getElementById('mechStartMileage').value=this.value.replace(/\D/g,'')"></div></div><div class="notice">Verify the customer and vehicle before continuing. Existing database records are reused; new customer/unit records are created only after you submit the work order.</div></div><div id="mechWizard3" class="mechanicWizardPane"><div class="field full"><label>Jobs / Labor Requested *</label><textarea id="mechStartJobs" required rows="6" placeholder="One job per line&#10;Example: PM service&#10;Diagnose air leak&#10;Можна писати українською" oninput="markUkrainianField(this)"></textarea><div class="aiTrBar"><button type="button" class="secondary aiTrBtn" id="mechStartJobsTrBtn" onclick="translateFieldToEnglish('mechStartJobs','jobs')">🌐 Translate to English</button><span class="aiTrNote" id="mechStartJobsTrNote"></span></div></div><div class="row"><div class="field"><label>Priority</label><select id="mechStartPriority"><option>Normal</option><option>High</option><option>Urgent</option></select></div><div class="field"><label>Parking / Bay</label><input id="mechStartParking" placeholder="Bay 2 / Yard"></div></div><div class="field full"><label>Mechanic Notes</label><textarea id="mechStartNotes" rows="3" placeholder="Customer complaint or initial notes" oninput="markUkrainianField(this)"></textarea><div class="aiTrBar"><button type="button" class="secondary aiTrBtn" id="mechStartNotesTrBtn" onclick="translateFieldToEnglish('mechStartNotes','professional')">🌐 Translate to English</button><span class="aiTrNote" id="mechStartNotesTrNote"></span></div></div><div class="notice jobStateActive"><b>Truck Is Here</b> will be set automatically and this work order will be assigned to <b>your mechanic account</b>.</div></div><div class="mechanicWizardNav"><button id="mechWizardBackBtn" type="button" class="secondary" onclick="mechanicWizardBack()" disabled>← Back</button><button id="mechWizardNextBtn" type="button" class="mechanicPrimary" onclick="mechanicWizardNext()">Next →</button><button id="mechWizardCreateBtn" type="submit" class="success hidden">Create Work Order →</button></div></form></div></div>
 <div class="modal" id="taskPauseModal">
 <div class="modalbox" style="max-width:560px">
 <div class="modalhead">
@@ -1534,7 +1548,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.46.1';
+const FRONTEND_VERSION='24.46.3';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1696,7 +1710,7 @@ async function submitMechanicStartWizard(e){
  try{
    const r=await apiJSON("/api/work-orders/self-start",{method:"POST",body:JSON.stringify(payload)});
    if(r?.shopflow){state=r.shopflow;localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state))}
-   if(r?.version!=null)cloudVersions.shopflow=Number(r.version);removePersistedState("shopflow");closeMechanicStartWizard();render();
+   if(r?.version!=null)cloudVersions.shopflow=Number(r.version);removePersistedState("shopflow");window.clearMechStartDraft?.();closeMechanicStartWizard();render();
    const created=[r.customer?.created?"new customer":"",r.unit?.created?"new unit":""].filter(Boolean).join(" + ");
    showToast(`Work Order #${r.workOrder?.id||""} created${created?` with ${created}`:""} and assigned to you.`,"success",6000);
    if(r.workOrder?.id)openDetail(r.workOrder.id)
@@ -1857,7 +1871,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.46.1";
+const ROUTE_MODULE_VERSION="24.46.3";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -4018,8 +4032,30 @@ async function fullbayTestSearch(type){
 function fullbayCustomerSuggest(input){
  clearTimeout(fullbayCustomerTimer);const q=String(input?.value||"").trim();if(q.length<2)return;fullbayCustomerTimer=setTimeout(async()=>{try{const d=await apiJSON(`/api/fullbay/customers?q=${encodeURIComponent(q)}`);const list=document.getElementById("fullbayCustomerList");if(list)list.innerHTML=(d.items||[]).map(x=>`<option value="${esc(cleanImportedDisplayText(x.customer_name)||"")}">${esc([x.phone,x.email].filter(Boolean).join(" · "))}</option>`).join("")}catch{}},180);
 }
+// v24.46.3: our own part suggestion list. The phone's built-in <datalist> popup is faint/grey in the Android app.
+function renderPartSuggest(input,wo,ti){
+ const items=(fullbayPartCache||[]).filter(x=>String(x.status||'Active')!=='Inactive'&&(x.part_number||x.description)).slice(0,8);
+ let box=document.getElementById(`partSuggest_${wo}_${ti}`);
+ if(!items.length){box?.remove();return}
+ if(!box){box=document.createElement('div');box.id=`partSuggest_${wo}_${ti}`;box.className='partSuggestBox';box.setAttribute('role','listbox')}
+ const host=input.closest('label')||input;if(host.nextElementSibling!==box)host.after(box);
+ box.innerHTML=items.map((x,k)=>{const qty=Number(x.quantity||0)-Number(x.allocated||0),gal=isGallonUom(x.uom),stock=x.track_quantity===false?'':qty>0?`<span class="psStock in">${qty%1?qty.toFixed(2):qty} ${gal?'gal':'on hand'}</span>`:`<span class="psStock out">${currentLanguage==='uk'?'немає':'out of stock'}</span>`;
+  return `<button type="button" class="psItem${k===0?' active':''}" role="option" data-k="${k}" onmousedown="event.preventDefault()" onclick="pickPartSuggest(${wo},${ti},${k})"><span class="psTop"><b>${esc(x.part_number||'—')}</b>${stock}</span><span class="psDesc">${esc(x.description||'')}</span>${x.location?`<span class="psLoc">📍 ${esc(x.location)}</span>`:''}</button>`}).join('');
+ box.dataset.items=JSON.stringify(items.map(x=>x.id));box.hidden=false;if(!box.dataset.shown){box.dataset.shown='1';setTimeout(()=>box.scrollIntoView?.({block:'nearest',behavior:'smooth'}),60)}
+}
+function pickPartSuggest(wo,ti,k){
+ const box=document.getElementById(`partSuggest_${wo}_${ti}`),ids=JSON.parse(box?.dataset.items||'[]'),x=(fullbayPartCache||[]).find(p=>Number(p.id)===Number(ids[k]));if(!x)return;
+ const pn=document.getElementById(`partNo_${wo}_${ti}`),pd=document.getElementById(`partDesc_${wo}_${ti}`);if(pn)pn.value=x.part_number||'';if(pd)pd.value=x.description||'';
+ document.getElementById(`partUnitWrap_${wo}_${ti}`)?.classList.toggle('partUnitHidden',!isGallonUom(x.uom));
+ hidePartSuggest(wo,ti,true);const q=document.getElementById(`partQty_${wo}_${ti}`);if(q){q.focus();q.select?.()}
+}
+function hidePartSuggest(wo,ti,now){const go=()=>document.getElementById(`partSuggest_${wo}_${ti}`)?.remove();now?go():setTimeout(go,200)}
+function partSuggestKey(e,wo,ti){const box=document.getElementById(`partSuggest_${wo}_${ti}`);if(!box||box.hidden)return;const its=[...box.querySelectorAll('.psItem')];let a=its.findIndex(x=>x.classList.contains('active'));
+ if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();a=(a+(e.key==='ArrowDown'?1:-1)+its.length)%its.length;its.forEach((x,n)=>x.classList.toggle('active',n===a));its[a]?.scrollIntoView({block:'nearest'})}
+ else if(e.key==='Enter'&&a>=0){e.preventDefault();pickPartSuggest(wo,ti,Number(its[a].dataset.k))}else if(e.key==='Escape'){e.stopPropagation();hidePartSuggest(wo,ti,true)}}
+window.pickPartSuggest=pickPartSuggest;window.hidePartSuggest=hidePartSuggest;window.partSuggestKey=partSuggestKey;
 function fullbayPartSuggest(input,workOrderId,taskIndex,kind){
- clearTimeout(fullbayPartTimer);const q=String(input?.value||"").trim();if(q.length<2){document.getElementById(`partUnitWrap_${workOrderId}_${taskIndex}`)?.classList.add("partUnitHidden");return}fullbayPartTimer=setTimeout(async()=>{try{const d=await apiJSON(`/api/fullbay/parts?q=${encodeURIComponent(q)}`);fullbayPartCache=d.items||[];const numList=document.getElementById("fullbayPartNumberList"),descList=document.getElementById("fullbayPartDescriptionList");if(numList)numList.innerHTML=fullbayPartCache.filter(x=>x.part_number).map(x=>`<option value="${esc(x.part_number)}">${esc(x.description||"")}</option>`).join("");if(descList)descList.innerHTML=fullbayPartCache.filter(x=>x.description).map(x=>`<option value="${esc(x.description)}">${esc(x.part_number||"")}</option>`).join("");const v=q.toLowerCase();const match=fullbayPartCache.find(x=>String(kind==="number"?x.part_number:x.description||"").toLowerCase()===v);{const uw=document.getElementById(`partUnitWrap_${workOrderId}_${taskIndex}`);if(uw)uw.classList.toggle('partUnitHidden',!(match&&isGallonUom(match.uom)))}if(match){const pn=document.getElementById(`partNo_${workOrderId}_${taskIndex}`),pd=document.getElementById(`partDesc_${workOrderId}_${taskIndex}`);if(pn&&!pn.value.trim()&&match.part_number)pn.value=match.part_number;if(pd&&!pd.value.trim()&&match.description)pd.value=match.description;if(kind==="number"&&pd&&match.description)pd.value=match.description;if(kind==="description"&&pn&&match.part_number)pn.value=match.part_number;}}catch{}},180);
+ clearTimeout(fullbayPartTimer);const q=String(input?.value||"").trim();if(q.length<2){hidePartSuggest(workOrderId,taskIndex,true);document.getElementById(`partUnitWrap_${workOrderId}_${taskIndex}`)?.classList.add("partUnitHidden");return}fullbayPartTimer=setTimeout(async()=>{try{const d=await apiJSON(`/api/fullbay/parts?q=${encodeURIComponent(q)}`);fullbayPartCache=d.items||[];const numList=document.getElementById("fullbayPartNumberList"),descList=document.getElementById("fullbayPartDescriptionList");if(numList)numList.innerHTML=fullbayPartCache.filter(x=>x.part_number).map(x=>`<option value="${esc(x.part_number)}">${esc(x.description||"")}</option>`).join("");if(descList)descList.innerHTML=fullbayPartCache.filter(x=>x.description).map(x=>`<option value="${esc(x.description)}">${esc(x.part_number||"")}</option>`).join("");if(document.activeElement===input&&String(input.value||"").trim()===q)renderPartSuggest(input,workOrderId,taskIndex);const v=q.toLowerCase();const match=fullbayPartCache.find(x=>String(kind==="number"?x.part_number:x.description||"").toLowerCase()===v);{const uw=document.getElementById(`partUnitWrap_${workOrderId}_${taskIndex}`);if(uw)uw.classList.toggle('partUnitHidden',!(match&&isGallonUom(match.uom)))}if(match){const pn=document.getElementById(`partNo_${workOrderId}_${taskIndex}`),pd=document.getElementById(`partDesc_${workOrderId}_${taskIndex}`);if(pn&&!pn.value.trim()&&match.part_number)pn.value=match.part_number;if(pd&&!pd.value.trim()&&match.description)pd.value=match.description;if(kind==="number"&&pd&&match.description)pd.value=match.description;if(kind==="description"&&pn&&match.part_number)pn.value=match.part_number;}}catch{}},180);
 }
 
 function showProPanel(name){
@@ -4606,13 +4642,16 @@ document.addEventListener("keydown",e=>{
 document.querySelectorAll(".modal").forEach(m=>{
  m.addEventListener("click",e=>{
    if(e.target===m){
+     // v24.46.2: a tap outside a form the user has typed in must not throw the work away.
+     if(m.id==="mechanicStartModal"||m.dataset.dirty==="1"){const box=m.querySelector(".modalbox");box?.animate?.([{transform:"translateX(0)"},{transform:"translateX(-6px)"},{transform:"translateX(6px)"},{transform:"translateX(0)"}],{duration:220});showToast(currentLanguage==="uk"?"Щоб закрити, натисніть ✕.":"Tap ✕ to close.","info",2500);return}
      m.classList.remove("open");
      updateMobileBackButton();
    }
  });
 });
-const modalObserver=new MutationObserver(()=>updateMobileBackButton());
-document.querySelectorAll(".modal").forEach(m=>modalObserver.observe(m,{attributes:true,attributeFilter:["class"]}));
+const modalObserver=new MutationObserver(muts=>{for(const x of muts){const m=x.target;if(m.classList?.contains("open")&&!String(x.oldValue||"").includes("open"))delete m.dataset.dirty}updateMobileBackButton()});
+document.addEventListener("input",e=>{const m=e.target?.closest?.(".modal.open");if(m&&e.target.matches?.("input:not([type=hidden]),textarea,select"))m.dataset.dirty="1"},true);
+document.querySelectorAll(".modal").forEach(m=>modalObserver.observe(m,{attributes:true,attributeFilter:["class"],attributeOldValue:true}));
 async function nextWorkOrderId(){
  const local=Math.max(1000,Number(state.lastWorkOrderId)||0,...state.workorders.map(x=>Number(x.id)||0))+1;
  try{const d=await apiJSON("/api/work-orders/next-id");const n=Number(d?.id);if(Number.isInteger(n))return Math.max(n,local)}catch(_){}
@@ -5206,8 +5245,8 @@ function taskPartsHTML(w,t,i){
    ${(["admin","manager"].includes(session?.role)||String(p.addedBy||"").toLowerCase()===String(session?.username||"").toLowerCase())&&w.status!=="Completed"?`<button type="button" class="danger" onclick="removeTaskPart(${w.id},'${esc(String(t.uid||""))}','${esc(String(p.id||""))}')">×</button>`:""}
  </div>`).join(""):`<div class="muted">No parts recorded for this job.</div>`;
  const add=((session?.role==="mechanic"&&visibleToCurrentMechanic(w))||["admin","manager"].includes(session?.role))&&w.status!=="Completed"?`<div class="partAddGrid">
-   <label class="miniField"><span>Part #</span><input id="partNo_${w.id}_${i}" list="fullbayPartNumberList" placeholder="Part Number" oninput="fullbayPartSuggest(this,${w.id},${i},'number')"></label>
-   <label class="miniField partDescLabel"><span>Description</span><input class="partDescInput" id="partDesc_${w.id}_${i}" list="fullbayPartDescriptionList" placeholder="Part Description" oninput="fullbayPartSuggest(this,${w.id},${i},'description')"></label>
+   <label class="miniField"><span>Part #</span><input id="partNo_${w.id}_${i}" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" placeholder="Part Number" oninput="fullbayPartSuggest(this,${w.id},${i},'number')" onkeydown="partSuggestKey(event,${w.id},${i})" onblur="hidePartSuggest(${w.id},${i})"></label>
+   <label class="miniField partDescLabel"><span>Description</span><input class="partDescInput" id="partDesc_${w.id}_${i}" autocomplete="off" spellcheck="false" placeholder="Part Description" oninput="fullbayPartSuggest(this,${w.id},${i},'description')" onkeydown="partSuggestKey(event,${w.id},${i})" onblur="hidePartSuggest(${w.id},${i})"></label>
    <label class="miniField"><span>Qty</span><input id="partQty_${w.id}_${i}" type="number" min="0.01" step="0.01" value="1" placeholder="Qty"></label>
    <label class="miniField partUnitHidden" id="partUnitWrap_${w.id}_${i}"><span>Unit</span>${fluidUnitSelect(`partUnit_${w.id}_${i}`)}</label>
    <button type="button" class="secondary" onclick="addTaskPart(${w.id},${i})">Add Part</button><button type="button" class="secondary" onclick="openStockPicker(${w.id},'${esc(String(t.uid||''))}')" title="Pick a part that is on the shelf (fluids in gallons or quarts)">📦 From stock</button><button type="button" class="partScanBtn" onclick="openPartsScanner('workorder',${w.id},${i})">▥ Scan Part</button>
@@ -6298,8 +6337,49 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
  </div>
 </div>
 
-<script src="./finance-shared.js?v=24.46.1"></script>
+<script src="./finance-shared.js?v=24.46.3"></script>
 <script src="./inspection-checklist.js?v=3"></script>
 <script src="./inspection-workflow.js?v=3"></script>
+<script>
+/* v24.46.2: Start a Truck keeps what the mechanic typed until the work order is created.
+   Saved on this phone (localStorage) while typing and when the screen locks; restored when the wizard is opened
+   again, and the wizard reopens by itself after the page was reloaded (phone locked, app killed, tab dropped). */
+(function(){
+ const MAX_AGE=24*3600e3,KEY_FIELDS=["mechStartVin","mechStartDot","mechStartUnitSearch","mechStartCustomer","mechStartUnit","mechStartJobs","mechStartNotes"];
+ const modal=()=>document.getElementById("mechanicStartModal");
+ const key=()=>session?.username?`ittr_mech_start_draft_${session.username}`:"";
+ const isOpen=()=>!!modal()?.classList.contains("open");
+ let restoring=false,timer=null;
+ function hasContent(){return KEY_FIELDS.some(id=>String(document.getElementById(id)?.value||"").trim())}
+ function read(){try{const k=key();if(!k)return null;const d=JSON.parse(localStorage.getItem(k)||"null");if(!d||Date.now()-Number(d.savedAt||0)>MAX_AGE){if(d)localStorage.removeItem(k);return null}return d}catch(_){return null}}
+ function save(){const m=modal(),k=key();if(!m||!k||restoring||!isOpen()||!hasContent())return;const fields={};
+  m.querySelectorAll("input[id],select[id],textarea[id]").forEach(el=>{if(el.type==="file")return;fields[el.id]=el.type==="checkbox"||el.type==="radio"?{c:el.checked}:{v:el.value}});
+  try{localStorage.setItem(k,JSON.stringify({savedAt:Date.now(),wasOpen:true,step:mechanicWizardStep,ready:mechanicWizardReady,lookup:mechanicLookupData,fields}))}catch(_){}}
+ function saveSoon(){clearTimeout(timer);timer=setTimeout(save,300)}
+ function markClosed(){const k=key(),d=read();if(k&&d){d.wasOpen=false;try{localStorage.setItem(k,JSON.stringify(d))}catch(_){}}}
+ function restore(){const d=read();if(!d)return;restoring=true;try{
+  for(const [id,f] of Object.entries(d.fields||{})){const el=document.getElementById(id);if(!el)continue;if("c" in f)el.checked=!!f.c;else el.value=f.v??""}
+  mechanicLookupData=d.lookup||null;mechanicWizardReady=!!d.ready||hasContent();
+  const req=document.getElementById("mechStartInspectionRequired")?.value==="true",type=document.getElementById("mechStartInspectionType")?.value||"",sub=document.getElementById("mechStartInspectionSubtype")?.value||"";
+  window.setStartInspectionRequired?.(req);if(req&&type)window.setStartInspectionType?.(type);if(req&&sub)window.setStartTrailerSubtype?.(sub);
+  (window.setMechanicWizardStep||setMechanicWizardStep)(Number(d.step)||1);
+  ["mechStartJobs","mechStartNotes"].forEach(id=>{const el=document.getElementById(id);if(el)window.markUkrainianField?.(el)});
+  const unit=document.getElementById("mechStartUnit")?.value||document.getElementById("mechStartUnitSearch")?.value||document.getElementById("mechStartVin")?.value||"";
+  showToast(currentLanguage==="uk"?`Відновлено незавершений наряд${unit?` (${unit})`:""}.`:`Restored your unfinished work order${unit?` (${unit})`:""}.`,"success",4500);
+ }finally{restoring=false}}
+ window.clearMechStartDraft=function(){const k=key();if(k)localStorage.removeItem(k)};
+ window.confirmCloseMechanicStartWizard=function(){
+  if(hasContent()&&!confirm(currentLanguage==="uk"?"Скасувати цей наряд? Усе введене буде видалено.\n\nOK — видалити, Скасувати — продовжити.":"Discard this work order? Everything you typed will be deleted.\n\nOK = discard, Cancel = keep working."))return;
+  window.clearMechStartDraft();closeMechanicStartWizard()};
+ function boot(){const m=modal();if(!m)return;
+  m.addEventListener("input",saveSoon,true);m.addEventListener("change",saveSoon,true);m.addEventListener("click",()=>setTimeout(save,80),true);
+  new MutationObserver(muts=>{for(const x of muts){const was=String(x.oldValue||"").includes("open"),now=m.classList.contains("open");if(now&&!was&&read())setTimeout(restore,0);if(was&&!now)markClosed()}}).observe(m,{attributes:true,attributeFilter:["class"],attributeOldValue:true});
+  document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="hidden")save()});window.addEventListener("pagehide",save);
+  // After a reload: reopen the wizard where the mechanic left it.
+  let tries=0;const t=setInterval(()=>{tries++;if(tries>60)return clearInterval(t);if(!session?.username||session.role!=="mechanic"||typeof cloudReady==="undefined"||!cloudReady||typeof openMechanicStartWizard!=="function")return;clearInterval(t);const d=read();if(d?.wasOpen&&!isOpen())(window.openMechanicStartWizard||openMechanicStartWizard)()},500);
+ }
+ if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",boot);else boot();
+})();
+</script>
 </body>
 </html>
