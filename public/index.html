@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.47.1-ACTIVITY-20261013">
+<meta name="ittr-build" content="ITTR-24.47.2-FOCUS-20261013">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -26,7 +26,7 @@
  P.removeItem=function(k){rm.call(this,k);if(this===sessionStorage&&keys[k])try{rm.call(localStorage,'ittr_app_'+k)}catch(e){}};
 }catch(e){}})();
 </script>
-<title>ITTR ShopFlow v24.47.1</title>
+<title>ITTR ShopFlow v24.47.2</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -825,7 +825,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.47.1">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.47.2">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -981,7 +981,7 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.47.1 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.47.2 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1548,7 +1548,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.47.1';
+const FRONTEND_VERSION='24.47.2';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1760,6 +1760,8 @@ async function sendMechanicActivity(body){
  try{const d=await apiJSON("/api/mechanic/activity",{method:"POST",body});
   USERS[session.username]={...(USERS[session.username]||{role:"mechanic",display:session.display||session.username}),...d.user};
   localStorage.setItem("ittr_users_v1",JSON.stringify(USERS));
+  // v24.47.2: the server paused the running job timer (one thing at a time).
+  if(d.shopflow){state=d.shopflow;localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));if(d.shopflowVersion!=null)cloudVersions.shopflow=Number(d.shopflowVersion);render();showToast(currentLanguage==="uk"?"Таймер роботи поставлено на паузу.":"Your job timer was paused.","info",5000)}
   renderMechanicActivity();renderMechanicLiveStatus();return true;
  }catch(e){showToast(e.message||"Activity was not saved.","error",8000);return false}
 }
@@ -1767,6 +1769,16 @@ async function sendMechanicActivity(body){
 // v24.47.1: starting a job timer or an inspection ends the mechanic's running activity on the SERVER (mechanics can't
 // save the shared users record, so the old local-only close left e.g. "Cleaning Work Area" running during an inspection).
 let endingMechanicActivity=null;
+async function focusMechanicOnInspection(workOrderId){
+ if(session?.role!=="mechanic")return;
+ try{const d=await apiJSON("/api/mechanic/focus-inspection",{method:"POST",body:{workOrderId}});
+  if(d.shopflow){state=d.shopflow;localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));if(d.version!=null)cloudVersions.shopflow=Number(d.version)}
+  if(d.activity){closeCurrentMechanicActivity(USERS,session.username);try{localStorage.setItem("ittr_users_v1",JSON.stringify(USERS))}catch(_){}}
+  if(d.paused)showToast(currentLanguage==="uk"?"Таймер роботи поставлено на паузу — починається інспекція.":"Your job timer was paused — starting the inspection.","info",5000);
+  if(d.paused||d.activity){render();renderMechanicActivity()}
+ }catch(e){console.warn('[inspection focus]',e?.message)}
+}
+window.focusMechanicOnInspection=focusMechanicOnInspection;
 async function endMechanicActivityForWork(){
  if(session?.role!=="mechanic")return;const cur=mechanicActivityRecord(session.username);if(!cur?.code)return;
  if(endingMechanicActivity)return endingMechanicActivity;
@@ -1827,7 +1839,7 @@ function confirmBox({title,text="",ok="Yes",cancel="Cancel",tone="primary"}){ret
 document.addEventListener("click",async e=>{const q=e.target.closest?.("[data-quick-activity]");if(!q||!requireMechanic())return;const code=q.dataset.quickActivity,cur=mechanicActivityRecord(session.username),uk=currentLanguage==="uk",tr=translateDynamicText;
  const name=tr(mechanicActivityLabel(code)),curName=cur.code?tr(mechanicActivityLabel(cur.code,cur.customText)):"",stopping=cur.code===code;
  const yes=await confirmBox(stopping?{title:uk?`Завершити: ${name}?`:`Finish ${name}?`,text:uk?"Ви будете позначені як вільний.":"You will be shown as available.",ok:uk?"Так, завершити":"Yes, finish",tone:"neutral"}
-  :{title:uk?`Почати: ${name}?`:`Start ${name}?`,text:cur.code?(uk?`Це завершить «${curName}».`:`This ends ${curName}.`):"",ok:uk?"Так, почати":"Yes, start"});
+  :{title:uk?`Почати: ${name}?`:`Start ${name}?`,text:[cur.code?(uk?`Це завершить «${curName}».`:`This ends ${curName}.`):"",(()=>{try{const run=mechanicCurrentWork(session.username)?.task;return run?(uk?`Таймер «${run.t}» буде поставлено на паузу.`:`Your job timer "${run.t}" will be paused.`):""}catch(_){return ""}})()].filter(Boolean).join(" "),ok:uk?"Так, почати":"Yes, start"});
  if(!yes)return;const note=(document.getElementById("mechanicActivityNote")?.value||"").trim();
  const ok=await sendMechanicActivity(stopping?{action:"stop"}:{action:"start",code,note});if(ok){const n=document.getElementById("mechanicActivityNote");if(n&&!stopping)n.value="";showToast(stopping?(uk?"Готово. Ви вільні.":"Done. You are available."):(uk?`Почато: ${name}`:`Started: ${name}`),"success");if(!stopping&&!MECH_CLOCK?.open)loadMechanicClock(true)}});
 async function stopMechanicActivity(){
@@ -1854,7 +1866,7 @@ function renderMechanicActivity(){
  const a=mechanicActivityRecord(session.username),label=mechanicActivityLabel(a.code,a.customText);
  const b=document.getElementById("mechanicActivityStatusBadge"),c=document.getElementById("mechanicActivityCurrent");
  // v24.47.1: same order as the owner's live board: running job timer, then inspection in progress, then activity.
- let work=null,insp=null;try{work=mechanicCurrentWork(session.username);insp=work?.task?null:mechanicInspectionInProgress(session.username)}catch(_){}
+ let work=null,insp=null,focus='';try{work=mechanicCurrentWork(session.username);insp=mechanicInspectionInProgress(session.username);focus=mechanicFocusKind(work,insp,a);if(focus!=='task')work=null;if(focus!=='inspection')insp=null}catch(_){}
  if(work?.task||insp){
   const txt=work?.task?`${translateDynamicText("Working")}: Unit ${esc(work.w.unit||"")} — ${esc(work.task.t||"")}`:`${translateDynamicText("Inspecting")}: Unit ${esc(insp.unit||"")} — ${esc(translateDynamicText(insp.inspection.type==="trailer"?"Trailer inspection":"Truck inspection"))}`;
   if(b){b.textContent=translateDynamicText(work?.task?"Working":"Inspecting");b.className="badge mechanicActivityBadge";}
@@ -1889,7 +1901,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.47.1";
+const ROUTE_MODULE_VERSION="24.47.2";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -3481,6 +3493,15 @@ function mechanicCurrentWork(username){
  const inProgress=assigned.find(w=>w.status==="In Progress" && readyForMechanic(w));
  return inProgress?{w:inProgress,task:null}:null;
 }
+// v24.47.2: what a mechanic is doing right now = whatever they started most recently (job timer, inspection or activity).
+// The server also keeps only one running (starting one pauses/ends the others), so this only matters for older data.
+function mechanicFocusKind(current,insp,activity){
+ const t=v=>new Date(v||0).getTime()||0,c=[];
+ if(current?.task)c.push(['task',t(current.task.startedAt)]);
+ if(insp)c.push(['inspection',t(insp.inspection.lastOpenedAt||insp.inspection.startedAt)]);
+ if(activity?.code)c.push(['activity',t(activity.startedAt)]);
+ c.sort((a,b)=>b[1]-a[1]);return c[0]?.[0]||'';
+}
 function mechanicInspectionInProgress(username){
  const me=String(username||"").toLowerCase(),cutoff=Date.now()-12*3600000;
  const list=(state.workorders||[]).filter(w=>w&&w.status!=="Completed"&&w.inspection?.status==="In Progress"&&(!w.inspection.startedAt||new Date(w.inspection.startedAt).getTime()>cutoff));
@@ -3495,8 +3516,9 @@ function renderMechanicLiveStatus(){
  box.innerHTML=mechanics.map(user=>{
    const current=mechanicCurrentWork(user.username);
    const upcoming=mechanicUpcomingCount(user.username);
+   const insp=mechanicInspectionInProgress(user.username),activity=mechanicActivityRecord(user.username),focus=mechanicFocusKind(current,insp,activity);
 
-   if(current?.task){
+   if(focus==='task'){
      const elapsed=taskElapsed(current.task);
      return `<div class="mechanicStatusCard running${elapsed>12*3600000?" stale":""}">
        <div class="mechanicStatusTop">
@@ -3512,8 +3534,7 @@ function renderMechanicLiveStatus(){
    }
 
    // v24.41.4: a truck/trailer inspection in progress (started in the last 12 h) means the mechanic is working.
-   const insp=mechanicInspectionInProgress(user.username);
-   if(insp){
+   if(focus==='inspection'){
      const i=insp.inspection,done=Object.values(i.results||{}).filter(r=>r&&r.status).length,type=i.type==="trailer"?"Trailer inspection":i.type==="truck"?"Truck inspection":"Inspection";
      return `<div class="mechanicStatusCard running">
        <div class="mechanicStatusTop">
@@ -3527,7 +3548,7 @@ function renderMechanicLiveStatus(){
      </div>`;
    }
 
-   if(current?.w){
+   if(current?.w&&!focus){
      return `<div class="mechanicStatusCard waiting">
        <div class="mechanicStatusTop">
          <div><b>${esc(user.display||user.username)}</b><div class="muted">@${esc(user.username)}</div></div>
@@ -3540,8 +3561,7 @@ function renderMechanicLiveStatus(){
      </div>`;
    }
 
-   const activity=mechanicActivityRecord(user.username);
-   if(activity.code){
+   if(focus==='activity'){
      return `<div class="mechanicStatusCard waiting">
        <div class="mechanicStatusTop">
          <div><b>${esc(user.display||user.username)}</b><div class="muted">@${esc(user.username)}</div></div>
@@ -6355,9 +6375,9 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
  </div>
 </div>
 
-<script src="./finance-shared.js?v=24.47.1"></script>
+<script src="./finance-shared.js?v=24.47.2"></script>
 <script src="./inspection-checklist.js?v=3"></script>
-<script src="./inspection-workflow.js?v=4"></script>
+<script src="./inspection-workflow.js?v=5"></script>
 <script>
 /* v24.46.2: Start a Truck keeps what the mechanic typed until the work order is created.
    Saved on this phone (localStorage) while typing and when the screen locks; restored when the wizard is opened
