@@ -1,0 +1,22 @@
+{
+  "appId": "com.ironttr.shopflow",
+  "appName": "ITTR ShopFlow",
+  "webDir": "www",
+  "server": {
+    "url": "https://web-production-44bc4.up.railway.app",
+    "androidScheme": "https",
+    "allowNavigation": [
+      "web-production-44bc4.up.railway.app"
+    ],
+    "errorPath": "offline.html"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#111827"
+  },
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#111827"
+  },
+  "appendUserAgent": "ITTRShopFlowApp"
+}

@@ -195,6 +195,8 @@ app.use(express.json({limit:"3mb"}));
 // ITTR v24.16.1 hardened frontend path:
 // Only files inside /public are web-addressable. Server source, SQL, audit files,
 // package metadata and deployment files remain outside the static web root.
+// v24.46.0: phone app download page (Android APK + iPhone Add to Home Screen).
+app.get("/app",(req,res)=>res.sendFile(path.join(__dirname,"public","app.html")));
 app.get("/vendor/html5-qrcode.min.js",(req,res)=>res.sendFile(path.join(__dirname,"node_modules","html5-qrcode","html5-qrcode.min.js")));
 const publicDir=path.join(__dirname,"public");
 const authoritativeIndex=path.join(publicDir,"index.html");
@@ -1816,8 +1818,8 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.45.3");
-app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-DISCOUNT-20261012`}));
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.46.0");
+app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-MOBILEAPP-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
