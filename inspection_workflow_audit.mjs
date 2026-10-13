@@ -22,6 +22,7 @@ const checklist=fs.readFileSync('public/inspection-checklist.js','utf8');
 check('truck checklist shipped',checklist.includes("id:'engine'")&&checklist.includes("id:'emissions'")&&checklist.includes("id:'final'"));
 check('trailer checklist shipped',checklist.includes("id:'reefer'")&&checklist.includes("id:'conestoga'")&&ui.includes('Trailer / Трейлер'));
 check('inspection repairs can be added to the work order',server.includes('/inspection/items/:itemId/add-to-work-order')&&ui.includes('addInspectionRepair')&&server.includes('canManageInspectionRepairs'));
+check('inspection repair tasks have no "Inspection:" prefix and Ukrainian notes go to English',!server.includes('return `Inspection: ${')&&server.includes('englishFindingNote(peekNote)')&&server.includes('cleanInspectionTaskNamesAtStartup()'));
 check('inspection PDF endpoint with Unicode font',server.includes('/api/work-orders/:id/inspection/pdf')&&fs.existsSync('assets/fonts/DejaVuSans.ttf')&&fs.existsSync('assets/fonts/DejaVuSans-Bold.ttf'));
 check('inspection checklist is cached by the PWA',sw.includes("'/inspection-checklist.js'"));
 check('inspection records OK/attention/repair/NA',ui.includes("ok:'✓ OK'")&&ui.includes("attention:'⚠ Attention'")&&ui.includes("repair:'✕ Repair'")&&ui.includes("na:'N/A'"));
