@@ -1895,6 +1895,8 @@ app.post("/api/mechanic/activity",auth,async(req,res,next)=>{
   // v24.45.0: no activity before clock-in (when the shop requires it).
   if(action==="start"){try{await assertClockedIn(db,req.user)}catch(e){if(e?.code==="CLOCK_IN_REQUIRED")return res.status(409).json({error:e.message,code:e.code});throw e}}
   await db.query("BEGIN");
+  // v24.47.2: starting an activity pauses the mechanic's running job timer (one thing at a time).
+  const switched=action==="start"&&req.user.role==="mechanic"?await stopMechanicWork(db,req.user.username,Date.now(),"Switched to activity"):{paused:0};
   const cur=(await db.query("SELECT payload FROM app_state WHERE state_key='users' FOR UPDATE")).rows[0];
   const users=cur?.payload&&typeof cur.payload==="object"?cur.payload:{},username=req.user.username,now=new Date().toISOString();
   const u=users[username]&&typeof users[username]==="object"?users[username]:{role:req.user.role,display:req.user.display_name||username};
@@ -1909,7 +1911,7 @@ app.post("/api/mechanic/activity",auth,async(req,res,next)=>{
   await audit(username,"mechanic_activity",{action,code});
   if(action==="start")await autoClockInSafe(req.user,"activity");
   broadcastShopStatus("task_changed",{by:username,activity:true});
-  res.json({ok:true,user:{currentActivity:u.currentActivity,activityHistory:u.activityHistory.slice(0,50)},version:Number(q.rows[0]?.version||0)});
+  res.json({ok:true,user:{currentActivity:u.currentActivity,activityHistory:u.activityHistory.slice(0,50)},version:Number(q.rows[0]?.version||0),pausedTasks:switched.paused||0,shopflow:switched.shopflow||null,shopflowVersion:switched.version??null});
  }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
 });
 app.put("/api/state/:key",auth,async(req,res,next)=>{
@@ -2002,15 +2004,33 @@ async function stopMechanicWork(db,username,atMs,reason){
   if(paused)await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow'",[JSON.stringify(sf),username]);
  }
  await db.query("UPDATE task_time_sessions SET ended_at=greatest(started_at,$2::timestamptz),end_reason='paused',pause_reason=$3 WHERE lower(mechanic_username)=$1 AND ended_at IS NULL",[who,iso,reason]);
+ activity=await endMechanicActivity(db,username,iso);
+ const sfv=paused?(await db.query("SELECT version FROM app_state WHERE state_key='shopflow'")).rows[0]?.version:null;
+ return {paused,activity,shopflow:paused?sf:null,version:sfv!=null?Number(sfv):null};
+}
+// v24.47.2: end the mechanic's current activity (cleaning, yard, …) on the server. db is inside a transaction.
+async function endMechanicActivity(db,username,iso=new Date().toISOString()){
+ const who=String(username||"").trim().toLowerCase();
  const uq=await db.query("SELECT payload FROM app_state WHERE state_key='users' FOR UPDATE"),users=uq.rows[0]?.payload;
  const key=users&&Object.keys(users).find(k=>k.toLowerCase()===who),u=key&&users[key];
- if(u?.currentActivity?.code){
-  const row=(Array.isArray(u.activityHistory)?u.activityHistory:[]).find(x=>!x?.endedAt&&x?.startedAt===u.currentActivity.startedAt);if(row)row.endedAt=iso;
-  u.currentActivity={code:"",customText:"",note:"",startedAt:""};activity=true;
-  await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='users'",[JSON.stringify(users),username]);
- }
- return {paused,activity};
+ if(!u?.currentActivity?.code)return false;
+ const row=(Array.isArray(u.activityHistory)?u.activityHistory:[]).find(x=>!x?.endedAt&&x?.startedAt===u.currentActivity.startedAt);if(row)row.endedAt=iso;
+ u.currentActivity={code:"",customText:"",note:"",startedAt:""};
+ await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='users'",[JSON.stringify(users),username]);
+ return true;
 }
+// v24.47.2: one thing at a time. Opening an inspection pauses the mechanic's running job timer and ends the activity.
+app.post("/api/mechanic/focus-inspection",auth,async(req,res,next)=>{
+ if(req.user.role!=="mechanic")return res.json({ok:true,paused:0,activity:false});
+ const db=await requireDb().connect();
+ try{
+  await db.query("BEGIN");
+  const r=await stopMechanicWork(db,req.user.username,Date.now(),"Switched to inspection");
+  await db.query("COMMIT");
+  if(r.paused||r.activity){await audit(req.user.username,"mechanic_switched_to_inspection",{workOrderId:String(req.body?.workOrderId||""),pausedTasks:r.paused,endedActivity:r.activity});broadcastShopStatus("task_changed",{by:req.user.username,activity:r.activity})}
+  res.json({ok:true,...r});
+ }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
+});
 async function autoClockInSafe(user,source){if(user?.role!=="mechanic")return;try{const s=await autoClockIn(requireDb(),user.username,source);if(s)await audit(user.username,"clock_in",{shiftId:s.id,auto:source})}catch(e){console.warn("[time clock] auto clock-in failed",e?.message)}}
 
 async function closeOpenTaskSession(db,workOrderId,taskUid,mechanic,endReason,pauseReason="",pauseNote=""){
@@ -2564,10 +2584,13 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/action",auth,async(req,res,
      "UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",
      [JSON.stringify(sf),req.user.username]
    );
+   // v24.47.2: starting/resuming a job ends the mechanic's activity (cleaning, yard, …) — one thing at a time.
+   const endedActivity=(action==="start"||action==="resume")&&req.user.role==="mechanic"?await endMechanicActivity(db,req.user.username,now.toISOString()):false;
    await db.query("COMMIT");
+   if(endedActivity)broadcastShopStatus("task_changed",{by:req.user.username,activity:true});
    await audit(req.user.username,"task_action",{workOrderId,taskUid:uid,taskName:String(task.t||""),action,pauseReason:req.body?.reason||""});
    if(action==="start"||action==="resume")await autoClockInSafe(req.user,"task");
-   res.json({ok:true,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at,taskUid:uid});
+   res.json({ok:true,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at,taskUid:uid,endedActivity});
  }catch(e){
    try{await db.query("ROLLBACK")}catch(_){}
    next(e);
