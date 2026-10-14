@@ -54,6 +54,11 @@ try{
  const exp=await request('/api/bills',{method:'POST',token:admin,body:{kind:'expense',vendor:'Shell',billDate:today,paymentMethod:'card',paymentReference:'Visa 4421',lines:[{description:'Diesel for shop truck',amount:85.4,category:'fuel'}]}});
  one=await request(`/api/bills/${exp.id}`,{token:admin});eq(one.bill.status,'paid','expense is paid');eq(one.quickBooks.object,'Purchase','expense → QuickBooks Purchase');eq(one.quickBooks.payload.PaymentType,'CreditCard','card payment type');
  console.log('PASS expense (already paid) → QuickBooks Purchase');
+ eq((await request('/api/bills',{method:'POST',token:admin,body:{vendor:'Napa',billDate:today,file:{key:'../etc/passwd',mime:'application/pdf'},lines:[{description:'Filters',amount:20,category:'parts'}]},allowError:true})).status,400,'bad file key rejected');
+ const scanned=await request('/api/bills',{method:'POST',token:admin,body:{vendor:'Napa',billNumber:'NP-5',billDate:today,file:{key:'vendor-bills/123-abc.pdf',mime:'application/pdf',name:'napa.pdf'},lines:[{description:'Filters',partNumber:'WIX-1',amount:20}]}});
+ one=await request(`/api/bills/${scanned.id}`,{token:admin});ok(one.bill.hasFile,'scanned bill keeps its file');eq(one.bill.source,'ai_file','scanned source');eq(one.lines[0].category,'parts','part-number line defaults to Parts');
+ const draft=await request(`/api/vendor-invoices/${scanned.id}/receiving-draft`,{token:admin});eq(Number(draft.filedBillId),scanned.id,'parts bill from Bills can be received into stock');
+ console.log('PASS scanned bill keeps file; parts bill can be received into stock');
 
  // Edit: replace lines; QuickBooks marked for update once synced.
  await db.query(`UPDATE parts_vendor_invoices SET qb_status='synced',qb_id='77' WHERE id=$1`,[created.id]);

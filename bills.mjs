@@ -255,13 +255,17 @@ export function registerBillRoutes(app, deps) {
     const d = cleanBill(req.body || {}, await keysOf(db));
     if (!d.vendor) fail(400, 'Enter the vendor (who you bought from).');
     const vendor = await knownVendor(db, resolveVendor, d.vendor, true);
+    // v24.48.2: a bill scanned in Bills keeps its photo/PDF (stored by /api/vendor-invoices/scan).
+    const file = req.body?.file || {}, fileKey = str(file.key, 300) || null;
+    if (fileKey && !/^vendor-bills\/[\w.-]+$/.test(fileKey)) fail(400, 'Invalid file reference.');
     const c = await db.connect();
     try {
       await c.query('BEGIN');
-      const ins = await c.query(`INSERT INTO parts_vendor_invoices(vendor,invoice_number,invoice_date,due_date,po_number,subtotal,discount,tax,freight,total,source_method,status,raw_extract,created_by,notes,bill_kind,terms,payment_method,paid_at,paid_reference,paid_by,updated_at,updated_by)
-        VALUES($1,$2,$3::date,$4::date,$5,$6,$7,$8,$9,$10,'manual','filed','{}'::jsonb,$11,$12,$13,$14,$15,$16::timestamptz,$17,$18,now(),$11) RETURNING id`,
+      const ins = await c.query(`INSERT INTO parts_vendor_invoices(vendor,invoice_number,invoice_date,due_date,po_number,subtotal,discount,tax,freight,total,source_method,status,raw_extract,created_by,notes,bill_kind,terms,payment_method,paid_at,paid_reference,paid_by,updated_at,updated_by,file_key,file_mime,source_filename)
+        VALUES($1,$2,$3::date,$4::date,$5,$6,$7,$8,$9,$10,$19,'filed','{}'::jsonb,$11,$12,$13,$14,$15,$16::timestamptz,$17,$18,now(),$11,$20,$21,$22) RETURNING id`,
       [vendor, d.billNumber, d.billDate, d.dueDate, d.poNumber, d.subtotal, d.discount, d.tax, d.freight, d.total, req.user.username, d.notes, d.kind, d.terms, d.paymentMethod,
-        d.paidOn ? `${d.paidOn}T12:00:00Z` : null, d.kind === 'expense' ? d.paymentReference : null, d.kind === 'expense' ? req.user.username : null]);
+        d.paidOn ? `${d.paidOn}T12:00:00Z` : null, d.kind === 'expense' ? d.paymentReference : null, d.kind === 'expense' ? req.user.username : null,
+        fileKey ? 'ai_file' : 'manual', fileKey, fileKey ? str(file.mime, 60) : null, fileKey ? str(file.name, 255) || null : null]);
       const id = ins.rows[0].id;
       await writeLines(c, id, d.lines);
       await c.query('COMMIT');
