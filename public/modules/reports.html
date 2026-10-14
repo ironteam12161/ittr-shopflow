@@ -67,11 +67,17 @@
 .arCaret{display:inline-block;width:16px;color:#667085}.arTable td.late{color:#b42318;font-weight:700}.arTable td.credit,.arTable .creditBal{color:#067647}
 .arTable tfoot td{border-top:2px solid #101828;background:#fff}
 @media print{body.arPrinting .repPanel>*:not(#repArAging),body.arPrinting #repKpis,body.arPrinting .repRange{display:none!important}body.arPrinting .repScroll{overflow:visible!important;max-height:none!important}}
+/* v24.51.0 rebuilt navigation: 5 report tabs + tools, Mechanics has sub-tabs */
+.repTabs .repTabsTools{margin-left:auto;display:flex;align-items:center;gap:2px;padding-left:12px;border-left:1px solid var(--rep-line)}.repTabs .repTabsTools .muted{font-size:12px;padding:0 6px}
+.repTabs .repTabsTools button{font-size:13px;color:var(--rep-3)}
+.repSubTabs{display:none;gap:6px;margin:-6px 0 14px;flex-wrap:wrap}.repSubTabs.on{display:flex}
+.repSubTabs button{background:#fff;color:#344054;border:1px solid var(--rep-line);min-height:34px;padding:5px 12px;font-size:13px;border-radius:999px}.repSubTabs button.active{background:#101828;color:#fff;border-color:#101828}
+.repSection{margin:24px 0 10px;font-size:18px}
 </style>
 <div class="rep">
  <div class="repPrintHead"><h2 style="margin:0">Iron Team Truck &amp; Trailer Repair — Financial Report</h2><div id="repPrintRange" class="muted"></div></div>
  <div class="repTop">
-  <div><h1>Reports</h1><div class="muted">Money in, money owed, parts spending and tire fees — ready for your accountant.</div></div>
+  <div><h1>Reports</h1><div class="muted">Money in, who owes you, what you spend, your mechanics and tire fees.</div></div>
   <div class="repRange" id="repRange">
    <button data-rep="preset" data-p="month">This month</button><button data-rep="preset" data-p="lastmonth">Last month</button><button data-rep="preset" data-p="quarter">This quarter</button><button data-rep="preset" data-p="ytd">Year to date</button><button data-rep="preset" data-p="lastyear">Last year</button>
    <input type="date" id="repFrom" aria-label="From date"><span class="muted">to</span><input type="date" id="repTo" aria-label="To date">
@@ -79,17 +85,18 @@
   </div>
  </div>
  <div class="repTabs" role="tablist">
-  <button data-rep="tab" data-t="overview" class="active">Overview</button><button data-rep="tab" data-t="ar">Customers owe</button><button data-rep="tab" data-t="parts">Parts &amp; spending</button><button data-rep="tab" data-t="tires">Tire fees</button><button data-rep="tab" data-t="mech">Mechanics</button><button data-rep="tab" data-t="clock">Time clock</button><button data-rep="tab" data-t="labor">Labor times</button><button data-rep="tab" data-t="vendors">Vendors</button><button data-rep="tab" data-t="ai">AI usage</button><button data-rep="tab" data-t="inbox">Money inbox (Gmail)</button>
+  <button data-rep="tab" data-t="overview" class="active">Overview</button><button data-rep="tab" data-t="ar">Customers owe</button><button data-rep="tab" data-t="spend">Spending</button><button data-rep="tab" data-t="mech" data-group="team">Mechanics</button><button data-rep="tab" data-t="tires">Tire fees</button>
+  <span class="repTabsTools"><span class="muted">Tools:</span><button data-rep="tab" data-t="inbox">Gmail inbox</button><button data-rep="tab" data-t="ai">AI usage</button></span>
  </div>
+ <div class="repSubTabs" id="repSubTabs"><button data-rep="tab" data-t="mech">Productivity</button><button data-rep="tab" data-t="clock">Time clock</button><button data-rep="tab" data-t="labor">Job times</button></div>
  <div id="repKpis" class="repKpis"></div>
  <div class="repPanel active" data-panel="overview" id="repOverview"></div>
  <div class="repPanel" data-panel="ar" id="repAr"></div>
- <div class="repPanel" data-panel="parts" id="repParts"></div>
  <div class="repPanel" data-panel="tires" id="repTires"></div>
  <div class="repPanel" data-panel="mech" id="repMech"></div>
  <div class="repPanel" data-panel="clock" id="repClock"></div>
  <div class="repPanel" data-panel="labor" id="repLabor"></div>
- <div class="repPanel" data-panel="vendors" id="repVendors"></div>
+ <div class="repPanel" data-panel="spend"><div id="repVendors"></div><div id="repPartsSec"></div></div>
  <div class="repPanel" data-panel="ai" id="repAi"></div>
  <div class="repPanel" data-panel="inbox" id="repInbox"></div>
  <div id="repTip" class="repTip" role="tooltip"></div>

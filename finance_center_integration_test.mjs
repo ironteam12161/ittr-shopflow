@@ -410,7 +410,7 @@ try{
  await db.query('UPDATE fleet_service_items SET customer_reminder_level=NULL WHERE id=$1',[oil2.id]);
  const al3=await request('/api/fleet-maintenance/alerts/send',{method:'POST',body:{}});assert(al3.customers.sent===0,'no automatic reminder when the customer is switched off');
  await request('/api/email/google',{method:'DELETE'});const es2=await request('/api/email/status');assert(!es2.configured,'disconnect removes the sender');
- const off=await request(`/api/invoices/${emInv}/email`,{method:'POST',body:{to:'customer@example.com'},allowError:true});assert(off.status===503&&/Money inbox/.test(off.error),'clear message when email is not connected');
+ const off=await request(`/api/invoices/${emInv}/email`,{method:'POST',body:{to:'customer@example.com'},allowError:true});assert(off.status===503&&/Gmail inbox/.test(off.error),'clear message when email is not connected');
  console.log('PASS email: Google send-only connection, invoice + test email via Gmail API (MIME + PDF), PM reminders to customers (auto once per status, manual, per-customer off), disconnect');
  await request('/api/estimates',{method:'POST',body:{customerName:'Reset Test'}});
  const pv=await request('/api/admin/reset-data/preview');assert(pv.scopes.billing.rows>0,'reset preview counts billing rows');
