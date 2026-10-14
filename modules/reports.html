@@ -58,6 +58,15 @@
  .repPrintHead{display:block;margin-bottom:8px}.repScroll{max-height:none;overflow:visible;border:0}.repKpis{grid-template-columns:repeat(3,1fr)}
  body{background:#fff}.repPanel[data-panel="inbox"]{display:none!important}
 }
+/* v24.50.0 A/R aging by company */
+.arBar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}.arBar input[type=search]{flex:1;min-width:200px}
+.arChips{display:flex;gap:4px;flex-wrap:wrap}.arChips button{background:#fff;color:#344054;border:1px solid var(--rep-line);min-height:34px;padding:5px 11px;font-size:13px}.arChips button.on{background:#101828;color:#fff;border-color:#101828}
+.arChk{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#344054}.arChk input{width:auto;min-height:auto}
+.arTable tr.arCust td{background:#f8fafc;border-top:2px solid #d0d5dd;cursor:pointer}.arTable tr.arCust:hover td{background:#eef4ff}
+.arTable tr.arInv td:first-child{padding-left:30px}.arTable .sub{font-size:11px;color:var(--rep-3);font-weight:500}
+.arCaret{display:inline-block;width:16px;color:#667085}.arTable td.late{color:#b42318;font-weight:700}.arTable td.credit,.arTable .creditBal{color:#067647}
+.arTable tfoot td{border-top:2px solid #101828;background:#fff}
+@media print{body.arPrinting .repPanel>*:not(#repArAging),body.arPrinting #repKpis,body.arPrinting .repRange{display:none!important}body.arPrinting .repScroll{overflow:visible!important;max-height:none!important}}
 </style>
 <div class="rep">
  <div class="repPrintHead"><h2 style="margin:0">Iron Team Truck &amp; Trailer Repair — Financial Report</h2><div id="repPrintRange" class="muted"></div></div>

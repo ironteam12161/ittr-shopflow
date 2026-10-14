@@ -70,6 +70,38 @@ export function registerCustomerPaymentRoutes(app, deps) {
     }
   }
 
+  // v24.50.0: A/R aging by customer (like Fullbay's A/R Aging): every open invoice in Current / 1-30 / 31-60 / 61-90 /
+  // 90+ days past due, grouped by company, with the credit each company has (unapplied payments) and the net balance.
+  // Companies that only have credit are listed too.
+  app.get('/api/reports/ar-aging', auth, perm, async (req, res, next) => {
+    try {
+      const db = requireDb(), drafts = req.query.drafts === '1';
+      // An invoice linked to its company only by name joins that company's row (same match as Receive payment).
+      const inv = (await db.query(`SELECT i.id,i.invoice_number,c.id customer_id,coalesce(c.customer_name,i.customer_name) customer_name,i.unit_number,i.status,i.invoice_date,i.due_date,i.total,i.balance_due,
+          (CURRENT_DATE-coalesce(i.due_date,i.invoice_date))::int days
+        FROM customer_invoices i LEFT JOIN fullbay_import_customers c ON c.id=coalesce(i.customer_id,(SELECT x.id FROM fullbay_import_customers x WHERE lower(trim(x.customer_name))=lower(trim(i.customer_name)) ORDER BY x.id LIMIT 1))
+        WHERE i.status IN ('sent','partial'${drafts ? ",'draft'" : ''}) AND i.balance_due>0.009 ORDER BY coalesce(i.due_date,i.invoice_date),i.id`)).rows;
+      const cr = (await db.query(`SELECT cp.customer_id,max(cp.customer_name) customer_name,sum(cp.amount-coalesce((SELECT sum(p.amount) FROM customer_invoice_payments p WHERE p.customer_payment_id=cp.id),0)) credit
+        FROM customer_payments cp GROUP BY cp.customer_id`)).rows.filter(r => money(r.credit) > 0.009);
+      const bucketOf = d => d <= 0 ? 'current' : d <= 30 ? 'd1_30' : d <= 60 ? 'd31_60' : d <= 90 ? 'd61_90' : 'd90';
+      const blank = () => ({ current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90: 0 });
+      const groups = new Map(), keyOf = (id, name) => id ? `id:${id}` : `name:${String(name || '').trim().toLowerCase()}`;
+      const group = (id, name) => { const k = keyOf(id, name); if (!groups.has(k)) groups.set(k, { key: k, customerId: id ? Number(id) : null, name: String(name || '').trim() || '—', invoices: [], buckets: blank(), owed: 0, credit: 0 }); return groups.get(k); };
+      for (const i of inv) {
+        const g = group(i.customer_id, i.customer_name), b = bucketOf(Number(i.days)), bal = money(i.balance_due);
+        g.invoices.push({ id: Number(i.id), invoiceNumber: i.invoice_number, unit: i.unit_number || '', status: i.status, invoiceDate: i.invoice_date, dueDate: i.due_date || i.invoice_date, daysPastDue: Math.max(0, Number(i.days)), bucket: b, total: money(i.total), balance: bal });
+        g.buckets[b] = money(g.buckets[b] + bal); g.owed = money(g.owed + bal);
+      }
+      for (const c of cr) { const g = group(c.customer_id, c.customer_name); g.credit = money(g.credit + money(c.credit)); }
+      const customers = [...groups.values()].map(g => ({ ...g, net: money(g.owed - g.credit), overdue: money(g.owed - g.buckets.current), oldestDays: g.invoices.reduce((m, i) => Math.max(m, i.daysPastDue), 0) }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      const totals = blank(); let owed = 0, credit = 0;
+      for (const c of customers) { for (const k of Object.keys(totals)) totals[k] = money(totals[k] + c.buckets[k]); owed += c.owed; credit += c.credit; }
+      res.json({ asOf: new Date().toISOString().slice(0, 10), includesDrafts: drafts, customers, totals: { ...totals, owed: money(owed), credit: money(credit), net: money(owed - credit), customers: customers.length,
+        owing: customers.filter(c => c.owed > 0.009).length, withCredit: customers.filter(c => c.credit > 0.009).length, invoices: inv.length } });
+    } catch (e) { next(e); }
+  });
+
   app.get('/api/customers/:id/receivables', auth, perm, wrap(async (db, req) => {
     const c = await customerOf(db, req.params.id);
     return view(c, await openInvoices(db, c), await credits(db, c));

@@ -106,7 +106,7 @@ function render(){
  const custCols=[{key:'customerName',label:'Customer'},{key:'invoices',label:'Open invoices',num:true},{key:'balance',label:'Owes',num:true,fmt:usd},{key:'overdue',label:'Overdue',num:true,fmt:usd},{key:'daysPastDue',label:'Oldest (days late)',num:true,html:r=>r.daysPastDue>0?`<span class="repTag ${r.daysPastDue>30?'late':''}">${r.daysPastDue}</span>`:'<span class="repTag ok">on time</span>',csv:r=>r.daysPastDue}];
  const invCols=[{key:'invoice_number',label:'Invoice'},{key:'customer_name',label:'Customer'},{key:'unit_number',label:'Unit'},{key:'invoice_date',label:'Date',fmt:day,csv:r=>String(r.invoice_date||'').slice(0,10)},{key:'due_date',label:'Due',fmt:day,csv:r=>String(r.due_date||'').slice(0,10)},{key:'total',label:'Total',num:true,fmt:usd},{key:'amount_paid',label:'Paid',num:true,fmt:usd},{key:'balance_due',label:'Balance',num:true,fmt:usd},{key:'days_past_due',label:'Days late',num:true,html:r=>r.days_past_due>0?`<span class="repTag ${r.days_past_due>30?'late':''}">${r.days_past_due}</span>`:'—',csv:r=>Math.max(0,r.days_past_due)}];
  registerCsv('receivables-customers',custCols,d.customersOwing);registerCsv('open-invoices',invCols,d.openInvoices);registerCsv('aging',[{key:'bucket',label:'Bucket'},{key:'count',label:'Invoices'},{key:'amount',label:'Amount'}],d.aging);
- $('#repAr').innerHTML=`<div class="repGrid"><div>${card('Who owes you money',`${usd(k.outstanding)} across ${k.openInvoices} open invoice${k.openInvoices===1?'':'s'} (as of today, all dates).`,table('owing',custCols,d.customersOwing,{empty:'Nobody owes you money right now. 🎉'}),'receivables-customers')}</div>
+ $('#repAr').innerHTML=`<div id="repArAging"></div><div class="repGrid"><div>${card('Who owes you money',`${usd(k.outstanding)} across ${k.openInvoices} open invoice${k.openInvoices===1?'':'s'} (as of today, all dates).`,table('owing',custCols,d.customersOwing,{empty:'Nobody owes you money right now. 🎉'}),'receivables-customers')}</div>
   <div>${card('How late are the payments','Unpaid balance by days past the due date.',hbars(d.aging.map((a,i)=>({label:agingLabels[a.bucket],value:a.amount,color:agingColors[i],tip:`${agingLabels[a.bucket]}: ${usd(a.amount)} · ${a.count} invoice${a.count===1?'':'s'}`}))),'aging')}
   ${d.kpis.draftInvoices?`<div class="repNotice warn">${d.kpis.draftInvoices} draft invoice${d.kpis.draftInvoices===1?'':'s'} (${usd(d.kpis.draftValue)}) not finalized yet — they are not counted as owed until you finalize them.</div>`:''}</div></div>
   ${card('Open invoices','Click an invoice to open it.',table('openinv',invCols,d.openInvoices,{rowAttr:r=>`data-inv="${r.id}"`,empty:'No open invoices.'}),'open-invoices')}`;
@@ -150,6 +150,7 @@ function applyTab(){
  setTimeout(()=>{try{const t=S.scope?.host.querySelector('[data-rep="tab"].active'),bar=t?.parentElement;if(t&&bar)bar.scrollLeft=Math.max(0,t.offsetLeft-bar.offsetLeft-24)}catch(_){}},60);
  $('#repKpis').style.display=S.tab==='overview'?'':'none';
  if(S.tab==='inbox')loadInbox();
+ if(S.tab==='ar')loadArAging();
  if(S.tab==='mech')loadMech();
  if(S.tab==='clock')loadClock();
  if(S.tab==='labor')loadLabor();
@@ -491,6 +492,43 @@ async function gmailAttachment(id,i){const w=window.open('','_blank');try{const 
 // ---------------------------------------------------------------- events
 // v24.49.1: a Zelle bigger than what the invoice owes (one Zelle for several invoices) — pay this invoice in full and
 // open "Receive payment" for the rest: other invoices of the same customer, or kept as customer credit.
+// v24.50.0: A/R aging by customer, like Fullbay: each company with its open invoices in Current / 1-30 / 31-60 / 61-90 /
+// 90+ days past due, the credit it has (payments not applied yet) and the balance after credit.
+const AR={data:null,q:'',show:'all',drafts:false,open:new Set(),all:false};
+async function loadArAging(){const box=$('#repArAging');if(!box)return;if(!AR.data)box.innerHTML='<div class="repCard"><div class="repEmpty">Loading A/R aging…</div></div>';
+ try{AR.data=await api(`/api/reports/ar-aging?drafts=${AR.drafts?1:0}`);renderArAging()}catch(e){box.innerHTML=`<div class="repCard"><div class="repEmpty">${h(e.message)}</div></div>`}}
+function renderArAging(){const box=$('#repArAging'),d=AR.data;if(!box||!d)return;
+ const B=[['current','Current'],['d1_30','1–30 days'],['d31_60','31–60 days'],['d61_90','61–90 days'],['d90','90+ days']],q=AR.q.trim().toLowerCase();
+ const list=d.customers.filter(c=>(AR.show==='all'||(AR.show==='owe'&&c.owed>0.009)||(AR.show==='credit'&&c.credit>0.009)||(AR.show==='overdue'&&c.overdue>0.009))&&(!q||c.name.toLowerCase().includes(q)||c.invoices.some(i=>String(i.invoiceNumber).toLowerCase().includes(q)||String(i.unit).toLowerCase().includes(q))));
+ const tot={owed:0,credit:0,net:0};for(const [k] of B)tot[k]=0;for(const c of list){for(const [k] of B)tot[k]+=c.buckets[k];tot.owed+=c.owed;tot.credit+=c.credit;tot.net+=c.net}
+ const m=v=>v?usd(v):'';const t=d.totals;
+ const csvRows=[];for(const c of list){csvRows.push({company:c.name,invoice:'',unit:'',date:'',due:'',days:'',...Object.fromEntries(B.map(([k])=>[k,c.buckets[k]])),credit:c.credit,balance:c.net});for(const i of c.invoices)csvRows.push({company:c.name,invoice:i.invoiceNumber,unit:i.unit,date:String(i.invoiceDate||'').slice(0,10),due:String(i.dueDate||'').slice(0,10),days:i.daysPastDue,...Object.fromEntries(B.map(([k])=>[k,i.bucket===k?i.balance:''])),credit:'',balance:i.balance})}
+ registerCsv('ar-aging',[{key:'company',label:'Company'},{key:'invoice',label:'Invoice'},{key:'unit',label:'Unit'},{key:'date',label:'Date'},{key:'due',label:'Due date'},{key:'days',label:'Days past due'},...B.map(([k,l])=>({key:k,label:l})),{key:'credit',label:'Credit'},{key:'balance',label:'Balance'}],csvRows);
+ const rows=list.map(c=>{const open=AR.all||AR.open.has(c.key);return `<tr class="arCust" data-ar="toggle" data-key="${h(c.key)}"><td><span class="arCaret">${c.invoices.length?(open?'▾':'▸'):''}</span><b>${h(c.name)}</b><div class="sub">${c.invoices.length} open invoice${c.invoices.length===1?'':'s'}${c.oldestDays>0?` · oldest ${c.oldestDays} days late`:''}</div></td>
+   ${B.map(([k])=>`<td class="n${k!=='current'&&c.buckets[k]?' late':''}">${m(c.buckets[k])}</td>`).join('')}<td class="n credit">${c.credit?`−${usd(c.credit)}`:''}</td><td class="n"><b class="${c.net<-0.009?'creditBal':''}">${usd(c.net)}</b>${c.net<-0.009?'<div class="sub">credit</div>':''}</td>
+   <td class="repNoPrint">${c.customerId?`<button data-ar="pay" data-cust="${c.customerId}">${c.credit>0.009&&c.owed>0.009?'Apply credit / pay':'Receive payment'}</button>`:''}</td></tr>
+   ${open?c.invoices.map(i=>`<tr class="arInv" data-inv="${i.id}"><td>Invoice ${h(i.invoiceNumber)}${i.status==='draft'?' <span class="repTag">draft</span>':''}<div class="sub">${day(i.invoiceDate)} · due ${day(i.dueDate)}${i.unit?` · Unit ${h(i.unit)}`:''}${i.daysPastDue?` · ${i.daysPastDue} days late`:''}</div></td>${B.map(([k])=>`<td class="n">${i.bucket===k?usd(i.balance):''}</td>`).join('')}<td></td><td class="n">${usd(i.balance)}</td><td class="repNoPrint"></td></tr>`).join(''):''}`}).join('');
+ box.innerHTML=card('A/R aging by company',`As of ${day(d.asOf)}. ${t.owing} compan${t.owing===1?'y owes':'ies owe'} ${usd(t.owed)}${t.withCredit?` · ${t.withCredit} ha${t.withCredit===1?'s':'ve'} ${usd(t.credit)} credit`:''}. Click a company to see its invoices.`,
+  `<div class="arBar repNoPrint"><input type="search" data-ar="q" value="${h(AR.q)}" placeholder="Search company, invoice #, unit…">
+   <span class="arChips">${[['all','All'],['owe','Owe money'],['credit','Have credit'],['overdue','Overdue']].map(([k,l])=>`<button data-ar="show" data-v="${k}" class="${AR.show===k?'on':''}">${l}</button>`).join('')}</span>
+   <label class="arChk"><input type="checkbox" data-ar="drafts" ${AR.drafts?'checked':''}> Include drafts</label>
+   <button data-ar="all" class="secondary">${AR.all?'Collapse all':'Expand all'}</button><button data-ar="print" class="secondary">Print</button></div>
+   <div class="repScroll"><table class="repTable arTable"><thead><tr><th>Company</th>${B.map(([,l])=>`<th class="n">${l}</th>`).join('')}<th class="n">Credit</th><th class="n">Balance</th><th class="repNoPrint"></th></tr></thead>
+   <tbody>${rows||`<tr><td colspan="9" class="repEmpty">${q||AR.show!=='all'?'No company matches.':'Nobody owes money and nobody has credit. 🎉'}</td></tr>`}</tbody>
+   <tfoot><tr><td><b>Total${list.length!==d.customers.length?` (${list.length} shown)`:''}</b></td>${B.map(([k])=>`<td class="n"><b>${usd(tot[k])}</b></td>`).join('')}<td class="n credit"><b>${tot.credit?`−${usd(tot.credit)}`:''}</b></td><td class="n"><b>${usd(tot.net)}</b></td><td class="repNoPrint"></td></tr></tfoot></table></div>`,'ar-aging');
+}
+function onArEvent(e){const t=e.target.closest?.('[data-ar]');if(!t||!t.closest('#repArAging'))return;const a=t.dataset.ar;
+ if(e.type==='input'){if(a==='q'){AR.q=t.value;clearTimeout(AR.timer);AR.timer=setTimeout(()=>{renderArAging();const i=$('#repArAging [data-ar="q"]');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length)}},200)}return}
+ if(e.type==='change'){if(a==='drafts'){AR.drafts=t.checked;loadArAging()}return}
+ if(a==='q'||a==='drafts')return;
+ e.stopPropagation();
+ if(a==='toggle'){if(e.target.closest('button'))return;const k=t.dataset.key;AR.all=false;AR.open.has(k)?AR.open.delete(k):AR.open.add(k);return renderArAging()}
+ if(a==='show'){AR.show=t.dataset.v;return renderArAging()}
+ if(a==='all'){AR.all=!AR.all;AR.open.clear();return renderArAging()}
+ if(a==='print'){AR.all=true;renderArAging();document.body.classList.add('arPrinting');setTimeout(()=>{window.print();document.body.classList.remove('arPrinting')},50);return}
+ if(a==='pay'){window.openReceivePayment?.({customerId:Number(t.dataset.cust),mode:'pay',onDone:()=>{AR.data=null;loadArAging()}});return}
+}
+
 async function zelleToInvoice(msgId,inv,amount,ref){
  const bal=Number(inv.balance_due||0),num=inv.invoice_number;
  if(amount>bal+0.009&&window.openReceivePayment){
@@ -564,6 +602,7 @@ export async function mount(scope){
  S={...S,scope,data:null};
  try{const t=sessionStorage.getItem('ittr_reports_tab');if(t)S.tab=t}catch(_){}
  S.range=S.range||presetRange(S.preset);
+ scope.on(scope.host,'click',onArEvent,{capture:true});scope.on(scope.host,'input',onArEvent);scope.on(scope.host,'change',onArEvent);
  scope.on(scope.host,'click',onClick);scope.on(scope.host,'change',onChange);scope.on(scope.host,'mousemove',onMove,{passive:true});scope.on(scope.host,'mouseleave',()=>{const t=$('#repTip');if(t)t.style.display='none'});
  scope.on(scope.host,'ittr:module-refresh',()=>load(),{passive:true});
  let rt=0;scope.on(window,'resize',()=>{clearTimeout(rt);rt=setTimeout(drawCharts,120)},{passive:true});scope.on(window,'beforeprint',()=>{S.scope.host.querySelectorAll('.repPanel').forEach(p=>p.classList.add('active'));S.scope.host.querySelectorAll('[data-chart]').forEach(el=>el.dataset.w='');drawCharts()});scope.on(window,'afterprint',()=>applyTab());

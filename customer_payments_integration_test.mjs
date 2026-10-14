@@ -45,5 +45,15 @@ try{
  const p=(await inv(a)).payments[0];await request(`/api/invoices/${a}/payments/${p.id}`,{method:'PATCH',token:admin,body:{reference:'22198765433'}});
  eq((await inv(b)).payments.find(x=>x.customer_payment_id===p.customer_payment_id||String(x.customer_payment_id)===String(p.customer_payment_id))?.reference,'22198765433','reference edit applies to every part of the payment');
  console.log('PASS customer payment: split over invoices, leftover credit, apply credit later, validations, duplicate guard');
+ // v24.50.0: A/R aging by company with credit.
+ const ar=await request('/api/reports/ar-aging',{token:admin});
+ const sp=ar.customers.find(x=>x.name==='Split Pay Fleet LLC'),of=ar.customers.find(x=>x.name==='Other Fleet');
+ eq(sp.owed,100,'company owes the open balance');eq(sp.credit,60,'company credit shown');eq(sp.net,40,'balance after credit');eq(sp.invoices.map(i=>i.invoiceNumber).join(),'CP-3','only open invoices listed');
+ eq(Math.round(Object.values(sp.buckets).reduce((a,v)=>a+v,0)*100)/100,sp.owed,'aging buckets add up to what is owed');eq(of.owed,100,'other company listed');eq(of.credit,0,'other company no credit');
+ eq(ar.totals.owed,200,'total owed');eq(ar.totals.credit,60,'total credit');eq(ar.totals.net,140,'total net');eq(ar.totals.withCredit,1,'companies with credit');
+ await request(`/api/invoices/${c}/payments`,{method:'POST',token:admin,body:{amount:100,method:'Cash'}});
+ const ar2=await request('/api/reports/ar-aging',{token:admin});const sp2=ar2.customers.find(x=>x.name==='Split Pay Fleet LLC');
+ ok(sp2&&sp2.owed===0&&sp2.credit===60&&sp2.net===-60,'a company with only credit is still listed with a credit balance');
+ console.log('PASS A/R aging: by company, buckets add up, credit and net balance, credit-only companies listed');
  console.log('Customer payments integration: all scenarios passed');
 }finally{await stop().catch(()=>{});await db.end().catch(()=>{})}
