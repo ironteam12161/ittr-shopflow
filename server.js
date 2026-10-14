@@ -29,6 +29,7 @@ import {aiContext,featureForPath,createAIMeter,ensureAIUsageSchema} from "./ai_u
 import {registerAICenterRoutes} from "./ai_center.mjs";
 import {ensureVendorBillSchema,splitDiscountLines,knownVendor} from "./vendor_bills.mjs";
 import {ensureBillSchema,registerBillRoutes} from "./bills.mjs";
+import {ensureCustomerPaymentSchema,registerCustomerPaymentRoutes} from "./customer_payments.mjs";
 import {matchInvoiceLines} from "./part_matching.mjs";
 import {registerFluidRoutes,registerPartDeleteRoutes,isGallonUom,FLUID_UNITS,ensureFluidSchema} from "./fluids.mjs";
 import {ensureComplianceSchema,registerComplianceRoutes,startFleetScheduler} from "./compliance_center.mjs";
@@ -1889,7 +1890,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.48.3");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.49.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
@@ -3968,8 +3969,10 @@ app.post('/api/invoices/:id/payments',auth,managerPermission("invoices"),async(r
 function paymentMethod(v){const m=String(v||'').trim().toLowerCase();return ({cash:'Cash',check:'Check',cheque:'Check',zelle:'Zelle',ach:'ACH','ach / bank transfer':'ACH','bank transfer':'ACH',wire:'ACH','credit card':'Credit Card',card:'Credit Card','debit card':'Credit Card',other:'Other'})[m]||(m?String(v).trim().replace(/[<>]/g,'').slice(0,40):'Other')}
 app.patch('/api/invoices/:id/payments/:paymentId',auth,managerPermission("invoices"),async(req,res,next)=>{try{const db=requireDb(),cur=(await db.query('SELECT * FROM customer_invoice_payments WHERE id=$1::bigint AND invoice_id=$2::bigint',[req.params.paymentId,req.params.id])).rows[0];if(!cur)return res.status(404).json({error:'Payment not found.'});
  const method=req.body?.method!==undefined?paymentMethod(req.body.method):cur.method,reference=method==='Cash'?'':(req.body?.reference!==undefined?String(req.body.reference||'').replace(/[<>]/g,'').trim().slice(0,160):cur.reference||''),note=req.body?.note!==undefined?String(req.body.note||'').replace(/[<>]/g,'').slice(0,2000):cur.note;
- if(reference&&!req.body?.allowDuplicateReference){const prior=(await db.query("SELECT i.invoice_number FROM customer_invoice_payments p JOIN customer_invoices i ON i.id=p.invoice_id WHERE lower(p.reference)=lower($1) AND lower(coalesce(p.method,''))=lower($2) AND p.id<>$3::bigint LIMIT 1",[reference,method,cur.id])).rows[0];if(prior)return res.status(409).json({error:`${method} ${reference} is already on invoice ${prior.invoice_number}.`,code:'DUPLICATE_REFERENCE',invoiceNumber:prior.invoice_number})}
+ if(reference&&!req.body?.allowDuplicateReference){const prior=(await db.query("SELECT i.invoice_number FROM customer_invoice_payments p JOIN customer_invoices i ON i.id=p.invoice_id WHERE lower(p.reference)=lower($1) AND lower(coalesce(p.method,''))=lower($2) AND p.id<>$3::bigint AND (p.customer_payment_id IS NULL OR p.customer_payment_id IS DISTINCT FROM $4::bigint) LIMIT 1",[reference,method,cur.id,cur.customer_payment_id||null])).rows[0];if(prior)return res.status(409).json({error:`${method} ${reference} is already on invoice ${prior.invoice_number}.`,code:'DUPLICATE_REFERENCE',invoiceNumber:prior.invoice_number})}
  await db.query('UPDATE customer_invoice_payments SET method=$2,reference=$3,note=$4 WHERE id=$1::bigint',[cur.id,method,reference,note]);
+ // v24.49.0: one payment split over several invoices keeps one method / transaction ID.
+ if(cur.customer_payment_id){await db.query('UPDATE customer_invoice_payments SET method=$2,reference=$3 WHERE customer_payment_id=$1::bigint',[cur.customer_payment_id,method,reference]);await db.query('UPDATE customer_payments SET method=$2,reference=$3 WHERE id=$1::bigint',[cur.customer_payment_id,method,reference])}
  await audit(req.user.username,'invoice_payment_edited',{invoiceId:req.params.id,paymentId:cur.id,before:{method:cur.method,reference:cur.reference},after:{method,reference}});res.json({ok:true})}catch(e){next(e)}});
 app.get('/api/payments/search',auth,managerPermission("invoices"),async(req,res,next)=>{try{const q=String(req.query.q||'').trim().slice(0,80);if(q.length<2)return res.json({items:[]});
  const r=await requireDb().query(`SELECT p.id,p.invoice_id,p.amount,p.method,p.reference,p.note,p.paid_at,p.received_by,i.invoice_number,i.customer_name,i.unit_number,i.status
@@ -4700,6 +4703,8 @@ registerAICenterRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit,aiM
 registerComplianceRoutes(app,{auth,ownerOnly,adminOnly,requireDb,audit,PDFDocument,shopProfile,lookupFmcsaCarrier,searchFmcsaCarriersByName,samsaraPaged,samsaraConfigured:samsaraTokenPresent});
 // v24.48.0: Bills — every shop purchase, by expense category, ready for QuickBooks.
 registerBillRoutes(app,{auth,managerPermission,ownerOnly,requireDb,audit,resolveVendor,knownVendor,reportRange});
+// v24.49.0: one customer payment split across several invoices; the rest stays as customer credit.
+registerCustomerPaymentRoutes(app,{auth,managerPermission,requireDb,audit,recalcInvoice,paymentMethod});
 app.use("/api",(req,res)=>res.status(404).json({error:"API endpoint not found"}));
 
 
@@ -4727,6 +4732,7 @@ initDb()
   .then(()=>pool&&ensureAIUsageSchema(pool))
   .then(()=>pool&&ensureVendorBillSchema(pool))
   .then(()=>pool&&ensureBillSchema(pool))
+  .then(()=>pool&&ensureCustomerPaymentSchema(pool))
   .then(()=>pool&&ensureFluidSchema(pool))
   // v24.41.1: odometer readings typed with a dot as thousands separator ("304.538") were saved as 304.538 miles. Repair once.
   .then(async()=>{if(!pool)return;for(const t of ["customer_invoices","customer_estimates"]){try{const r=await pool.query(`UPDATE ${t} SET mileage=mileage*1000 WHERE mileage IS NOT NULL AND mileage<>trunc(mileage) AND scale(mileage)=3 AND mileage<100000`);if(r.rowCount)console.log(`Repaired ${r.rowCount} ${t} mileage value(s) typed with a dot.`)}catch(e){console.warn("mileage repair",t,e?.message)}}})

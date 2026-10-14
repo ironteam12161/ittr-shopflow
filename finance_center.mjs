@@ -926,7 +926,7 @@ export function registerFinanceRoutes(app, deps) {
         (SELECT json_agg(json_build_object('index',o.ord-1,'filename',o.a->>'filename','mimeType',o.a->>'mimeType','size',o.a->>'size')) FROM jsonb_array_elements(m.attachments) WITH ORDINALITY o(a,ord)) attachments
       FROM gmail_finance_messages m JOIN gmail_accounts a ON a.id=m.account_id LEFT JOIN customer_invoices i ON i.id=m.matched_invoice_id
       WHERE ($1='' OR m.kind=$1) AND ($2='' OR m.status=$2) ORDER BY m.received_at DESC NULLS LAST,m.id DESC LIMIT 300`, [kind, status])).rows;
-    const open = (await db.query(`SELECT id,invoice_number,customer_name,unit_number,total,balance_due FROM customer_invoices WHERE status IN ('sent','partial','draft') AND balance_due>0.009 ORDER BY invoice_date DESC LIMIT 500`)).rows;
+    const open = (await db.query(`SELECT id,invoice_number,customer_id,customer_name,unit_number,total,balance_due FROM customer_invoices WHERE status IN ('sent','partial','draft') AND balance_due>0.009 ORDER BY invoice_date DESC LIMIT 500`)).rows;
     for (const m of rows) if (m.kind === 'zelle_in' && m.status === 'new') m.suggestions = open.map(inv => ({ ...scoreZelleMatch(m, inv), invoice: inv })).filter(s => s.score >= 40).sort((a, b) => b.score - a.score).slice(0, 4);
     return { items: rows };
   }));
