@@ -89,6 +89,7 @@ export async function ensureFinanceSchema(pool) {
     created_at TIMESTAMPTZ DEFAULT now(), UNIQUE(account_id,gmail_message_id)
   );
   CREATE INDEX IF NOT EXISTS idx_gmail_finance_messages_kind ON gmail_finance_messages(kind,status,received_at DESC);
+  ALTER TABLE gmail_finance_messages ADD COLUMN IF NOT EXISTS confirmation TEXT;
   `);
 }
 
@@ -268,7 +269,37 @@ export function parseZelleEmail({ subject = '', body = '' }) {
   const memoMatch = text.match(/\b(?:memo|message|note|for)\s*:\s*["“]?([^\n"”]{1,160})/i);
   const memo = memoMatch ? str(memoMatch[1], 160) : '';
   const invoiceRef = (text.match(/\bIT-\d{4}-\d{3,6}\b/i) || [])[0] || '';
-  return { kind, amount, counterparty, memo, reference: invoiceRef.toUpperCase() };
+  return { kind, amount, counterparty, memo, reference: invoiceRef.toUpperCase(), confirmation: zelleConfirmation(text) };
+}
+// v24.48.3: the bank's Zelle confirmation / transaction number ("Confirmation number: BAC5X9QK2",
+// "Transaction number 22145678901", "Reference ID: WFCT0AB12C"). Must contain a digit so words aren't taken.
+export function zelleConfirmation(text) {
+  const t = String(text || '');
+  const res = [/\b(?:confirmation|transaction|reference|trace|payment)\s*(?:number|no\.?|#|code|id)\s*(?:is)?\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{4,40})/gi, /\bconfirmation\s*[:#]\s*([A-Z0-9][A-Z0-9-]{4,40})/gi];
+  for (const re of res) for (const m of t.matchAll(re)) { const v = m[1].replace(/-+$/, ''); if (/\d/.test(v) && !/^IT-\d{4}-/i.test(v)) return v.toUpperCase().slice(0, 60); }
+  return '';
+}
+// Read one stored Gmail message again and return its Zelle confirmation (for emails synced before v24.48.3).
+async function confirmationFromGmail(db, m) {
+  if (m.confirmation) return m.confirmation;
+  try {
+    const a = (await db.query('SELECT * FROM gmail_accounts WHERE id=$1', [m.account_id])).rows[0]; if (!a) return '';
+    const token = await gmailAccessToken(a);
+    const msg = await googleJson(`${googleUrls().gmail}/users/me/messages/${encodeURIComponent(m.gmail_message_id)}?format=full`, { headers: { Authorization: `Bearer ${token}` } });
+    const conf = classifyGmailMessage(msg)?.confirmation || '';
+    if (conf) await db.query('UPDATE gmail_finance_messages SET confirmation=$2 WHERE id=$1', [m.id, conf]);
+    return conf;
+  } catch (e) { console.warn('[gmail] confirmation lookup failed', e?.message); return ''; }
+}
+// Payments applied from Gmail before v24.48.3 got "Zelle <sender>" as their reference. Put the confirmation number
+// there instead (only where nobody changed the reference by hand). Runs in the background at startup.
+export async function backfillZelleConfirmations(db) {
+  const rows = (await db.query(`SELECT m.*,p.id payment_id FROM gmail_finance_messages m JOIN customer_invoice_payments p ON p.id=m.matched_payment_id
+    WHERE m.kind='zelle_in' AND m.status='matched' AND p.reference=trim('Zelle '||coalesce(m.counterparty,'')) ORDER BY m.received_at DESC LIMIT 300`).catch(() => ({ rows: [] }))).rows;
+  let n = 0;
+  for (const m of rows) { const conf = await confirmationFromGmail(db, m); if (conf) { await db.query('UPDATE customer_invoice_payments SET reference=$2 WHERE id=$1', [m.payment_id, conf]); n++; } }
+  if (n) console.log(`Zelle payments: added the bank confirmation number to ${n} payment(s) applied from Gmail.`);
+  return n;
 }
 const GENERIC_SENDER = /^(no-?reply|do-?not-?reply|billing|accounts?(?: receivable)?|ar|invoices?|invoice|statements?|notifications?|info|support|customer service)$/i;
 export function vendorNameFromSender(fromName, fromEmail) {
@@ -867,9 +898,9 @@ export function registerFinanceRoutes(app, deps) {
     for (const id of ids) {
       const msg = await googleJson(`${googleUrls().gmail}/users/me/messages/${encodeURIComponent(id)}?format=full`, { headers: { Authorization: `Bearer ${token}` } });
       const x = classifyGmailMessage(msg); if (!x) continue;
-      const r = await db.query(`INSERT INTO gmail_finance_messages(account_id,gmail_message_id,thread_id,kind,from_name,from_email,subject,snippet,received_at,amount,counterparty,memo,reference,attachments)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::timestamptz,$10::numeric,$11,$12,$13,$14::jsonb) ON CONFLICT(account_id,gmail_message_id) DO NOTHING`,
-      [account.id, x.gmailMessageId, x.threadId, x.kind, x.fromName, x.fromEmail, x.subject, x.snippet, x.receivedAt, x.amount, x.counterparty, x.memo, x.reference, JSON.stringify(x.attachments)]);
+      const r = await db.query(`INSERT INTO gmail_finance_messages(account_id,gmail_message_id,thread_id,kind,from_name,from_email,subject,snippet,received_at,amount,counterparty,memo,reference,attachments,confirmation)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::timestamptz,$10::numeric,$11,$12,$13,$14::jsonb,$15) ON CONFLICT(account_id,gmail_message_id) DO NOTHING`,
+      [account.id, x.gmailMessageId, x.threadId, x.kind, x.fromName, x.fromEmail, x.subject, x.snippet, x.receivedAt, x.amount, x.counterparty, x.memo, x.reference, JSON.stringify(x.attachments), x.confirmation || null]);
       added += r.rowCount;
     }
     await db.query('UPDATE gmail_accounts SET last_sync_at=now(),last_sync_error=NULL WHERE id=$1', [account.id]);
@@ -890,7 +921,7 @@ export function registerFinanceRoutes(app, deps) {
   app.get('/api/gmail/messages', auth, invoicesPerm, read(async (db, req) => {
     const kind = ['zelle_in', 'zelle_out', 'vendor_bill'].includes(String(req.query.kind)) ? String(req.query.kind) : '';
     const status = ['new', 'matched', 'reviewed', 'ignored'].includes(String(req.query.status)) ? String(req.query.status) : '';
-    const rows = (await db.query(`SELECT m.id,m.kind,m.from_name,m.from_email,m.subject,m.snippet,m.received_at,m.amount,m.counterparty,m.memo,m.reference,m.status,m.matched_invoice_id,
+    const rows = (await db.query(`SELECT m.id,m.kind,m.from_name,m.from_email,m.subject,m.snippet,m.received_at,m.amount,m.counterparty,m.memo,m.reference,m.confirmation,m.status,m.matched_invoice_id,
         m.handled_by,m.handled_at,a.email account_email,i.invoice_number matched_invoice_number,
         (SELECT json_agg(json_build_object('index',o.ord-1,'filename',o.a->>'filename','mimeType',o.a->>'mimeType','size',o.a->>'size')) FROM jsonb_array_elements(m.attachments) WITH ORDINALITY o(a,ord)) attachments
       FROM gmail_finance_messages m JOIN gmail_accounts a ON a.id=m.account_id LEFT JOIN customer_invoices i ON i.id=m.matched_invoice_id
@@ -909,8 +940,10 @@ export function registerFinanceRoutes(app, deps) {
     const amount = money(req.body?.amount ?? m.amount);
     if (amount <= 0) fail(400, 'Payment amount must be greater than zero.');
     if (amount > money(inv.balance_due) + 0.01) fail(409, `Payment ($${amount.toFixed(2)}) is more than the balance due ($${money(inv.balance_due).toFixed(2)}).`);
+    // v24.48.3: the payment's transaction ID is the bank's Zelle confirmation number from the email.
+    const conf = await confirmationFromGmail(db, m);
     const p = (await db.query(`INSERT INTO customer_invoice_payments(invoice_id,amount,method,reference,note,paid_at,received_by) VALUES($1::bigint,$2::numeric,'Zelle',$3,$4,coalesce($5::timestamptz,now()),$6) RETURNING id`,
-      [inv.id, amount, str(`Zelle ${m.counterparty || ''}`.trim(), 160), str(`From Gmail (${m.subject || 'Zelle'})${m.memo ? ` · Memo: ${m.memo}` : ''}`, 2000), m.received_at, req.user.username])).rows[0];
+      [inv.id, amount, str(conf || `Zelle ${m.counterparty || ''}`.trim(), 160), str(`From Gmail (${m.subject || 'Zelle'})${m.counterparty ? ` · From: ${m.counterparty}` : ''}${m.memo ? ` · Memo: ${m.memo}` : ''}`, 2000), m.received_at, req.user.username])).rows[0];
     await db.query('UPDATE customer_invoices SET amount_paid=amount_paid+$2::numeric,updated_at=now() WHERE id=$1::bigint', [inv.id, amount]);
     await recalcInvoice(db, inv.id);
     await db.query(`UPDATE gmail_finance_messages SET status='matched',matched_invoice_id=$2,matched_payment_id=$3,handled_by=$4,handled_at=now() WHERE id=$1`, [m.id, inv.id, p.id, req.user.username]);

@@ -19,7 +19,7 @@ import {runShopAssistant,createAssistantTools,assistantRole} from "./shop_assist
 import {createSamsaraLookup} from "./samsara_assistant.mjs";
 import {renderCustomerDocumentPdf,shopProfile} from "./invoice_pdf.mjs";
 import {extractPdfPages,slicePdf,manualSearchTerms} from "./manual_library.mjs";
-import {ensureFinanceSchema,registerFinanceRoutes,cleanMiles,reportRange,fetchGmailAttachment} from "./finance_center.mjs";
+import {ensureFinanceSchema,registerFinanceRoutes,cleanMiles,reportRange,fetchGmailAttachment,backfillZelleConfirmations} from "./finance_center.mjs";
 import {documentEmailHtml,sendShopEmail,emailSenderStatus,EMAIL_NOT_CONNECTED} from "./email_templates.mjs";
 import {registerProductivityRoutes} from "./mechanic_productivity.mjs";
 import {ensureTimeClockSchema,registerTimeClockRoutes,startTimeClockScheduler,autoClockIn,assertClockedIn} from "./time_clock.mjs";
@@ -1889,7 +1889,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.48.2");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.48.3");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
@@ -4739,6 +4739,8 @@ initDb()
   .then(()=>normalizeCollaborationAtStartup())
   .then(()=>repairApprovedFindingsAtStartup())
   .then(()=>{cleanInspectionTaskNamesAtStartup().catch(e=>console.error("Inspection task rename failed:",e?.message))})
+  // v24.48.3: payments applied from Gmail before now get the bank's Zelle confirmation number as their reference.
+  .then(()=>{if(pool&&process.env.NODE_ENV!=='test')backfillZelleConfirmations(pool).catch(e=>console.error("Zelle confirmation backfill failed:",e?.message))})
   .then(()=>repairWorkOrderNumberCollisions())
   .then(async()=>{try{const q=await pool.query("SELECT id FROM workshop_manuals WHERE active=true AND (index_status IS NULL OR index_status IN ('queued','indexing')) AND (r2_key IS NOT NULL OR EXISTS(SELECT 1 FROM workshop_manual_files f WHERE f.manual_id=workshop_manuals.id))");for(const r of q.rows)queueManualIndex(r.id)}catch(e){console.error('[manual index startup]',e?.message)}})
   .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v${ITTR_APP_VERSION} Online running on port ${port}`))})
