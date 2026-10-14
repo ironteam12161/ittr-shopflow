@@ -27,7 +27,8 @@ import {registerLaborTimeRoutes} from "./labor_times.mjs";
 import {parseBatchTranslations,validTranslation} from "./translation_guard.mjs";
 import {aiContext,featureForPath,createAIMeter,ensureAIUsageSchema} from "./ai_usage.mjs";
 import {registerAICenterRoutes} from "./ai_center.mjs";
-import {ensureVendorBillSchema,splitDiscountLines} from "./vendor_bills.mjs";
+import {ensureVendorBillSchema,splitDiscountLines,knownVendor} from "./vendor_bills.mjs";
+import {ensureBillSchema,registerBillRoutes} from "./bills.mjs";
 import {matchInvoiceLines} from "./part_matching.mjs";
 import {registerFluidRoutes,registerPartDeleteRoutes,isGallonUom,FLUID_UNITS,ensureFluidSchema} from "./fluids.mjs";
 import {ensureComplianceSchema,registerComplianceRoutes,startFleetScheduler} from "./compliance_center.mjs";
@@ -1820,7 +1821,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.47.7");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.48.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
@@ -4629,6 +4630,8 @@ registerAICenterRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit,aiM
  storeFile:r2Configured?async(key,buffer,mime)=>{await requireR2().send(new PutObjectCommand({Bucket:r2Bucket,Key:key,Body:buffer,ContentType:mime,CacheControl:"private, max-age=3600"}));return key}:null,
  readFile:r2Configured?async key=>{const o=await requireR2().send(new GetObjectCommand({Bucket:r2Bucket,Key:key}));return Buffer.from(await o.Body.transformToByteArray())}:null});
 registerComplianceRoutes(app,{auth,ownerOnly,adminOnly,requireDb,audit,PDFDocument,shopProfile,lookupFmcsaCarrier,searchFmcsaCarriersByName,samsaraPaged,samsaraConfigured:samsaraTokenPresent});
+// v24.48.0: Bills — every shop purchase, by expense category, ready for QuickBooks.
+registerBillRoutes(app,{auth,managerPermission,ownerOnly,requireDb,audit,resolveVendor,knownVendor,reportRange});
 app.use("/api",(req,res)=>res.status(404).json({error:"API endpoint not found"}));
 
 
@@ -4655,6 +4658,7 @@ initDb()
   .then(()=>ensureTimeClockSchema(pool))
   .then(()=>pool&&ensureAIUsageSchema(pool))
   .then(()=>pool&&ensureVendorBillSchema(pool))
+  .then(()=>pool&&ensureBillSchema(pool))
   .then(()=>pool&&ensureFluidSchema(pool))
   // v24.41.1: odometer readings typed with a dot as thousands separator ("304.538") were saved as 304.538 miles. Repair once.
   .then(async()=>{if(!pool)return;for(const t of ["customer_invoices","customer_estimates"]){try{const r=await pool.query(`UPDATE ${t} SET mileage=mileage*1000 WHERE mileage IS NOT NULL AND mileage<>trunc(mileage) AND scale(mileage)=3 AND mileage<100000`);if(r.rowCount)console.log(`Repaired ${r.rowCount} ${t} mileage value(s) typed with a dot.`)}catch(e){console.warn("mileage repair",t,e?.message)}}})

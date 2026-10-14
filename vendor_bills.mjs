@@ -184,7 +184,7 @@ export async function buildVendorAnalysis(db, { from, to }) {
   return { from, to, ...analyzeVendors({ invoices: [...invoices, ...older], lines, cores, from, to }) };
 }
 
-async function knownVendor(db, resolveVendor, raw, create) {
+export async function knownVendor(db, resolveVendor, raw, create) {
   const name = str(raw, 160); if (!name) return '';
   const k = vendorKey(name);
   const r = await db.query(`SELECT vendor,count(*)::int n FROM parts_vendor_invoices WHERE vendor IS NOT NULL AND trim(vendor)<>'' GROUP BY vendor ORDER BY 2 DESC LIMIT 500`);

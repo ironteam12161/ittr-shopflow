@@ -10,10 +10,20 @@ The goal is for QuickBooks to stay in sync with ShopFlow the way Fullbay's integ
 | Finalized invoice | Invoice. Lines use Items: *Labor*, *Parts*, *Shop supplies*, *Tire user fee*, *Tire disposal fee*, *Sublet*. Sales tax uses the QBO tax code. | On Finalize, and re-sent on edit while unpaid |
 | Payment (cash/check/card/Zelle/ACH) | ReceivePayment, linked to the invoice, with the deposit account chosen per method | When recorded, or applied from the Gmail Zelle inbox |
 | Void invoice | Void in QBO | On void |
-| Received vendor bill (Smart Receiving) | Bill for the vendor (matched/created), expense account *Parts / COGS* | When received |
+| Bill typed in **Bills** (pay later), incl. parts bills from Smart Receiving / scan / Gmail | Bill for the vendor (matched/created). One line per bill line, account from the line's **category** (Bills → *Categories & QuickBooks*). Tax and discount are spread over the lines; freight goes to *Freight & delivery* | When saved, re-sent when edited (`qb_status = needs_update`) |
+| Bill marked paid | BillPayment linked to the Bill, from the bank/card account of the payment method | When marked paid |
+| Expense typed in **Bills** (already paid) | Purchase (PaymentType Cash / Check / CreditCard) | When saved |
 | Tire user fee collected | Separate liability item, so it can be remitted to the state | With the invoice |
 
 The sync is one-way (ShopFlow is the source) to avoid conflicts. Payments recorded directly in QBO can later be pulled back once a day to mark ShopFlow invoices paid.
+
+## Ready today (v24.48.0)
+
+- **Bills** page: every purchase (parts, supplies, tools, fuel, rent, utilities, …) is typed in with a category per line.
+- Each category stores its QuickBooks account name (`expense_categories.qb_account`, and `qb_account_id` once connected).
+- Each bill has `qb_id`, `qb_sync_token`, `qb_payment_id`, `qb_status` (`not_synced` / `pending` / `synced` / `needs_update` / `error`), `qb_synced_at` and `qb_error` columns.
+- `quickBooksPayload()` in `bills.mjs` already builds the exact Bill / Purchase JSON. Each bill's detail view shows it under "QuickBooks preview", with anything still missing.
+- **Export CSV** gives the accountant one row per line with the QuickBooks account, for importing before the live connection exists.
 
 ## What's needed from you
 
