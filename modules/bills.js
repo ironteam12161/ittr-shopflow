@@ -102,16 +102,20 @@ function drawForm(keepFocus){const a=document.activeElement,key=a?.dataset?.v||a
 function updateTotals(){const f=S.form,{sub,total}=sums(f);const t=M('#blTotal');if(t)t.textContent=usd(total);const lines=M('.blSums div span+b');if(lines)lines.textContent=usd(sub);
  const paper=f.paperTotal===''?null:money(f.paperTotal),w=M('#blWarn');if(w)w.textContent=paper!=null&&Math.abs(paper-total)>0.01?`Doesn't match: lines + tax + freight − discount = ${usd(total)}`:'';
  f.lines.forEach((l,i)=>{const a=M(`tr[data-i="${i}"] [data-l="amount"]`);if(a&&!l.amountTyped&&document.activeElement!==a)a.value=lineAmount(l)||''})}
-async function startForm(kind,bill,lines){
+async function startForm(kind,bill,lines,scan){
  openModal('');S.form=newForm(kind);
+ if(scan){const i=scan.invoice||{};Object.assign(S.form,{vendor:i.vendor||'',billNumber:i.invoiceNumber||'',billDate:i.invoiceDate||today(),dueDate:i.dueDate||'',poNumber:i.poNumber||'',
+  discount:i.discount||'',tax:i.tax||'',freight:i.freight||'',paperTotal:i.total||'',file:scan.file?.key?scan.file:null,dirty:true,
+  lines:(scan.lines||[]).length?scan.lines.map(l=>({description:l.description||'',partNumber:l.partNumber||'',category:l.partNumber?'parts':'',quantity:l.quantity||1,unitCost:l.unitCost||'',amount:l.lineTotal||'',amountTyped:!!l.lineTotal})):S.form.lines});
+  if(!i.dueDate)dueFromTerms(S.form)}
  if(bill){Object.assign(S.form,{id:bill.id,kind:bill.kind,vendor:bill.vendor,billNumber:bill.billNumber,billDate:bill.billDate||today(),terms:bill.terms,dueDate:bill.dueDate||'',poNumber:bill.poNumber,notes:bill.notes,
   discount:bill.discount||'',tax:bill.tax||'',freight:bill.freight||'',paymentMethod:bill.paymentMethod||(bill.kind==='expense'?'card':''),paymentReference:bill.paymentReference||'',paidOn:(bill.paidAt||'').slice(0,10)||today(),received:bill.receivedIntoStock,
   lines:lines.map(l=>({id:l.id,description:l.description,partNumber:l.partNumber,category:l.category,quantity:l.quantity,unitCost:l.unitCost,amount:l.amount,amountTyped:true,workOrderId:l.workOrderId,unitNumber:l.unitNumber}))})}
- else dueFromTerms(S.form);
+ else if(!scan)dueFromTerms(S.form);
  drawForm();
 }
 function payload(){const f=S.form;return {kind:f.kind,vendor:f.vendor,billNumber:f.billNumber,billDate:f.billDate,dueDate:f.kind==='bill'?f.dueDate:'',terms:f.kind==='bill'?f.terms:'',poNumber:f.poNumber,notes:f.notes,
- discount:f.discount||0,tax:f.tax||0,freight:f.freight||0,paymentMethod:f.paymentMethod,paymentReference:f.paymentReference,paidOn:f.paidOn,
+ discount:f.discount||0,tax:f.tax||0,freight:f.freight||0,paymentMethod:f.paymentMethod,paymentReference:f.paymentReference,paidOn:f.paidOn,file:f.file||undefined,
  lines:f.lines.map(l=>({id:l.id,description:l.description,partNumber:l.partNumber,category:l.category,quantity:l.quantity===''?1:l.quantity,unitCost:l.unitCost,amount:lineAmount(l),workOrderId:l.workOrderId,unitNumber:l.unitNumber}))}}
 async function saveForm(btn){const f=S.form;
  if(f.paperTotal!==''&&Math.abs(money(f.paperTotal)-sums(f).total)>0.01&&!confirm(`The total you typed (${usd(f.paperTotal)}) doesn't match the lines (${usd(sums(f).total)}). Save anyway?`))return;
@@ -144,6 +148,7 @@ async function openDetail(id){
     ${b.status!=='void'&&!b.receivedIntoStock?`<button type="button" class="secondary" data-m="void" data-id="${b.id}">Void</button>`:''}
     ${b.paidAt&&b.kind!=='expense'&&b.status!=='void'?`<button type="button" class="secondary" data-m="unpay" data-id="${b.id}">Undo payment</button>`:''}
     ${b.status!=='void'?`<button type="button" class="secondary" data-m="edit" data-id="${b.id}">Edit</button>`:''}
+    ${b.status!=='void'&&!b.receivedIntoStock&&d.lines.some(l=>l.partNumber||l.category==='parts')?`<button type="button" class="secondary" data-m="receive" data-id="${b.id}" title="Match these parts to inventory and put them on the shelf">📦 Receive into stock</button>`:''}
     ${!b.paidAt&&b.status!=='void'?`<button type="button" data-m="pay" data-id="${b.id}">Mark paid</button>`:''}
    </div>`);
   S.modal.dataset.bill=JSON.stringify({b,lines:d.lines});
@@ -179,6 +184,7 @@ async function onModalClick(e){
  if(m==='rmline'){const i=Number(b.closest('tr').dataset.i);S.form.lines.splice(i,1);S.form.dirty=true;return drawForm()}
  if(m==='vendor'){S.form.vendor=b.dataset.name;S.form.dirty=true;M('[data-v="vendor"]').value=b.dataset.name;M('#blVendList').classList.add('hidden');return}
  if(m==='save')return saveForm(b);
+ if(m==='receive'){closeModal();return window.receiveFiledBill?.(Number(id))}
  if(m==='edit'){const {b:bill,lines}=JSON.parse(S.modal.dataset.bill);return startForm(bill.kind,bill,lines)}
  if(m==='pay'){const {b:bill}=JSON.parse(S.modal.dataset.bill);return payDialog(id,bill.total)}
  if(m==='back')return openDetail(id);
@@ -210,7 +216,16 @@ function onClick(e){const b=e.target.closest('[data-b],#blStatus button');if(!b)
  if(a==='cat'){S.filters.category=b.dataset.c||'';return load()}
  if(a==='csv')return downloadCsv();
  if(a==='cats')return catsDialog();
+ if(a==='receive')return window.openSmartReceiving?.();
+ if(a==='scan')return S.scope.host.querySelector('#blScanFile')?.click();
 }
+// v24.48.2: scan a bill or receipt (photo/PDF) — AI reads it, the form opens filled in to check and save.
+async function scanBill(file){if(!file)return;const btn=S.scope.host.querySelector('[data-b="scan"]');if(btn){btn.disabled=true;btn.textContent='Reading bill…'}
+ try{const fd=new FormData();fd.append('file',file);const r=await fetch('/api/vendor-invoices/scan',{method:'POST',headers:window.authHeaders?.()||{},body:fd}),d=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(d.error||`Scan failed (${r.status})`);
+  if(d.alreadyFiled&&!confirm(`This vendor already has bill #${d.invoice?.invoiceNumber||''} saved. Open the form anyway?`))return openDetail(d.alreadyFiled.id);
+  await startForm('bill',null,null,d);toast('Check what the AI read, choose a category for each line, then save.','info')}
+ catch(e){toast(e.message,'warning')}finally{if(btn){btn.disabled=false;btn.textContent='📷 Scan bill'}const i=S.scope?.host.querySelector('#blScanFile');if(i)i.value=''}}
 function onFilter(e){const t=e.target;if(!t.dataset.f)return;S.filters[t.dataset.f]=t.value;
  if(t.dataset.f==='range'){S.scope.host.querySelectorAll('[data-f="from"],[data-f="to"]').forEach(x=>x.classList.toggle('hidden',t.value!=='custom'))}
  try{sessionStorage.setItem('ittr_bills_range',S.filters.range)}catch(_){}
@@ -221,6 +236,8 @@ export async function mount(scope){S={...S,scope,data:null};
  if(!isOwner())scope.host.querySelectorAll('.ownerOnlyBills').forEach(x=>x.remove());
  scope.on(scope.host,'click',onClick);scope.on(scope.host,'input',e=>{if(e.target.dataset.f==='q')onFilter(e)});scope.on(scope.host,'change',e=>{if(e.target.dataset.f&&e.target.dataset.f!=='q')onFilter(e)});
  scope.on(document,'click',e=>{if(S.modal&&!e.target.closest?.('.blVend'))S.modal.querySelector('#blVendList')?.classList.add('hidden')});
+ scope.on(scope.host,'change',e=>{if(e.target.id==='blScanFile')scanBill(e.target.files?.[0])});
+ scope.on(window,'ittr:bills-changed',()=>{if(S.meta)load()});
  try{S.meta=await api('/api/bills/meta')}catch(e){scope.host.querySelector('#blRows').innerHTML=`<tr><td colspan="8" class="blEmpty">${h(e.message)}</td></tr>`;return}
  await load()}
 export async function afterShow(){if(S.meta)load()}

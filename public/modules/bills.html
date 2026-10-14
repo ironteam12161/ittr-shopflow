@@ -69,6 +69,9 @@
   <div class="acts">
    <button type="button" data-b="new" data-kind="bill">+ New bill</button>
    <button type="button" class="secondary" data-b="new" data-kind="expense">+ Expense (paid now)</button>
+   <button type="button" class="secondary" data-b="scan" title="Photo or PDF of a bill or receipt — AI fills in the form">📷 Scan bill</button>
+   <button type="button" class="secondary" data-b="receive" title="Parts invoice: match the parts and put them on the shelf. The bill is saved here too.">📦 Parts invoice → stock</button>
+   <input type="file" id="blScanFile" accept="application/pdf,image/*" class="hidden">
    <button type="button" class="secondary" data-b="csv">Export CSV</button>
    <button type="button" class="secondary ownerOnlyBills" data-b="cats">Categories &amp; QuickBooks</button>
   </div>
