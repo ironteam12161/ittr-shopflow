@@ -85,5 +85,24 @@ try{
  await request(`/api/inventory/cores/${core.id}`,{method:'PATCH',token:admin,body:{action:'returned',quantity:1,reference:'RMA-55'}});cores=await request('/api/inventory/cores?status=open',{token:admin});eq(Number(cores.totals.returnedPendingCredit),400,'returned core pending credit');
  await request(`/api/inventory/cores/${core.id}`,{method:'PATCH',token:admin,body:{action:'credited',amount:400,reference:'CM-88'}});await request(`/api/inventory/cores/${core.id}`,{method:'PATCH',token:admin,body:{action:'closed',notes:'Credit applied'}});
  eq(Number((await db.query('SELECT count(*) n FROM part_core_events WHERE core_obligation_id=$1',[core.id])).rows[0].n),4,'core lifecycle audit events');eq((await db.query('SELECT status FROM part_core_obligations WHERE id=$1',[core.id])).rows[0].status,'closed','core closed status');
+
+ {
+  // v24.48.1: Fullbay Details check — read-only compare, then import fills only what was missing; junk "VINs" never land on units.
+  const hdr='"Customer","Unit Status","Unit #","VIN","Unit Type","Unit Subtype","SO","Lead Tech","PO #","Inv #","Action","Action Completed Date","Tech","Complaint","Actual Correction","Hours","Labor $","Part $","Total Parts & Labor","Unit Miles","Component","System"';
+  const line=(so,act,unit,vin,txt,miles)=>`="Check Fleet LLC",="Active",="${unit}",="${vin}",="Tractor",,="${so}",="[unassigned]",,="9${so}",${act},="6:58PM 8/6/2025",,="${txt}",="${txt}",1.00000,"$60.00","$10.00","$70.00",${miles},="Chassis",="Chassis"`;
+  const fileA=[hdr,line('7001',1,'77','1FUJGLDR5GLV76481','Oil change',500000),line('7001',2,'77','1FUJGLDR5GLV76481','Grease chassis',500000)].join('\n');
+  const fileB=[fileA,line('7002',1,'78','ACCOUNT','Brake adjust',300000)].join('\n');
+  const send=async(path,parts)=>{const fd=new FormData();for(const [k,name,txt] of parts)fd.append(k,new Blob([txt],{type:'text/csv'}),name);const r=await fetch(`http://127.0.0.1:${port}${path}`,{method:'POST',headers:{Authorization:`Bearer ${admin}`},body:fd});const d=await r.json();if(!r.ok)throw new Error(`${path} ${r.status} ${JSON.stringify(d)}`);return d};
+  let chk=await send('/api/fullbay/check/service-history',[['files','a.csv',fileA]]);eq(chk.files[0].status,'customer_missing','new customer reported');eq(chk.files[0].linesMissing,2,'both lines missing before import');
+  eq(Number((await db.query(`SELECT count(*) n FROM fullbay_service_history WHERE customer_name='Check Fleet LLC'`)).rows[0].n),0,'check is read-only');
+  await send('/api/fullbay/import/service-history',[['file','a.csv',fileA]]);
+  chk=await send('/api/fullbay/check/service-history',[['files','a.csv',fileA],['files','b.csv',fileB]]);
+  eq(chk.files[0].status,'ok','imported file is complete');eq(chk.files[0].linesMissing,0,'no lines missing after import');
+  eq(chk.files[1].linesMissing,1,'file B: one line missing');eq(chk.files[1].soMissing[0].so,'7002','missing SO named');ok(chk.files[1].units.missing.some(u=>u.unit==='78'),'missing unit named');ok(chk.files[1].fileIssues.badVins.some(v=>v.includes('ACCOUNT')),'junk VIN flagged in file');
+  await send('/api/fullbay/import/service-history',[['file','b.csv',fileB]]);
+  eq((await db.query(`SELECT vin FROM customer_units WHERE customer_name='Check Fleet LLC' AND unit_number='78'`)).rows[0].vin,null,'junk VIN not written onto the unit');
+  eq((await send('/api/fullbay/check/service-history',[['files','b.csv',fileB]])).totals.linesMissing,0,'everything saved after importing B');
+  console.log('PASS Fullbay Details check: read-only compare, missing SOs/units, import fills gaps, junk VINs kept off units');
+ }
  console.log('PASS purchase price analytics + core balance lifecycle');console.log('Operations lifecycle integration: all scenarios passed');
 }finally{await stop().catch(()=>{});await db.end().catch(()=>{})}

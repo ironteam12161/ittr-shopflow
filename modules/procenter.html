@@ -120,6 +120,13 @@
       <div class="notice" style="margin-top:10px"><b>Details import:</b> reads Customer, Unit #, VIN, SO, Invoice, Complaint, Actual Correction, labor/parts amounts, mileage, technician, component and system. It automatically creates/links units under the matching customer.</div>
       <div id="fullbayImportStatus" class="aiResult">Loading…</div>
     </div>
+    <div class="card" id="fullbayCheckCard">
+      <h3>Check Fullbay files against ShopFlow</h3>
+      <div class="muted">Choose one or more Fullbay <b>Details</b> CSV exports (one per customer is fine). ShopFlow compares every job line with what is already saved and shows what is missing. Nothing is changed until you press <b>Import missing info</b>.</div>
+      <div class="row" style="margin-top:10px;align-items:flex-end"><div class="field"><label>Details CSV files</label><input id="fullbayCheckFiles" type="file" accept=".csv,text/csv" multiple></div>
+        <div class="actions" style="margin:0"><button type="button" onclick="checkFullbayFiles()">Check files</button><button type="button" class="secondary hidden" id="fullbayCheckImportBtn" onclick="importCheckedFullbayFiles()">Import missing info</button></div></div>
+      <div id="fullbayCheckResult"></div>
+    </div>
     <div id="fullbayStats" class="fullbayGrid"></div>
     <div class="card">
       <h3>Customers</h3>

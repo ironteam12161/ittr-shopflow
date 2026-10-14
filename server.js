@@ -1009,6 +1009,20 @@ app.post("/api/fullbay/import/parts",auth,managerPermission("inventory"),csvUplo
  await audit(req.user.username,"fullbay_parts_import",{file:req.file.originalname,received:rows.length,imported,skipped});res.json({ok:true,received:rows.length,imported,skipped});
 }catch(e){next(e)}});
 
+// v24.48.1: one parser for a Fullbay "Details" row, shared by the import and by the check, so the check matches the
+// exact rows the import creates (same source_key).
+function parseFullbayDetailRow(row){
+ const customerName=pickField(row,["Customer","Company Name","Customer Name"]),unit=pickField(row,["Unit #","Unit","Unit Number"]),vin=pickField(row,["VIN"]).toUpperCase(),so=pickField(row,["SO","Service Order","Service Order #"]),action=pickField(row,["Action"]),complaint=pickField(row,["Complaint"]),correction=pickField(row,["Actual Correction","Correction"]);
+ const milesRaw=numOrNull(pickField(row,["Unit Miles","Mileage","Miles"])),miles=milesRaw!=null?Math.max(0,Math.round(milesRaw)):null;
+ const completed=fullbayDateOrNull(pickField(row,["Action Completed Date","Completed Date","Date"])),invoice=pickField(row,["Inv #","Invoice #","Invoice"]),po=pickField(row,["PO #","PO"]);
+ const stable=[customerName,vin||unit,so,invoice,action,completed||pickField(row,["Action Completed Date"]),complaint,correction].map(x=>String(x||"").trim().toLowerCase()).join("|");
+ return {customerName,unit,vin,so,action,complaint,correction,miles,completed,invoice,po,valid:!!(customerName&&(unit||vin)&&so),
+  key:"service:"+crypto.createHash("sha256").update(stable).digest("hex"),leadTech:pickField(row,["Lead Tech"]),tech:pickField(row,["Tech"]),
+  hours:numOrNull(pickField(row,["Hours"])),labor:numOrNull(pickField(row,["Labor $"])),part:numOrNull(pickField(row,["Part $"])),total:numOrNull(pickField(row,["Total Parts & Labor"]))};
+}
+// Fullbay "VIN" cells often hold a unit number, "ACCOUNT", "TRAILERS YARD", … Only a real 17-character VIN may be
+// written onto a unit (it never overwrites a good VIN with junk).
+const realVin=v=>/^[A-Z0-9]{17}$/.test(String(v||"").trim().toUpperCase());
 app.post("/api/fullbay/import/service-history",auth,managerPermission("customers"),csvUpload.single("file"),async(req,res,next)=>{
  try{
   if(!req.file)return res.status(400).json({error:"Choose the Fullbay Details / Service History CSV file."});
@@ -1026,11 +1040,10 @@ app.post("/api/fullbay/import/service-history",auth,managerPermission("customers
     const customer=cr.rows[0];customersTouched.add(String(customer.id));
     const milesRaw=numOrNull(pickField(row,["Unit Miles","Mileage","Miles"]));const miles=milesRaw!=null?Math.max(0,Math.round(milesRaw)):null;
     let unitRecord=null;
-    if(unit){unitRecord=await upsertDirectoryUnit(client,{customerId:customer.id,customerName:customer.customer_name,unit,vin,mileage:miles,source:"fullbay_details"});if(unitRecord){unitsTouched.add(String(unitRecord.id));await client.query(`UPDATE customer_units SET vin=coalesce(nullif($2,''),vin),mileage=CASE WHEN $3::bigint IS NULL THEN mileage WHEN mileage IS NULL OR $3::bigint>mileage THEN $3::bigint ELSE mileage END,unit_status=coalesce(nullif($4,''),unit_status),unit_type=coalesce(nullif($5,''),unit_type),unit_subtype=coalesce(nullif($6,''),unit_subtype),source=CASE WHEN source='manual' THEN source ELSE 'fullbay_details' END,updated_at=now() WHERE id=$1`,[unitRecord.id,vin||"",miles,pickField(row,["Unit Status"]),pickField(row,["Unit Type"]),pickField(row,["Unit Subtype"])])}}
+    if(unit){unitRecord=await upsertDirectoryUnit(client,{customerId:customer.id,customerName:customer.customer_name,unit,vin:realVin(vin)?vin:"",mileage:miles,source:"fullbay_details"});if(unitRecord){unitsTouched.add(String(unitRecord.id));await client.query(`UPDATE customer_units SET vin=coalesce(nullif($2,''),vin),mileage=CASE WHEN $3::bigint IS NULL THEN mileage WHEN mileage IS NULL OR $3::bigint>mileage THEN $3::bigint ELSE mileage END,unit_status=coalesce(nullif($4,''),unit_status),unit_type=coalesce(nullif($5,''),unit_type),unit_subtype=coalesce(nullif($6,''),unit_subtype),source=CASE WHEN source='manual' THEN source ELSE 'fullbay_details' END,updated_at=now() WHERE id=$1`,[unitRecord.id,realVin(vin)?vin:"",miles,pickField(row,["Unit Status"]),pickField(row,["Unit Type"]),pickField(row,["Unit Subtype"])])}}
     const completed=fullbayDateOrNull(pickField(row,["Action Completed Date","Completed Date","Date"]));
     const invoice=pickField(row,["Inv #","Invoice #","Invoice"]),po=pickField(row,["PO #","PO"]);
-    const stable=[customerName,vin||unit,so,invoice,action,completed||pickField(row,["Action Completed Date"]),complaint,correction].map(x=>String(x||"").trim().toLowerCase()).join("|");
-    const key="service:"+crypto.createHash("sha256").update(stable).digest("hex");
+    const key=parseFullbayDetailRow(row).key;
     await client.query(`INSERT INTO fullbay_service_history(source_key,customer_id,customer_name,unit_record_id,unit_number,vin,unit_status,unit_type,unit_subtype,service_order,invoice_number,po_number,action_number,action_completed_at,lead_tech,tech,complaint,actual_correction,hours,labor_amount,part_amount,total_amount,unit_miles,component,system,raw,source_file) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26::jsonb,$27) ON CONFLICT(source_key) DO UPDATE SET customer_id=EXCLUDED.customer_id,customer_name=EXCLUDED.customer_name,unit_record_id=EXCLUDED.unit_record_id,unit_number=EXCLUDED.unit_number,vin=EXCLUDED.vin,unit_status=EXCLUDED.unit_status,unit_type=EXCLUDED.unit_type,unit_subtype=EXCLUDED.unit_subtype,service_order=EXCLUDED.service_order,invoice_number=EXCLUDED.invoice_number,po_number=EXCLUDED.po_number,action_number=EXCLUDED.action_number,action_completed_at=EXCLUDED.action_completed_at,lead_tech=EXCLUDED.lead_tech,tech=EXCLUDED.tech,complaint=EXCLUDED.complaint,actual_correction=EXCLUDED.actual_correction,hours=EXCLUDED.hours,labor_amount=EXCLUDED.labor_amount,part_amount=EXCLUDED.part_amount,total_amount=EXCLUDED.total_amount,unit_miles=EXCLUDED.unit_miles,component=EXCLUDED.component,system=EXCLUDED.system,raw=EXCLUDED.raw,source_file=EXCLUDED.source_file,updated_at=now()`,[key,customer.id,customer.customer_name,unitRecord?.id||null,unit||null,vin||null,pickField(row,["Unit Status"])||null,pickField(row,["Unit Type"])||null,pickField(row,["Unit Subtype"])||null,so,invoice||null,po||null,action||null,completed,pickField(row,["Lead Tech"])||null,pickField(row,["Tech"])||null,complaint||null,correction||null,numOrNull(pickField(row,["Hours"])),numOrNull(pickField(row,["Labor $"])),numOrNull(pickField(row,["Part $"])),numOrNull(pickField(row,["Total Parts & Labor"])),miles,pickField(row,["Component"])||null,pickField(row,["System"])||null,JSON.stringify(cleanRawRow(row)),String(req.file.originalname||"details.csv")]);imported++;
    }
    await client.query("INSERT INTO fullbay_import_log(import_type,source_file,rows_received,rows_imported,rows_skipped,username) VALUES('service_history',$1,$2,$3,$4,$5)",[String(req.file.originalname||"details.csv"),rows.length,imported,skipped,req.user.username]);
@@ -1041,6 +1054,61 @@ app.post("/api/fullbay/import/service-history",auth,managerPermission("customers
  }catch(e){next(e)}
 });
 
+
+// v24.48.1: check Fullbay "Details" exports against what is already in ShopFlow — read-only. For each file: service
+// orders and job lines missing, info the file has but ShopFlow is missing (invoice #, date, miles, tech, amounts, …),
+// values that differ, units missing under the customer, and problems in the file itself (bad VINs).
+app.post("/api/fullbay/check/service-history",auth,managerPermission("customers"),csvUpload.array("files",40),async(req,res,next)=>{
+ try{
+  const files=Array.isArray(req.files)?req.files:[];if(!files.length)return res.status(400).json({error:"Choose one or more Fullbay Details CSV files."});
+  const db=requireDb(),out=[];
+  const FIELDS=[["invoice","invoice_number","Invoice #"],["po","po_number","PO #"],["completed","action_completed_at","Completed date"],["miles","unit_miles","Unit miles"],["tech","tech","Tech"],["leadTech","lead_tech","Lead tech"],
+   ["hours","hours","Hours"],["labor","labor_amount","Labor $"],["part","part_amount","Part $"],["total","total_amount","Total $"],["complaint","complaint","Complaint"],["correction","actual_correction","Correction"],["unit","unit_number","Unit #"],["vin","vin","VIN"]];
+  const norm=(k,v)=>{if(v==null||v==="")return "";if(["hours","labor","part","total"].includes(k))return String(Math.round(Number(v)*100)/100);if(k==="miles")return String(Math.round(Number(v)));if(k==="completed")return new Date(v).toISOString().slice(0,16);return String(v).trim().toLowerCase()};
+  for(const f of files){
+   const name=String(f.originalname||"file.csv").slice(0,200);
+   const rows=csvObjects(f.buffer),headers=new Set(Object.keys(rows[0]||{}).map(normHeader));
+   const need=["Customer","Unit #","SO","Complaint","Actual Correction"].filter(x=>!headers.has(normHeader(x)));
+   if(!rows.length||need.length){out.push({file:name,error:rows.length?`Not a Fullbay Details export (missing: ${need.join(", ")})`:"No rows"});continue}
+   const parsed=rows.map(parseFullbayDetailRow),valid=parsed.filter(r=>r.valid);
+   const sos=[...new Set(valid.map(r=>r.so))],names=[...new Set(valid.map(r=>r.customerName))];
+   const custs=(await db.query("SELECT id,customer_name FROM fullbay_import_customers WHERE lower(trim(customer_name))=ANY($1::text[])",[names.map(n=>n.trim().toLowerCase())])).rows;
+   const custByName=new Map(custs.map(c=>[c.customer_name.trim().toLowerCase(),c]));
+   const stored=(await db.query(`SELECT source_key,service_order,invoice_number,po_number,action_completed_at,unit_miles,tech,lead_tech,hours,labor_amount,part_amount,total_amount,complaint,actual_correction,unit_number,vin,customer_name
+     FROM fullbay_service_history WHERE service_order=ANY($1::text[]) OR source_key=ANY($2::text[])`,[sos,valid.map(r=>r.key)])).rows;
+   const byKey=new Map(stored.map(r=>[r.source_key,r])),soInSystem=new Set(stored.map(r=>String(r.service_order||"")));
+   const gaps={},diffs=[],missingLines=[],missingSo=new Map(),partialSo=new Map();let inSystem=0;
+   for(const r of valid){
+    const x=byKey.get(r.key);
+    if(!x){missingLines.push(r);(soInSystem.has(r.so)?partialSo:missingSo).set(r.so,(soInSystem.has(r.so)?partialSo:missingSo).get(r.so)||{so:r.so,invoice:r.invoice,unit:r.unit,date:r.completed?String(r.completed).slice(0,10):"",lines:0,total:0});const e=(soInSystem.has(r.so)?partialSo:missingSo).get(r.so);e.lines++;e.total=Math.round((e.total+(r.total||0))*100)/100;continue}
+    inSystem++;
+    for(const [k,col,label] of FIELDS){const a=norm(k,r[k]),b=norm(k,x[col]);if(!a||a===b)continue;
+     if(!b){gaps[label]=(gaps[label]||0)+1}else if(diffs.length<60)diffs.push({so:r.so,field:label,file:String(r[k]),system:String(x[col])})}
+   }
+   // Units under the customer in ShopFlow.
+   const unitKeys=new Map();for(const r of valid)if(r.unit)unitKeys.set(`${r.customerName.trim().toLowerCase()}|${r.unit.toLowerCase()}`,r);
+   const cu=custs.length?(await db.query("SELECT customer_id,lower(unit_number) u,upper(coalesce(vin,'')) vin FROM customer_units WHERE customer_id=ANY($1::bigint[])",[custs.map(c=>c.id)])).rows:[];
+   const unitSet=new Map(cu.map(u=>[`${u.customer_id}|${u.u}`,u]));const unitsMissing=[],vinMismatch=[];
+   for(const r of unitKeys.values()){const c=custByName.get(r.customerName.trim().toLowerCase());const u=c&&unitSet.get(`${c.id}|${r.unit.toLowerCase()}`);
+    if(!u)unitsMissing.push({unit:r.unit,vin:r.vin});else if(realVin(r.vin)&&u.vin&&u.vin!==r.vin)vinMismatch.push({unit:r.unit,file:r.vin,system:u.vin})}
+   // Problems in the file itself.
+   const badVins=[...new Set(valid.filter(r=>r.vin&&!realVin(r.vin)).map(r=>`${r.unit}: ${r.vin}`))];
+   const uv=new Map();for(const r of valid)if(r.unit&&r.vin){const k=r.unit.toLowerCase();if(!uv.has(k))uv.set(k,new Set());uv.get(k).add(r.vin)}
+   const vinConflicts=[...uv].filter(([,v])=>v.size>1).map(([u,v])=>({unit:u,vins:[...v]}));
+   const noTech=valid.filter(r=>!r.tech).length,noMiles=valid.filter(r=>!r.miles).length;
+   const status=!custs.length?"customer_missing":missingLines.length?"missing":(Object.keys(gaps).length||unitsMissing.length)?"gaps":diffs.length?"differences":"ok";
+   out.push({file:name,status,customers:names.map(n=>({name:n,inSystem:custByName.has(n.trim().toLowerCase())})),rows:rows.length,skipped:rows.length-valid.length,serviceOrders:sos.length,
+    linesInSystem:inSystem,linesMissing:missingLines.length,soMissing:[...missingSo.values()].sort((a,b)=>String(b.date).localeCompare(String(a.date))),soPartial:[...partialSo.values()],
+    missingInfo:gaps,differences:diffs,units:{inFile:unitKeys.size,missing:unitsMissing,vinMismatch},
+    fileIssues:{badVins,vinConflicts,noTech,noMiles,noPo:valid.filter(r=>!r.po).length}});
+  }
+  const sum=k=>out.reduce((a,x)=>a+(Number(x[k])||0),0);
+  await audit(req.user.username,"fullbay_history_checked",{files:files.length,linesMissing:sum("linesMissing")});
+  res.json({files:out,totals:{files:out.length,rows:sum("rows"),serviceOrders:sum("serviceOrders"),linesInSystem:sum("linesInSystem"),linesMissing:sum("linesMissing"),
+   soMissing:out.reduce((a,x)=>a+(x.soMissing?.length||0),0),unitsMissing:out.reduce((a,x)=>a+(x.units?.missing?.length||0),0),
+   filesNeedImport:out.filter(x=>["missing","gaps","customer_missing"].includes(x.status)).length}});
+ }catch(e){next(e)}
+});
 
 function canonicalFullbaySo(v){
  const x=String(cleanFullbayCell(v)||'').trim().replace(/\s*\(Quick SO\)\s*$/i,'').trim();
@@ -1821,7 +1889,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.48.0");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.48.1");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
