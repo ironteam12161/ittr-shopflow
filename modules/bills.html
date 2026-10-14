@@ -1,0 +1,85 @@
+<style>
+.bl{--c-line:#e4e7ec;--c-ink:#101828;--c-mut:#667085;--c-soft:#f9fafb}
+.blHead{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:14px}
+.blHead h1{margin:0}.blHead .acts{display:flex;gap:8px;flex-wrap:wrap}
+.blKpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.blKpi{background:#fff;border:1px solid var(--c-line);border-radius:12px;padding:12px 14px;text-align:left;cursor:pointer;min-height:auto;color:var(--c-ink)}
+.blKpi b{display:block;font-size:22px;font-variant-numeric:tabular-nums}.blKpi span{font-size:12px;color:var(--c-mut);font-weight:600}
+.blKpi.overdue b{color:#b42318}.blKpi.unpaid b{color:#b54708}.blKpi.qb b{color:#175cd3}
+.blFilters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#fff;border:1px solid var(--c-line);border-radius:12px;padding:10px;margin-bottom:12px}
+.blFilters input,.blFilters select{width:auto;min-height:38px}.blFilters .grow{flex:1;min-width:180px}
+.blChips{display:flex;gap:4px;flex-wrap:wrap}.blChips button{background:#fff;color:#344054;border:1px solid var(--c-line);min-height:34px;padding:5px 11px;font-size:13px}
+.blChips button.on{background:#101828;color:#fff;border-color:#101828}
+.blCats{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.blCat{background:#fff;border:1px solid var(--c-line);border-radius:999px;padding:5px 11px;font-size:12px;font-weight:700;color:#344054;cursor:pointer;min-height:auto}
+.blCat.on{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}.blCat i{font-style:normal;color:var(--c-mut);font-weight:600;margin-left:4px}
+.blScroll{overflow:auto;border:1px solid var(--c-line);border-radius:12px;background:#fff}
+.blTable{width:100%;border-collapse:collapse;font-size:13px}
+.blTable th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--c-mut);background:var(--c-soft);text-align:left;white-space:nowrap}
+.blTable td,.blTable th{padding:9px 10px;border-bottom:1px solid #eef0f3;vertical-align:middle}
+.blTable tbody tr{cursor:pointer}.blTable tbody tr:hover{background:#f8fafc}
+.blTable .n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.blTable .muted{font-size:12px}
+.blPill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap}
+.blPill.paid{background:#ecfdf3;color:#067647}.blPill.unpaid{background:#fffaeb;color:#b54708}.blPill.overdue{background:#fef3f2;color:#b42318}.blPill.void{background:#f2f4f7;color:#667085;text-decoration:line-through}
+.blPill.qb{background:#f2f4f7;color:#475467}.blPill.qb.synced{background:#eff8ff;color:#175cd3}.blPill.qb.error,.blPill.qb.needs_update{background:#fef3f2;color:#b42318}
+.blTag{display:inline-block;font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;background:#f2f4f7;color:#344054;margin:1px 3px 1px 0;white-space:nowrap}
+.blEmpty{padding:30px;text-align:center;color:var(--c-mut)}
+.blModal{position:fixed;inset:0;z-index:70;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:24px 12px;overflow:auto}
+.blModal>.box{background:#fff;border-radius:16px;max-width:980px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(15,23,42,.3)}
+.blModal>.box.small{max-width:520px}
+.blModal h2{margin:0 0 4px;font-size:20px}.blModal .sub{color:var(--c-mut);font-size:13px;margin-bottom:14px}
+.blBoxHead{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.blBoxHead .x{background:transparent;color:#475467;font-size:24px;min-height:auto;padding:0 6px;line-height:1}
+.blKind{display:inline-flex;border:1px solid var(--c-line);border-radius:10px;overflow:hidden;margin-bottom:14px}
+.blKind button{background:#fff;color:#344054;border-radius:0;min-height:38px;padding:7px 14px;font-size:13px}
+.blKind button.on{background:#101828;color:#fff}
+.blGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.blGrid label{display:block;font-size:12px;font-weight:700;color:#344054}.blGrid label input,.blGrid label select{margin-top:4px;width:100%}
+.blGrid .span2{grid-column:span 2}
+.blLines{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px}
+.blLines th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--c-mut);text-align:left;padding:4px 6px;white-space:nowrap}
+.blLines td{padding:4px 6px;vertical-align:top}.blLines input,.blLines select{width:100%;min-height:36px;padding:6px 8px}
+.blLines .q{width:70px}.blLines .m{width:110px}.blLines .rm{background:transparent;color:#b42318;min-height:36px;padding:0 8px;font-size:18px}
+.blLines input.n{text-align:right}
+.blFoot{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start;margin-top:6px}
+.blSums{border:1px solid var(--c-line);border-radius:12px;padding:10px 12px;background:var(--c-soft)}
+.blSums div{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:3px 0;font-size:13px}
+.blSums input{width:110px;min-height:32px;padding:4px 8px;text-align:right}
+.blSums .tot{border-top:1px solid var(--c-line);margin-top:6px;padding-top:8px;font-size:17px;font-weight:800}
+.blSums .warn{color:#b42318;font-size:12px;font-weight:700;display:block}
+.blBar{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}
+.blInfo{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:10px 0 14px}
+.blInfo>div{background:var(--c-soft);border:1px solid #eef0f3;border-radius:10px;padding:8px 10px}.blInfo .muted{font-size:12px}.blInfo span{display:block;font-size:11px;color:var(--c-mut);font-weight:700;text-transform:uppercase;letter-spacing:.03em}.blInfo b{font-size:14px}
+.blQb{border:1px solid var(--c-line);border-radius:12px;padding:10px 12px;margin-top:12px;font-size:13px}
+.blQb summary{cursor:pointer;font-weight:800}.blQb table{width:100%;border-collapse:collapse;margin-top:8px}.blQb td{padding:4px 6px;border-bottom:1px solid #eef0f3}
+.blQb .miss{color:#b42318;font-weight:700}
+.blCatTable input,.blCatTable select{min-height:34px;padding:5px 8px;width:100%}.blCatTable td{padding:4px 6px}
+.blHelp{font-size:12px;color:var(--c-mut);margin:4px 0 10px}
+.blVend{position:relative}.blVendList{position:absolute;z-index:5;left:0;right:0;top:100%;background:#fff;border:1px solid var(--c-line);border-radius:10px;box-shadow:0 12px 30px rgba(15,23,42,.15);max-height:240px;overflow:auto}
+.blVendList button{display:block;width:100%;text-align:left;background:#fff;color:var(--c-ink);border-radius:0;border-bottom:1px solid #f2f4f7;min-height:auto;padding:8px 10px;font-weight:700;font-size:13px}
+.blVendList button small{color:var(--c-mut);font-weight:500;margin-left:6px}
+@media(max-width:900px){.blKpis,.blInfo{grid-template-columns:1fr 1fr}.blGrid{grid-template-columns:1fr 1fr}.blFoot{grid-template-columns:1fr}}
+@media(max-width:620px){.blTable.list th:nth-child(3),.blTable.list td:nth-child(3),.blTable.list th:nth-child(4),.blTable.list td:nth-child(4),.blTable.list th:nth-child(5),.blTable.list td:nth-child(5),.blTable.list th:nth-child(8),.blTable.list td:nth-child(8){display:none}.blGrid{grid-template-columns:1fr}.blGrid .span2{grid-column:auto}
+ .blLines thead{display:none}.blLines tr{display:grid;grid-template-columns:1fr 1fr;gap:4px;border:1px solid var(--c-line);border-radius:10px;padding:6px;margin-bottom:8px}
+ .blLines td{padding:2px}.blLines td.d,.blLines td.c{grid-column:1/-1}.blLines .q,.blLines .m{width:auto}}
+</style>
+<div class="bl">
+ <div class="blHead">
+  <div><h1>Bills</h1><div class="muted">Everything the shop buys: parts, supplies, tools, fuel, rent, utilities. Each line has a category that maps to your QuickBooks account.</div></div>
+  <div class="acts">
+   <button type="button" data-b="new" data-kind="bill">+ New bill</button>
+   <button type="button" class="secondary" data-b="new" data-kind="expense">+ Expense (paid now)</button>
+   <button type="button" class="secondary" data-b="csv">Export CSV</button>
+   <button type="button" class="secondary ownerOnlyBills" data-b="cats">Categories &amp; QuickBooks</button>
+  </div>
+ </div>
+ <div class="blKpis" id="blKpis"></div>
+ <div class="blFilters">
+  <select data-f="range" aria-label="Period"><option value="month">This month</option><option value="last_month">Last month</option><option value="quarter">This quarter</option><option value="year" selected>This year</option><option value="last_year">Last year</option><option value="all">All time</option><option value="custom">Custom…</option></select>
+  <input type="date" data-f="from" aria-label="From" class="hidden"><input type="date" data-f="to" aria-label="To" class="hidden">
+  <div class="blChips" id="blStatus"><button data-s="" class="on">All</button><button data-s="unpaid">Unpaid</button><button data-s="overdue">Overdue</button><button data-s="paid">Paid</button><button data-s="void">Void</button></div>
+  <input type="search" class="grow" data-f="q" placeholder="Search vendor, bill #, part, description…" aria-label="Search bills">
+ </div>
+ <div class="blCats" id="blCats"></div>
+ <div class="blScroll"><table class="blTable list"><thead><tr><th>Date</th><th>Vendor</th><th>Bill #</th><th>Categories</th><th>Due</th><th class="n">Total</th><th>Status</th><th>QuickBooks</th></tr></thead><tbody id="blRows"><tr><td colspan="8" class="blEmpty">Loading bills…</td></tr></tbody></table></div>
+</div>

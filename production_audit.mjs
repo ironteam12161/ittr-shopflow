@@ -85,7 +85,7 @@ check('language role-sync marker present',root.includes('ITTR_LANGUAGE_ROLE_SYNC
 const partsInsert=server.match(/INSERT INTO fullbay_import_parts\([\s\S]*?VALUES\(([^)]*)\)[\s\S]*?ON CONFLICT\(source_key\)/);
 if(partsInsert){const refs=[...partsInsert[1].matchAll(/\$(\d+)/g)].map(m=>Number(m[1]));const max=refs.length?Math.max(...refs):0;check('Fullbay v23.7.1 max parameter remains $22',max===22,`max=$${max}`);check('Fullbay v23.7.1 has no $23',!refs.includes(23));}else check('Fullbay inventory INSERT regression target found',false);
 
-for(const name of ['customers','invoices','parts','procenter','trucksearch','estimates','reports','compliance']){
+for(const name of ['customers','invoices','parts','procenter','trucksearch','estimates','reports','compliance','bills']){
  for(const ext of ['html','js']){
   const a=`modules/${name}.${ext}`,b=`public/modules/${name}.${ext}`;
   check(`${name}.${ext} exists in both module trees`,exists(a)&&exists(b));
@@ -182,6 +182,8 @@ check('work orders are cards on phones',root.includes('data-label="Scheduled"')&
 check('Stripe online payments are recorded automatically (signed webhook)',server.includes('app.post("/api/stripe/webhook",express.raw(')&&server.indexOf('app.post("/api/stripe/webhook"')<server.indexOf('app.use(express.json(')&&server.includes('timingSafeEqual'));
 check('invoice statuses have one color each and overdue days',root.includes('function invStatusPill(')&&root.includes('.invoiceStatus.is-overdue'));
 check('work orders: one status pill, search and mechanic filter',root.includes('id="woSearch"')&&root.includes('id="woMechFilter"')&&!root.includes('<th>Availability</th>'));
+check('Bills: every purchase by expense category, QuickBooks account mapping and sync fields, nav + route',exists('bills.mjs')&&read('bills.mjs').includes('export function quickBooksPayload(')&&read('bills.mjs').includes('qb_status')&&server.includes('registerBillRoutes(app,')&&server.indexOf('registerBillRoutes(app,')<server.indexOf('app.use("/api",(req,res)=>res.status(404)')&&pub.includes('data-view="bills"')&&pub.includes('bills:{html:routeAsset("/modules/bills.html")'));
+check('Fullbay Details check: read-only compare shares the import key; junk VINs never written onto units',server.includes('function parseFullbayDetailRow(')&&server.includes('/api/fullbay/check/service-history')&&server.includes('const key=parseFullbayDetailRow(row).key;')&&server.includes('vin:realVin(vin)?vin:""')&&read('public/modules/procenter.html').includes('checkFullbayFiles()'));
 check('page titles match the menu',root.includes('<div class="toolbar"><h1>Findings</h1></div>')&&read('public/modules/procenter.html').includes('<h1>Operations</h1>')&&read('public/modules/compliance.html').includes('<h1>Compliance</h1>'));
 check('mechanic screen: clock, jobs, then activities; one-row phone header',root.includes('id="ittrV24418Phone"')&&root.indexOf('id="mechanicJobs"')<root.indexOf('id="mechanicActivityPanel"'));
 check('delete work order sits apart from other actions',root.includes('class="dangerZone"'));
