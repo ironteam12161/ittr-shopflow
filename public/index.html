@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.48.2-BILLSRECV-20261014">
+<meta name="ittr-build" content="ITTR-24.49.0-CUSTPAY-20261014">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -26,7 +26,7 @@
  P.removeItem=function(k){rm.call(this,k);if(this===sessionStorage&&keys[k])try{rm.call(localStorage,'ittr_app_'+k)}catch(e){}};
 }catch(e){}})();
 </script>
-<title>ITTR ShopFlow v24.48.2</title>
+<title>ITTR ShopFlow v24.49.0</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -825,7 +825,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.48.2">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.49.0">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -981,7 +981,7 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.48.2 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.49.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1549,7 +1549,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.48.2';
+const FRONTEND_VERSION='24.49.0';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1912,7 +1912,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.48.2";
+const ROUTE_MODULE_VERSION="24.49.0";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -3956,7 +3956,7 @@ function renderCustomerProfile(){
  const d=customerProfileCache;if(!d)return;const c=d.customer||{},units=d.units||[],history=d.history||[],jobHistoryCount=history.reduce((n,w)=>n+(Array.isArray(w?.tasks)?w.tasks.filter(t=>w?.source!=="invoice"||String(t?.lineType||"").toLowerCase()==="labor").length:0),0);
  const customerName=cleanImportedDisplayText(c.customer_name)||"Customer Profile";document.getElementById("customerModalTitle").textContent=customerName;
  const box=document.getElementById("customerProfileBody"),fullbayCount=history.filter(x=>x.source==="fullbay").length,ittrCount=history.length-fullbayCount;
- box.innerHTML=`<div class="customerProfileHeader"><div><h2 style="margin:0">${esc(customerName)}</h2><div class="customerProfileMeta"><span class="badge">DOT ${esc(cleanVehicleMeta(c.dot_number)||"—")}</span><span class="badge">${units.length} vehicles</span><span class="badge">${history.length} service orders</span>${c.fullbay_id?`<span class="badge">Fullbay ${esc(cleanVehicleMeta(c.fullbay_id))}</span>`:""}</div></div><div><button class="secondary" onclick="openCustomerEditor(${c.id})">Edit Customer</button> <button onclick="openCustomerUnitEditor(${c.id})">+ Add Unit</button>${session?.role==='admin'?` <button class="danger" onclick="deleteCustomerSafely(${c.id})">Delete Customer</button>`:''}</div></div>
+ box.innerHTML=`<div class="customerProfileHeader"><div><h2 style="margin:0">${esc(customerName)}</h2><div class="customerProfileMeta"><span class="badge">DOT ${esc(cleanVehicleMeta(c.dot_number)||"—")}</span><span class="badge">${units.length} vehicles</span><span class="badge">${history.length} service orders</span>${c.fullbay_id?`<span class="badge">Fullbay ${esc(cleanVehicleMeta(c.fullbay_id))}</span>`:""}</div></div><div>${managerCan('invoices')?`<button onclick="openReceivePayment({customerId:${c.id},onDone:()=>openCustomerProfile(${c.id})})">$ Receive payment</button> `:''}<button class="secondary" onclick="openCustomerEditor(${c.id})">Edit Customer</button> <button class="secondary" onclick="openCustomerUnitEditor(${c.id})">+ Add Unit</button>${session?.role==='admin'?` <button class="danger" onclick="deleteCustomerSafely(${c.id})">Delete Customer</button>`:''}</div></div>
  <div class="customerWorkspaceTabs"><button id="custTabOverview" class="active" onclick="showCustomerPane('overview')">Overview</button><button id="custTabVehicles" onclick="showCustomerPane('vehicles')">Vehicles (${units.length})</button><button id="custTabHistory" onclick="showCustomerPane('history')">Service History (${jobHistoryCount})</button></div>
  <div id="customerPaneOverview" class="customerPane"><div class="customerDirectoryGrid"><div class="card"><div class="muted">Contact</div><b>${esc(cleanImportedDisplayText(c.contact_name)||"—")}</b><div>${esc(cleanImportedDisplayText(c.phone)||"")}${c.email?` · ${esc(cleanImportedDisplayText(c.email))}`:""}</div></div><div class="card"><div class="muted">Location</div><b>${esc(uniqueImportedParts([c.city,c.state,c.postal_code]).join(", ")||"—")}</b><div>${esc(cleanImportedDisplayText(c.address)||"")}</div></div><div class="card"><div class="muted">Vehicles</div><b>${units.length}</b><div>${units.filter(u=>cleanVehicleMeta(u.vin)).length} with VIN</div></div><div class="card"><div class="muted">History</div><b>${history.length}</b><div>${fullbayCount} Fullbay · ${ittrCount} ITTR</div></div></div>${c.notes?`<div class="card"><b>Internal Notes</b><div style="margin-top:6px">${esc(cleanImportedDisplayText(c.notes))}</div></div>`:""}</div>
  <div id="customerPaneVehicles" class="customerPane hidden"><div class="toolbar"><div><h2>Vehicles</h2><div class="muted">One vehicle record per unit. VIN, mileage and history stay attached to this record.</div></div><button onclick="openCustomerUnitEditor(${c.id})">+ Add Truck / Unit</button></div><div class="unitCompactList">${units.length?units.map(u=>{const unit=cleanVehicleMeta(u.unit_number)||"—",vin=cleanVehicleMeta(u.vin)||"—",plate=cleanVehicleMeta(u.plate),status=cleanVehicleMeta(u.unit_status);return `<div class="unitCompactCard"><div class="unitCompactTitle"><div class="unitCompactMain"><b>Unit ${esc(unit)}</b><div class="unitVehicleName">${esc(vehicleDisplayName(u))}</div></div><button class="secondary" onclick="openCustomerUnitEditor(${c.id},${u.id})">Edit</button></div><div class="unitMetaLine"><span class="unitMetaLabel">VIN</span><span>${esc(vin)}</span>${plate?`<span>· Plate ${esc(plate)}</span>`:""}</div><div class="unitMetaLine">${u.mileage!=null?`<span>${Number(u.mileage).toLocaleString()} mi</span>`:""}${status?`<span>· ${esc(status)}</span>`:""}</div><div class="actions"><button class="secondary" onclick="openVehicleProfile(${u.id},'history')">Open Vehicle</button><button onclick="createWorkOrderForUnit(${u.id})">New Work Order</button></div></div>`}).join(""):'<div class="muted">No vehicles saved yet.</div>'}</div></div>
@@ -6239,6 +6239,74 @@ async function saveInvoiceLine(id){try{const i=activeInvoice.invoice;invoiceSetS
 async function deleteInvoiceLine(lineId){if(!confirm('Remove this line? If this is a labor operation, its attached parts and charges will also be removed.'))return;if(!(await persistInvoiceDraftBeforeStructureChange('Preserving your invoice')))return;const i=activeInvoice.invoice,r=await fetch(`/api/invoices/${i.id}/lines/${lineId}`,{method:'DELETE',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to remove line');await openInvoice(i.id)}
 async function finalizeInvoice(id){if(!confirm('Finalize this invoice and mark it sent/open? Review prices, tax and customer PO first.'))return;if(!(await saveInvoiceHeader()))return;const r=await fetch(`/api/invoices/${id}/finalize`,{method:'POST',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to finalize');if(Array.isArray(d.warnings)&&d.warnings.length)showToast?.('Inventory warning: '+d.warnings.join(' · '),'warning',12000);await openInvoice(id);await loadInvoices()}
 // v24.41.2 payment dialog: one form with the payment type and its transaction ID (check #, Zelle confirmation, ACH trace…).
+// v24.49.0: receive one payment from a customer for several invoices (or a lump sum). Split it over the open
+// invoices; whatever is not applied stays on the customer as credit, which can be applied to invoices later.
+// opts: {customerId, amount, method, reference, note, paidAt, gmailMessageId, mode:'pay'|'credit'}
+let RP=null;
+async function openReceivePayment(opts={}){
+ if(!managerCan('invoices'))return showToast('Invoice permission required.','warning');
+ RP={opts,mode:opts.mode||'pay',data:null,alloc:{},amount:opts.amount!=null?String(opts.amount):'',method:opts.method||'Zelle',reference:opts.reference||'',note:opts.note||'',paidAt:opts.paidAt||new Date().toLocaleDateString('en-CA'),customerId:opts.customerId||null};
+ document.getElementById('rpDlg')?.remove();const m=document.createElement('div');m.className='payDlg';m.id='rpDlg';
+ m.innerHTML='<div class="payDlgBox" style="max-width:820px"><div class="productivityLoading">Loading…</div></div>';document.body.appendChild(m);
+ m.addEventListener('click',rpClick);m.addEventListener('input',rpInput);m.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();m.remove()}});
+ if(RP.customerId)await rpLoad();else rpRender();
+}
+async function rpLoad(){try{RP.data=await apiJSON(`/api/customers/${RP.customerId}/receivables`);if(RP.mode==='credit'&&!RP.data.creditTotal)RP.mode='pay';rpRender()}catch(e){showToast(e.message||'Could not load the customer.','warning');document.getElementById('rpDlg')?.remove()}}
+const rpMoney=v=>`$${(Math.round((Number(v)||0)*100)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+function rpAvailable(){return RP.mode==='credit'?(RP.data?.creditTotal||0):(Math.round((Number(RP.amount)||0)*100)/100)}
+function rpApplied(){return Math.round(Object.values(RP.alloc).reduce((s,v)=>s+(Number(v)||0),0)*100)/100}
+function rpRender(){
+ const box=document.querySelector('#rpDlg .payDlgBox');if(!box)return;const d=RP.data;
+ if(!d){box.innerHTML=`<div class="payDlgHead"><div class="payDlgIcon">$</div><div style="flex:1"><h2 style="margin:0">Receive payment</h2><div class="muted">Which customer paid?${RP.amount?` · ${rpMoney(RP.amount)}`:''}</div></div><button class="payDlgX" data-rp="close" aria-label="Close">×</button></div>
+  <div class="field"><label>Customer</label><input id="rpCustSearch" placeholder="Type the company name…" autocomplete="off" autofocus></div><div id="rpCustList"></div>`;setTimeout(()=>document.getElementById('rpCustSearch')?.focus(),30);return}
+ const credit=RP.mode==='credit',avail=rpAvailable(),applied=rpApplied(),left=Math.round((avail-applied)*100)/100;
+ const rows=d.openInvoices.map(i=>{const v=RP.alloc[i.id]??'';return `<tr><td style="padding:6px 8px"><input type="checkbox" data-rp="pick" data-id="${i.id}" ${Number(v)>0?'checked':''} style="width:auto;min-height:auto" aria-label="Pay ${esc(i.invoiceNumber)}"></td>
+  <td style="padding:6px 8px"><b>${esc(i.invoiceNumber)}</b>${i.status==='draft'?' <span class="badge">Draft</span>':''}<div class="muted" style="font-size:12px">${esc(i.invoiceDate?String(i.invoiceDate).slice(0,10):'')}${i.unit?` · Unit ${esc(i.unit)}`:''}</div></td>
+  <td style="padding:6px 8px;text-align:right">${rpMoney(i.total)}</td><td style="padding:6px 8px;text-align:right"><b>${rpMoney(i.balance)}</b></td>
+  <td style="padding:6px 8px;text-align:right"><input type="number" step="0.01" min="0" max="${i.balance}" data-rp-amt="${i.id}" value="${esc(v)}" placeholder="0.00" style="width:110px;text-align:right;min-height:36px"></td></tr>`}).join('');
+ box.innerHTML=`<div class="payDlgHead"><div class="payDlgIcon">$</div><div style="flex:1"><h2 style="margin:0">${credit?'Apply customer credit':'Receive payment'}</h2><div class="muted">${esc(d.customer.name)} · ${d.openInvoices.length} open invoice${d.openInvoices.length===1?'':'s'} · ${rpMoney(d.openBalance)} owed${d.creditTotal?` · <b style="color:#067647">${rpMoney(d.creditTotal)} credit</b>`:''}</div></div><button class="payDlgX" data-rp="close" aria-label="Close">×</button></div>
+ ${d.creditTotal?`<div class="segmented" style="display:inline-flex;border:1px solid #e4e7ec;border-radius:10px;overflow:hidden;margin-bottom:12px"><button type="button" data-rp="mode" data-m="pay" class="${credit?'secondary':''}" style="border-radius:0">New payment</button><button type="button" data-rp="mode" data-m="credit" class="${credit?'':'secondary'}" style="border-radius:0">Use credit (${rpMoney(d.creditTotal)})</button></div>`:''}
+ ${credit?`<div class="muted" style="margin-bottom:10px">Credit comes from earlier payments that were not fully applied: ${d.credits.map(c=>`${esc(c.method||'Payment')}${c.reference?` ${esc(c.reference)}`:''} ${rpMoney(c.remaining)}`).join(', ')}.</div>`
+ :`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px"><div class="field" style="min-width:130px"><label>Amount received</label><input type="number" step="0.01" min="0" id="rpAmount" value="${esc(RP.amount)}" placeholder="0.00" ${RP.amount?'':'autofocus'}></div>
+  <div class="field" style="min-width:140px"><label>Paid with</label><select id="rpMethod">${PAY_METHODS.map(([v,l])=>`<option value="${v}" ${v===RP.method?'selected':''}>${l}</option>`).join('')}</select></div>
+  <div class="field" style="min-width:180px;flex:1"><label>${esc((PAY_METHODS.find(x=>x[0]===RP.method)||[])[2]||'Reference')}</label><input id="rpRef" value="${esc(RP.reference)}" ${RP.method==='Cash'?'disabled placeholder="—"':'placeholder="Check # / confirmation"'}></div>
+  <div class="field" style="min-width:140px"><label>Date</label><input type="date" id="rpDate" value="${esc(RP.paidAt)}"></div></div>
+  <div class="field"><label>Note (optional)</label><input id="rpNote" value="${esc(RP.note)}" placeholder="e.g. payment for September invoices"></div>`}
+ <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin:8px 0 4px;flex-wrap:wrap"><b>Open invoices</b><span><button type="button" class="secondary" data-rp="auto">Apply oldest first</button> <button type="button" class="secondary" data-rp="clear">Clear</button></span></div>
+ <div style="overflow:auto;max-height:42vh;border:1px solid #eef0f3;border-radius:12px">${d.openInvoices.length?`<table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#f9fafb;text-align:left"><th></th><th style="padding:6px 8px">Invoice</th><th style="padding:6px 8px;text-align:right">Total</th><th style="padding:6px 8px;text-align:right">Owes</th><th style="padding:6px 8px;text-align:right">Apply</th></tr></thead><tbody>${rows}</tbody></table>`:'<div class="muted" style="padding:16px;text-align:center">No open invoices. The whole payment will be saved as credit for this customer.</div>'}</div>
+ <div style="display:flex;justify-content:flex-end;gap:18px;margin-top:10px;flex-wrap:wrap;font-size:14px" id="rpSums">${rpSumsHtml(avail,applied,left)}</div>
+ <div class="payDlgBar"><button type="button" class="secondary" data-rp="close">Cancel</button><button type="button" data-rp="save">${credit?'Apply credit':'Save payment'}</button></div>`;
+}
+function rpSumsHtml(avail,applied,left){const credit=RP.mode==='credit';return `<span>${credit?'Credit available':'Received'}: <b>${rpMoney(avail)}</b></span><span>Applied: <b>${rpMoney(applied)}</b></span>${left<-0.009?`<span style="color:#b42318;font-weight:800">Over by ${rpMoney(-left)}</span>`:`<span>${credit?'Credit left':'Left as credit'}: <b style="color:${left>0.009?'#067647':'inherit'}">${rpMoney(left)}</b></span>`}`}
+function rpUpdateSums(){const el=document.getElementById('rpSums');if(el){const a=rpAvailable(),b=rpApplied();el.innerHTML=rpSumsHtml(a,b,Math.round((a-b)*100)/100)}}
+function rpCapture(){const g=id=>document.getElementById(id);if(g('rpAmount'))RP.amount=g('rpAmount').value;if(g('rpMethod'))RP.method=g('rpMethod').value;if(g('rpRef'))RP.reference=g('rpRef').value;if(g('rpDate'))RP.paidAt=g('rpDate').value;if(g('rpNote'))RP.note=g('rpNote').value}
+let rpCustTimer=0;
+function rpInput(e){const t=e.target;
+ if(t.id==='rpCustSearch'){clearTimeout(rpCustTimer);rpCustTimer=setTimeout(async()=>{const q=t.value.trim(),out=document.getElementById('rpCustList');if(!out)return;if(q.length<2){out.innerHTML='';return}
+  try{const d=await apiJSON(`/api/fullbay/customers?q=${encodeURIComponent(q)}&limit=12&offset=0`);out.innerHTML=(d.items||[]).map(c=>`<button type="button" class="secondary" data-rp="cust" data-id="${c.id}" style="display:block;width:100%;text-align:left;margin-top:6px">${esc(c.customer_name||c.name||'')}</button>`).join('')||'<div class="muted">No customer found.</div>'}catch(_){}},250);return}
+ if(t.dataset.rpAmt){const invId=t.dataset.rpAmt;RP.alloc[invId]=t.value;const cb=document.querySelector(`#rpDlg [data-rp="pick"][data-id="${invId}"]`);if(cb)cb.checked=Number(t.value)>0;rpUpdateSums();return}
+ if(t.id==='rpAmount'){RP.amount=t.value;rpUpdateSums();return}
+ if(t.id==='rpMethod'){rpCapture();rpRender()}
+}
+async function rpClick(e){if(e.target.id==='rpDlg')return;const b=e.target.closest('[data-rp]');if(!b)return;const a=b.dataset.rp;
+ if(a==='close')return document.getElementById('rpDlg')?.remove();
+ if(a==='cust'){RP.customerId=Number(b.dataset.id);return rpLoad()}
+ if(a==='mode'){rpCapture();RP.mode=b.dataset.m;RP.alloc={};return rpRender()}
+ const inv=id=>RP.data.openInvoices.find(i=>String(i.id)===String(id));
+ if(a==='pick'){rpCapture();const i=inv(b.dataset.id);if(b.checked){const rest=Math.round((rpAvailable()-rpApplied())*100)/100;RP.alloc[i.id]=String(Math.max(0,Math.min(i.balance,rest>0?rest:i.balance)).toFixed(2))}else delete RP.alloc[i.id];return rpRender()}
+ if(a==='auto'){rpCapture();RP.alloc={};let left=rpAvailable();for(const i of RP.data.openInvoices){if(left<=0.009)break;const take=Math.min(i.balance,left);RP.alloc[i.id]=take.toFixed(2);left=Math.round((left-take)*100)/100}if(!rpAvailable())showToast(RP.mode==='credit'?'No credit available.':'Enter the amount received first.','info');return rpRender()}
+ if(a==='clear'){rpCapture();RP.alloc={};return rpRender()}
+ if(a==='save'){rpCapture();const allocations=Object.entries(RP.alloc).map(([invoiceId,amount])=>({invoiceId:Number(invoiceId),amount:Math.round((Number(amount)||0)*100)/100})).filter(x=>x.amount>0);
+  const avail=rpAvailable(),applied=rpApplied();if(RP.mode!=='credit'&&avail<=0)return showToast('Enter the amount received.','warning');if(applied>avail+0.009)return showToast(`Applied ${rpMoney(applied)} is more than ${rpMoney(avail)}.`,'warning');
+  if(RP.mode==='credit'&&!allocations.length)return showToast('Enter how much credit goes to each invoice.','warning');
+  const left=Math.round((avail-applied)*100)/100;if(RP.mode!=='credit'&&left>0.009&&!confirm(`${rpMoney(left)} is not applied to an invoice. Save it as credit for ${RP.data.customer.name}?`))return;
+  b.disabled=true;try{const r=RP.mode==='credit'?await apiJSON(`/api/customers/${RP.customerId}/apply-credit`,{method:'POST',body:{allocations}})
+   :await apiJSON(`/api/customers/${RP.customerId}/receive-payment`,{method:'POST',body:{amount:avail,method:RP.method,reference:RP.reference,note:RP.note,paidAt:RP.paidAt,allocations,gmailMessageId:RP.opts.gmailMessageId||undefined}});
+   showToast(RP.mode==='credit'?`Applied ${rpMoney(r.applied)} of credit.`:`Payment saved: ${rpMoney(r.applied)} applied${r.credit>0.009?`, ${rpMoney(r.credit)} kept as credit`:''}.`,'success');
+   document.getElementById('rpDlg')?.remove();try{RP.opts.onDone?.(r)}catch(_){}try{if(typeof refreshInvoices==='function')refreshInvoices()}catch(_){}
+  }catch(err){b.disabled=false;if(err?.code==='DUPLICATE_REFERENCE'&&confirm(`${err.message}\n\nSave it anyway?`)){try{const r=await apiJSON(`/api/customers/${RP.customerId}/receive-payment`,{method:'POST',body:{amount:avail,method:RP.method,reference:RP.reference,note:RP.note,paidAt:RP.paidAt,allocations,gmailMessageId:RP.opts.gmailMessageId||undefined,allowDuplicateReference:true}});showToast(`Payment saved: ${rpMoney(r.applied)} applied.`,'success');document.getElementById('rpDlg')?.remove();try{RP.opts.onDone?.(r)}catch(_){}}catch(e2){showToast(e2.message,'warning')}}else showToast(err.message||'Could not save.','warning')}}
+}
+window.openReceivePayment=openReceivePayment;
 const PAY_METHODS=[["Cash","Cash","","💵"],["Check","Check","Check number","🧾"],["Zelle","Zelle","Zelle confirmation / transaction ID","⚡"],["ACH","ACH / Bank","ACH or wire reference","🏦"],["Credit Card","Credit card","Card transaction ID / last 4 digits","💳"],["Other","Other","Reference","•••"]];
 const PAY_NEEDS_REF=["Check","Zelle","ACH"];
 function paymentDialog({title,amount=null,balance=null,method="Check",reference="",note="",editing=false}){return new Promise(resolve=>{

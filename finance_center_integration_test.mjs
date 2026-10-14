@@ -25,6 +25,12 @@ const near=(a,b,label)=>{if(Math.abs(Number(a)-Number(b))>0.005)throw new Error(
  const out=parseZelleEmail({subject:'You sent $300.00 to FleetPride',body:'Your Zelle® payment was sent.'});
  assert(out?.kind==='zelle_out'&&out.counterparty==='FleetPride','outgoing Zelle');near(out.amount,300,'outgoing amount');
  assert(parseZelleEmail({subject:'Your statement is ready',body:'no payment'})===null,'non-Zelle ignored');
+ // v24.48.3: the bank's confirmation number is the payment's transaction ID.
+ assert(parseZelleEmail({subject:'You received money with Zelle®',body:'AIR DELIVERY CORPORATION sent you $54.00\nTransaction number: 22198765432\nMemo: IT-2026-00007'}).confirmation==='22198765432','Chase transaction number');
+ assert(parseZelleEmail({subject:'You received $54.00 from AIR DELIVERY CORPORATION',body:'Zelle® payment deposited. Confirmation number: bac5x9qk2'}).confirmation==='BAC5X9QK2','BofA confirmation number');
+ assert(parseZelleEmail({subject:'You received money with Zelle',body:'John sent you $10.00. Reference ID: WFCT0AB12C'}).confirmation==='WFCT0AB12C','Wells reference ID');
+ assert(parseZelleEmail({subject:'You received money with Zelle',body:'John sent you $10.00. Confirmation: received'}).confirmation==='','words are not a confirmation number');
+ assert(chase.confirmation==='','no confirmation in email → empty');
  const bill=parseVendorBillEmail({subject:'Invoice #INV-55821 from FleetPride',body:'Amount due: $1,044.19',fromName:'FleetPride Billing',fromEmail:'billing@fleetpride.com',attachments:[{filename:'INV-55821.pdf',mimeType:'application/pdf'}]});
  assert(bill?.reference==='INV-55821','vendor invoice #');near(bill.amount,1044.19,'vendor amount');assert(bill.counterparty==='FleetPride Billing','vendor name');
  assert(vendorNameFromSender('noreply','ar@mail.truckpro.com')==='Truckpro','generic sender uses domain');
@@ -77,7 +83,7 @@ let child=null,output='',port=0,token='',mechToken='';
 const freePort=()=>new Promise((res,rej)=>{const s=net.createServer();s.once('error',rej);s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>res(p))})});
 
 // Fake Google: OAuth token endpoint + Gmail list/get/profile.
-const zelleBody=amount=>Buffer.from(`ACME TRUCKING LLC sent you $${amount}\nMemo: IT-INVOICE-PLACEHOLDER`).toString('base64url');
+const zelleBody=amount=>Buffer.from(`ACME TRUCKING LLC sent you $${amount}\nTransaction number: 22198765432\nMemo: IT-INVOICE-PLACEHOLDER`).toString('base64url');
 let fakeInvoiceNumber='';const sentMail=[];
 const fake=http.createServer((req,res)=>{
  const u=new URL(req.url,'http://x');const json=d=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify(d))};
@@ -85,7 +91,7 @@ const fake=http.createServer((req,res)=>{
  if(u.pathname==='/gmail/users/me/messages/send'&&req.method==='POST'){let b='';req.on('data',c=>b+=c);req.on('end',()=>{const raw=Buffer.from(JSON.parse(b).raw,'base64url').toString('utf8');sentMail.push(raw);json({id:`sent${sentMail.length}`})});return}
  if(u.pathname==='/gmail/users/me/profile')return json({emailAddress:'shop@example.com'});
  if(u.pathname==='/gmail/users/me/messages'){const q=u.searchParams.get('q')||'';return json({messages:/zelle -in/.test(q)?[{id:'z1'}]:[{id:'v1'}]})}
- if(u.pathname==='/gmail/users/me/messages/z1')return json({id:'z1',threadId:'t1',internalDate:String(Date.now()),snippet:'sent you money',payload:{mimeType:'text/plain',headers:[{name:'From',value:'Chase <no.reply.alerts@chase.com>'},{name:'Subject',value:'You received money with Zelle®'}],body:{data:Buffer.from(`ACME TRUCKING LLC sent you $500.00\nMemo: ${fakeInvoiceNumber}`).toString('base64url')}}});
+ if(u.pathname==='/gmail/users/me/messages/z1')return json({id:'z1',threadId:'t1',internalDate:String(Date.now()),snippet:'sent you money',payload:{mimeType:'text/plain',headers:[{name:'From',value:'Chase <no.reply.alerts@chase.com>'},{name:'Subject',value:'You received money with Zelle®'}],body:{data:Buffer.from(`ACME TRUCKING LLC sent you $500.00\nTransaction number: 22198765432\nMemo: ${fakeInvoiceNumber}`).toString('base64url')}}});
  if(u.pathname==='/gmail/users/me/messages/v1')return json({id:'v1',threadId:'t2',internalDate:String(Date.now()),payload:{mimeType:'multipart/mixed',headers:[{name:'From',value:'"FleetPride" <billing@fleetpride.com>'},{name:'Subject',value:'Invoice #FP-9001'}],parts:[{mimeType:'text/plain',body:{data:Buffer.from('Amount due: $812.40').toString('base64url')}},{mimeType:'application/pdf',filename:'FP-9001.pdf',body:{attachmentId:'att1',size:10}}]}});
  if(u.pathname==='/gmail/users/me/messages/v1/attachments/att1')return json({data:Buffer.from('%PDF-1.4 fake').toString('base64url')});
  res.statusCode=404;res.end('{}');
@@ -224,9 +230,12 @@ try{
  const msgs=await request('/api/gmail/messages');const z=msgs.items.find(m=>m.kind==='zelle_in'),v=msgs.items.find(m=>m.kind==='vendor_bill');
  assert(z&&v,'Zelle + vendor bill classified');near(v.amount,812.4,'vendor bill amount');assert(z.suggestions?.[0]?.invoice?.id==open.id,'Zelle suggests the right invoice');
  const att=await fetch(`http://127.0.0.1:${port}/api/gmail/messages/${v.id}/attachments/0`,{headers:{Authorization:`Bearer ${token}`}});assert(att.ok&&(await att.text()).startsWith('%PDF'),'vendor PDF attachment downloads');
+ assert(z.confirmation==='22198765432','confirmation number stored on sync');
+ // An email synced before v24.48.3 has no confirmation stored: applying it reads the number from Gmail again.
+ await db.query('UPDATE gmail_finance_messages SET confirmation=NULL WHERE id=$1',[z.id]);
  await request(`/api/gmail/messages/${z.id}/apply-payment`,{method:'POST',body:{invoiceId:open.id}});
  const twice=await request(`/api/gmail/messages/${z.id}/apply-payment`,{method:'POST',body:{invoiceId:open.id},allowError:true});assert(twice.status===409,'Zelle cannot be applied twice');
- const paidInv=await request(`/api/invoices/${open.id}`);assert(paidInv.invoice.status==='paid'&&paidInv.payments[0].method==='Zelle','Zelle payment recorded and invoice paid');
+ const paidInv=await request(`/api/invoices/${open.id}`);assert(paidInv.invoice.status==='paid'&&paidInv.payments[0].method==='Zelle','Zelle payment recorded and invoice paid');assert(paidInv.payments[0].reference==='22198765432',`Zelle payment reference is the bank confirmation number (${paidInv.payments[0].reference})`);assert(/From: ACME TRUCKING LLC/.test(paidInv.payments[0].note||''),'sender kept in the note');
  const mechGmail=await request('/api/gmail/messages',{tok:mechToken,allowError:true});assert(mechGmail.status===403,'mechanic cannot read Gmail inbox');
  console.log('PASS gmail: OAuth state (forged/replay blocked), encrypted token, incremental sync, classify, suggest, apply Zelle once');
 
