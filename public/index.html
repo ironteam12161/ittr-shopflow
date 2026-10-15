@@ -1072,6 +1072,7 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
     <button class="filterbtn" onclick="setAdminFilter('future',this)">Future / Waiting</button>
     <button class="filterbtn" onclick="setAdminFilter('here',this)">Truck Here</button>
     <button class="filterbtn" onclick="setAdminFilter('fleet',this)">Fleet</button>
+    <button class="filterbtn" onclick="setAdminFilter('equipment',this)">Shop equipment</button>
   </div>
   <div class="woStageLegend" aria-label="Work order colors"><span class="stage-scheduled"><i></i>Scheduled / on the way</span><span class="stage-ready"><i></i>Truck here</span><span class="stage-working"><i></i>Being worked on</span><span class="stage-paused"><i></i>Paused / waiting</span><span class="stage-done"><i></i>Completed</span></div>
   <div class="card" style="padding:0;overflow:auto">
@@ -1277,26 +1278,26 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
   <div class="modalhead"><h2>Create Work Order</h2><button class="x" onclick="closeModal('woModal')">✕</button></div>
   <form id="woForm">
     <div class="row">
-      <div class="field"><label>Company USDOT</label><input name="dotNumber" inputmode="numeric" autocomplete="off" placeholder="Example: 1234567" oninput="this.value=this.value.replace(/\D/g,'').slice(0,10);woUnlink('both');scheduleWoLookup()"></div>
-      <div class="field"><label>VIN</label><input name="vin" maxlength="17" autocomplete="off" style="text-transform:uppercase" placeholder="17-character VIN" oninput="this.value=this.value.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g,'').slice(0,17);woUnlink('unit');scheduleWoLookup()"></div>
+      <div class="field" data-unit-only="customer fleet"><label>Company USDOT</label><input name="dotNumber" inputmode="numeric" autocomplete="off" placeholder="Example: 1234567" oninput="this.value=this.value.replace(/\D/g,'').slice(0,10);woUnlink('both');scheduleWoLookup()"></div>
+      <div class="field" data-unit-only="customer fleet"><label>VIN</label><input name="vin" maxlength="17" autocomplete="off" style="text-transform:uppercase" placeholder="17-character VIN" oninput="this.value=this.value.toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g,'').slice(0,17);woUnlink('unit');scheduleWoLookup()"></div>
       <div id="woLookupResults" class="field full hidden woLookupResults"></div>
-      <div class="field unitSuggestBox"><label>Truck / Unit #</label><input name="unit" required placeholder="Unit #, VIN, plate, USDOT or customer" autocomplete="off" oninput="woUnlink('unit');customerUnitSuggest(this,'new')" onblur="setTimeout(()=>hideUnitSuggestions('new'),180)"><div id="woUnitSuggestions" class="unitSuggestResults"></div></div>
-      <div class="field"><label>Customer</label><input name="customer" list="fullbayCustomerList" placeholder="Customer / company" oninput="woUnlink('both');fullbayCustomerSuggest(this)"></div><input type="hidden" name="customerId"><input type="hidden" name="unitRecordId"><input type="hidden" name="year"><input type="hidden" name="make"><input type="hidden" name="model"><input type="hidden" name="plate"><input type="hidden" name="mileage"><div id="woVehicleMatch" class="field full hidden"></div>
+      <div class="field unitSuggestBox"><label data-unit-label>Truck / Unit #</label><input name="unit" required placeholder="Unit #, VIN, plate, USDOT or customer" autocomplete="off" oninput="woUnlink('unit');if(this.form.unitType.value!=='equipment')customerUnitSuggest(this,'new')" onblur="setTimeout(()=>hideUnitSuggestions('new'),180)"><div id="woUnitSuggestions" class="unitSuggestResults"></div></div>
+      <div class="field" data-unit-only="customer fleet"><label>Customer</label><input name="customer" list="fullbayCustomerList" placeholder="Customer / company" oninput="woUnlink('both');fullbayCustomerSuggest(this)"></div><input type="hidden" name="customerId"><input type="hidden" name="unitRecordId"><input type="hidden" name="year"><input type="hidden" name="make"><input type="hidden" name="model"><input type="hidden" name="plate"><input type="hidden" name="mileage"><div id="woVehicleMatch" class="field full hidden"></div>
       <div class="field"><label>Scheduled date</label><input name="date" type="date" required></div>
       <div class="field"><label>Scheduled time</label><input name="time" type="time" required></div>
       <div class="field"><label>Assigned mechanic</label><select name="mechanic" id="newMechanicSelect"></select></div>
       <div class="field"><label>Priority</label><select name="priority"><option>Normal</option><option>High</option><option>Emergency</option></select></div>
       <div class="field"><label>Parking spot #</label><input name="parking" placeholder="Example: P-12"></div>
       <div class="field"><label>Unit type</label>
-        <select name="unitType" id="unitType" onchange="syncUnitTypeFields(this)"><option value="customer">Customer Truck</option><option value="fleet">Our Fleet</option></select>
+        <select name="unitType" id="unitType" onchange="syncUnitTypeFields(this)"><option value="customer">Customer Truck</option><option value="fleet">Our Fleet</option><option value="equipment">Shop equipment (forklift, welder…)</option></select>
       </div>
       <div class="field full" data-unit-only="customer">
         <label class="checkline"><input type="checkbox" name="truckHere"> Truck is already here</label>
         <div class="muted">For customer trucks, mechanics will not see the work order until this is checked by admin.</div>
       </div>
-      <div class="field full" data-unit-only="fleet">
-        <label class="checkline"><input type="checkbox" name="fleetAuto" checked> Fleet unit automatically visible to mechanic</label>
-        <div class="muted">This applies to your fleet units so they do not require a “truck is here” mark.</div>
+      <div class="field full" data-unit-only="fleet equipment">
+        <label class="checkline"><input type="checkbox" name="fleetAuto" checked> Automatically visible to mechanics</label>
+        <div class="muted">Fleet units and shop equipment don’t need a “truck is here” mark. Shop equipment is an in-house repair: no customer and no invoice.</div>
       </div>
       <div class="field full"><label>Jobs to perform (one per line) <button type="button" class="secondary cjInline" onclick="openCannedJobs({target:'workorder',textarea:this.closest('.field').querySelector('textarea')})">+ Canned job</button></label><textarea name="tasks" required placeholder="PM service&#10;Check engine light&#10;Replace front brake shoes"></textarea></div>
       <div class="field full"><label>Initial notes</label><textarea name="notes" placeholder="Customer complaint, parts status, special instructions..."></textarea></div>
@@ -1381,21 +1382,21 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
   <form id="editForm">
     <input type="hidden" name="id" id="editId">
     <div class="row">
-      <div class="field unitSuggestBox"><label>Truck / Unit #</label><input name="unit" id="editUnit" required autocomplete="off" oninput="customerUnitSuggest(this,'edit')" onblur="setTimeout(()=>hideUnitSuggestions('edit'),180)"><div id="editUnitSuggestions" class="unitSuggestResults"></div></div>
-      <div class="field"><label>Customer</label><input name="customer" id="editCustomer" list="fullbayCustomerList" oninput="fullbayCustomerSuggest(this)"></div><input type="hidden" name="customerId" id="editCustomerId"><input type="hidden" name="unitRecordId" id="editUnitRecordId"><input type="hidden" name="vin" id="editVin"><input type="hidden" name="year" id="editYear"><input type="hidden" name="make" id="editMake"><input type="hidden" name="model" id="editModel"><input type="hidden" name="plate" id="editPlate"><input type="hidden" name="mileage" id="editMileage"><input type="hidden" name="dotNumber" id="editDotNumber"><div id="editVehicleMatch" class="field full hidden"></div>
+      <div class="field unitSuggestBox"><label data-unit-label>Truck / Unit #</label><input name="unit" id="editUnit" required autocomplete="off" oninput="if(this.form.unitType.value!=='equipment')customerUnitSuggest(this,'edit')" onblur="setTimeout(()=>hideUnitSuggestions('edit'),180)"><div id="editUnitSuggestions" class="unitSuggestResults"></div></div>
+      <div class="field" data-unit-only="customer fleet"><label>Customer</label><input name="customer" id="editCustomer" list="fullbayCustomerList" oninput="fullbayCustomerSuggest(this)"></div><input type="hidden" name="customerId" id="editCustomerId"><input type="hidden" name="unitRecordId" id="editUnitRecordId"><input type="hidden" name="vin" id="editVin"><input type="hidden" name="year" id="editYear"><input type="hidden" name="make" id="editMake"><input type="hidden" name="model" id="editModel"><input type="hidden" name="plate" id="editPlate"><input type="hidden" name="mileage" id="editMileage"><input type="hidden" name="dotNumber" id="editDotNumber"><div id="editVehicleMatch" class="field full hidden"></div>
       <div class="field"><label>Scheduled date</label><input name="date" id="editDate" type="date" required></div>
       <div class="field"><label>Scheduled time</label><input name="time" id="editTime" type="time" required></div>
       <div class="field"><label>Assigned mechanic</label><select name="mechanic" id="editMechanic"></select></div>
       <div class="field"><label>Priority</label><select name="priority" id="editPriority"><option>Normal</option><option>High</option><option>Emergency</option></select></div>
       <div class="field"><label>Parking spot #</label><input name="parking" id="editParking"></div>
       <div class="field"><label>Unit type</label>
-        <select name="unitType" id="editUnitType" onchange="syncUnitTypeFields(this)"><option value="customer">Customer Truck</option><option value="fleet">Our Fleet</option></select>
+        <select name="unitType" id="editUnitType" onchange="syncUnitTypeFields(this)"><option value="customer">Customer Truck</option><option value="fleet">Our Fleet</option><option value="equipment">Shop equipment (forklift, welder…)</option></select>
       </div>
       <div class="field full" data-unit-only="customer">
         <label class="checkline"><input type="checkbox" name="truckHere" id="editTruckHere"> Truck is here</label>
       </div>
-      <div class="field full" data-unit-only="fleet">
-        <label class="checkline"><input type="checkbox" name="fleetAuto" id="editFleetAuto"> Fleet unit automatically visible to mechanic</label>
+      <div class="field full" data-unit-only="fleet equipment">
+        <label class="checkline"><input type="checkbox" name="fleetAuto" id="editFleetAuto"> Automatically visible to mechanics</label>
       </div>
       <div class="field full"><label>Jobs to perform (one per line) <button type="button" class="secondary cjInline" onclick="openCannedJobs({target:'workorder',textarea:this.closest('.field').querySelector('textarea')})">+ Canned job</button></label><textarea name="tasks" id="editTasks" required oninput="markUkrainianField(this)"></textarea><div class="aiTrBar"><button type="button" class="secondary aiTrBtn" id="editTasksTrBtn" onclick="translateFieldToEnglish('editTasks','jobs')">🌐 Translate to English</button><span class="aiTrNote" id="editTasksTrNote"></span></div><div class="muted">Existing completion checks will be preserved for tasks with the same wording.</div></div>
       <div class="field full"><label>Notes</label><textarea name="notes" id="editNotes"></textarea></div>
@@ -3068,9 +3069,16 @@ new MutationObserver(list=>{for(const m of list)for(const n of m.addedNodes)if(n
 document.addEventListener("DOMContentLoaded",()=>enhanceMileageInputs());enhanceMileageInputs();
 
 // v24.41.7: the work-order form shows only the visibility checkbox that applies to the unit type.
-function syncUnitTypeFields(sel){const f=sel?.form;if(!f)return;f.querySelectorAll('[data-unit-only]').forEach(x=>{x.style.display=x.dataset.unitOnly===sel.value?'':'none'})}
+// v24.64.0: "Shop equipment" (forklift, welder, compressor…) is an in-house repair: no customer, USDOT or VIN, visible to
+// mechanics like a fleet unit, and never billed. The equipment box suggests names used before.
+const isInHouse=w=>w?.unitType==="fleet"||w?.unitType==="equipment";
+function equipmentNames(){return [...new Set((state?.workorders||[]).filter(w=>w?.unitType==="equipment").map(w=>String(w.unit||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b))}
+function syncUnitTypeFields(sel){const f=sel?.form;if(!f)return;f.querySelectorAll('[data-unit-only]').forEach(x=>{x.style.display=x.dataset.unitOnly.split(/\s+/).includes(sel.value)?'':'none'});
+ const eq=sel.value==="equipment",lab=f.querySelector('[data-unit-label]'),u=f.elements.unit;if(lab)lab.textContent=eq?"Equipment":"Truck / Unit #";
+ if(u){u.placeholder=eq?"Forklift, welder Miller 350, air compressor…":(f.id==="woForm"?"Unit #, VIN, plate, USDOT or customer":"");if(eq){let dl=document.getElementById("equipmentNameList");if(!dl){dl=document.createElement("datalist");dl.id="equipmentNameList";document.body.appendChild(dl)}dl.innerHTML=equipmentNames().map(n=>`<option value="${esc(n)}">`).join("");u.setAttribute("list","equipmentNameList")}else u.removeAttribute("list")}
+ if(eq&&f.id==="woForm"){for(const n of ["dotNumber","vin","customerId","unitRecordId","year","make","model","plate","mileage"]){const e=f.elements.namedItem(n);if(e)e.value=""}const lb=document.getElementById("woLookupResults");if(lb){lb.classList.add("hidden");lb.innerHTML=""}renderWorkOrderVehicleMatch("new",null)}}
 document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('#unitType,#editUnitType').forEach(syncUnitTypeFields));
-function readyForMechanic(w){return w.status!=="Completed" && (w.unitType==="fleet" ? w.fleetAuto!==false : !!w.truckHere)}
+function readyForMechanic(w){return w.status!=="Completed" && (isInHouse(w) ? w.fleetAuto!==false : !!w.truckHere)}
 function assignedMechanicUsernames(w){
  const primary=String(w?.mechanic||"").trim().toLowerCase();
  const helpers=Array.isArray(w?.helpers)?w.helpers.map(x=>String(x||"").trim().toLowerCase()).filter(Boolean):[];
@@ -3098,7 +3106,7 @@ function visibleToCurrentMechanic(w){
 function upcomingForCurrentMechanic(w){
  if(!assignedToCurrentMechanic(w))return false;
  if(w.isReactivated)return false;
- if(w.unitType==="fleet")return w.fleetAuto===false;
+ if(isInHouse(w))return w.fleetAuto===false;
  return !w.truckHere;
 }
 // v24.41.8: one date style everywhere ("Sep 30, 2026" and "8:00 AM").
@@ -3106,7 +3114,7 @@ function fmtDay(v){if(!v)return "";const d=new Date(/^\d{4}-\d{2}-\d{2}$/.test(S
 function fmtClock(hhmm){const m=String(hhmm||"").match(/^(\d{1,2}):(\d{2})/);if(!m)return "";const d=new Date(2000,0,1,Number(m[1]),Number(m[2]));return d.toLocaleTimeString(currentLanguage==="uk"?"uk-UA":"en-US",{hour:"numeric",minute:"2-digit"})}
 function fmtScheduled(w){return [fmtDay(w?.date),fmtClock(w?.time)].filter(Boolean).join(" · ")||"—"}
 function availabilityBadge(w){
- if(w.unitType==="fleet" && w.fleetAuto!==false) return '<span class="badge b-here">Fleet Auto</span>';
+ if(isInHouse(w) && w.fleetAuto!==false) return `<span class="badge b-here">${w.unitType==="equipment"?"Shop equipment":"Fleet Auto"}</span>`;
  if(w.truckHere) return '<span class="badge b-here">Truck Here</span>';
  return '<span class="badge b-future">Waiting for Truck</span>';
 }
@@ -3361,7 +3369,7 @@ document.getElementById("reactivateForm").onsubmit=e=>{
  // A mechanic can only reactivate a truck they are currently working on,
  // so customer units are treated as physically present for this reactivated visit.
  if(w.unitType==="customer")w.truckHere=true;
- if(w.unitType==="fleet")w.fleetAuto=true;
+ if(isInHouse(w))w.fleetAuto=true;
  w.reactivationCount=Number(w.reactivationCount||0)+1;
  w.history=w.history||[];
  w.history.push(workOrderHistoryEntry("reactivated",{reason,addedTasks:added}));
@@ -3588,7 +3596,7 @@ function mechanicUpcomingCount(username){
  return (state.workorders||[]).filter(w=>
    mechanicAssignedToWorkOrder(w,username) &&
    w.status!=="Completed" &&
-   ((w.unitType==="customer"&&!w.truckHere) || (w.unitType==="fleet"&&w.fleetAuto===false))
+   ((w.unitType==="customer"&&!w.truckHere) || (isInHouse(w)&&w.fleetAuto===false))
  ).length;
 }
 function mechanicCurrentWork(username){
@@ -4487,7 +4495,7 @@ function render(){
 
    const completedTable=document.getElementById("completedTable");
    if(completedTable){
-     completedTable.innerHTML=completed.map(w=>`<tr><td>#${w.id}</td><td><b>${esc(w.unit)}</b></td><td>${esc(w.customer)}</td><td>${esc(mechanicDisplay(w.mechanic))}</td><td>${w.completedAt?esc(fmtDateTime(w.completedAt)):'<span class="muted">—</span>'}</td><td>${esc(w.parking||"—")}</td><td><button class="secondary" onclick="openDetail(${w.id})">View</button> <button class="secondary" onclick="downloadWorkOrderPDF(${w.id})">Download Work Order PDF</button> <button onclick="createServiceOrderFromWO(${w.id})">Review Service Order</button></td></tr>`).join("")||'<tr><td colspan="7" class="empty">No completed work orders yet.</td></tr>';
+     completedTable.innerHTML=completed.map(w=>`<tr><td>#${w.id}</td><td><b>${esc(w.unit)}</b></td><td>${esc(w.customer)}</td><td>${esc(mechanicDisplay(w.mechanic))}</td><td>${w.completedAt?esc(fmtDateTime(w.completedAt)):'<span class="muted">—</span>'}</td><td>${esc(w.parking||"—")}</td><td><button class="secondary" onclick="openDetail(${w.id})">View</button> <button class="secondary" onclick="downloadWorkOrderPDF(${w.id})">Download Work Order PDF</button> ${w.unitType==="equipment"?'<span class="muted">In-house</span>':`<button onclick="createServiceOrderFromWO(${w.id})">Review Service Order</button>`}</td></tr>`).join("")||'<tr><td colspan="7" class="empty">No completed work orders yet.</td></tr>';
    }
 
    renderFindingsCenter();
@@ -4555,6 +4563,7 @@ function renderAdminTable(){
  if(adminFilter==="future")wo=wo.filter(w=>!readyForMechanic(w));
  if(adminFilter==="here")wo=wo.filter(w=>w.truckHere);
  if(adminFilter==="fleet")wo=wo.filter(w=>w.unitType==="fleet");
+ if(adminFilter==="equipment")wo=wo.filter(w=>w.unitType==="equipment");
  // v24.41.8: search + mechanic filter; one status pill; Parking column only when some work order has a spot.
  const mf=document.getElementById("woMechFilter");if(mf){const cur=mf.value,opts=mechanicAccounts();mf.innerHTML=`<option value="">${esc(translateDynamicText("All mechanics"))}</option>`+opts.map(m=>`<option value="${esc(m.username)}" ${m.username===cur?"selected":""}>${esc(m.display)}</option>`).join("")}
  const mech=mf?.value||"",q=String(document.getElementById("woSearch")?.value||"").trim().toLowerCase();
@@ -4563,7 +4572,7 @@ function renderAdminTable(){
  const tbl=table.closest("table");if(tbl)tbl.classList.toggle("noParking",!wo.some(w=>String(w.parking||"").trim()));
  const woNote=w=>{const st=woStage(w);if((st==="working"||st==="paused")&&!readyForMechanic(w))return `<div class="woNote">${esc(translateDynamicText("Truck not marked as here"))}</div>`;if(st==="scheduled")return `<div class="woNote muted">${esc(translateDynamicText(w.unitType==="fleet"?"Fleet unit · hidden from mechanics":"Waiting for the truck"))}</div>`;return ""};
 
- table.innerHTML=wo.map(w=>`<tr class="woRow stage-${woStage(w)}"><td data-label="WO">#${w.id}</td><td data-label="Unit"><b>${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · ${w.unitType==="fleet"?"Fleet":"Customer"}</div></td><td data-label="Scheduled">${esc(fmtScheduled(w))}</td><td data-label="Mechanic">${esc(mechanicAssignmentsLabel(w))}</td><td data-label="Parking" class="woParkCol">${esc(w.parking||"—")}</td><td data-label="Status">${woStageBadge(w)}${woNote(w)}</td><td class="woRowActions"><button class="secondary" onclick="openDetail(${w.id})">Open</button> <button class="secondary" onclick="openEdit(${w.id})">Edit</button></td></tr>`).join("")||`<tr><td colspan="7" class="empty">${esc(translateDynamicText(q||mech?"No work orders match this search.":"No open work orders. Press + New Work Order to schedule one."))}</td></tr>`;
+ table.innerHTML=wo.map(w=>`<tr class="woRow stage-${woStage(w)}"><td data-label="WO">#${w.id}</td><td data-label="Unit"><b>${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · ${w.unitType==="fleet"?"Fleet":w.unitType==="equipment"?"Shop equipment":"Customer"}</div></td><td data-label="Scheduled">${esc(fmtScheduled(w))}</td><td data-label="Mechanic">${esc(mechanicAssignmentsLabel(w))}</td><td data-label="Parking" class="woParkCol">${esc(w.parking||"—")}</td><td data-label="Status">${woStageBadge(w)}${woNote(w)}</td><td class="woRowActions"><button class="secondary" onclick="openDetail(${w.id})">Open</button> <button class="secondary" onclick="openEdit(${w.id})">Edit</button></td></tr>`).join("")||`<tr><td colspan="7" class="empty">${esc(translateDynamicText(q||mech?"No work orders match this search.":"No open work orders. Press + New Work Order to schedule one."))}</td></tr>`;
 }
 function setAdminFilter(f,btn){adminFilter=f;document.querySelectorAll(".filterbtn").forEach(x=>x.classList.remove("active"));btn.classList.add("active");renderAdminTable()}
 function jobCard(w){return `<div class="card jobcard woCard stage-${woStage(w)}"><div class="jobtop"><div><b>#${w.id} — ${esc(w.unit)}</b><div class="muted">${esc(w.customer)} · ${esc(mechanicAssignmentsLabel(w))} · ${esc(fmtScheduled(w))}${w.parking?` · Parking ${esc(w.parking)}`:""}</div></div>${woStageBadge(w)}</div><div style="margin-top:8px">${availabilityBadge(w)}</div><div style="margin-top:10px"><b>Assigned to you:</b>${w.tasks.map(t=>`<div class="muted">${t.done?"✓":(t.startedAt&&!t.stoppedAt?"▶":"○")} ${esc(t.t)}${t.done?` · ${fmtDuration(taskElapsed(t))}`:""}</div>`).join("")}</div><div style="margin-top:10px"><button class="secondary" onclick="openDetail(${w.id})">Open Work Order</button></div></div>`}
@@ -4901,9 +4910,10 @@ function applyWoLookupNew(){const d=woLookupData||{},c=d.carrier||{},v=d.vehicle
 document.getElementById("woForm").onsubmit=async e=>{
  e.preventDefault(); if(!requireAdmin())return;
  {const fm=e.target,el=n=>fm.elements.namedItem(n),dot=String(el("dotNumber")?.value||"").replace(/\D/g,""),vin=String(el("vin")?.value||"").toUpperCase();
-  if(vin&&vin.length!==17)return showToast("VIN must be 17 characters (or leave it empty).","warning");
+  if(el("unitType")?.value==="equipment"){if(!String(el("customer").value||"").trim())el("customer").value="In-house (shop equipment)"}
+  else if(vin&&vin.length!==17)return showToast("VIN must be 17 characters (or leave it empty).","warning");
   // A USDOT or VIN without linked records: find or add the company and truck in Customers first.
-  if((dot.length>=5||vin.length===17)&&(!el("customerId").value||!el("unitRecordId").value)){
+  if(el("unitType")?.value!=="equipment"&&(dot.length>=5||vin.length===17)&&(!el("customerId").value||!el("unitRecordId").value)){
    const btn=fm.querySelector('button[type="submit"]');if(btn)btn.disabled=true;
    try{const d=woLookupData||{},r=await apiJSON("/api/work-orders/resolve-vehicle",{method:"POST",body:JSON.stringify({customer:el("customer").value,customerId:el("customerId").value,unit:el("unit").value,unitRecordId:el("unitRecordId").value,vin,dotNumber:dot,year:el("year").value,make:el("make").value,model:el("model").value,plate:el("plate").value,mileage:el("mileage").value,carrier:woLookupNew?d.carrier||{}:{},carrierSource:woLookupNew?d.sources?.carrier||"":"",vehicleSource:woLookupNew?d.sources?.vehicle||"":""})});
     el("customerId").value=r.customer.id||"";if(r.customer.name)el("customer").value=r.customer.name;if(r.customer.dotNumber)el("dotNumber").value=String(r.customer.dotNumber).replace(/\D/g,"");
@@ -4916,7 +4926,7 @@ document.getElementById("woForm").onsubmit=async e=>{
  state.workorders.unshift({
    id:newWoId,unit:f.get("unit"),customer:f.get("customer"),customerId:f.get("customerId")||"",unitRecordId:f.get("unitRecordId")||"",vin:f.get("vin")||"",year:f.get("year")||"",make:f.get("make")||"",model:f.get("model")||"",plate:f.get("plate")||"",mileage:Number(f.get("mileage")||0)||0,dotNumber:f.get("dotNumber")||"",date:f.get("date"),time:f.get("time"),
    mechanic:f.get("mechanic"),helpers:[],priority:f.get("priority"),parking:f.get("parking"),unitType,
-   truckHere:f.get("truckHere")==="on",fleetAuto:unitType==="fleet" ? f.get("fleetAuto")==="on" : false,
+   truckHere:f.get("truckHere")==="on",fleetAuto:(unitType==="fleet"||unitType==="equipment") ? f.get("fleetAuto")==="on" : false,
    status:"Open",completedAt:"",
    tasks:f.get("tasks").split("\n").map(t=>t.trim()).filter(Boolean).map(t=>newTaskRecord(t)),notes:f.get("notes")
  });
@@ -4988,7 +4998,7 @@ document.getElementById("editForm").onsubmit=e=>{
  w.parking=f.get("parking");
  w.unitType=f.get("unitType");
  w.truckHere=f.get("truckHere")==="on";
- w.fleetAuto=w.unitType==="fleet" ? f.get("fleetAuto")==="on" : false;
+ w.fleetAuto=isInHouse(w) ? f.get("fleetAuto")==="on" : false;
  w.tasks=newTasks;
  w.notes=f.get("notes");
  save();
@@ -5003,7 +5013,7 @@ function mechanicMarkTruckHere(id){
  if(!assignedToCurrentMechanic(w))return alert(tr("This unit is not assigned to you."));
  if(w.status==="Completed")return alert(tr("This work order is already completed."));
 
- if(w.unitType==="fleet"){
+ if(isInHouse(w)){
    w.fleetAuto=true;
  }else{
    w.truckHere=true;
@@ -5754,7 +5764,7 @@ function openDetail(id){
   ${w.status==="Completed" && Number(w.outcomeWorkflowVersion||0)===0?`<div class="notice" style="margin-bottom:10px">This work order was completed before per-job outcomes were introduced. Missing outcomes are historical only and do not require action.</div>`:""}
   ${w.tasks.map((t,i)=>taskTimerRow(w,t,i)).join("")}
   ${workOrderNotesBlock(w)}
-  ${w.status==="Completed"?`<div style="margin-top:12px"><button class="secondary" onclick="downloadWorkOrderPDF(${w.id})">Download Work Order PDF</button> <button onclick="createServiceOrderFromWO(${w.id})">Review Service Order / Invoice</button></div>`:""}
+  ${w.status==="Completed"?`<div style="margin-top:12px"><button class="secondary" onclick="downloadWorkOrderPDF(${w.id})">Download Work Order PDF</button> ${w.unitType==="equipment"?'<span class="muted">In-house repair — not billed.</span>':`<button onclick="createServiceOrderFromWO(${w.id})">Review Service Order / Invoice</button>`}</div>`:""}
   <div class="card mechanicWorkSummary"><h2 style="margin:0">Mechanic Work Summary</h2><div class="muted">Who worked on each job and their recorded labor time.</div><div data-mechanic-work-summary-wo="${esc(String(w.id))}" style="margin-top:8px"><div class="muted">Loading mechanic labor…</div></div></div>
   ${adminControls}
   ${mechanicControls}`;
