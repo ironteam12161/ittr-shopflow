@@ -1,6 +1,7 @@
 // ITTR ShopFlow v24.37.0 finance center
 // Estimates, tire fees, accountant reports and Gmail (Zelle + vendor bill) inbox.
 // Everything here is additive: new tables only, no changes to existing invoice data.
+import { createCustomerLink, publicBaseUrl } from './customer_links.mjs';
 import crypto from 'node:crypto';
 import { documentEmailHtml, sendShopEmail, emailSenderStatus, registerGoogleSender, buildMimeMessage, resendConfigured } from './email_templates.mjs';
 
@@ -661,6 +662,7 @@ export function registerFinanceRoutes(app, deps) {
       await db.query(`UPDATE customer_estimates SET status=$2,decision_note=CASE WHEN $2 IN ('approved','declined') THEN $3 ELSE decision_note END,
         decided_at=CASE WHEN $2 IN ('approved','declined') THEN now() ELSE NULL END,decided_by=CASE WHEN $2 IN ('approved','declined') THEN $4 ELSE NULL END,
         sent_at=CASE WHEN $2='sent' THEN coalesce(sent_at,now()) ELSE sent_at END,updated_at=now() WHERE id=$1::bigint`, [cur.id, to, str(b.decisionNote, 1000), req.user.username]);
+      if (to === 'draft') { await db.query('UPDATE customer_estimate_lines SET customer_decision=NULL WHERE estimate_id=$1::bigint', [cur.id]); await db.query('UPDATE customer_estimates SET customer_signed_name=NULL,customer_decided_at=NULL,customer_decision_ip=NULL WHERE id=$1::bigint', [cur.id]); }
       await audit(req.user.username, 'estimate_status_changed', { estimateId: cur.id, from: cur.status, to });
     }
     const hasHeader = ['customerName', 'customerId', 'customerEmail', 'unitNumber', 'vin', 'mileage', 'poNumber', 'validUntil', 'taxRate', 'shopSupplies', 'environmentalFee', 'discountType', 'discountValue', 'customerNote', 'internalNote', 'estimateDate'].some(k => b[k] !== undefined);
@@ -742,8 +744,11 @@ export function registerFinanceRoutes(app, deps) {
     if (!est) fail(404, 'Estimate not found.');
     if (est.status === 'converted' && est.converted_invoice_id) return { ok: true, id: est.converted_invoice_id, existing: true };
     if (est.status === 'declined') fail(409, 'Declined estimates cannot be invoiced. Move it back to draft first.');
-    const lines = (await db.query('SELECT * FROM customer_estimate_lines WHERE estimate_id=$1::bigint ORDER BY sort_order,id', [est.id])).rows;
+    let lines = (await db.query('SELECT * FROM customer_estimate_lines WHERE estimate_id=$1::bigint ORDER BY sort_order,id', [est.id])).rows;
     if (!lines.length) fail(409, 'Add at least one line before converting the estimate.');
+    // v24.54.0: jobs the customer declined online stay on the estimate but are not invoiced (with fees tied to them).
+    const declined = new Set(lines.filter(l => l.customer_decision === 'declined').map(l => String(l.id)));
+    if (declined.size) { lines = lines.filter(l => !declined.has(String(l.id)) && !declined.has(String(l.metadata?.forLineId || ''))); if (!lines.length) fail(409, 'The customer declined every job on this estimate.'); }
     const c = est.customer_id ? (await db.query('SELECT credit_terms FROM fullbay_import_customers WHERE id=$1::bigint', [est.customer_id])).rows[0] : null;
     const terms = String(c?.credit_terms || 'Due on Receipt'), days = /60/.test(terms) ? 60 : /45/.test(terms) ? 45 : /30/.test(terms) ? 30 : /15/.test(terms) ? 15 : 0;
     const invoiceNumber = await nextInvoiceNumber(db);
@@ -780,8 +785,11 @@ export function registerFinanceRoutes(app, deps) {
     if (!to.length) fail(400, 'Customer email is required.'); const bad = [...to, ...cc].find(a => !ok(a)); if (bad) fail(400, `"${bad}" is not a valid email address.`);
     const subject = str(req.body?.subject || `Estimate ${e.estimate_number} from ${shopProfile().name}`, 200).replace(/[\r\n]+/g, ' '), message = String(req.body?.message || estimateMessage(e)).slice(0, 5000);
     const base = String(process.env.APP_PUBLIC_URL || '').replace(/\/$/, ''), shop = shopProfile();
-    const r = await sendShopEmail({ to, cc, subject, text: message, replyTo: String(process.env.INVOICE_REPLY_TO || shop.email || ''), idempotencyKey: `estimate-${e.id}-${str(req.body?.requestId, 80).replace(/[^A-Za-z0-9_-]/g, '') || crypto.randomUUID()}`,
-      html: documentEmailHtml({ kind: 'estimate', doc: e, lines: x.lines, message, shop, logoUrl: base ? `${base}/assets/iron-team-logo.png` : '', accent: String(process.env.SHOP_ACCENT_COLOR || '#c2410c') }),
+    // v24.54.0: the email carries a private "Review & approve online" link (14 days), unless the shop turned it off.
+    let approveUrl = '';
+    if (req.body?.approvalLink !== false && ['draft', 'sent'].includes(e.status) && x.lines.length) approveUrl = (await createCustomerLink(db, { kind: 'estimate', refId: e.id, customerId: e.customer_id, by: req.user.username, base: publicBaseUrl(req) })).url;
+    const r = await sendShopEmail({ to, cc, subject, text: approveUrl ? `${message}\n\nReview and approve online: ${approveUrl}` : message, replyTo: String(process.env.INVOICE_REPLY_TO || shop.email || ''), idempotencyKey: `estimate-${e.id}-${str(req.body?.requestId, 80).replace(/[^A-Za-z0-9_-]/g, '') || crypto.randomUUID()}`,
+      html: documentEmailHtml({ kind: 'estimate', doc: e, lines: x.lines, message, shop, logoUrl: base ? `${base}/assets/iron-team-logo.png` : '', payUrl: approveUrl, payLabel: 'Review &amp; Approve Online', accent: String(process.env.SHOP_ACCENT_COLOR || '#c2410c') }),
       attachments: [{ filename: `${String(e.estimate_number).replace(/[^A-Za-z0-9_-]/g, '_')}.pdf`, content: (await estimatePdf(x)).toString('base64') }], tags: [{ name: 'document', value: 'estimate' }] });
     if (!r.ok) fail(502, r.error);
     await db.query(`UPDATE customer_estimates SET customer_email=$2,status=CASE WHEN status='draft' THEN 'sent' ELSE status END,sent_at=coalesce(sent_at,now()),updated_at=now() WHERE id=$1::bigint`, [e.id, to[0]]);
