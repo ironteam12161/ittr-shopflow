@@ -243,6 +243,9 @@ try{
   assert(await setAsideNonBankZelle(db)===2,'already-listed reply / personal-mailbox Zelle emails are set aside');
   const st=Object.fromEntries((await db.query("SELECT gmail_message_id,status FROM gmail_finance_messages WHERE gmail_message_id LIKE 'old-%'")).rows.map(r=>[r.gmail_message_id,r.status]));
   assert(st['old-re']==='ignored'&&st['old-gm']==='ignored'&&st['old-ok']==='new','real bank notices stay in the inbox');
+  await db.query(`INSERT INTO gmail_finance_messages(account_id,gmail_message_id,kind,from_email,subject,amount,counterparty,confirmation) VALUES($1,'old-na','zelle_in','alerts@chase.com','You received money with Zelle®',320,'Unapplied Payer','31199400001')`,[acc]);
+  const sIn=await request('/api/payments/search?q=31199400001');assert(sIn.items.length===0&&sIn.inbox.some(m=>m.confirmation==='31199400001'&&m.status==='new'),'a Zelle never applied is found in the Gmail inbox by its transaction ID');
+  const sAp=await request('/api/payments/search?q=22198765432');assert(sAp.items.some(x=>String(x.invoice_id)===String(open.id))&&!sAp.inbox.length,'an applied Zelle is found on its invoice, not as an inbox item');
   await db.query("DELETE FROM gmail_finance_messages WHERE gmail_message_id LIKE 'old-%'");}
  const twice=await request(`/api/gmail/messages/${z.id}/apply-payment`,{method:'POST',body:{invoiceId:open.id},allowError:true});assert(twice.status===409,'Zelle cannot be applied twice');
  const paidInv=await request(`/api/invoices/${open.id}`);assert(paidInv.invoice.status==='paid'&&paidInv.payments[0].method==='Zelle','Zelle payment recorded and invoice paid');assert(paidInv.payments[0].reference==='22198765432',`Zelle payment reference is the bank confirmation number (${paidInv.payments[0].reference})`);assert(/From: ACME TRUCKING LLC/.test(paidInv.payments[0].note||''),'sender kept in the note');

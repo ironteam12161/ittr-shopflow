@@ -1890,7 +1890,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.51.1");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.51.2");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
@@ -3974,11 +3974,28 @@ app.patch('/api/invoices/:id/payments/:paymentId',auth,managerPermission("invoic
  // v24.49.0: one payment split over several invoices keeps one method / transaction ID.
  if(cur.customer_payment_id){await db.query('UPDATE customer_invoice_payments SET method=$2,reference=$3 WHERE customer_payment_id=$1::bigint',[cur.customer_payment_id,method,reference]);await db.query('UPDATE customer_payments SET method=$2,reference=$3 WHERE id=$1::bigint',[cur.customer_payment_id,method,reference])}
  await audit(req.user.username,'invoice_payment_edited',{invoiceId:req.params.id,paymentId:cur.id,before:{method:cur.method,reference:cur.reference},after:{method,reference}});res.json({ok:true})}catch(e){next(e)}});
-app.get('/api/payments/search',auth,managerPermission("invoices"),async(req,res,next)=>{try{const q=String(req.query.q||'').trim().slice(0,80);if(q.length<2)return res.json({items:[]});
- const r=await requireDb().query(`SELECT p.id,p.invoice_id,p.amount,p.method,p.reference,p.note,p.paid_at,p.received_by,i.invoice_number,i.customer_name,i.unit_number,i.status
+// v24.51.2: a transaction ID is found wherever it lives: on an invoice payment (also when the reference was typed
+// differently, via the Gmail email it was applied from), on a customer credit not used yet, or still only on a
+// Zelle email in the Gmail inbox that was never applied.
+app.get('/api/payments/search',auth,managerPermission("invoices"),async(req,res,next)=>{try{const q=String(req.query.q||'').trim().slice(0,80);if(q.length<2)return res.json({items:[],credits:[],inbox:[]});
+ const db=requireDb(),hit=col=>`(${col} ILIKE '%'||$1||'%' OR (length(regexp_replace($1,'\\D','','g'))>=5 AND regexp_replace(coalesce(${col},''),'\\D','','g') LIKE '%'||regexp_replace($1,'\\D','','g')||'%'))`;
+ const mail=`SELECT id,matched_payment_id FROM gmail_finance_messages WHERE kind='zelle_in' AND (${hit('confirmation')} OR ${hit('snippet')})`;
+ const r=await db.query(`WITH mail AS (${mail})
+  SELECT p.id,p.invoice_id,p.amount,p.method,p.reference,p.note,p.paid_at,p.received_by,i.invoice_number,i.customer_name,i.unit_number,i.status
   FROM customer_invoice_payments p JOIN customer_invoices i ON i.id=p.invoice_id
   WHERE p.reference ILIKE '%'||$1||'%' OR p.note ILIKE '%'||$1||'%' OR (length(regexp_replace($1,'\\D','','g'))>=3 AND regexp_replace(coalesce(p.reference,''),'\\D','','g') LIKE '%'||regexp_replace($1,'\\D','','g')||'%')
-  ORDER BY p.paid_at DESC LIMIT 50`,[q]);res.json({items:r.rows})}catch(e){next(e)}});
+   OR p.id IN (SELECT matched_payment_id FROM mail WHERE matched_payment_id IS NOT NULL)
+   OR p.customer_payment_id IN (SELECT cp.id FROM customer_payments cp WHERE cp.gmail_message_id IN (SELECT id FROM mail) OR ${hit('cp.reference')})
+  ORDER BY p.paid_at DESC LIMIT 50`,[q]).catch(async e=>{if(e?.code!=='42P01')throw e;return db.query(`SELECT p.id,p.invoice_id,p.amount,p.method,p.reference,p.note,p.paid_at,p.received_by,i.invoice_number,i.customer_name,i.unit_number,i.status
+  FROM customer_invoice_payments p JOIN customer_invoices i ON i.id=p.invoice_id WHERE ${hit('p.reference')} OR p.note ILIKE '%'||$1||'%' ORDER BY p.paid_at DESC LIMIT 50`,[q])});
+ const credits=(await db.query(`SELECT cp.id,cp.customer_id,cp.customer_name,cp.amount,cp.method,cp.reference,cp.paid_at,
+   cp.amount-coalesce((SELECT sum(x.amount) FROM customer_invoice_payments x WHERE x.customer_payment_id=cp.id),0) unapplied
+  FROM customer_payments cp WHERE (${hit('cp.reference')} OR cp.note ILIKE '%'||$1||'%' OR cp.gmail_message_id IN (${mail.replace('id,matched_payment_id','id')}))
+  ORDER BY cp.paid_at DESC LIMIT 20`,[q]).catch(()=>({rows:[]}))).rows.filter(c=>Number(c.unapplied)>0.009);
+ const inbox=(await db.query(`SELECT id,amount,counterparty,from_email,received_at,status,confirmation FROM gmail_finance_messages m
+  WHERE kind='zelle_in' AND status<>'matched' AND (${hit('confirmation')} OR ${hit('snippet')})
+   AND NOT EXISTS (SELECT 1 FROM customer_payments cp WHERE cp.gmail_message_id=m.id) ORDER BY received_at DESC LIMIT 20`,[q]).catch(()=>({rows:[]}))).rows;
+ res.json({items:r.rows,credits,inbox})}catch(e){next(e)}});
 // ITTR_INVENTORY_RESERVE_FINALIZE_V1_VOID
 app.post('/api/invoices/:id/void',auth,managerPermission("invoices"),async(req,res,next)=>{
  const db=await requireDb().connect();
