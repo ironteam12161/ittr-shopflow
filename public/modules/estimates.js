@@ -62,7 +62,7 @@ async function openEstimate(id){
 async function reload(){if(S.cur)await openEstimate(S.cur.estimate.id)}
 
 function lineRow(l,locked,isLabor){
- const dis=locked||l.metadata?.feeCode?'disabled':'',fu=['gal','qt'].includes(l.metadata?.unit)?l.metadata.unit:'';
+ const dis=locked||l.metadata?.feeCode?'disabled':'',fu=['gal','qt'].includes(l.metadata?.unit)?l.metadata.unit:l.part_in_gallons?'gal':'';
  // v24.59.0: a part with no sell price is flagged so it is not quoted at $0 by mistake.
  const noPrice=l.line_type==='part'&&!locked&&Number(l.unit_price)<=0;
  return `<div class="estRow" data-line="${l.id}">
@@ -72,7 +72,7 @@ function lineRow(l,locked,isLabor){
   ${fu?`<span class="estQtyU"><input data-f="quantity" type="number" step="0.25" min="0" value="${Number(l.quantity)}" ${dis} aria-label="Quantity"><select data-f="unit" ${dis} aria-label="Gallons or quarts" title="Gallons or quarts (price converts: per quart = per gallon ÷ 4)"><option value="gal" ${fu==='gal'?'selected':''}>gal</option><option value="qt" ${fu==='qt'?'selected':''}>qt</option></select></span>`:`<input data-f="quantity" type="number" step="${isLabor?'0.1':'0.01'}" min="0" value="${Number(l.quantity)}" ${dis} aria-label="${isLabor?'Hours':'Quantity'}">`}
   <input data-f="unitPrice" type="number" step="0.01" min="0" value="${Number(l.unit_price)}" ${dis} class="${noPrice?'estNoPrice':''}" aria-label="${isLabor?'Rate per hour':fu?`Price per ${fu}`:'Price each'}" title="${noPrice?'This part has no sell price — type one here, and set it on the part in Parts.':fu?`Price per ${fu==='qt'?'quart':'gallon'}`:''}">
   <label class="tx" title="Taxable"><input data-f="taxable" type="checkbox" ${l.taxable?'checked':''} ${dis}><span>Tax</span></label>
-  <span class="amt">${usd(l.line_total)}</span>
+  <span class="amt">${usd(l.line_total)}${l.part_fluid_not_gallons&&!locked?`<button type="button" class="estGalHint" onclick="window.openFluidsTool?.()" title="This fluid is not counted in gallons yet. Switch it in Parts → Fluids in gallons, then pick gal or qt here.">🛢 count in gallons</button>`:''}</span>
   ${locked||l.metadata?.feeCode?'<span></span>':`<button class="del" data-est="del-line" data-id="${l.id}" title="Remove line" aria-label="Remove line">✕</button>`}
  </div>`;
 }

@@ -3,7 +3,7 @@
 // Everything here is additive: new tables only, no changes to existing invoice data.
 import { createCustomerLink, publicBaseUrl } from './customer_links.mjs';
 import crypto from 'node:crypto';
-import { isGallonUom, FLUID_UNITS } from './fluids.mjs';
+import { isGallonUom, FLUID_UNITS, looksLikeFluid } from './fluids.mjs';
 import { documentEmailHtml, sendShopEmail, emailSenderStatus, registerGoogleSender, buildMimeMessage, resendConfigured } from './email_templates.mjs';
 
 export const TIRE_FEE_CODES = Object.freeze({ user: 'tire_user_fee', disposal: 'tire_disposal_fee' });
@@ -222,7 +222,17 @@ async function recalcEstimate(db, id) {
 async function estimateBundle(db, id) {
   const estimate = (await db.query(`SELECT e.*,c.dot_number AS customer_dot_number,c.email AS profile_customer_email,c.credit_terms AS customer_terms FROM customer_estimates e LEFT JOIN fullbay_import_customers c ON c.id=e.customer_id WHERE e.id=$1::bigint`, [id])).rows[0];
   if (!estimate) return null;
-  const lines = (await db.query('SELECT * FROM customer_estimate_lines WHERE estimate_id=$1::bigint ORDER BY sort_order,id', [id])).rows;
+  const lines = (await db.query(`SELECT l.*,p.uom AS part_uom,p.is_fluid AS part_is_fluid,p.category AS part_category FROM customer_estimate_lines l
+    LEFT JOIN fullbay_import_parts p ON p.id=l.inventory_part_id WHERE l.estimate_id=$1::bigint ORDER BY l.sort_order,l.id`, [id])).rows;
+  // v24.59.0: the screen offers gal/qt for parts counted in gallons (also on lines added before this version), and points
+  // fluids still counted by the drum or case to the "Fluids in gallons" tool.
+  for (const l of lines) {
+    const p = { uom: l.part_uom, description: l.description, part_number: l.part_number, category: l.part_category };
+    const m = l.metadata && typeof l.metadata === 'object' ? l.metadata : {}, ownFactor = !m.unit && Number(m.stockPerUnit) > 0 && Number(m.stockPerUnit) !== 1;
+    l.part_in_gallons = l.line_type === 'part' && isGallonUom(l.part_uom) && !ownFactor;
+    l.part_fluid_not_gallons = l.line_type === 'part' && !!l.inventory_part_id && !isGallonUom(l.part_uom) && (l.part_is_fluid === true || (l.part_is_fluid !== false && looksLikeFluid(p)));
+    delete l.part_is_fluid; delete l.part_category;
+  }
   const invoice = estimate.converted_invoice_id ? (await db.query('SELECT id,invoice_number,status,total,balance_due FROM customer_invoices WHERE id=$1::bigint', [estimate.converted_invoice_id])).rows[0] || null : null;
   return { estimate, lines, invoice };
 }
@@ -706,11 +716,16 @@ export function registerFinanceRoutes(app, deps) {
   const fluidLineMeta = async (db, l, unit, old = null) => {
     const meta = { ...(old?.metadata && typeof old.metadata === 'object' ? old.metadata : {}) };
     const uom = l.inventoryPartId ? (await db.query('SELECT uom FROM fullbay_import_parts WHERE id=$1::bigint', [l.inventoryPartId])).rows[0]?.uom : '';
-    if (!isGallonUom(uom)) { delete meta.unit; delete meta.stockPerUnit; delete meta.galPrice; delete meta.galCost; return meta; }
+    if (!isGallonUom(uom)) { delete meta.unit; delete meta.galPrice; delete meta.galCost; if ([0.25, 1].includes(Number(meta.stockPerUnit)) || !l.inventoryPartId) delete meta.stockPerUnit; return meta; }
+    // A line quoted before its part was switched to gallons (e.g. 1 drum = 55 gal) keeps its own factor.
+    if (!FLUID_UNITS[unit] && !meta.unit && Number(meta.stockPerUnit) > 0 && Number(meta.stockPerUnit) !== 1) return meta;
     const un = FLUID_UNITS[unit] ? unit : (FLUID_UNITS[meta.unit] ? meta.unit : 'gal'), spu = FLUID_UNITS[un];
     const samePart = old && Number(old.inventory_part_id || 0) === Number(l.inventoryPartId || 0);
-    if (samePart && meta.unit && meta.unit !== un && Number.isFinite(Number(meta.galPrice))) {
-      l.price = Math.round(Number(meta.galPrice) * spu * 100) / 100; l.unitCost = Math.round(Number(meta.galCost || 0) * spu * 10000) / 10000;
+    // A line saved before it had a unit was priced per gallon (the part's own price).
+    const prev = FLUID_UNITS[meta.unit] ? meta.unit : 'gal', galP = Number.isFinite(Number(meta.galPrice)) && meta.galPrice !== undefined ? Number(meta.galPrice) : Number(old?.unit_price || 0) / FLUID_UNITS[prev];
+    const galC = meta.galCost !== undefined && Number.isFinite(Number(meta.galCost)) ? Number(meta.galCost) : Number(old?.unit_cost || 0) / FLUID_UNITS[prev];
+    if (samePart && prev !== un) {
+      l.price = Math.round(galP * spu * 100) / 100; l.unitCost = Math.round(galC * spu * 10000) / 10000;
       l.discount = Math.min(l.qty * l.price, l.discount);
     } else { meta.galPrice = Math.round(l.price / spu * 10000) / 10000; meta.galCost = Math.round(l.unitCost / spu * 10000) / 10000; }
     meta.unit = un; meta.stockPerUnit = spu;

@@ -72,6 +72,9 @@ export function registerFluidRoutes(app, { auth, managerPermission, requireDb, a
         const lr = await db.query(`UPDATE customer_invoice_lines SET stock_posted_qty=coalesce(stock_posted_qty,0)*$2::numeric,
             metadata=coalesce(metadata,'{}'::jsonb)||jsonb_build_object('stockPerUnit',coalesce((metadata->>'stockPerUnit')::numeric,1)*$2::numeric) WHERE inventory_part_id=$1::bigint`, [id, g]);
         invLines += lr.rowCount; converted++;
+        // v24.59.0: open estimates keep the price quoted (per drum, case…); the line remembers how many gallons it is.
+        await db.query(`UPDATE customer_estimate_lines l SET metadata=coalesce(l.metadata,'{}'::jsonb)||jsonb_build_object('stockPerUnit',coalesce((l.metadata->>'stockPerUnit')::numeric,1)*$2::numeric)
+            FROM customer_estimates e WHERE e.id=l.estimate_id AND e.status NOT IN ('converted','declined') AND l.inventory_part_id=$1::bigint`, [id, g]);
       }
       if (sf && woParts) await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow'", [JSON.stringify(sf), req.user.username]);
       await db.query('COMMIT');
@@ -112,6 +115,8 @@ export function registerFluidRoutes(app, { auth, managerPermission, requireDb, a
       // Invoice lines keep what the customer was billed; only how much stock each billed unit moves changes.
       const lr = await db.query(`UPDATE customer_invoice_lines SET stock_posted_qty=coalesce(stock_posted_qty,0)/$2::numeric,
           metadata=(coalesce(metadata,'{}'::jsonb)-'galPrice'-'galCost')||jsonb_build_object('stockPerUnit',coalesce((metadata->>'stockPerUnit')::numeric,1)/$2::numeric) WHERE inventory_part_id=$1::bigint`, [id, g]);
+      await db.query(`UPDATE customer_estimate_lines l SET metadata=(coalesce(l.metadata,'{}'::jsonb)-'galPrice'-'galCost'-'unit')||jsonb_build_object('stockPerUnit',coalesce((l.metadata->>'stockPerUnit')::numeric,1)/$2::numeric)
+          FROM customer_estimates e WHERE e.id=l.estimate_id AND e.status NOT IN ('converted','declined') AND l.inventory_part_id=$1::bigint`, [id, g]);
       await db.query('COMMIT');
       await audit(req.user.username, 'fluid_unit_reverted', { partId: id, gallonsPerOldUnit: g, oldUom, woParts, invoiceLines: lr.rowCount });
       res.json({ ok: true, uom: oldUom, gallonsPerOldUnit: g, workOrderParts: woParts, invoiceLines: lr.rowCount });
