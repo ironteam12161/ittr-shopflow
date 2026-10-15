@@ -177,6 +177,25 @@ try{
  ok((await fetch(`http://127.0.0.1:${port}/api/fullbay/import/parts`,{method:'POST',headers:{Authorization:`Bearer ${owner}`},body:imp})).ok,'Fullbay parts import runs');
  const ip=Object.fromEntries((await db.query("SELECT part_number,price FROM fullbay_import_parts WHERE part_number IN ('IMP-1','IMP-2')")).rows.map(r=>[r.part_number,Number(r.price)]));
  ok(ip['IMP-1']===54.11&&ip['IMP-2']===595,'import uses the calculated selling price, or the override when one was typed');
+ // v24.64.0: office work order by USDOT / VIN — company and truck found in Customers or added there.
+ eq((await request('/api/work-orders/resolve-vehicle',{method:'POST',token:mech,body:{dotNumber:'3456789',unit:'77'},allowError:true})).status,403,'mechanics use their own check-in');
+ eq((await request('/api/work-orders/resolve-vehicle',{method:'POST',token:owner,body:{vin:'1FUJGLDR9CLBP88',unit:'77'},allowError:true})).status,400,'short VIN refused');
+ const rv=await request('/api/work-orders/resolve-vehicle',{method:'POST',token:owner,body:{dotNumber:'3456789',customer:'Air Delivery Corporation',unit:'6600',vin:'1FUJHHDR8MLML6600',year:'2021',make:'Freightliner',model:'Cascadia',carrier:{legalName:'Air Delivery Corporation',city:'Chicago',state:'IL'},carrierSource:'FMCSA QCMobile'}});
+ ok(rv.customerCreated&&rv.unitCreated&&rv.customer.id&&rv.unit.id&&rv.unit.unitNumber==='6600'&&rv.customer.dotNumber==='3456789','new company (with USDOT) and truck added to Customers');
+ eq(Number((await db.query('SELECT count(*) n FROM fullbay_import_customers WHERE dot_number=$1',['3456789'])).rows[0].n),1,'company saved once');
+ const rv2=await request('/api/work-orders/resolve-vehicle',{method:'POST',token:owner,body:{dotNumber:'3456789',unit:'6600',vin:'1FUJHHDR8MLML6600'}});
+ ok(!rv2.customerCreated&&!rv2.unitCreated&&rv2.customer.id===rv.customer.id&&rv2.unit.id===rv.unit.id&&rv2.customer.name==='Air Delivery Corporation','second time: same company and truck found by USDOT / VIN');
+ const lk=await request('/api/work-orders/self-start/lookup?dotNumber=3456789',{token:owner});ok((lk.matches||[]).some(x=>x.unit_number==='6600'),'office lookup by USDOT finds the truck');
+ const sg=await request('/api/customer-units/suggest?q=3456789',{token:owner});ok((sg.items||[]).some(x=>x.unit_number==='6600'),'unit box finds trucks by USDOT');
+ // v24.64.0: shop equipment work orders (forklift, welder…): in-house, never billed, not added to Customers.
+ {const st=(await request('/api/state',{token:owner})).shopflow;const eqWo={id:'9801',unit:'Forklift Toyota 8FGU25',customer:'In-house (shop equipment)',unitType:'equipment',fleetAuto:true,status:'Completed',completedAt:new Date().toISOString(),mechanic:'mech1',tasks:[{uid:'eq-1',t:'Replace hydraulic hose',done:true}],date:'2026-10-15',time:'09:00'};
+  await request('/api/state/shopflow',{method:'PUT',token:owner,body:{expectedVersion:st.version,payload:{...st.payload,workorders:[...(st.payload.workorders||[]),eqWo]}}});
+  const inv=await request('/api/invoices/from-work-order/9801',{method:'POST',token:owner,body:{},allowError:true});eq(inv.code,'SHOP_EQUIPMENT','shop equipment is not invoiced');
+  const so=await request('/api/service-orders/from-work-order/9801',{method:'POST',token:owner,body:{},allowError:true});eq(so.code,'SHOP_EQUIPMENT','no service order for shop equipment');
+  ok(!((await request('/api/customer-units/suggest?q=Forklift',{token:owner})).items||[]).length,'forklift is not added to Customers as a truck');
+  ok((await request('/api/state',{token:mech})).shopflow.payload.workorders.some(w=>String(w.id)==='9801'),'mechanic sees the shop equipment work order');}
+ console.log('PASS shop equipment work orders: in-house, visible to mechanics, never billed, not in Customers');
+ console.log('PASS office work order: USDOT / VIN lookup, new company + truck added to Customers once, found again next time');
  console.log('PASS Fullbay prices: calculated vs override, compare (missing/different/match, gallons), fill missing only, uploaded file, import fixed');
  console.log('PASS fluids on estimates (gal/qt with price conversion → customer page, work order, invoice stock factor) and no-price parts list + price from cost');
  // ---------------------------------------------------------------- customer links: inspection
