@@ -4,11 +4,15 @@ const h=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt
 const api=(u,o)=>window.apiJSON(u,o);
 const toast=(m,t='info')=>window.showToast?.(m,t);
 const money=v=>Math.round((Number(v)||0)*100)/100;
-const usd=v=>`$${money(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+const usd=v=>{const m=money(v);return `${m<0?'−':''}$${Math.abs(m).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`};
 const day=v=>{if(!v)return '—';const d=new Date(String(v).slice(0,10)+'T12:00:00');return Number.isFinite(d.getTime())?d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'—'};
 const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
 const isOwner=()=>{try{return window.session?.role==='admin'||session?.role==='admin'}catch(_){return false}};
 const STATUS={paid:'Paid',unpaid:'Unpaid',overdue:'Overdue',void:'Void'};
+// v24.62.0: vendor credits (core returned) and "core not returned" entries come from Parts → Cores.
+const KIND_TAG={expense:'Expense',credit:'Vendor credit',journal:'Core not returned'};
+const statusText=b=>b.kind==='credit'?(b.status==='void'?'Void':b.paidAt?'Applied':'Open credit'):b.kind==='journal'?(b.status==='void'?'Void':'Recorded'):STATUS[b.status];
+const fromCores=b=>b.kind==='credit'||b.kind==='journal';
 const QB={not_synced:'Not sent',pending:'Sending',synced:'In QuickBooks',needs_update:'Needs update',error:'Error'};
 const TERMS=[['','—'],['Due on receipt',0],['Net 10',10],['Net 15',15],['Net 30',30],['Net 45',45],['Net 60',60]];
 let S={scope:null,meta:null,filters:{range:'year',from:'',to:'',status:'',category:'',q:''},data:null,qTimer:0,modal:null,form:null,vendTimer:0};
@@ -37,10 +41,10 @@ function render(){
  $('#blCats').innerHTML=cats.length?`<button class="blCat ${!S.filters.category?'on':''}" data-b="cat" data-c="">All categories</button>`+cats.map(([k,v])=>`<button class="blCat ${S.filters.category===k?'on':''}" data-b="cat" data-c="${h(k)}">${h(catName(k))}<i>${usd(v)}</i></button>`).join(''):'';
  S.scope.host.querySelectorAll('#blStatus button').forEach(b=>b.classList.toggle('on',b.dataset.s===S.filters.status));
  $('#blRows').innerHTML=d.items.length?d.items.map(b=>`<tr data-b="open" data-id="${b.id}">
-   <td>${day(b.billDate)}</td><td><b>${h(b.vendor||'—')}</b>${b.kind==='expense'?' <span class="blTag">Expense</span>':''}${b.receivedIntoStock?' <span class="blTag" title="Received into parts stock">In stock</span>':''}</td>
+   <td>${day(b.billDate)}</td><td><b>${h(b.vendor||'—')}</b>${KIND_TAG[b.kind]?` <span class="blTag">${KIND_TAG[b.kind]}</span>`:''}${b.receivedIntoStock?' <span class="blTag" title="Received into parts stock">In stock</span>':''}</td>
    <td>${h(b.billNumber||'—')}</td><td>${(b.categories||[]).map(c=>`<span class="blTag">${h(catName(c))}</span>`).join('')}</td>
-   <td class="muted">${b.kind==='expense'?'—':day(b.dueDate)}</td><td class="n"><b>${usd(b.total)}</b></td>
-   <td><span class="blPill ${b.status}">${STATUS[b.status]}</span>${b.status==='paid'&&b.paymentMethod?`<div class="muted">${h(S.meta?.paymentMethods?.[b.paymentMethod]||'')}</div>`:''}</td>
+   <td class="muted">${b.kind==='bill'?day(b.dueDate):'—'}</td><td class="n"><b>${usd(b.total)}</b></td>
+   <td><span class="blPill ${b.status}">${statusText(b)}</span>${b.status==='paid'&&b.paymentMethod?`<div class="muted">${h(S.meta?.paymentMethods?.[b.paymentMethod]||'')}</div>`:''}</td>
    <td><span class="blPill qb ${h(b.qbStatus)}">${QB[b.qbStatus]||h(b.qbStatus)}</span></td></tr>`).join('')
   :`<tr><td colspan="8" class="blEmpty">No bills here yet. Use <b>+ New bill</b> to type one in.</td></tr>`;
 }
@@ -107,7 +111,7 @@ function updateTotals(){const f=S.form,{sub,total}=sums(f);const t=M('#blTotal')
 function scanLines(list){const out=[];for(const l of list){const q=Number(l.quantity)||1,u=Number(l.unitCost)||0,core=Number(l.coreCost)||0;let amt=Number(l.lineTotal)||0;
  if(core>0&&amt&&Math.abs(amt-(q*u+q*core))<0.02)amt=Math.round(q*u*100)/100;
  out.push({description:l.description||'',partNumber:l.partNumber||'',category:l.partNumber?'parts':'',quantity:l.quantity||1,unitCost:l.unitCost||'',amount:amt||'',amountTyped:!!amt});
- if(core>0)out.push({description:`Core deposit – ${l.partNumber||l.description||'part'}`,partNumber:'',category:'parts',quantity:q,unitCost:core,amount:Math.round(q*core*100)/100,amountTyped:true})}
+ if(core>0)out.push({description:`Core deposit – ${l.partNumber||l.description||'part'}`,partNumber:'',category:'core_deposits',quantity:q,unitCost:core,amount:Math.round(q*core*100)/100,amountTyped:true})}
  return out}
 async function startForm(kind,bill,lines,scan){
  openModal('');S.form=newForm(kind);
@@ -139,10 +143,10 @@ async function vendorSuggest(q){const box=M('#blVendList');if(!box)return;if(!q.
 async function openDetail(id){
  try{const d=await api(`/api/bills/${id}`),b=d.bill,qb=d.quickBooks;
   const lines=d.lines.map(l=>`<tr><td>${h(l.description||'—')}${l.partNumber?`<div class="muted">Part # ${h(l.partNumber)}</div>`:''}</td><td><span class="blTag">${h(catName(l.category))}</span></td><td class="n">${l.quantity}</td><td class="n">${usd(l.unitCost)}</td><td class="n"><b>${usd(l.amount)}</b></td></tr>`).join('');
-  const qbRows=qb.payload.Line.map(l=>`<tr><td>${h(l.AccountBasedExpenseLineDetail.AccountRef.name)}</td><td>${h(l.Description||'')}</td><td class="n">${usd(l.Amount)}</td></tr>`).join('');
+  const qbRows=qb.payload.Line.map(l=>{const je=l.JournalEntryLineDetail,acc=(je||l.AccountBasedExpenseLineDetail).AccountRef.name;return `<tr><td>${h(acc)}${je?` <span class="muted">${je.PostingType==='Debit'?'debit':'credit'}</span>`:''}</td><td>${h(l.Description||'')}</td><td class="n">${usd(l.Amount)}</td></tr>`}).join('');
   const pm=S.meta.paymentMethods;
-  openModal(`<div class="blBoxHead"><div><h2>${h(b.vendor)} ${b.billNumber?`· #${h(b.billNumber)}`:''}</h2><div class="sub">${b.kind==='expense'?'Expense (paid at purchase)':'Bill'} · entered by ${h(b.createdBy||'—')}${b.receivedIntoStock?' · received into parts stock':''}</div></div><button type="button" class="x" data-m="close" aria-label="Close">×</button></div>
-   <div><span class="blPill ${b.status}">${STATUS[b.status]}</span> <span class="blPill qb ${h(b.qbStatus)}">QuickBooks: ${QB[b.qbStatus]||h(b.qbStatus)}</span></div>
+  openModal(`<div class="blBoxHead"><div><h2>${h(b.vendor)} ${b.billNumber?`· #${h(b.billNumber)}`:''}</h2><div class="sub">${b.kind==='expense'?'Expense (paid at purchase)':b.kind==='credit'?'Vendor credit — core returned (from Parts → Cores)':b.kind==='journal'?'Core not returned — deposit moved to parts cost (from Parts → Cores)':'Bill'} · entered by ${h(b.createdBy||'—')}${b.receivedIntoStock?' · received into parts stock':''}</div></div><button type="button" class="x" data-m="close" aria-label="Close">×</button></div>
+   <div><span class="blPill ${b.status}">${statusText(b)}</span> <span class="blPill qb ${h(b.qbStatus)}">QuickBooks: ${QB[b.qbStatus]||h(b.qbStatus)}</span></div>
    <div class="blInfo"><div><span>${b.kind==='expense'?'Date':'Bill date'}</span><b>${day(b.billDate)}</b></div><div><span>Due</span><b>${b.kind==='expense'?'—':day(b.dueDate)}</b>${b.terms?`<div class="muted">${h(b.terms)}</div>`:''}</div>
     <div><span>Total</span><b>${usd(b.total)}</b></div><div><span>Paid</span><b>${b.paidAt?day(b.paidAt):'Not yet'}</b>${b.paidAt?`<div class="muted">${h(pm[b.paymentMethod]||'')}${b.paymentReference?` · ${h(b.paymentReference)}`:''}</div>`:''}</div></div>
    <div class="blScroll"><table class="blTable"><thead><tr><th>Description</th><th>Category</th><th class="n">Qty</th><th class="n">Unit</th><th class="n">Amount</th></tr></thead><tbody>${lines}</tbody>
@@ -152,11 +156,12 @@ async function openDetail(id){
     <div class="blHelp">What will be sent when QuickBooks is connected. Accounts come from <b>Categories &amp; QuickBooks</b>.</div><table><tbody>${qbRows}</tbody></table></details>
    <div class="blBar">
     ${b.hasFile?`<button type="button" class="secondary" data-m="file" data-id="${b.id}">View original</button>`:''}
-    ${b.status!=='void'&&!b.receivedIntoStock?`<button type="button" class="secondary" data-m="void" data-id="${b.id}">Void</button>`:''}
-    ${b.paidAt&&b.kind!=='expense'&&b.status!=='void'?`<button type="button" class="secondary" data-m="unpay" data-id="${b.id}">Undo payment</button>`:''}
-    ${b.status!=='void'?`<button type="button" class="secondary" data-m="edit" data-id="${b.id}">Edit</button>`:''}
-    ${b.status!=='void'&&!b.receivedIntoStock&&d.lines.some(l=>l.partNumber||l.category==='parts')?`<button type="button" class="secondary" data-m="receive" data-id="${b.id}" title="Match these parts to inventory and put them on the shelf">📦 Receive into stock</button>`:''}
-    ${!b.paidAt&&b.status!=='void'?`<button type="button" data-m="pay" data-id="${b.id}">Mark paid</button>`:''}
+    ${fromCores(b)?`<div class="blHelp" style="flex:1">To change it, use Parts → Cores (Reopen the core).</div>`:''}
+    ${b.status!=='void'&&!b.receivedIntoStock&&!fromCores(b)?`<button type="button" class="secondary" data-m="void" data-id="${b.id}">Void</button>`:''}
+    ${b.paidAt&&b.kind!=='expense'&&b.kind!=='journal'&&b.status!=='void'?`<button type="button" class="secondary" data-m="unpay" data-id="${b.id}">${b.kind==='credit'?'Undo applied':'Undo payment'}</button>`:''}
+    ${b.status!=='void'&&!fromCores(b)?`<button type="button" class="secondary" data-m="edit" data-id="${b.id}">Edit</button>`:''}
+    ${b.status!=='void'&&!b.receivedIntoStock&&!fromCores(b)&&d.lines.some(l=>l.partNumber||l.category==='parts')?`<button type="button" class="secondary" data-m="receive" data-id="${b.id}" title="Match these parts to inventory and put them on the shelf">📦 Receive into stock</button>`:''}
+    ${!b.paidAt&&b.status!=='void'?`<button type="button" data-m="pay" data-id="${b.id}" ${b.kind==='credit'?'title="Mark it used when the credit is taken off a payment to this vendor"':''}>${b.kind==='credit'?'Mark applied':'Mark paid'}</button>`:''}
    </div>`);
   S.modal.dataset.bill=JSON.stringify({b,lines:d.lines});
  }catch(e){toast(e.message,'warning')}

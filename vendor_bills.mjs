@@ -275,6 +275,7 @@ export function registerVendorBillRoutes(app, deps) {
     const i = (await db.query('SELECT * FROM parts_vendor_invoices WHERE id=$1::bigint', [req.params.id])).rows[0]; if (!i) fail(404, 'Vendor bill not found.');
     if (i.status === 'received') fail(409, 'This bill was already received into stock.', 'ALREADY_RECEIVED');
     if (i.status === 'void') fail(409, 'This bill is void.');
+    if (['credit', 'journal'].includes(i.bill_kind)) fail(409, 'A core credit has nothing to receive into stock.');
     const raw = (await db.query('SELECT vendor_part_number,manufacturer,description,quantity,unit_cost,core_cost,line_total FROM parts_vendor_invoice_lines WHERE invoice_id=$1 ORDER BY line_no,id', [i.id])).rows;
     const lines = await matchInvoiceLines(db, foldCoreLines(raw.map(l => ({ partNumber: l.vendor_part_number || '', manufacturer: l.manufacturer || '', description: l.description || '', quantity: num(l.quantity), unitCost: num(l.unit_cost) || (num(l.quantity) ? money(num(l.line_total) / num(l.quantity)) : 0), coreCost: num(l.core_cost), lineTotal: num(l.line_total) }))));
     return { filedBillId: i.id, hasFile: !!i.file_key, extract: { vendor: i.vendor || '', invoiceNumber: i.invoice_number || '', invoiceDate: day(i.invoice_date) || '', poNumber: i.po_number || '', subtotal: money(i.subtotal), discount: money(i.discount), tax: money(i.tax), freight: money(i.freight), total: money(i.total), lines } };

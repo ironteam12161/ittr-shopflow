@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.61.0-BILL-CORES-20261015">
+<meta name="ittr-build" content="ITTR-24.62.0-CORE-DEPOSITS-20261015">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -26,7 +26,7 @@
  P.removeItem=function(k){rm.call(this,k);if(this===sessionStorage&&keys[k])try{rm.call(localStorage,'ittr_app_'+k)}catch(e){}};
 }catch(e){}})();
 </script>
-<title>ITTR ShopFlow v24.61.0</title>
+<title>ITTR ShopFlow v24.62.0</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -825,7 +825,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.61.0">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.62.0">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -981,7 +981,7 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.61.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.62.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1553,7 +1553,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.61.0';
+const FRONTEND_VERSION='24.62.0';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1916,7 +1916,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.61.0";
+const ROUTE_MODULE_VERSION="24.62.0";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -5350,7 +5350,7 @@ async function openCoreHistory(id){const m=coreModal('<div class="muted">Loading
   <label style="margin-top:12px;display:block">Add an attachment<input id="coreHistFile" type="file" accept="image/*,application/pdf"></label><button class="secondary" onclick="(async()=>{const f=document.getElementById('coreHistFile').files?.[0];if(!f)return alert('Choose a file first.');try{await uploadCoreAttachment(${Number(id)},f);openCoreHistory(${Number(id)})}catch(e){alert(e.message)}})()">Upload</button>`}
  catch(e){m.querySelector('.modalbox').innerHTML=`<div class="error">${esc(e.message||'Unable to load history.')}</div>`}}
 async function openCoreAttachment(attId,name){try{const r=await fetch(`/api/inventory/cores/attachments/${attId}`,{headers:authHeaders(),cache:'no-store'});if(!r.ok)throw new Error('Unable to open attachment.');const url=URL.createObjectURL(await r.blob());const w=window.open(url,'_blank');if(!w){const a=document.createElement('a');a.href=url;a.download=name||'attachment';document.body.appendChild(a);a.click();a.remove()}setTimeout(()=>URL.revokeObjectURL(url),120000)}catch(e){alert(e.message)}}
-async function updateCoreLifecycle(id,action){let reference='',quantity,amount,notes='';if(action==='returned'){const v=prompt('Quantity of cores returned:','1');if(v===null)return;quantity=Number(v);reference=prompt('Return / RMA reference (optional):','')||''}let date='';if(action==='credited'){const v=prompt('Credit amount received (leave empty for the full open amount):','');if(v===null)return;amount=v===''?undefined:Number(v);reference=prompt('Credit memo reference (optional):','')||'';date=prompt('Credit date (YYYY-MM-DD):',coreToday())||''}if(action==='closed'){notes=prompt('Close reason / note:','Resolved manually')||'';if(!confirm('Close this core obligation? The action remains in the audit history.'))return}try{await apiJSON(`/api/inventory/cores/${id}`,{method:'PATCH',body:JSON.stringify({action,quantity,amount,reference,notes,date})});await loadCoreReport()}catch(e){alert(e.message||'Unable to update core lifecycle.')}}
+async function updateCoreLifecycle(id,action){let reference='',quantity,amount,notes='';if(action==='returned'){const v=prompt('Quantity of cores returned:','1');if(v===null)return;quantity=Number(v);reference=prompt('Return / RMA reference (optional):','')||''}let date='';if(action==='credited'){const v=prompt('Credit amount received (leave empty for the full open amount):','');if(v===null)return;amount=v===''?undefined:Number(v);reference=prompt('Credit memo reference (optional):','')||'';date=prompt('Credit date (YYYY-MM-DD):',coreToday())||''}if(action==='closed'){notes=prompt('Close reason / note:','Resolved manually')||'';if(!confirm('Close this core obligation? If it was never returned, its deposit is moved to parts cost in Bills. The action remains in the audit history.'))return}try{const r=await apiJSON(`/api/inventory/cores/${id}`,{method:'PATCH',body:JSON.stringify({action,quantity,amount,reference,notes,date})});if(r?.billEntryId)showToast(action==='credited'?'Vendor credit added in Bills — mark it applied when it is taken off a payment.':'Deposit moved to parts cost in Bills (core not returned).','success',7000);await loadCoreReport()}catch(e){alert(e.message||'Unable to update core lifecycle.')}}
 function resetSmartReceiving(){releaseSmartReceivingPreview();smartReceivingData=null;const b=document.getElementById('smartReceivingBody');if(b)b.innerHTML=`<div class="receivingStart"><div class="receivingDrop"><div class="receivingIcon">📄</div><h3>Receive a vendor invoice</h3><p class="muted">Take a clear photo or upload JPG, PNG, WEBP or PDF. ITTR extracts vendor, invoice number, quantities and current buy prices.</p><input id="vendorInvoiceFile" type="file" accept="image/*,application/pdf" capture="environment" class="hidden" onchange="scanVendorInvoice(this.files?.[0])"><div class="actions" style="justify-content:center"><button onclick="document.getElementById('vendorInvoiceFile').click()">📷 Scan / Upload Invoice</button><button class="secondary" onclick="startManualReceiving()">⌨ Type it in</button></div><div class="muted" style="margin-top:6px">No photo? Choose <b>Type it in</b> and enter the vendor, invoice # and lines yourself.</div><div class="muted" style="margin-top:10px">Nothing changes inventory until you review and press Receive.</div></div></div>`}
 async function scanVendorInvoice(file){if(!file)return;const b=document.getElementById('smartReceivingBody');b.innerHTML='<div class="receivingProgress"><div class="receivingProgressIcon">⌁</div><h3>Reading invoice…</h3><div class="muted">Finding vendor, invoice number, parts, quantities and buy prices. Keep this screen open while the invoice is analyzed.</div></div>';try{const fd=new FormData();fd.append('invoice',file);const r=await fetch('/api/parts/receiving/scan-invoice',{method:'POST',headers:authHeaders(),body:fd});const d=await r.json();if(!r.ok)throw new Error(d.error||'Invoice scan failed.');releaseSmartReceivingPreview();receivingViewerState={zoom:1,rotation:0};smartReceivingPreviewUrl=URL.createObjectURL(file);smartReceivingData={...d,filename:file.name,previewMime:file.type||'',previewName:file.name};renderSmartReceivingReview()}catch(e){b.innerHTML=`<div class="error">${esc(e.message||'Invoice scan failed.')}</div><div class="actions"><button class="secondary" onclick="resetSmartReceiving()">Try Again</button></div>`}}
 function receiveLineMatchOptions(line,i){const matches=Array.isArray(line.matches)?line.matches:[];let h=matches.map(x=>`<option value="${Number(x.id)}" ${Number(line.matchedPartId)===Number(x.id)?'selected':''}>${esc(String(x.part_number||'').trim()?cleanPartField(x.part_number):(x.internal_barcode||'No part #'))} — ${esc(cleanPartField(x.description)).slice(0,55)}${line.matchBy==='description'?` (${Math.round(Number(x.score||0)*100)}% match)`:''} · ${Number(x.quantity||0)} on hand</option>`).join('');return `<select id="recvMatch${i}" onchange="updateReceiveMatch(${i})"><option value="">${matches.length?'— Not these: create new part —':'Create new part'}</option>${h}</select>${line.matchBy==='description'&&matches.length?`<div class="muted" style="margin-top:4px">No part # on the invoice — matched by description. Check it is the right part.</div>`:''}`}
@@ -6653,9 +6653,9 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
 <script src="./finance-shared.js?v=24.47.3"></script>
 <script src="./inspection-checklist.js?v=3"></script>
 <script src="./inspection-workflow.js?v=8"></script>
-<script src="./canned-jobs.js?v=24.61.0"></script>
-<script src="./share-links.js?v=24.61.0"></script>
-<script src="./sms.js?v=24.61.0"></script>
+<script src="./canned-jobs.js?v=24.62.0"></script>
+<script src="./share-links.js?v=24.62.0"></script>
+<script src="./sms.js?v=24.62.0"></script>
 <script>
 /* v24.46.2: Start a Truck keeps what the mechanic typed until the work order is created.
    Saved on this phone (localStorage) while typing and when the screen locks; restored when the wizard is opened

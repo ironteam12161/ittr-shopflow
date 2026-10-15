@@ -28,7 +28,7 @@ import {parseBatchTranslations,validTranslation} from "./translation_guard.mjs";
 import {aiContext,featureForPath,createAIMeter,ensureAIUsageSchema} from "./ai_usage.mjs";
 import {registerAICenterRoutes} from "./ai_center.mjs";
 import {ensureVendorBillSchema,splitDiscountLines,knownVendor} from "./vendor_bills.mjs";
-import {ensureBillSchema,registerBillRoutes} from "./bills.mjs";
+import {ensureBillSchema,registerBillRoutes,recordCoreMoney} from "./bills.mjs";
 import {ensureCustomerPaymentSchema,registerCustomerPaymentRoutes} from "./customer_payments.mjs";
 import {matchInvoiceLines} from "./part_matching.mjs";
 import {registerFluidRoutes,registerPartDeleteRoutes,isGallonUom,FLUID_UNITS,ensureFluidSchema} from "./fluids.mjs";
@@ -1944,7 +1944,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.61.0");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.62.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
@@ -3753,7 +3753,9 @@ app.patch("/api/inventory/cores/:id",auth,managerPermission("inventory"),async(r
  if(action==="closed"){to="closed";await db.query("UPDATE part_core_obligations SET status='closed',open_quantity=0,open_amount=0,closed_at=now(),notes=coalesce($2,notes),updated_by=$3,updated_at=now() WHERE id=$1",[c.id,notes,req.user.username])}
  if(action==="reopened"){to="outstanding";await db.query("UPDATE part_core_obligations SET status='outstanding',open_quantity=CASE WHEN open_quantity=0 THEN quantity ELSE open_quantity END,open_amount=CASE WHEN open_amount=0 THEN original_amount ELSE open_amount END,closed_at=NULL,updated_by=$2,updated_at=now() WHERE id=$1",[c.id,req.user.username])}
  if(action==="note")to=from;
- const ev=await db.query(`INSERT INTO part_core_events(core_obligation_id,event_type,quantity,amount,reference,notes,from_status,to_status,username,effective_date) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,coalesce($10::date,current_date)) RETURNING id`,[c.id,action,qty,amount,reference,notes,from,to,req.user.username,effectiveDate]);await db.query("COMMIT");await audit(req.user.username,"core_obligation_updated",{coreId:c.id,action,from,to,quantity:qty,amount,date:effectiveDate});res.json({ok:true,id:c.id,status:to,eventId:ev.rows[0].id});
+ // v24.62.0: the money side goes to Bills (vendor credit when credited, deposit moved to parts cost when closed unreturned).
+ let billEntryId=null;if(["credited","closed","reopened"].includes(action)){const pn=(await db.query("SELECT part_number FROM fullbay_import_parts WHERE id=$1",[c.part_id])).rows[0]?.part_number||"";billEntryId=await recordCoreMoney(db,{core:c,partNumber:pn,action,amount:action==="credited"?amount:Number(c.open_amount||0),date:effectiveDate,reference,username:req.user.username})}
+ const ev=await db.query(`INSERT INTO part_core_events(core_obligation_id,event_type,quantity,amount,reference,notes,from_status,to_status,username,effective_date) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,coalesce($10::date,current_date)) RETURNING id`,[c.id,action,qty,amount,reference,notes,from,to,req.user.username,effectiveDate]);await db.query("COMMIT");await audit(req.user.username,"core_obligation_updated",{coreId:c.id,action,from,to,quantity:qty,amount,date:effectiveDate});res.json({ok:true,id:c.id,status:to,eventId:ev.rows[0].id,billEntryId:action==="reopened"?null:billEntryId});
 }catch(e){try{await db.query("ROLLBACK")}catch{}if(e?.status)return res.status(e.status).json({error:e.message});next(e)}finally{db.release()}});
 
 

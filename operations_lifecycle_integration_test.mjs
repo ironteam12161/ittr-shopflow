@@ -85,6 +85,23 @@ try{
  await request(`/api/inventory/cores/${core.id}`,{method:'PATCH',token:admin,body:{action:'returned',quantity:1,reference:'RMA-55'}});cores=await request('/api/inventory/cores?status=open',{token:admin});eq(Number(cores.totals.returnedPendingCredit),400,'returned core pending credit');
  await request(`/api/inventory/cores/${core.id}`,{method:'PATCH',token:admin,body:{action:'credited',amount:400,reference:'CM-88'}});await request(`/api/inventory/cores/${core.id}`,{method:'PATCH',token:admin,body:{action:'closed',notes:'Credit applied'}});
  eq(Number((await db.query('SELECT count(*) n FROM part_core_events WHERE core_obligation_id=$1',[core.id])).rows[0].n),4,'core lifecycle audit events');eq((await db.query('SELECT status FROM part_core_obligations WHERE id=$1',[core.id])).rows[0].status,'closed','core closed status');
+ // v24.62.0: core money in Bills — the received bill shows the $400 core on Core deposits; the credit became a vendor credit.
+ const tc=(await db.query("SELECT id FROM parts_vendor_invoices WHERE invoice_number='TC-100'")).rows[0].id,tcb=await request(`/api/bills/${tc}`,{token:admin});
+ ok(tcb.lines.some(l=>l.category==='core_deposits'&&l.amount===400&&l.virtual),'received bill shows its core on Core deposits');
+ ok(tcb.quickBooks.payload.Line.some(l=>l.Amount===400&&/Core Deposits/.test(l.AccountBasedExpenseLineDetail.AccountRef.name)),'QuickBooks bill sends the core to Core Deposits');
+ let cr=(await db.query("SELECT * FROM parts_vendor_invoices WHERE raw_extract->>'coreObligationId'=$1 ORDER BY id",[String(core.id)])).rows;
+ ok(cr.length===1&&cr[0].bill_kind==='credit'&&Number(cr[0].total)===-400&&/transchicago/i.test(cr[0].vendor),'credited core → vendor credit −$400 (closing after full credit adds nothing)');
+ const crb=await request(`/api/bills/${cr[0].id}`,{token:admin});eq(crb.quickBooks.object,'VendorCredit','QuickBooks vendor credit');eq(crb.quickBooks.payload.Line[0].Amount,400,'credit line amount');
+ eq((await request(`/api/bills/${cr[0].id}`,{method:'PUT',token:admin,body:{vendor:'X',billDate:'2026-09-01',lines:[{description:'x',amount:1,category:'other'}]},allowError:true})).status,409,'core entries are changed from Parts → Cores only');
+ await request(`/api/bills/${cr[0].id}/payment`,{method:'POST',token:admin,body:{method:'other',paidOn:'2026-09-15'}});ok((await request(`/api/bills/${cr[0].id}`,{token:admin})).bill.paidAt,'vendor credit marked applied');
+ // A second core never returned: closed → deposit moved to parts cost ($0 entry); reopened → entry voided.
+ await receive('TC-102','2026-09-20',1100,{core:true});const core2=(await request('/api/inventory/cores?status=open',{token:admin})).items.find(x=>x.purchase_reference==='TC-102'||x.id!==core.id);
+ const cl=await request(`/api/inventory/cores/${core2.id}`,{method:'PATCH',token:admin,body:{action:'closed',notes:'Core kept'}});ok(cl.billEntryId,'closed unreturned core → entry in Bills');
+ const jb=await request(`/api/bills/${cl.billEntryId}`,{token:admin});eq(jb.bill.kind,'journal','core not returned entry');eq(jb.bill.total,0,'entry totals $0');eq(jb.quickBooks.object,'JournalEntry','QuickBooks journal entry');
+ ok(jb.quickBooks.payload.Line.some(l=>l.JournalEntryLineDetail.PostingType==='Debit'&&l.Amount===400)&&jb.quickBooks.payload.Line.some(l=>l.JournalEntryLineDetail.PostingType==='Credit'&&/Core Deposits/.test(l.JournalEntryLineDetail.AccountRef.name)),'debit parts cost, credit Core Deposits');
+ const cats=(await request('/api/bills?from=2026-01-01&to=2026-12-31',{token:admin})).byCategory;eq(cats.core_deposits||0,0,'Core deposits net to $0 when every core is credited or written off (TC-100 +400 −400 credit, TC-102 +400 −400 kept)');
+ await request(`/api/inventory/cores/${core2.id}`,{method:'PATCH',token:admin,body:{action:'reopened'}});eq((await db.query('SELECT status FROM parts_vendor_invoices WHERE id=$1',[cl.billEntryId])).rows[0].status,'void','reopened core voids its entry');
+ eq((await request('/api/bills?from=2026-01-01&to=2026-12-31',{token:admin})).byCategory.core_deposits,400,'reopened core: its $400 deposit is open again');
 
  {
   // v24.48.1: Fullbay Details check — read-only compare, then import fills only what was missing; junk "VINs" never land on units.
