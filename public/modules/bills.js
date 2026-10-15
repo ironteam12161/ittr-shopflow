@@ -43,7 +43,7 @@ function render(){
  $('#blRows').innerHTML=d.items.length?d.items.map(b=>`<tr data-b="open" data-id="${b.id}">
    <td>${day(b.billDate)}</td><td><b>${h(b.vendor||'—')}</b>${KIND_TAG[b.kind]?` <span class="blTag">${KIND_TAG[b.kind]}</span>`:''}${b.receivedIntoStock?' <span class="blTag" title="Received into parts stock">In stock</span>':''}</td>
    <td>${h(b.billNumber||'—')}</td><td>${(b.categories||[]).map(c=>`<span class="blTag">${h(catName(c))}</span>`).join('')}</td>
-   <td class="muted">${b.kind==='bill'?day(b.dueDate):'—'}</td><td class="n"><b>${usd(b.total)}</b></td>
+   <td class="muted">${b.kind==='bill'?day(b.dueDate):'—'}</td><td class="n"><b>${usd(b.total)}</b>${b.appliedCredits&&b.status!=='paid'?`<div class="muted" title="Vendor credit applied">to pay ${usd(b.balanceDue)}</div>`:''}</td>
    <td><span class="blPill ${b.status}">${statusText(b)}</span>${b.status==='paid'&&b.paymentMethod?`<div class="muted">${h(S.meta?.paymentMethods?.[b.paymentMethod]||'')}</div>`:''}</td>
    <td><span class="blPill qb ${h(b.qbStatus)}">${QB[b.qbStatus]||h(b.qbStatus)}</span></td></tr>`).join('')
   :`<tr><td colspan="8" class="blEmpty">No bills here yet. Use <b>+ New bill</b> to type one in.</td></tr>`;
@@ -148,9 +148,9 @@ async function openDetail(id){
   openModal(`<div class="blBoxHead"><div><h2>${h(b.vendor)} ${b.billNumber?`· #${h(b.billNumber)}`:''}</h2><div class="sub">${b.kind==='expense'?'Expense (paid at purchase)':b.kind==='credit'?'Vendor credit — core returned (from Parts → Cores)':b.kind==='journal'?'Core not returned — deposit moved to parts cost (from Parts → Cores)':'Bill'} · entered by ${h(b.createdBy||'—')}${b.receivedIntoStock?' · received into parts stock':''}</div></div><button type="button" class="x" data-m="close" aria-label="Close">×</button></div>
    <div><span class="blPill ${b.status}">${statusText(b)}</span> <span class="blPill qb ${h(b.qbStatus)}">QuickBooks: ${QB[b.qbStatus]||h(b.qbStatus)}</span></div>
    <div class="blInfo"><div><span>${b.kind==='expense'?'Date':'Bill date'}</span><b>${day(b.billDate)}</b></div><div><span>Due</span><b>${b.kind==='expense'?'—':day(b.dueDate)}</b>${b.terms?`<div class="muted">${h(b.terms)}</div>`:''}</div>
-    <div><span>Total</span><b>${usd(b.total)}</b></div><div><span>Paid</span><b>${b.paidAt?day(b.paidAt):'Not yet'}</b>${b.paidAt?`<div class="muted">${h(pm[b.paymentMethod]||'')}${b.paymentReference?` · ${h(b.paymentReference)}`:''}</div>`:''}</div></div>
+    <div><span>Total</span><b>${usd(b.total)}</b></div><div><span>Paid</span><b>${b.paidAt?day(b.paidAt):'Not yet'}</b>${b.paidAt?`<div class="muted">${b.kind==='credit'&&b.appliedToBillId?'':h(pm[b.paymentMethod]||'')}${b.paymentReference?`${b.kind==='credit'&&b.appliedToBillId?'':' · '}${h(b.paymentReference)}`:''}</div>`:''}</div></div>
    <div class="blScroll"><table class="blTable"><thead><tr><th>Description</th><th>Category</th><th class="n">Qty</th><th class="n">Unit</th><th class="n">Amount</th></tr></thead><tbody>${lines}</tbody>
-    <tfoot>${b.discount?`<tr><td colspan="4" class="n">Discount</td><td class="n">−${usd(b.discount)}</td></tr>`:''}${b.tax?`<tr><td colspan="4" class="n">Tax</td><td class="n">${usd(b.tax)}</td></tr>`:''}${b.freight?`<tr><td colspan="4" class="n">Freight</td><td class="n">${usd(b.freight)}</td></tr>`:''}<tr><td colspan="4" class="n"><b>Total</b></td><td class="n"><b>${usd(b.total)}</b></td></tr></tfoot></table></div>
+    <tfoot>${b.discount?`<tr><td colspan="4" class="n">Discount</td><td class="n">−${usd(b.discount)}</td></tr>`:''}${b.tax?`<tr><td colspan="4" class="n">Tax</td><td class="n">${usd(b.tax)}</td></tr>`:''}${b.freight?`<tr><td colspan="4" class="n">Freight</td><td class="n">${usd(b.freight)}</td></tr>`:''}<tr><td colspan="4" class="n"><b>Total</b></td><td class="n"><b>${usd(b.total)}</b></td></tr>${b.appliedCredits?`<tr><td colspan="4" class="n">Vendor credit applied</td><td class="n">${usd(b.appliedCredits)}</td></tr><tr><td colspan="4" class="n"><b>${b.paidAt?'Paid':'Left to pay'}</b></td><td class="n"><b>${usd(b.balanceDue)}</b></td></tr>`:''}</tfoot></table></div>
    ${b.poNumber||b.notes?`<div class="blHelp" style="margin-top:8px">${b.poNumber?`PO ${h(b.poNumber)}`:''}${b.poNumber&&b.notes?' · ':''}${h(b.notes)}</div>`:''}
    <details class="blQb"><summary>QuickBooks preview — ${h(qb.object)} ${qb.missing.length?`<span class="miss">· missing: ${h(qb.missing.join(', '))}</span>`:'· ready'}</summary>
     <div class="blHelp">What will be sent when QuickBooks is connected. Accounts come from <b>Categories &amp; QuickBooks</b>.</div><table><tbody>${qbRows}</tbody></table></details>
@@ -165,6 +165,18 @@ async function openDetail(id){
    </div>`);
   S.modal.dataset.bill=JSON.stringify({b,lines:d.lines});
  }catch(e){toast(e.message,'warning')}
+}
+// v24.63.0: a vendor credit is used on one of that vendor's unpaid bills (it then shows "Left to pay"), or refunded.
+async function applyDialog(id,credit){
+ let bills=[];try{const d=await api(`/api/bills?${new URLSearchParams({from:'2000-01-01',to:'2100-12-31',vendor:credit.vendor,status:'unpaid'})}`);bills=(d.items||[]).filter(x=>x.kind==='bill'||x.kind==='expense')}catch(_){}
+ const pm=S.meta.paymentMethods;
+ openModal(`<div class="blBoxHead"><div><h2>Use vendor credit</h2><div class="sub">${usd(Math.abs(credit.total))} from ${h(credit.vendor)}</div></div><button type="button" class="x" data-m="close" aria-label="Close">×</button></div>
+  <div class="blHelp">Take it off a bill you still owe this vendor — that bill then shows what is left to pay.</div>
+  <div class="blApplyList">${bills.length?bills.map(x=>`<label class="blApplyRow"><input type="radio" name="blApply" value="${x.id}"><span><b>#${h(x.billNumber||x.id)}</b> · ${day(x.billDate)}</span><span class="n">${usd(x.balanceDue)} left</span></label>`).join(''):'<div class="muted">No unpaid bills from this vendor.</div>'}
+   <label class="blApplyRow"><input type="radio" name="blApply" value="refund"><span>Vendor refunded it (check, card or bank)</span><span></span></label></div>
+  <div class="blGrid" style="grid-template-columns:1fr 1fr"><label>Date<input type="date" id="blApplyOn" value="${today()}"></label><label>Refund paid with<select id="blApplyM">${Object.entries(pm).map(([k,v])=>`<option value="${k}" ${k==='check'?'selected':''}>${h(v)}</option>`).join('')}</select></label>
+  <label class="span2">Refund reference<input id="blApplyRef" placeholder="optional"></label></div>
+  <div class="blBar"><button type="button" class="secondary" data-m="back" data-id="${id}">Cancel</button><button type="button" data-m="applysave" data-id="${id}">Save</button></div>`,true);
 }
 function payDialog(id,total){
  const pm=S.meta.paymentMethods;
@@ -198,7 +210,10 @@ async function onModalClick(e){
  if(m==='save')return saveForm(b);
  if(m==='receive'){closeModal();return window.receiveFiledBill?.(Number(id))}
  if(m==='edit'){const {b:bill,lines}=JSON.parse(S.modal.dataset.bill);return startForm(bill.kind,bill,lines)}
- if(m==='pay'){const {b:bill}=JSON.parse(S.modal.dataset.bill);return payDialog(id,bill.total)}
+ if(m==='pay'){const {b:bill}=JSON.parse(S.modal.dataset.bill);return bill.kind==='credit'?applyDialog(id,bill):payDialog(id,bill.balanceDue??bill.total)}
+ if(m==='applysave'){const pick=M('input[name="blApply"]:checked')?.value;if(!pick)return toast('Choose the bill the credit was taken off, or “Vendor refunded it”.','warning');b.disabled=true;
+  const body=pick==='refund'?{paidOn:M('#blApplyOn').value,method:M('#blApplyM').value,reference:M('#blApplyRef').value}:{paidOn:M('#blApplyOn').value,applyToBillId:Number(pick)};
+  try{await api(`/api/bills/${id}/payment`,{method:'POST',body});toast(pick==='refund'?'Refund recorded.':'Credit applied to the bill.','success');await load();return openDetail(pick==='refund'?id:Number(pick))}catch(err){toast(err.message,'warning');b.disabled=false}return}
  if(m==='back')return openDetail(id);
  if(m==='paysave'){b.disabled=true;try{await api(`/api/bills/${id}/payment`,{method:'POST',body:{paidOn:M('#blPayOn').value,method:M('#blPayM').value,reference:M('#blPayRef').value}});toast('Marked paid.','success');await load();return openDetail(id)}catch(err){toast(err.message,'warning');b.disabled=false}return}
  if(m==='unpay'){if(!confirm('Mark this bill as not paid?'))return;try{await api(`/api/bills/${id}/payment`,{method:'DELETE'});await load();return openDetail(id)}catch(err){return toast(err.message,'warning')}}

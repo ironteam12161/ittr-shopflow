@@ -65,6 +65,11 @@ try{
  ok(d2.extract.lines.length===2&&Number(d2.extract.lines[1].coreCost)===30&&!d2.extract.lines.some(l=>/core deposit/i.test(l.description||'')),'core deposit line folded onto its part as a core charge');
  const vb=await import('./vendor_bills.mjs');eq(vb.fixInvoiceDate('2015-10-26','2026-10-15'),'2026-10-15','“15 OCT 26” read as 2015-10-26 is turned around');eq(vb.fixInvoiceDate('2026-09-30','2026-10-15'),'2026-09-30','normal date unchanged');eq(vb.fixInvoiceDate('2019-03-04','2026-10-15'),'2019-03-04','old date that cannot be swapped unchanged');
  console.log('PASS core deposit lines fold onto their part when received; swapped 2-digit-year dates fixed');
+ // v24.63.0: the vendor is never the shop itself; core charges are part of the subtotal in the math check.
+ eq((await request('/api/bills',{method:'POST',token:admin,body:{vendor:'IRON TEAM Truck AND Trailer Repair LLC',billNumber:'114P795304',billDate:today,lines:[{description:'Filters',amount:20,category:'parts'}]},allowError:true})).status,400,'own shop refused as vendor');
+ eq(vb.checkInvoiceMath({subtotal:284.33,total:284.33},[{quantity:4,unit_cost:48,line_total:192},{quantity:1,unit_cost:62.33,core_cost:30,line_total:62.33}]).length,0,'core charge counted in the subtotal check');
+ eq(vb.checkInvoiceMath({subtotal:300,total:300},[{quantity:4,unit_cost:48,line_total:192},{quantity:1,unit_cost:62.33,core_cost:30,line_total:62.33}])[0]?.code,'LINES_NE_SUBTOTAL','a real gap is still reported');
+ console.log('PASS own shop is never the vendor; core charges counted in the bill math');
 
  // Edit: replace lines; QuickBooks marked for update once synced.
  await db.query(`UPDATE parts_vendor_invoices SET qb_status='synced',qb_id='77' WHERE id=$1`,[created.id]);

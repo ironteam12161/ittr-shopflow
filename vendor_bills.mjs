@@ -1,4 +1,5 @@
 import { matchInvoiceLines, descTokens } from './part_matching.mjs';
+import { isOwnShopName } from './bills.mjs';
 // ITTR ShopFlow v24.42.0: vendor bills, separated and analysed by vendor.
 // Vendor invoices come from Smart Receiving (parts received into stock), from uploads scanned by AI ("filed", for
 // bookkeeping only) and from vendor-bill emails in Gmail. The analysis groups them by vendor and flags price increases,
@@ -87,7 +88,9 @@ export function checkInvoiceMath(inv, lines = []) {
   const ls = lines.filter(l => num(l.quantity) || num(l.unit_cost ?? l.unitCost) || num(l.line_total ?? l.lineTotal));
   if (ls.length && sub > 0) {
     const sumLines = money(ls.reduce((a, l) => a + (num(l.line_total ?? l.lineTotal) || num(l.quantity) * num(l.unit_cost ?? l.unitCost)), 0));
-    if (Math.abs(sumLines - sub) > tol(sub)) out.push({ code: 'LINES_NE_SUBTOTAL', message: `Lines add up to $${sumLines.toFixed(2)} but the subtotal says $${sub.toFixed(2)}.`, diff: money(sumLines - sub) });
+    // v24.63.0: core charges kept on their part line are part of the subtotal ($254.33 of parts + $30 core = $284.33).
+    const cores = money(ls.reduce((a, l) => a + num(l.core_cost ?? l.coreCost) * (num(l.quantity) || 1), 0));
+    if (Math.abs(sumLines - sub) > tol(sub) && !(cores > 0 && Math.abs(sumLines + cores - sub) <= tol(sub))) out.push({ code: 'LINES_NE_SUBTOTAL', message: `Lines add up to $${sumLines.toFixed(2)} but the subtotal says $${sub.toFixed(2)}.`, diff: money(sumLines - sub) });
   }
   if (total > 0 && (sub > 0 || tax > 0 || freight > 0)) {
     const calc = money(sub - disc + tax + freight);
@@ -201,7 +204,7 @@ export async function buildVendorAnalysis(db, { from, to }) {
   const invoices = await q(`SELECT id,vendor,invoice_number,invoice_date,received_at,created_at,due_date,subtotal,discount,tax,freight,total,status,paid_at FROM parts_vendor_invoices
      WHERE coalesce(invoice_date,received_at::date,created_at::date) BETWEEN ($1::date - interval '365 days') AND $2::date`, [from, to]);
   const ids = invoices.map(i => i.id);
-  const lines = ids.length ? await q(`SELECT invoice_id,vendor_part_number,description,quantity,unit_cost,line_total FROM parts_vendor_invoice_lines WHERE invoice_id=ANY($1::bigint[])`, [ids]) : [];
+  const lines = ids.length ? await q(`SELECT invoice_id,vendor_part_number,description,quantity,unit_cost,core_cost,line_total FROM parts_vendor_invoice_lines WHERE invoice_id=ANY($1::bigint[])`, [ids]) : [];
   // Unpaid bills outside the window still count as owed.
   const older = await q(`SELECT id,vendor,invoice_number,invoice_date,received_at,created_at,due_date,subtotal,discount,tax,freight,total,status,paid_at FROM parts_vendor_invoices
      WHERE paid_at IS NULL AND coalesce(status,'')<>'void' AND coalesce(invoice_date,received_at::date,created_at::date) < ($1::date - interval '365 days')`, [from]);
@@ -241,7 +244,8 @@ export function registerVendorBillRoutes(app, deps) {
     if (!mime.startsWith('image/') && mime !== 'application/pdf') fail(415, 'Use a PDF or a photo (JPG/PNG/WEBP) of the vendor invoice.');
     const parsed = splitDiscountLines(await extractVendorInvoice(file));
     const lines = (Array.isArray(parsed?.lines) ? parsed.lines : []).map(l => ({ partNumber: str(l.partNumber, 80), manufacturer: str(l.manufacturer, 80), description: str(l.description, 300), quantity: num(l.quantity), unitCost: num(l.unitCost), coreCost: num(l.coreCost), lineTotal: num(l.lineTotal) }));
-    const vendor = parsed?.vendor ? await knownVendor(db, resolveVendor, parsed.vendor, false) : '';
+    // v24.63.0: the AI sometimes reads the "Bill to" block (this shop) as the vendor; then the vendor is left for the user.
+    const vendor = parsed?.vendor && !isOwnShopName(parsed.vendor) ? await knownVendor(db, resolveVendor, parsed.vendor, false) : '';
     const invoice = { vendor, invoiceNumber: str(parsed?.invoiceNumber, 80), invoiceDate: str(parsed?.invoiceDate, 10), dueDate: str(parsed?.dueDate, 10), poNumber: str(parsed?.poNumber, 80), terms: str(parsed?.terms, 60), subtotal: num(parsed?.subtotal), discount: num(parsed?.discount), tax: num(parsed?.tax), freight: num(parsed?.freight), total: num(parsed?.total) };
     if (!/^\d{4}-\d{2}-\d{2}$/.test(invoice.invoiceDate)) invoice.invoiceDate = ''; else invoice.invoiceDate = fixInvoiceDate(invoice.invoiceDate);
     if (/^\d{4}-\d{2}-\d{2}$/.test(invoice.dueDate)) invoice.dueDate = fixInvoiceDate(invoice.dueDate);
@@ -304,6 +308,7 @@ export function registerVendorBillRoutes(app, deps) {
   app.post('/api/vendor-invoices', auth, perm, wrap(async (db, req) => {
     const d = cleanVendorDraft(req.body || {});
     if (!d.vendor) fail(400, 'Vendor is required so the bill is filed under the right company.');
+    if (isOwnShopName(d.vendor)) fail(400, 'The vendor is the company you bought from — not your own shop. Check the letterhead at the top of the bill.');
     if (!(d.total > 0) && !d.lines.length) fail(400, 'Enter the bill total or its lines.');
     const vendor = await knownVendor(db, resolveVendor, d.vendor, true);
     const gmailId = Number(req.body?.gmailMessageId) || null, fileKey = str(req.body?.file?.key, 300) || null;

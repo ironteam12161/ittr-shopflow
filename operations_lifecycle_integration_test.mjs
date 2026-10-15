@@ -93,7 +93,18 @@ try{
  ok(cr.length===1&&cr[0].bill_kind==='credit'&&Number(cr[0].total)===-400&&/transchicago/i.test(cr[0].vendor),'credited core → vendor credit −$400 (closing after full credit adds nothing)');
  const crb=await request(`/api/bills/${cr[0].id}`,{token:admin});eq(crb.quickBooks.object,'VendorCredit','QuickBooks vendor credit');eq(crb.quickBooks.payload.Line[0].Amount,400,'credit line amount');
  eq((await request(`/api/bills/${cr[0].id}`,{method:'PUT',token:admin,body:{vendor:'X',billDate:'2026-09-01',lines:[{description:'x',amount:1,category:'other'}]},allowError:true})).status,409,'core entries are changed from Parts → Cores only');
- await request(`/api/bills/${cr[0].id}/payment`,{method:'POST',token:admin,body:{method:'other',paidOn:'2026-09-15'}});ok((await request(`/api/bills/${cr[0].id}`,{token:admin})).bill.paidAt,'vendor credit marked applied');
+ // v24.63.0: the credit is used on one of the vendor's unpaid bills (TC-101 $1,200 → $800 left to pay).
+ const tc101=(await db.query("SELECT id FROM parts_vendor_invoices WHERE invoice_number='TC-101'")).rows[0].id;
+ const otherBill=await request('/api/bills',{method:'POST',token:admin,body:{vendor:'Napa Auto Parts',billNumber:'NAPA-1',billDate:'2026-09-01',lines:[{description:'Filters',amount:50,category:'parts'}]}});
+ eq((await request(`/api/bills/${cr[0].id}/payment`,{method:'POST',token:admin,body:{applyToBillId:otherBill.id},allowError:true})).status,400,'credit cannot go on another vendor\'s bill');
+ const unpaidBefore=(await request('/api/bills?from=2026-01-01&to=2026-12-31',{token:admin})).totals.unpaid;
+ await request(`/api/bills/${cr[0].id}/payment`,{method:'POST',token:admin,body:{applyToBillId:tc101,paidOn:'2026-09-15'}});
+ const crApplied=(await request(`/api/bills/${cr[0].id}`,{token:admin})).bill;ok(crApplied.paidAt&&crApplied.appliedToBillId===Number(tc101)&&/TC-101/.test(crApplied.paymentReference),'vendor credit applied to bill TC-101');
+ const b101=(await request(`/api/bills/${tc101}`,{token:admin})).bill;eq(b101.appliedCredits,-400,'bill shows the credit');eq(b101.balanceDue,800,'left to pay $800');
+ eq((await request('/api/bills?from=2026-01-01&to=2026-12-31',{token:admin})).totals.unpaid,unpaidBefore,'unpaid total unchanged: the open −$400 credit became $400 less to pay on TC-101');
+ const tcList=(await request('/api/bills?from=2026-01-01&to=2026-12-31&category=core_deposits',{token:admin})).items;ok(tcList.some(x=>x.billNumber==='TC-100'&&x.categories.includes('core_deposits')&&x.hasCore),'received bill with a core is tagged and filtered as Core deposits');
+ await request(`/api/bills/${cr[0].id}/payment`,{method:'DELETE',token:admin});eq((await request(`/api/bills/${tc101}`,{token:admin})).bill.balanceDue,1200,'undo applied: bill back to $1,200');
+ await request(`/api/bills/${cr[0].id}/payment`,{method:'POST',token:admin,body:{applyToBillId:tc101}});
  // A second core never returned: closed → deposit moved to parts cost ($0 entry); reopened → entry voided.
  await receive('TC-102','2026-09-20',1100,{core:true});const core2=(await request('/api/inventory/cores?status=open',{token:admin})).items.find(x=>x.purchase_reference==='TC-102'||x.id!==core.id);
  const cl=await request(`/api/inventory/cores/${core2.id}`,{method:'PATCH',token:admin,body:{action:'closed',notes:'Core kept'}});ok(cl.billEntryId,'closed unreturned core → entry in Bills');
