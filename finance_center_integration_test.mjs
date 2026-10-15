@@ -335,7 +335,9 @@ try{
  const lt2=await request('/api/reports/labor-times?from=2020-01-01&to=2030-12-31');assert(lt2.types.find(t=>t.key==='seals')?.standard===2,'owner-set job types and standard hours');
  await request('/api/reports/labor-times/job-types',{method:'PUT',body:{reset:true}});
  assert((await request('/api/reports/labor-times',{tok:mechToken,allowError:true})).status===403,'mechanics cannot read labor times');
- {const ms=(await request('/api/state',{tok:mechToken})).shopflow;const wos=ms.payload.workorders.map(w=>String(w.id)==='9950'?{...w,inspection:{required:true,type:'truck',status:'In Progress',startedAt:new Date().toISOString(),startedBy:mechUser,results:{}}}:w);
+ {const sa=(await request('/api/state')).shopflow;await request('/api/state/shopflow',{method:'PUT',body:{expectedVersion:sa.version,payload:{...sa.payload,workorders:[...sa.payload.workorders,{id:'9951',status:'Open',unit:'TC-2',customer:'Clock Test',mechanic:mechUser,tasks:[]}]}}});
+  // 9950's inspection is already Completed above, and a whole-shop save may not reopen it (v24.47.5), so start a fresh one on 9951
+  const ms=(await request('/api/state',{tok:mechToken})).shopflow;const wos=ms.payload.workorders.map(w=>String(w.id)==='9951'?{...w,inspection:{required:true,type:'truck',status:'In Progress',startedAt:new Date().toISOString(),startedBy:mechUser,results:{}}}:w);
   await request('/api/state/shopflow',{method:'PUT',tok:mechToken,body:{expectedVersion:ms.version,payload:{...ms.payload,workorders:wos}}});
   const meI=await request('/api/timeclock/me',{tok:mechToken});assert(meI.open&&meI.open.inSource==='auto:inspection','starting an inspection while clocked out clocks the mechanic in');
   await request('/api/timeclock/punch',{method:'POST',tok:mechToken,body:{action:'out'}});}
