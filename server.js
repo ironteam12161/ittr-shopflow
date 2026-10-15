@@ -1890,7 +1890,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.51.2");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.52.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
@@ -1904,6 +1904,29 @@ app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 app.post("/api/auth/logout",auth,async(req,res,next)=>{try{await requireDb().query("DELETE FROM auth_sessions WHERE token_hash=$1",[hashToken(req.sessionToken)]);res.json({ok:true})}catch(e){next(e)}});
 app.get("/api/auth/me",auth,(req,res)=>res.json({user:publicUser(req.user)}));
+// v24.52.0: every user can change their own password (the owner had no way to) and sign out their other devices.
+// Changing the password signs out every other device, so a leaked or shared password stops working everywhere.
+const minPasswordLength=role=>role==="mechanic"?10:12;
+app.post("/api/auth/password",loginLimiter,auth,async(req,res,next)=>{try{
+ const current=String(req.body?.currentPassword||""),next1=String(req.body?.newPassword||""),min=minPasswordLength(req.user.role);
+ if(!(await bcrypt.compare(current,req.user.password_hash||"")))return res.status(400).json({error:"Your current password is not correct.",code:"BAD_CURRENT_PASSWORD"});
+ if(next1.length<min||next1.length>200)return res.status(400).json({error:`The new password must be at least ${min} characters.`});
+ if(next1===current)return res.status(400).json({error:"The new password must be different from the current one."});
+ if(next1.toLowerCase().includes(String(req.user.username||"").toLowerCase()))return res.status(400).json({error:"The new password must not contain your username."});
+ const h=await bcrypt.hash(next1,12),db=requireDb();
+ await db.query("UPDATE auth_users SET password_hash=$2,updated_at=now() WHERE id=$1",[req.user.id,h]);
+ const out=await db.query("DELETE FROM auth_sessions WHERE user_id=$1 AND id<>$2",[req.user.id,req.user.session_id]);
+ await audit(req.user.username,"own_password_changed",{otherSessionsSignedOut:out.rowCount});
+ res.json({ok:true,otherSessionsSignedOut:out.rowCount});
+}catch(e){next(e)}});
+app.get("/api/auth/sessions",auth,async(req,res,next)=>{try{
+ const r=await requireDb().query("SELECT count(*)::int n FROM auth_sessions WHERE user_id=$1 AND expires_at>now()",[req.user.id]);
+ res.json({active:r.rows[0].n,others:Math.max(0,r.rows[0].n-1)});
+}catch(e){next(e)}});
+app.post("/api/auth/sessions/revoke-others",auth,async(req,res,next)=>{try{
+ const out=await requireDb().query("DELETE FROM auth_sessions WHERE user_id=$1 AND id<>$2",[req.user.id,req.user.session_id]);
+ await audit(req.user.username,"other_sessions_signed_out",{count:out.rowCount});res.json({ok:true,signedOut:out.rowCount});
+}catch(e){next(e)}});
 // ITTR v24.28.4 self-service language preference
 app.patch("/api/auth/preferences",auth,async(req,res,next)=>{try{
  const language=String(req.body?.language||"").trim().toLowerCase();
@@ -2850,15 +2873,29 @@ app.get("/api/admin/productivity",auth,adminOnly,async(req,res,next)=>{try{
   res.json({ok:true,start:start.toISOString(),end:end.toISOString(),mechanic:mechanic||"all",sessions});
 }catch(e){next(e)}});
 
-app.get("/api/admin/backup",auth,ownerOnly,async(req,res,next)=>{try{
-  const states=await requireDb().query("SELECT state_key,payload,version,updated_at,updated_by FROM app_state ORDER BY state_key");
-  const users=await requireDb().query("SELECT username,display_name,role,language,active,created_at,updated_at FROM auth_users ORDER BY username");
-  const sessions=await requireDb().query("SELECT work_order_id,task_index,task_uid,task_name,mechanic_username,started_at,ended_at,end_reason,pause_reason,pause_note FROM task_time_sessions ORDER BY started_at");
-  const migrations=await requireDb().query("SELECT migration_key,applied_at FROM schema_migrations ORDER BY applied_at");
-  await requireDb().query("INSERT INTO data_exports(created_by,note) VALUES($1,$2)",[req.user.username,"manual JSON backup"]);
+// v24.52.0: the backup holds every table (invoices, payments, customers, bills, parts…), not only the work-order JSON
+// it had before. Secrets are left out: password hashes, sign-in sessions, OAuth states and Gmail tokens. Derived data
+// that is rebuilt on its own (translation cache, manual page text) is skipped to keep the file small. Streamed table by
+// table so a large shop does not need the whole database in memory.
+const BACKUP_SKIP_TABLES=new Set(["auth_sessions","gmail_oauth_states","ai_translation_cache","workshop_manual_pages"]);
+const BACKUP_SECRET_COLUMNS={auth_users:["password_hash"],gmail_accounts:["refresh_token_enc","access_token_enc"],email_sender:["refresh_token_enc","access_token_enc"]};
+app.get("/api/admin/backup",auth,ownerOnly,async(req,res,next)=>{let started=false;try{
+  const db=requireDb();
+  const tables=(await db.query("SELECT table_name FROM information_schema.tables WHERE table_schema=current_schema() AND table_type='BASE TABLE' ORDER BY table_name")).rows.map(r=>r.table_name).filter(t=>!BACKUP_SKIP_TABLES.has(t));
+  await db.query("INSERT INTO data_exports(created_by,note) VALUES($1,$2)",[req.user.username,`full JSON backup (${tables.length} tables)`]);
+  res.setHeader("Content-Type","application/json; charset=utf-8");
   res.setHeader("Content-Disposition",`attachment; filename="ittr-backup-${new Date().toISOString().slice(0,10)}.json"`);
-  res.json({exportedAt:new Date().toISOString(),version:"22.4.0",states:states.rows,users:users.rows,taskTimeSessions:sessions.rows,migrations:migrations.rows});
-}catch(e){next(e)}});
+  res.write(`{"exportedAt":${JSON.stringify(new Date().toISOString())},"appVersion":${JSON.stringify(ITTR_APP_VERSION)},"format":"ittr-full-backup-v2","skipped":${JSON.stringify([...BACKUP_SKIP_TABLES])},"secretsRemoved":${JSON.stringify(BACKUP_SECRET_COLUMNS)},"tables":{`);started=true;
+  const counts={};
+  for(const [n,t] of tables.entries()){
+   const drop=new Set(BACKUP_SECRET_COLUMNS[t]||[]);
+   const rows=(await db.query(`SELECT * FROM "${t.replace(/"/g,'')}"`)).rows;counts[t]=rows.length;
+   res.write(`${n?",":""}${JSON.stringify(t)}:[`);
+   for(let k=0;k<rows.length;k++){const r=rows[k];for(const c of drop)if(c in r)r[c]="[removed]";res.write((k?",":"")+JSON.stringify(r))}
+   res.write("]");
+  }
+  res.end(`},"rowCounts":${JSON.stringify(counts)}}`);
+}catch(e){if(started){console.error("[backup]",e?.message);res.end()}else next(e)}});
 
 app.get("/api/admin/data-safety",auth,adminOnly,async(req,res,next)=>{try{
   const [h,sess,mig]=await Promise.all([
@@ -3974,7 +4011,7 @@ app.patch('/api/invoices/:id/payments/:paymentId',auth,managerPermission("invoic
  // v24.49.0: one payment split over several invoices keeps one method / transaction ID.
  if(cur.customer_payment_id){await db.query('UPDATE customer_invoice_payments SET method=$2,reference=$3 WHERE customer_payment_id=$1::bigint',[cur.customer_payment_id,method,reference]);await db.query('UPDATE customer_payments SET method=$2,reference=$3 WHERE id=$1::bigint',[cur.customer_payment_id,method,reference])}
  await audit(req.user.username,'invoice_payment_edited',{invoiceId:req.params.id,paymentId:cur.id,before:{method:cur.method,reference:cur.reference},after:{method,reference}});res.json({ok:true})}catch(e){next(e)}});
-// v24.51.2: a transaction ID is found wherever it lives: on an invoice payment (also when the reference was typed
+// v24.52.0: a transaction ID is found wherever it lives: on an invoice payment (also when the reference was typed
 // differently, via the Gmail email it was applied from), on a customer credit not used yet, or still only on a
 // Zelle email in the Gmail inbox that was never applied.
 app.get('/api/payments/search',auth,managerPermission("invoices"),async(req,res,next)=>{try{const q=String(req.query.q||'').trim().slice(0,80);if(q.length<2)return res.json({items:[],credits:[],inbox:[]});
