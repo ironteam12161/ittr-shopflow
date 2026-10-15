@@ -48,7 +48,7 @@ export function estimateJobs(lines) {
   const byId = new Map(lines.map(l => [String(l.id), l])), jobs = new Map(), other = [];
   const keyOf = l => { if (l.job_uid) return `j:${l.job_uid}`; const f = l.metadata?.forLineId && byId.get(String(l.metadata.forLineId)); return f?.job_uid ? `j:${f.job_uid}` : null; };
   for (const l of lines) {
-    const k = keyOf(l), line = { type: l.line_type, description: l.description, quantity: Number(l.quantity), unitPrice: money(l.unit_price), total: money(l.line_total) };
+    const k = keyOf(l), line = { type: l.line_type, description: l.description, quantity: Number(l.quantity), unit: ['gal', 'qt'].includes(l.metadata?.unit) ? l.metadata.unit : '', unitPrice: money(l.unit_price), total: money(l.line_total) };
     if (!k) { other.push(line); continue; }
     if (!jobs.has(k)) jobs.set(k, { key: k, name: '', lines: [], ids: [], total: 0, decision: null });
     const j = jobs.get(k); j.lines.push(line); j.ids.push(Number(l.id)); j.total = money(j.total + Number(l.line_total || 0));
