@@ -156,6 +156,28 @@ try{
  eq((await request('/api/parts/price-from-cost',{method:'POST',token:owner,body:{markup:50,ids:[Number(unpriced)]}})).priced,1,'one part priced');
  eq(Number((await db.query('SELECT price FROM fullbay_import_parts WHERE id=$1',[unpriced])).rows[0].price),15,'price = cost + 50%');
  eq(Number((await db.query('SELECT price FROM fullbay_import_parts WHERE id=$1',[oil])).rows[0].price),20,'parts that had a price are not changed');
+ // v24.60.0: Fullbay sell prices — "Calculated Selling Price" unless an override was typed.
+ const rawRow=(pn,sell,calc,ovr)=>JSON.stringify({'Part #':pn,'Selling Price':sell,'Calculated Selling Price':calc,'Override Calculated Selling Price':ovr});
+ const fbA=(await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,quantity,cost,price,status,inventory_managed,raw) VALUES('fb-a','BABY-FLAP','FasTrak Baby Flap',7,30.87,0,'Active',true,$1::jsonb) RETURNING id`,[rawRow('BABY-FLAP','$0.00','$40.75','No')])).rows[0].id;
+ const fbB=(await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,quantity,cost,price,status,inventory_managed,raw) VALUES('fb-b','AERO-W','Aero Wheel',17,28.28,45,'Active',true,$1::jsonb) RETURNING id`,[rawRow('AERO-W','$0.00','$38.11','No')])).rows[0].id;
+ await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,quantity,cost,price,status,inventory_managed,raw) VALUES('fb-c','CORE-1','Dirty Core',1,28,28,'Active',true,$1::jsonb)`,[rawRow('CORE-1','$28.00','$36.96','Yes')]);
+ const fbD=(await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,quantity,cost,price,status,inventory_managed,raw) VALUES('fb-d','AF-DRUM','Antifreeze - 55 Gallon',2,330,0,'Active',true,$1::jsonb) RETURNING id`,[rawRow('AF-DRUM','$0.00','$726.00','No')])).rows[0].id;
+ await request('/api/parts/fluids/convert',{method:'POST',token:owner,body:{items:[{id:Number(fbD),gallons:55}]}});
+ const fp=async({file,apply,token=owner}={})=>{const fd=new FormData();if(file)fd.append('file',new Blob([file],{type:'text/csv'}),'InventoryDetails.csv');if(apply)fd.append('apply','1');const r=await fetch(`http://127.0.0.1:${port}/api/parts/fullbay-prices`,{method:'POST',headers:{Authorization:`Bearer ${token}`},body:fd});return {status:r.status,...(await r.json())}};
+ eq((await fp({token:mech})).status,403,'mechanics cannot change prices');
+ let fc=await fp();const ids=x=>x.map(i=>Number(i.id));
+ ok(ids(fc.missing).includes(Number(fbA))&&ids(fc.missing).includes(Number(fbD))&&ids(fc.different).includes(Number(fbB))&&fc.matched>=1,'compare: $0 parts missing, edited price different, override price matched');
+ eq(fc.missing.find(i=>Number(i.id)===Number(fbD)).fullbay,13.2,'drum switched to gallons: Fullbay drum price ÷ 55');
+ fc=await fp({apply:true});ok(fc.applied>=2,'missing prices filled');
+ const priceOf=async id=>Number((await db.query('SELECT price FROM fullbay_import_parts WHERE id=$1',[id])).rows[0].price);
+ eq(await priceOf(fbA),40.75,'calculated selling price used');eq(await priceOf(fbD),13.2,'per-gallon price');eq(await priceOf(fbB),45,'a price set in ShopFlow is not overwritten');
+ const csvText='"Status","Part #","Description","Selling Price","Calculated Selling Price","Override Calculated Selling Price","In Stock","Average Cost"\n="Active",="BABY-FLAP",="FasTrak Baby Flap","$0.00",="$40.75",="No","7","$30.87"\n="Active",="NOT-HERE",="Unknown part","$0.00",="$12.00",="No","1","$9"\n';
+ const ff=await fp({file:csvText});ok(ff.source==='file'&&ff.matched===1&&ff.notFoundCount===1&&ff.missingCount===0,'uploaded Fullbay file compared: match + not in ShopFlow');
+ const imp=new FormData();imp.append('file',new Blob(['"Status","Part #","Description","Selling Price","Calculated Selling Price","Override Calculated Selling Price","In Stock","Average Cost"\n="Active",="IMP-1",="Imported part","$0.00",="$54.11",="No","4","$40.99"\n="Active",="IMP-2",="Override part","$595.00",="$681.25",="Yes","1","$532.98"\n'],{type:'text/csv'}),'inv.csv');
+ ok((await fetch(`http://127.0.0.1:${port}/api/fullbay/import/parts`,{method:'POST',headers:{Authorization:`Bearer ${owner}`},body:imp})).ok,'Fullbay parts import runs');
+ const ip=Object.fromEntries((await db.query("SELECT part_number,price FROM fullbay_import_parts WHERE part_number IN ('IMP-1','IMP-2')")).rows.map(r=>[r.part_number,Number(r.price)]));
+ ok(ip['IMP-1']===54.11&&ip['IMP-2']===595,'import uses the calculated selling price, or the override when one was typed');
+ console.log('PASS Fullbay prices: calculated vs override, compare (missing/different/match, gallons), fill missing only, uploaded file, import fixed');
  console.log('PASS fluids on estimates (gal/qt with price conversion → customer page, work order, invoice stock factor) and no-price parts list + price from cost');
  // ---------------------------------------------------------------- customer links: inspection
  const st=(await request('/api/state',{token:owner})).shopflow;
