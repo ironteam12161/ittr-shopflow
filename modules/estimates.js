@@ -62,13 +62,15 @@ async function openEstimate(id){
 async function reload(){if(S.cur)await openEstimate(S.cur.estimate.id)}
 
 function lineRow(l,locked,isLabor){
- const dis=locked||l.metadata?.feeCode?'disabled':'';
+ const dis=locked||l.metadata?.feeCode?'disabled':'',fu=['gal','qt'].includes(l.metadata?.unit)?l.metadata.unit:'';
+ // v24.59.0: a part with no sell price is flagged so it is not quoted at $0 by mistake.
+ const noPrice=l.line_type==='part'&&!locked&&Number(l.unit_price)<=0;
  return `<div class="estRow" data-line="${l.id}">
   <span class="t">${isLabor?'Labor':h(l.line_type)}</span>
   <input class="desc" data-f="description" value="${h(l.description)}" ${dis} aria-label="Description" placeholder="${isLabor?'Labor description':'Description'}">
   ${isLabor?'<span></span>':`<input data-f="partNumber" value="${h(l.part_number||'')}" ${dis} aria-label="Part number" placeholder="Part #">`}
-  <input data-f="quantity" type="number" step="${isLabor?'0.1':'0.01'}" min="0" value="${Number(l.quantity)}" ${dis} aria-label="${isLabor?'Hours':'Quantity'}">
-  <input data-f="unitPrice" type="number" step="0.01" min="0" value="${Number(l.unit_price)}" ${dis} aria-label="${isLabor?'Rate per hour':'Price each'}">
+  ${fu?`<span class="estQtyU"><input data-f="quantity" type="number" step="0.25" min="0" value="${Number(l.quantity)}" ${dis} aria-label="Quantity"><select data-f="unit" ${dis} aria-label="Gallons or quarts" title="Gallons or quarts (price converts: per quart = per gallon ÷ 4)"><option value="gal" ${fu==='gal'?'selected':''}>gal</option><option value="qt" ${fu==='qt'?'selected':''}>qt</option></select></span>`:`<input data-f="quantity" type="number" step="${isLabor?'0.1':'0.01'}" min="0" value="${Number(l.quantity)}" ${dis} aria-label="${isLabor?'Hours':'Quantity'}">`}
+  <input data-f="unitPrice" type="number" step="0.01" min="0" value="${Number(l.unit_price)}" ${dis} class="${noPrice?'estNoPrice':''}" aria-label="${isLabor?'Rate per hour':fu?`Price per ${fu}`:'Price each'}" title="${noPrice?'This part has no sell price — type one here, and set it on the part in Parts.':fu?`Price per ${fu==='qt'?'quart':'gallon'}`:''}">
   <label class="tx" title="Taxable"><input data-f="taxable" type="checkbox" ${l.taxable?'checked':''} ${dis}><span>Tax</span></label>
   <span class="amt">${usd(l.line_total)}</span>
   ${locked||l.metadata?.feeCode?'<span></span>':`<button class="del" data-est="del-line" data-id="${l.id}" title="Remove line" aria-label="Remove line">✕</button>`}
@@ -128,16 +130,17 @@ async function saveHeader(input){
 async function saveLine(row){
  if(!S.cur)return;const id=row.dataset.line,l=S.cur.lines.find(x=>String(x.id)===String(id));if(!l)return;
  const v=f=>row.querySelector(`[data-f="${f}"]`);
- const body={lineType:l.line_type,description:v('description')?.value??l.description,partNumber:v('partNumber')?.value??l.part_number,quantity:v('quantity')?.value??l.quantity,unitPrice:v('unitPrice')?.value??l.unit_price,
+ const body={lineType:l.line_type,description:v('description')?.value??l.description,partNumber:v('partNumber')?.value??l.part_number,quantity:v('quantity')?.value??l.quantity,unitPrice:v('unitPrice')?.value??l.unit_price,unit:v('unit')?.value||undefined,
   taxable:v('taxable')?v('taxable').checked:!!l.taxable,unitCost:l.unit_cost,inventoryPartId:l.inventory_part_id,parentLineId:l.parent_line_id,discount:l.discount};
  try{await api(`/api/estimates/${S.cur.estimate.id}/lines/${id}`,{method:'PUT',body});await reload()}catch(e){toast(e.message,'error')}
 }
 async function addLine(body){try{await api(`/api/estimates/${S.cur.estimate.id}/lines`,{method:'POST',body});await reload()}catch(e){toast(e.message,'error')}}
+const gal=u=>/^\s*(gal|gallon|gallons)\s*$/i.test(String(u||''));
 async function partSearch(input){
  const parent=input.dataset.parent,drop=S.scope.host.querySelector(`[data-part-drop="${parent}"]`),q=input.value.trim();if(!drop)return;
  if(q.length<2){drop.classList.add('hidden');return}
  try{const d=await api(`/api/parts?q=${encodeURIComponent(q)}&limit=8`);S.partResults=d.items||[];
-  drop.innerHTML=S.partResults.map((p,i)=>`<button type="button" data-est="pick-part" data-i="${i}" data-parent="${parent}">${h(p.part_number||'')} · ${h(p.description||'')}<small>${usd(p.price)} · ${Number(p.available??p.quantity??0)} available${p.location?` · ${h(p.location)}`:''}</small></button>`).join('')+`<button type="button" data-est="custom-part" data-parent="${parent}">Add “${h(q)}” as a custom part</button>`;
+  drop.innerHTML=S.partResults.map((p,i)=>`<button type="button" data-est="pick-part" data-i="${i}" data-parent="${parent}">${h(p.part_number||'')} · ${h(p.description||'')}<small>${Number(p.price)>0?`${usd(p.price)}${gal(p.uom)?'/gal':''}`:'<b class="estNoPriceTag">no price set</b>'} · ${Number(p.available??p.quantity??0)} ${gal(p.uom)?'gal ':''}available${p.location?` · ${h(p.location)}`:''}</small></button>`).join('')+`<button type="button" data-est="custom-part" data-parent="${parent}">Add “${h(q)}” as a custom part</button>`;
   drop.classList.remove('hidden')}catch(e){toast(e.message,'error')}
 }
 function defaultRate(){const lab=S.cur?.lines?.find(l=>l.line_type==='labor'&&Number(l.unit_price)>0);return Number(lab?.unit_price||window.invoiceDefaultLaborRate?.()||115)}
@@ -210,7 +213,7 @@ async function onClick(ev){
   if(act==='canned')return window.openCannedJobs?.({target:'estimate',id:S.cur.estimate.id,onDone:reload});
   if(act==='add-job'){const d=String($('#estNewJob')?.value||'').trim();if(!d)return toast('Describe the job first.','error');return addLine({lineType:'labor',description:d,quantity:Number($('#estNewJobHours')?.value||1),unitPrice:defaultRate(),taxable:false})}
   if(act==='add-other')return addLine({lineType:'other',description:'Other charge',quantity:1,unitPrice:0,parentLineId:b.dataset.parent});
-  if(act==='pick-part'){const p=S.partResults[Number(b.dataset.i)];if(p)return addLine({lineType:'part',parentLineId:b.dataset.parent,inventoryPartId:p.id,partNumber:p.part_number,description:p.description,quantity:1,unitPrice:Number(p.price||0),unitCost:Number(p.cost||0),taxable:p.sell_taxable!==false});return}
+  if(act==='pick-part'){const p=S.partResults[Number(b.dataset.i)];if(p&&!(Number(p.price)>0))toast(`${p.part_number||p.description||'This part'} has no sell price yet — type the price on the line (and set it in Parts).`,'warning');if(p)return addLine({lineType:'part',parentLineId:b.dataset.parent,inventoryPartId:p.id,partNumber:p.part_number,description:p.description,quantity:1,unitPrice:Number(p.price||0),unitCost:Number(p.cost||0),taxable:p.sell_taxable!==false});return}
   if(act==='custom-part'){const q=S.scope.host.querySelector(`[data-est-input="part"][data-parent="${b.dataset.parent}"]`)?.value||'Part';return addLine({lineType:'part',parentLineId:b.dataset.parent,description:q,quantity:1,unitPrice:0,taxable:true})}
   if(act==='tire-fees')return window.openTireFeeDialog({kind:'estimate',id,lines:S.cur.lines,onDone:reload});
  }catch(e){b.disabled=false;toast(e.message,'error')}

@@ -3,6 +3,7 @@
 // Everything here is additive: new tables only, no changes to existing invoice data.
 import { createCustomerLink, publicBaseUrl } from './customer_links.mjs';
 import crypto from 'node:crypto';
+import { isGallonUom, FLUID_UNITS } from './fluids.mjs';
 import { documentEmailHtml, sendShopEmail, emailSenderStatus, registerGoogleSender, buildMimeMessage, resendConfigured } from './email_templates.mjs';
 
 export const TIRE_FEE_CODES = Object.freeze({ user: 'tire_user_fee', disposal: 'tire_disposal_fee' });
@@ -699,11 +700,28 @@ export function registerFinanceRoutes(app, deps) {
     if (!p) fail(409, 'Parent labor operation not found.');
     return { parentLineId: p.id, jobUid: p.job_uid || '', jobName: p.job_name || l.jobName };
   };
+  // v24.59.0: fluids stocked in gallons are quoted in gallons or quarts, like work orders and invoices. The line keeps the
+  // price per gallon, so switching gal ↔ qt converts the price (per quart = per gallon ÷ 4) and the converted invoice
+  // moves the right amount of stock (metadata.stockPerUnit).
+  const fluidLineMeta = async (db, l, unit, old = null) => {
+    const meta = { ...(old?.metadata && typeof old.metadata === 'object' ? old.metadata : {}) };
+    const uom = l.inventoryPartId ? (await db.query('SELECT uom FROM fullbay_import_parts WHERE id=$1::bigint', [l.inventoryPartId])).rows[0]?.uom : '';
+    if (!isGallonUom(uom)) { delete meta.unit; delete meta.stockPerUnit; delete meta.galPrice; delete meta.galCost; return meta; }
+    const un = FLUID_UNITS[unit] ? unit : (FLUID_UNITS[meta.unit] ? meta.unit : 'gal'), spu = FLUID_UNITS[un];
+    const samePart = old && Number(old.inventory_part_id || 0) === Number(l.inventoryPartId || 0);
+    if (samePart && meta.unit && meta.unit !== un && Number.isFinite(Number(meta.galPrice))) {
+      l.price = Math.round(Number(meta.galPrice) * spu * 100) / 100; l.unitCost = Math.round(Number(meta.galCost || 0) * spu * 10000) / 10000;
+      l.discount = Math.min(l.qty * l.price, l.discount);
+    } else { meta.galPrice = Math.round(l.price / spu * 10000) / 10000; meta.galCost = Math.round(l.unitCost / spu * 10000) / 10000; }
+    meta.unit = un; meta.stockPerUnit = spu;
+    return meta;
+  };
   app.post('/api/estimates/:id/lines', auth, invoicesPerm, tx(async (db, req) => {
     const est = await lockedEstimate(db, req.params.id), l = lineInput(req.body || {}), p = await resolveParent(db, est.id, l);
+    const meta = l.typ === 'part' ? await fluidLineMeta(db, l, req.body?.unit) : {};
     const r = await db.query(`INSERT INTO customer_estimate_lines(estimate_id,sort_order,job_uid,job_name,parent_line_id,line_type,description,part_number,quantity,unit_price,unit_cost,taxable,discount,line_total,inventory_part_id,metadata)
-      VALUES($1::bigint,(SELECT coalesce(max(sort_order),0)+1 FROM customer_estimate_lines WHERE estimate_id=$1::bigint),$2,$3,$4::bigint,$5,$6,$7,$8::numeric,$9::numeric,$10::numeric,$11::boolean,$12::numeric,greatest(0,$8::numeric*$9::numeric-$12::numeric),$13::bigint,'{}'::jsonb) RETURNING id`,
-    [est.id, p.jobUid, p.jobName || (l.typ === 'labor' ? l.description : ''), p.parentLineId, l.typ, l.description || (l.typ === 'labor' ? 'Labor' : 'Item'), l.partNumber, l.qty, l.price, l.unitCost, l.taxable, l.discount, l.inventoryPartId]);
+      VALUES($1::bigint,(SELECT coalesce(max(sort_order),0)+1 FROM customer_estimate_lines WHERE estimate_id=$1::bigint),$2,$3,$4::bigint,$5,$6,$7,$8::numeric,$9::numeric,$10::numeric,$11::boolean,$12::numeric,greatest(0,$8::numeric*$9::numeric-$12::numeric),$13::bigint,$14::jsonb) RETURNING id`,
+    [est.id, p.jobUid, p.jobName || (l.typ === 'labor' ? l.description : ''), p.parentLineId, l.typ, l.description || (l.typ === 'labor' ? 'Labor' : 'Item'), l.partNumber, l.qty, l.price, l.unitCost, l.taxable, l.discount, l.inventoryPartId, JSON.stringify(meta)]);
     await recalcEstimate(db, est.id);
     return { ok: true, id: r.rows[0].id };
   }));
@@ -712,9 +730,10 @@ export function registerFinanceRoutes(app, deps) {
     if (!old) fail(404, 'Estimate line not found.');
     const l = lineInput({ ...req.body, lineType: req.body?.lineType || old.line_type });
     const p = l.typ === 'labor' ? { parentLineId: null, jobUid: old.job_uid || crypto.randomUUID(), jobName: l.description || old.job_name } : await resolveParent(db, est.id, l);
+    const meta = l.typ === 'part' ? await fluidLineMeta(db, l, req.body?.unit, old) : (old.metadata || {});
     await db.query(`UPDATE customer_estimate_lines SET line_type=$3,description=$4,part_number=$5,quantity=$6::numeric,unit_price=$7::numeric,unit_cost=$8::numeric,taxable=$9::boolean,discount=$10::numeric,
-      line_total=greatest(0,$6::numeric*$7::numeric-$10::numeric),parent_line_id=$11::bigint,job_uid=$12,job_name=$13,inventory_part_id=$14::bigint WHERE id=$1::bigint AND estimate_id=$2::bigint`,
-    [old.id, est.id, l.typ, l.description || old.description, l.partNumber, l.qty, l.price, l.unitCost, l.taxable, l.discount, p.parentLineId, p.jobUid, p.jobName, l.inventoryPartId]);
+      line_total=greatest(0,$6::numeric*$7::numeric-$10::numeric),parent_line_id=$11::bigint,job_uid=$12,job_name=$13,inventory_part_id=$14::bigint,metadata=$15::jsonb WHERE id=$1::bigint AND estimate_id=$2::bigint`,
+    [old.id, est.id, l.typ, l.description || old.description, l.partNumber, l.qty, l.price, l.unitCost, l.taxable, l.discount, p.parentLineId, p.jobUid, p.jobName, l.inventoryPartId, JSON.stringify(meta)]);
     if (l.typ === 'labor') await db.query('UPDATE customer_estimate_lines SET job_name=$3 WHERE estimate_id=$1::bigint AND parent_line_id=$2::bigint', [est.id, old.id, p.jobName]);
     await recalcEstimate(db, est.id);
     return { ok: true };

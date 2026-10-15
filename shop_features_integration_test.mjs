@@ -109,6 +109,38 @@ try{
  eq((await request(`/api/estimates/${e3.id}/work-order`,{method:'POST',token:owner,body:{},allowError:true})).code,'WO_EXISTS','only one work order per estimate');
  const cv3=await request(`/api/estimates/${e3.id}/convert`,{method:'POST',token:owner,body:{}});eq((await request(`/api/invoices/${cv3.id}`,{token:owner})).invoice.work_order_id,String(wo3.workOrderId),'invoice from the estimate is linked to the work order');
  console.log('PASS estimate → work order: approved jobs become tasks, declined left out, mechanic/vehicle/notes filled, one per estimate, invoice linked');
+ // v24.59.0: fluids on estimates in gallons or quarts; stocked parts with no sell price are listed and can be priced from cost.
+ const oil=(await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,uom,quantity,cost,price,status,inventory_managed,raw) VALUES('fl-oil','DELVAC-1300','Mobil Delvac 1300 15W-40','gal',100,8,20,'Active',true,'{}'::jsonb) RETURNING id`)).rows[0].id;
+ const e4=await request('/api/estimates',{method:'POST',token:owner,body:{customerName:'Fluid Fleet',unitNumber:'2566'}});
+ const k4=await request(`/api/estimates/${e4.id}/lines`,{method:'POST',token:owner,body:{lineType:'labor',description:'PM service',quantity:1,unitPrice:105}});
+ const o4=await request(`/api/estimates/${e4.id}/lines`,{method:'POST',token:owner,body:{lineType:'part',parentLineId:k4.id,inventoryPartId:oil,partNumber:'DELVAC-1300',description:'Mobil Delvac 1300 15W-40',quantity:2,unitPrice:20,unitCost:8,taxable:true}});
+ const p4=await request(`/api/estimates/${e4.id}/lines`,{method:'POST',token:owner,body:{lineType:'part',parentLineId:k4.id,inventoryPartId:pad,partNumber:'BP-100',description:'Brake pad set',quantity:1,unitPrice:95,unitCost:40}});
+ const line4=async id=>(await request(`/api/estimates/${e4.id}`,{token:owner})).lines.find(l=>String(l.id)===String(id));
+ let ol=await line4(o4.id);eq(ol.metadata.unit,'gal','a fluid in gallons is quoted in gallons');eq(Number(ol.metadata.galPrice),20,'gallon price kept');
+ eq((await line4(p4.id)).metadata.unit,undefined,'a part not in gallons has no gal/qt');
+ const put4=b=>request(`/api/estimates/${e4.id}/lines/${o4.id}`,{method:'PUT',token:owner,body:{lineType:'part',parentLineId:k4.id,inventoryPartId:oil,partNumber:'DELVAC-1300',description:'Mobil Delvac 1300 15W-40',taxable:true,unitCost:Number(ol.unit_cost),...b}});
+ await put4({unit:'qt',quantity:6,unitPrice:Number(ol.unit_price)});ol=await line4(o4.id);
+ ok(ol.metadata.unit==='qt'&&Number(ol.unit_price)===5&&Number(ol.unit_cost)===2&&Number(ol.line_total)===30&&Number(ol.metadata.stockPerUnit)===0.25,'switching to quarts converts the price (per quart = per gallon ÷ 4)');
+ await put4({unit:'qt',quantity:6,unitPrice:5.5});ol=await line4(o4.id);eq(Number(ol.metadata.galPrice),22,'a typed quart price updates the gallon price');
+ await put4({unit:'gal',quantity:1.5,unitPrice:5.5});ol=await line4(o4.id);ok(ol.metadata.unit==='gal'&&Number(ol.unit_price)===22,'back to gallons uses the gallon price');
+ await put4({unit:'qt',quantity:6,unitPrice:22});ol=await line4(o4.id);eq(Number(ol.unit_price),5.5,'quarts again');
+ const t4=(await request('/api/customer-links',{method:'POST',token:owner,body:{kind:'estimate',refId:String(e4.id)}})).url.split('/c/')[1];
+ ok((await pub(t4)).jobs[0].lines.some(l=>l.unit==='qt'&&l.quantity===6),'customer page shows quarts');
+ const wo4=await request(`/api/estimates/${e4.id}/work-order`,{method:'POST',token:owner,body:{}});
+ ok(/Mobil Delvac 1300 15W-40 \(DELVAC-1300\) ×6 qt/.test((await request('/api/state',{token:owner})).shopflow.payload.workorders.find(w=>String(w.id)===String(wo4.workOrderId)).notes),'work order notes say 6 qt');
+ const cv4=await request(`/api/estimates/${e4.id}/convert`,{method:'POST',token:owner,body:{}}),il=(await request(`/api/invoices/${cv4.id}`,{token:owner})).lines.find(l=>Number(l.inventory_part_id)===Number(oil));
+ ok(il.metadata.unit==='qt'&&Number(il.metadata.stockPerUnit)===0.25&&Number(il.quantity)===6&&Number(il.unit_price)===5.5,'invoice keeps quarts, so 6 qt moves 1.5 gal of stock');
+ const unpriced=(await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,quantity,cost,price,status,inventory_managed,raw) VALUES('np-1','NP-1','Unpriced filter',3,10,0,'Active',true,'{}'::jsonb) RETURNING id`)).rows[0].id;
+ const catalog=(await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,quantity,cost,price,status,inventory_managed,raw) VALUES('np-2','NP-2','Catalog part never stocked',0,0,0,'Active',true,'{}'::jsonb) RETURNING id`)).rows[0].id;
+ ok(Number((await request('/api/parts/summary',{token:owner})).no_price)>=1,'summary counts stocked parts with no price');
+ const np=(await request('/api/parts?filter=noprice&limit=150',{token:owner})).items.map(x=>Number(x.id));
+ ok(np.includes(Number(unpriced))&&!np.includes(Number(catalog))&&!np.includes(Number(oil)),'no-price list: stocked unpriced parts only');
+ eq((await request('/api/parts/price-from-cost',{method:'POST',token:mech,body:{markup:50},allowError:true})).status,403,'mechanics cannot set prices');
+ eq((await request('/api/parts/price-from-cost',{method:'POST',token:owner,body:{markup:-5},allowError:true})).status,400,'bad markup refused');
+ eq((await request('/api/parts/price-from-cost',{method:'POST',token:owner,body:{markup:50,ids:[Number(unpriced)]}})).priced,1,'one part priced');
+ eq(Number((await db.query('SELECT price FROM fullbay_import_parts WHERE id=$1',[unpriced])).rows[0].price),15,'price = cost + 50%');
+ eq(Number((await db.query('SELECT price FROM fullbay_import_parts WHERE id=$1',[oil])).rows[0].price),20,'parts that had a price are not changed');
+ console.log('PASS fluids on estimates (gal/qt with price conversion → customer page, work order, invoice stock factor) and no-price parts list + price from cost');
  // ---------------------------------------------------------------- customer links: inspection
  const st=(await request('/api/state',{token:owner})).shopflow;
  const wo={id:'7701',status:'Open',unit:'TR-9',customer:'Link Fleet',vin:'1FUJGLDR9CLBP8834',year:'2019',make:'Freightliner',model:'Cascadia',mechanic:'mech1',tasks:[],inspection:{required:true,type:'truck',status:'Completed',completedAt:new Date().toISOString(),results:{engine_oil:{status:'repair',note:'Oil leak at rear main seal'},brakes_front:{status:'ok'}}}};
