@@ -91,6 +91,8 @@ function renderEditor(){
  if(['draft','sent'].includes(e.status)&&lines.length)actions.push(`<button class="secondary" data-est="share" title="Private link: the customer approves or declines each job and signs">📤 Send for approval</button>`);
  if(e.status==='draft')actions.push(`<button class="secondary" data-est="status" data-to="sent">Mark sent</button>`);
  if(['draft','sent'].includes(e.status))actions.push(`<button class="success" data-est="status" data-to="approved">Approved</button><button class="danger" data-est="status" data-to="declined">Declined</button>`);
+ if(e.work_order_id)actions.push(`<button class="secondary" data-est="open-wo" data-id="${h(e.work_order_id)}">🔧 Work order #${h(e.work_order_id)}</button>`);
+ else if(['approved','sent','draft'].includes(e.status)&&lines.some(l=>l.line_type==='labor'&&l.customer_decision!=='declined'))actions.push(`<button data-est="to-wo" title="Put the approved jobs on a work order so mechanics can start">🔧 Create work order</button>`);
  if(['approved','sent','draft'].includes(e.status))actions.push(`<button data-est="convert">Convert to invoice →</button>`);
  if(['approved','declined'].includes(e.status))actions.push(`<button class="secondary" data-est="status" data-to="draft">Back to draft</button>`);
  if(e.status==='converted'&&invoice)actions.push(`<button data-est="open-invoice" data-id="${invoice.id}">Open invoice ${h(invoice.invoice_number)}</button>`);
@@ -139,6 +141,18 @@ async function partSearch(input){
   drop.classList.remove('hidden')}catch(e){toast(e.message,'error')}
 }
 function defaultRate(){const lab=S.cur?.lines?.find(l=>l.line_type==='labor'&&Number(l.unit_price)>0);return Number(lab?.unit_price||window.invoiceDefaultLaborRate?.()||115)}
+// v24.58.0: choose the mechanic before the approved jobs go on a work order.
+function woDialog(){document.getElementById('estWoDlg')?.remove();let users={};try{users=USERS||{}}catch(_){users=window.USERS||{}}const e=S.cur.estimate;
+ const mechs=Object.entries(users).filter(([,u])=>u?.role==='mechanic').map(([k,u])=>[k,u.display||k]).sort((a,b)=>a[1].localeCompare(b[1]));
+ const jobs=(S.cur.lines||[]).filter(l=>l.line_type==='labor'&&l.customer_decision!=='declined');
+ const d=document.createElement('div');d.id='estWoDlg';d.className='estWoDlg';d.setAttribute('role','dialog');
+ d.innerHTML=`<div class="estWoBox"><h3 style="margin:0 0 4px">Create work order</h3><div class="muted" style="margin-bottom:10px">${h(e.customer_name||'')}${e.unit_number?` · Unit ${h(e.unit_number)}`:''} · ${jobs.length} job${jobs.length===1?'':'s'}${(S.cur.lines||[]).some(l=>l.customer_decision==='declined')?' (declined jobs left out)':''}</div>
+  <ul style="margin:0 0 10px;padding-left:18px">${jobs.map(l=>`<li>${h(l.job_name||l.description)}</li>`).join('')}</ul>
+  <label class="estWoF">Mechanic<select id="estWoMech"><option value="">Assign later</option>${mechs.map(([k,n])=>`<option value="${h(k)}">${h(n)}</option>`).join('')}</select></label>
+  <label class="estWoF">Priority<select id="estWoPri"><option>Normal</option><option>High</option><option>Urgent</option><option>Low</option></select></label>
+  <label style="display:flex;gap:8px;align-items:center;margin:8px 0"><input type="checkbox" id="estWoHere" checked style="width:auto;min-height:auto"> The truck is here</label>
+  <div style="display:flex;gap:8px;justify-content:flex-end"><button class="secondary" data-est="wo-cancel">Cancel</button><button data-est="wo-create">Create work order</button></div></div>`;
+ S.scope.host.appendChild(d)}
 async function openEmail(id){
  const d=await api(`/api/estimates/${id}/email-draft`);
  if(!d.configured)return toast('Email is not connected yet. The owner can connect the shop Google email in Reports → Gmail inbox → Email sending.','error',8000);
@@ -181,6 +195,13 @@ async function onClick(ev){
   if(act==='email-close'){$('#estEmailBox')?.remove();return}
   if(act==='status'){let note='';if(b.dataset.to==='declined'){note=prompt('Why was it declined? (optional)')??null;if(note===null)return}
    await api(`/api/estimates/${id}`,{method:'PUT',body:{status:b.dataset.to,decisionNote:note}});toast(`Estimate marked ${LABEL[b.dataset.to]||b.dataset.to}.`,'success');return reload()}
+  if(act==='open-wo'){const w=b.dataset.id;closeEditor();await window.showView?.('workorders');setTimeout(()=>window.openDetail?.(Number(w)),300);return}
+  if(act==='to-wo')return woDialog();
+  if(act==='wo-cancel'){document.getElementById('estWoDlg')?.remove();return}
+  if(act==='wo-create'){const dlg=document.getElementById('estWoDlg');b.disabled=true;
+   try{const d=await api(`/api/estimates/${id}/work-order`,{method:'POST',body:{mechanic:dlg.querySelector('#estWoMech').value,truckHere:dlg.querySelector('#estWoHere').checked,priority:dlg.querySelector('#estWoPri').value}});
+    dlg.remove();toast(`Work order #${d.workOrderId} created with ${d.jobs} job${d.jobs===1?'':'s'}.`,'success');try{await window.refreshCloudStateSilently?.()}catch(_){}await reload()}
+   catch(err){b.disabled=false;toast(err.message,'error')}return}
   if(act==='convert'){if(!confirm('Create a draft invoice from this estimate?'))return;b.disabled=true;const d=await api(`/api/estimates/${id}/convert`,{method:'POST',body:{}});toast(`Draft invoice ${d.invoiceNumber||''} created.`,'success');return goInvoice(d.id)}
   if(act==='open-invoice')return goInvoice(b.dataset.id);
   if(act==='delete'){if(!confirm(`Delete ${S.cur.estimate.estimate_number}? This cannot be undone.`))return;await api(`/api/estimates/${id}`,{method:'DELETE'});toast('Estimate deleted.');return closeEditor()}

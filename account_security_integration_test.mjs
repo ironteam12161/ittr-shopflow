@@ -1,6 +1,7 @@
 import {spawn} from 'node:child_process';
 import net from 'node:net';
 import pg from 'pg';
+import http from 'node:http';
 import {totpCode,totpStep} from './security_mfa.mjs';
 
 if(process.env.ITTR_LANGUAGE_TEST_DB!=='1'&&process.env.ITTR_OPERATIONS_TEST_DB!=='1'){console.log('SKIP account security integration test: disposable DB flag is not enabled');process.exit(0)}
@@ -118,5 +119,40 @@ try{
  const refused=await new Promise(resolve=>{const w=new WS(`ws://127.0.0.1:${port}/ws/shop-status`);w.on('open',()=>w.send(JSON.stringify({type:'auth',token:'bogus'})));w.on('close',code=>resolve(code));setTimeout(()=>resolve(0),5000)});
  eq(refused,1008,'a bad token is refused');
  console.log('PASS live connection: token sent in the first message, bad token refused');
+ // v24.57.0: email codes + remembered devices (fake Resend).
+ const mails=[];const fakeMail=http.createServer((req,res)=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>{mails.push(JSON.parse(b));res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify({id:`m${mails.length}`}))})});
+ await new Promise(r=>fakeMail.listen(0,'127.0.0.1',r));
+ Object.assign(process.env,{RESEND_API_KEY:'re_test',INVOICE_FROM_EMAIL:'ShopFlow <shop@ironttr.test>',RESEND_API_URL:`http://127.0.0.1:${fakeMail.address().port}/emails`});
+ await stop();await start();
+ const PW='Brand-New-Owner-Pass-1',codeOf=m=>String(m.subject).match(/^(\d{3}) (\d{3})/).slice(1).join(''),older=()=>db.query("UPDATE mfa_email_codes SET created_at=created_at-interval '1 minute'");
+ const o1=(await login('opsadmin',PW)).token;ok(o1,'owner signs in with the password only (2-step was turned off)');
+ eq((await request('/api/auth/2fa/email/setup',{method:'POST',token:o1,body:{password:'nope',email:'owner@gmail.test'},allowError:true})).code,'BAD_PASSWORD','email setup needs the password');
+ eq((await request('/api/auth/2fa/email/setup',{method:'POST',token:o1,body:{password:PW,email:'not-an-email'},allowError:true})).status,400,'bad email refused');
+ const es=await request('/api/auth/2fa/email/setup',{method:'POST',token:o1,body:{password:PW,email:'Owner@Gmail.test'}});
+ ok(es.sentTo==='ow•••@gmail.test'&&mails.length===1&&mails[0].to[0]==='owner@gmail.test'&&/sign-in code/.test(mails[0].subject),'a confirmation code is emailed and the address is masked on screen');
+ eq((await request('/api/auth/2fa/email/setup',{method:'POST',token:o1,body:{password:PW,email:'owner@gmail.test'},allowError:true})).status,429,'no second code within 30 seconds');
+ eq((await request('/api/auth/2fa/email/enable',{method:'POST',token:o1,body:{code:codeOf(mails[0])==='000000'?'111111':'000000'},allowError:true})).code,'BAD_CODE','wrong code does not turn it on');
+ const ee=await request('/api/auth/2fa/email/enable',{method:'POST',token:o1,body:{code:codeOf(mails[0])}});ok(ee.ok&&ee.recoveryCodes.length===10,'email 2-step login on, with recovery codes');
+ ok((await db.query("SELECT 1 FROM mfa_email_codes WHERE code_hash LIKE '%' AND code_hash !~ '^[0-9]{6}$'")).rowCount>=1,'codes are stored only as hashes');
+ await older();const l1=await login('opsadmin',PW);ok(l1.mfaRequired&&l1.method==='email'&&l1.sentTo==='ow•••@gmail.test'&&!l1.token&&mails.length===2,'password alone emails a sign-in code and gives no access');
+ eq((await request('/api/auth/login',{method:'POST',body:{username:'opsadmin',password:PW,code:codeOf(mails[1])==='999999'?'888888':'999999'},allowError:true})).code,'BAD_CODE','wrong emailed code refused');
+ const l2=await request('/api/auth/login',{method:'POST',body:{username:'opsadmin',password:PW,code:codeOf(mails[1]),rememberDevice:true}});ok(l2.token&&/^[A-Za-z0-9_-]{40,}$/.test(l2.deviceToken)&&l2.deviceDays===30,'right code signs in and remembers the device');
+ eq((await request('/api/auth/login',{method:'POST',body:{username:'opsadmin',password:PW,code:codeOf(mails[1])},allowError:true})).status,401,'an emailed code works only once');
+ const n0=mails.length,l3=await request('/api/auth/login',{method:'POST',body:{username:'opsadmin',password:PW,deviceToken:l2.deviceToken}});ok(l3.token&&mails.length===n0,'remembered device signs in with the password only, no email sent');
+ ok((await request('/api/auth/login',{method:'POST',body:{username:'nobody-here',password:PW,deviceToken:l2.deviceToken},allowError:true})).status===401,'a device key never helps another account');
+ await older();ok((await request('/api/auth/login',{method:'POST',body:{username:'opsadmin',password:PW,deviceToken:'x'.repeat(43)}})).mfaRequired,'unknown device still needs the code');
+ await db.query("UPDATE mfa_email_codes SET expires_at=now()-interval '1 second' WHERE used_at IS NULL");
+ eq((await request('/api/auth/login',{method:'POST',body:{username:'opsadmin',password:PW,code:codeOf(mails.at(-1))},allowError:true})).code,'BAD_CODE','an expired code is refused');
+ eq((await request('/api/auth/devices',{token:l2.token})).items.length,1,'remembered devices are listed');
+ eq((await request('/api/auth/2fa',{token:l2.token})).rememberedDevices,1,'2-step status shows the remembered device');
+ await stop();await start();
+ const PW2='Brand-New-Owner-Pass-2';await request('/api/auth/password',{method:'POST',token:l2.token,body:{currentPassword:PW,newPassword:PW2}});
+ await older();ok((await request('/api/auth/login',{method:'POST',body:{username:'opsadmin',password:PW2,deviceToken:l2.deviceToken}})).mfaRequired,'changing the password forgets remembered devices');
+ const l4=await request('/api/auth/login',{method:'POST',body:{username:'opsadmin',password:PW2,code:ee.recoveryCodes[0],rememberDevice:true}});ok(l4.token&&l4.deviceToken,'recovery code works with email codes too');
+ eq((await request('/api/auth/devices',{method:'DELETE',token:l4.token})).forgotten,1,'forget remembered devices');
+ eq((await request('/api/auth/2fa/disable',{method:'POST',token:l4.token,body:{password:PW2,code:ee.recoveryCodes[1]}})).ok,true,'turned off with password + recovery code');
+ ok((await login('opsadmin',PW2)).token,'password alone works once 2-step login is off');
+ fakeMail.close();for(const k of ['RESEND_API_KEY','INVOICE_FROM_EMAIL','RESEND_API_URL'])delete process.env[k];
+ console.log('PASS email sign-in codes: confirm address, 30-second resend limit, code once/expires, hashed, remember device 30 days (password only, no email), wrong/foreign device keys refused, password change forgets devices, recovery codes, turn off');
  console.log('Account security integration: all scenarios passed');
 }finally{await stop().catch(()=>{});await db.end().catch(()=>{})}

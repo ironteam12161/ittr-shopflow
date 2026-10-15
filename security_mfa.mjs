@@ -48,24 +48,78 @@ export async function ensureMfaSchema(db) {
     ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS totp_last_step BIGINT NOT NULL DEFAULT 0;
     ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS totp_recovery JSONB NOT NULL DEFAULT '[]'::jsonb;
     ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS failed_logins INT NOT NULL DEFAULT 0;
-    ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;`);
+    ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMPTZ;
+    ALTER TABLE auth_users ADD COLUMN IF NOT EXISTS email_mfa_enabled BOOLEAN NOT NULL DEFAULT false;
+    CREATE TABLE IF NOT EXISTS mfa_email_codes(id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
+      purpose TEXT NOT NULL, email TEXT NOT NULL, code_hash TEXT NOT NULL, attempts INT NOT NULL DEFAULT 0, expires_at TIMESTAMPTZ NOT NULL,
+      used_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT now());
+    CREATE INDEX IF NOT EXISTS idx_mfa_email_codes_user ON mfa_email_codes(user_id,purpose,created_at DESC);
+    CREATE TABLE IF NOT EXISTS trusted_devices(id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
+      token_hash TEXT UNIQUE NOT NULL, label TEXT, ip TEXT, created_at TIMESTAMPTZ DEFAULT now(), last_used_at TIMESTAMPTZ DEFAULT now(), expires_at TIMESTAMPTZ NOT NULL);
+    CREATE INDEX IF NOT EXISTS idx_trusted_devices_user ON trusted_devices(user_id);`);
   // Lost phone and lost recovery codes: whoever controls the Railway variables can turn 2-step login off for one
   // account by setting ITTR_RESET_2FA=<username> and restarting (then remove the variable again).
   const reset = String(process.env.ITTR_RESET_2FA || '').trim().toLowerCase();
   if (reset) {
-    const r = await db.query(`UPDATE auth_users SET totp_enabled=false,totp_secret=NULL,totp_pending_secret=NULL,totp_recovery='[]'::jsonb WHERE lower(username)=$1 RETURNING username`, [reset]);
+    const r = await db.query(`UPDATE auth_users SET totp_enabled=false,email_mfa_enabled=false,totp_secret=NULL,totp_pending_secret=NULL,totp_recovery='[]'::jsonb WHERE lower(username)=$1 RETURNING username`, [reset]);
     if (r.rowCount) console.warn(`ITTR: 2-step login turned off for ${reset} by ITTR_RESET_2FA. Remove that variable now.`);
   }
 }
+
+// v24.57.0: email codes and remembered devices.
+export const TRUSTED_DEVICE_DAYS = 30;
+const sha = v => crypto.createHash('sha256').update(String(v || '')).digest('hex');
+export function maskEmail(e) { const [u, d] = String(e || '').split('@'); if (!d) return ''; return `${u.slice(0, 2)}${'•'.repeat(Math.max(1, Math.min(6, u.length - 2)))}@${d}`; }
+export const validEmail = e => /^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$/.test(String(e || '')) && String(e).length <= 254;
+export const hasSecondFactor = u => Boolean(u?.totp_enabled || u?.email_mfa_enabled);
+// Send a 6-digit code by email (10 minutes, 5 tries). At most one every 30 seconds and 8 an hour per account.
+export async function sendEmailCode(db, user, { purpose, email, sendEmail, shopName = 'ITTR ShopFlow' }) {
+  const recent = (await db.query(`SELECT count(*) FILTER (WHERE created_at>now()-interval '30 seconds')::int s, count(*)::int h FROM mfa_email_codes WHERE user_id=$1 AND created_at>now()-interval '1 hour'`, [user.id])).rows[0];
+  if (recent.s > 0) return { ok: false, status: 429, error: 'A code was just sent. Wait 30 seconds before asking for another.' };
+  if (recent.h >= 8) return { ok: false, status: 429, error: 'Too many codes this hour. Try again later or use a recovery code.' };
+  const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+  await db.query(`UPDATE mfa_email_codes SET used_at=now() WHERE user_id=$1 AND purpose=$2 AND used_at IS NULL`, [user.id, purpose]);
+  await db.query(`INSERT INTO mfa_email_codes(user_id,purpose,email,code_hash,expires_at) VALUES($1,$2,$3,$4,now()+interval '10 minutes')`, [user.id, purpose, email, sha(`${user.id}:${code}`)]);
+  const pretty = `${code.slice(0, 3)} ${code.slice(3)}`;
+  const r = await sendEmail({ to: [email], subject: `${pretty} is your ${shopName} sign-in code`, idempotencyKey: `mfa-${user.id}-${Date.now()}`,
+    text: `Your ${shopName} sign-in code is ${pretty}. It works for 10 minutes.\n\nIf you did not try to sign in, change your ShopFlow password: someone knows it.`,
+    html: `<div style="font-family:Arial,sans-serif;color:#101828"><p>Your ${shopName} sign-in code:</p><p style="font-size:30px;font-weight:800;letter-spacing:4px;margin:8px 0">${pretty}</p><p style="color:#475467">It works for 10 minutes. If you did not try to sign in, change your ShopFlow password: someone knows it.</p></div>`,
+    tags: [{ name: 'document', value: 'sign_in_code' }] }).catch(e => ({ ok: false, error: e?.message }));
+  if (!r?.ok) { await db.query(`UPDATE mfa_email_codes SET used_at=now() WHERE user_id=$1 AND purpose=$2 AND used_at IS NULL`, [user.id, purpose]); return { ok: false, status: 502, error: r?.error || 'The code email could not be sent.' }; }
+  return { ok: true, sentTo: maskEmail(email) };
+}
+export async function verifyEmailCode(db, user, code, purpose) {
+  const c = String(code || '').replace(/\D/g, ''); if (c.length !== 6) return null;
+  const row = (await db.query(`SELECT * FROM mfa_email_codes WHERE user_id=$1 AND purpose=$2 AND used_at IS NULL AND expires_at>now() ORDER BY created_at DESC LIMIT 1`, [user.id, purpose])).rows[0];
+  if (!row || row.attempts >= 5) return null;
+  const good = crypto.timingSafeEqual(Buffer.from(row.code_hash), Buffer.from(sha(`${user.id}:${c}`)));
+  if (!good) { await db.query('UPDATE mfa_email_codes SET attempts=attempts+1 WHERE id=$1', [row.id]); return null; }
+  const r = await db.query('UPDATE mfa_email_codes SET used_at=now() WHERE id=$1 AND used_at IS NULL', [row.id]);
+  return r.rowCount ? row : null;
+}
+export async function createTrustedDevice(db, user, { label = '', ip = '' } = {}) {
+  const token = crypto.randomBytes(32).toString('base64url');
+  await db.query(`INSERT INTO trusted_devices(user_id,token_hash,label,ip,expires_at) VALUES($1,$2,$3,$4,now()+($5||' days')::interval)`, [user.id, sha(token), String(label).slice(0, 160), String(ip).slice(0, 64), String(TRUSTED_DEVICE_DAYS)]);
+  await db.query(`DELETE FROM trusted_devices WHERE user_id=$1 AND (expires_at<now() OR id NOT IN (SELECT id FROM trusted_devices WHERE user_id=$1 ORDER BY last_used_at DESC LIMIT 10))`, [user.id]);
+  return token;
+}
+export async function isTrustedDevice(db, user, token) {
+  if (!/^[A-Za-z0-9_-]{30,80}$/.test(String(token || ''))) return false;
+  const r = await db.query(`UPDATE trusted_devices SET last_used_at=now() WHERE user_id=$1 AND token_hash=$2 AND expires_at>now() RETURNING id`, [user.id, sha(token)]);
+  return r.rowCount > 0;
+}
+export const forgetTrustedDevices = (db, userId) => db.query('DELETE FROM trusted_devices WHERE user_id=$1', [userId]);
 
 // Second step of sign-in. Returns {ok:true} or {ok:false,reason}. A recovery code is used up when it works.
 export async function checkSecondFactor(db, user, code) {
   const raw = String(code || '').trim(); if (!raw) return { ok: false, reason: 'missing' };
   if (/^\d[\d\s]{5,7}$/.test(raw)) {
-    const step = verifyTotp(user.totp_secret, raw, user.totp_last_step);
-    if (step == null) return { ok: false, reason: 'bad' };
-    const r = await db.query('UPDATE auth_users SET totp_last_step=$2 WHERE id=$1 AND totp_last_step<$2', [user.id, step]);
-    return r.rowCount ? { ok: true } : { ok: false, reason: 'bad' };
+    if (user.totp_enabled) {
+      const step = verifyTotp(user.totp_secret, raw, user.totp_last_step);
+      if (step != null && (await db.query('UPDATE auth_users SET totp_last_step=$2 WHERE id=$1 AND totp_last_step<$2', [user.id, step])).rowCount) return { ok: true };
+    }
+    if (user.email_mfa_enabled && await verifyEmailCode(db, user, raw, 'login')) return { ok: true, viaEmail: true };
+    return { ok: false, reason: 'bad' };
   }
   const h = hashRecovery(raw), list = Array.isArray(user.totp_recovery) ? user.totp_recovery : [];
   if (!list.includes(h)) return { ok: false, reason: 'bad' };
@@ -73,12 +127,37 @@ export async function checkSecondFactor(db, user, code) {
   return r.rowCount ? { ok: true, recoveryUsed: true, recoveryLeft: list.length - 1 } : { ok: false, reason: 'bad' };
 }
 
-export function registerMfaRoutes(app, { auth, ownerOnly, requireDb, audit, bcrypt, bwipjs, limiter, cleanUsername }) {
+export function registerMfaRoutes(app, { auth, ownerOnly, requireDb, audit, bcrypt, bwipjs, limiter, cleanUsername, sendEmail, shopName = 'ITTR ShopFlow' }) {
   const fail = (res, status, error, code) => res.status(status).json({ error, ...(code ? { code } : {}) });
-  app.get('/api/auth/2fa', auth, (req, res) => res.json({
-    enabled: Boolean(req.user.totp_enabled), recommended: mfaRequiredForRole(req.user.role),
-    recoveryLeft: Array.isArray(req.user.totp_recovery) ? req.user.totp_recovery.length : 0
-  }));
+  app.get('/api/auth/2fa', auth, async (req, res, next) => { try {
+    const devices = Number((await requireDb().query('SELECT count(*)::int n FROM trusted_devices WHERE user_id=$1 AND expires_at>now()', [req.user.id])).rows[0].n);
+    res.json({ enabled: hasSecondFactor(req.user), app: Boolean(req.user.totp_enabled), email: Boolean(req.user.email_mfa_enabled), emailTo: req.user.email_mfa_enabled ? maskEmail(req.user.email) : '',
+      accountEmail: req.user.email || '', recommended: mfaRequiredForRole(req.user.role), recoveryLeft: Array.isArray(req.user.totp_recovery) ? req.user.totp_recovery.length : 0, rememberedDevices: devices });
+  } catch (e) { next(e); } });
+  // Email codes: confirm the password and the address with a code sent there, then sign-in asks for an emailed code.
+  app.post('/api/auth/2fa/email/setup', limiter, auth, async (req, res, next) => { try {
+    if (!(await bcrypt.compare(String(req.body?.password || ''), req.user.password_hash || ''))) return fail(res, 400, 'Your password is not correct.', 'BAD_PASSWORD');
+    const email = String(req.body?.email || req.user.email || '').trim().toLowerCase(); if (!validEmail(email)) return fail(res, 400, 'Enter a valid email address.');
+    const r = await sendEmailCode(requireDb(), req.user, { purpose: 'setup', email, sendEmail, shopName });
+    if (!r.ok) return fail(res, r.status || 502, r.error);
+    res.json({ ok: true, sentTo: r.sentTo });
+  } catch (e) { next(e); } });
+  app.post('/api/auth/2fa/email/enable', limiter, auth, async (req, res, next) => { try {
+    const db = requireDb(), row = await verifyEmailCode(db, req.user, req.body?.code, 'setup');
+    if (!row) return fail(res, 400, 'That code is not correct or has expired. Send a new one.', 'BAD_CODE');
+    const hadCodes = Array.isArray(req.user.totp_recovery) && req.user.totp_recovery.length, codes = hadCodes ? null : newRecoveryCodes();
+    await db.query(`UPDATE auth_users SET email=$2,email_mfa_enabled=true${codes ? ',totp_recovery=$3::jsonb' : ''},updated_at=now() WHERE id=$1`, codes ? [req.user.id, row.email, JSON.stringify(codes.map(hashRecovery))] : [req.user.id, row.email]);
+    const out = await db.query('DELETE FROM auth_sessions WHERE user_id=$1 AND id<>$2', [req.user.id, req.user.session_id]);
+    await audit(req.user.username, '2fa_email_enabled', { email: maskEmail(row.email), otherSessionsSignedOut: out.rowCount });
+    res.json({ ok: true, sentTo: maskEmail(row.email), recoveryCodes: codes, otherSessionsSignedOut: out.rowCount });
+  } catch (e) { next(e); } });
+  app.get('/api/auth/devices', auth, async (req, res, next) => { try {
+    const r = await requireDb().query('SELECT id,label,created_at,last_used_at,expires_at FROM trusted_devices WHERE user_id=$1 AND expires_at>now() ORDER BY last_used_at DESC', [req.user.id]);
+    res.json({ items: r.rows });
+  } catch (e) { next(e); } });
+  app.delete('/api/auth/devices', auth, async (req, res, next) => { try {
+    const r = await forgetTrustedDevices(requireDb(), req.user.id); await audit(req.user.username, 'remembered_devices_forgotten', { count: r.rowCount }); res.json({ ok: true, forgotten: r.rowCount });
+  } catch (e) { next(e); } });
   // Step 1: confirm the password, get a new secret as a QR code for the authenticator app (not active yet).
   app.post('/api/auth/2fa/setup', limiter, auth, async (req, res, next) => { try {
     if (!(await bcrypt.compare(String(req.body?.password || ''), req.user.password_hash || ''))) return fail(res, 400, 'Your password is not correct.', 'BAD_PASSWORD');
@@ -102,7 +181,7 @@ export function registerMfaRoutes(app, { auth, ownerOnly, requireDb, audit, bcry
     res.json({ ok: true, recoveryCodes: codes, otherSessionsSignedOut: out.rowCount });
   } catch (e) { next(e); } });
   app.post('/api/auth/2fa/recovery-codes', limiter, auth, async (req, res, next) => { try {
-    if (!req.user.totp_enabled) return fail(res, 409, '2-step login is not on.');
+    if (!hasSecondFactor(req.user)) return fail(res, 409, '2-step login is not on.');
     if (!(await bcrypt.compare(String(req.body?.password || ''), req.user.password_hash || ''))) return fail(res, 400, 'Your password is not correct.', 'BAD_PASSWORD');
     const codes = newRecoveryCodes();
     await requireDb().query('UPDATE auth_users SET totp_recovery=$2::jsonb WHERE id=$1', [req.user.id, JSON.stringify(codes.map(hashRecovery))]);
@@ -111,18 +190,20 @@ export function registerMfaRoutes(app, { auth, ownerOnly, requireDb, audit, bcry
   } catch (e) { next(e); } });
   // Turning it off needs the password AND a current code (or a recovery code).
   app.post('/api/auth/2fa/disable', limiter, auth, async (req, res, next) => { try {
-    if (!req.user.totp_enabled) return res.json({ ok: true });
+    if (!hasSecondFactor(req.user)) return res.json({ ok: true });
     if (!(await bcrypt.compare(String(req.body?.password || ''), req.user.password_hash || ''))) return fail(res, 400, 'Your password is not correct.', 'BAD_PASSWORD');
     const db = requireDb(), chk = await checkSecondFactor(db, req.user, req.body?.code);
     if (!chk.ok) return fail(res, 400, 'That code is not correct.', 'BAD_CODE');
-    await db.query(`UPDATE auth_users SET totp_enabled=false,totp_secret=NULL,totp_pending_secret=NULL,totp_recovery='[]'::jsonb,updated_at=now() WHERE id=$1`, [req.user.id]);
+    await db.query(`UPDATE auth_users SET totp_enabled=false,email_mfa_enabled=false,totp_secret=NULL,totp_pending_secret=NULL,totp_recovery='[]'::jsonb,updated_at=now() WHERE id=$1`, [req.user.id]);
+    await forgetTrustedDevices(db, req.user.id);
     await audit(req.user.username, '2fa_disabled', {});
     res.json({ ok: true });
   } catch (e) { next(e); } });
   // A manager lost their phone: the owner turns 2-step login off for them, and they sign in again and set it up anew.
   app.delete('/api/admin/managers/:username/2fa', auth, ownerOnly, async (req, res, next) => { try {
     const db = requireDb(), username = cleanUsername(req.params.username);
-    const r = await db.query(`UPDATE auth_users SET totp_enabled=false,totp_secret=NULL,totp_pending_secret=NULL,totp_recovery='[]'::jsonb,updated_at=now() WHERE username=$1 AND role='manager' RETURNING id`, [username]);
+    const r = await db.query(`UPDATE auth_users SET totp_enabled=false,email_mfa_enabled=false,totp_secret=NULL,totp_pending_secret=NULL,totp_recovery='[]'::jsonb,updated_at=now() WHERE username=$1 AND role='manager' RETURNING id`, [username]);
+    if (r.rowCount) await forgetTrustedDevices(db, r.rows[0].id);
     if (!r.rowCount) return fail(res, 404, 'Manager not found.');
     await db.query('DELETE FROM auth_sessions WHERE user_id=$1', [r.rows[0].id]);
     await audit(req.user.username, '2fa_reset_for_manager', { username });

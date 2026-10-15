@@ -44,6 +44,13 @@ try{
  eq((await request('/api/canned-jobs',{token:owner})).items.find(x=>x.id===cj.id).lines.length,2,'canned job edited');
  await request(`/api/canned-jobs/${cj.id}`,{method:'DELETE',token:owner});ok(!(await request('/api/canned-jobs',{token:owner})).items.some(x=>x.id===cj.id),'deleted canned job is hidden');
  console.log('PASS canned jobs: save with lines, stock part linked, duplicate/empty refused, apply under one job, use count, edit, delete, mechanics blocked');
+ // v24.57.0: parts search ignores dashes, spaces and dots.
+ await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,quantity,cost,price,status,inventory_managed,raw) VALUES('ps-oil','MO-1030','Motor oil 10W-30 (gal)',40,9,18,'Active',true,'{}'::jsonb)`);
+ const srch=async q=>(await request(`/api/parts?q=${encodeURIComponent(q)}&limit=8`,{token:owner})).items.map(p=>p.part_number);
+ ok((await srch('10w30')).includes('MO-1030')&&(await srch('10W 30')).includes('MO-1030')&&(await srch('oil 10w30')).includes('MO-1030'),'10w30 / 10W 30 / "oil 10w30" find Motor oil 10W-30');
+ ok((await srch('mo1030')).includes('MO-1030')&&(await srch('bp100')).includes('BP-100'),'part numbers match without the dash');
+ ok(!(await srch('10w40')).includes('MO-1030'),'a different oil does not match');
+ console.log('PASS parts search: punctuation and spaces ignored (10w30 finds 10W-30, bp100 finds BP-100)');
  // ---------------------------------------------------------------- customer links: estimate approval
  const pub=(t,opt={})=>request(`/api/public/link/${t}${opt.path||''}`,{...opt,allowError:true});
  const e2=await request('/api/estimates',{method:'POST',token:owner,body:{customerName:'Link Fleet',unitNumber:'55',customerNote:'Thanks for choosing us',internalNote:'SECRET-INTERNAL-NOTE'}});const e2id=e2.id;
@@ -83,6 +90,25 @@ try{
  await request(`/api/customer-links/${links[0].id}`,{method:'DELETE',token:owner});eq((await pub(t2)).code,'LINK_GONE','turned-off link stops working');
  await db.query("UPDATE customer_links SET expires_at=now()-interval '1 minute' WHERE id=$1",[links[1].id]);eq((await pub(t1)).code,'LINK_GONE','expired link stops working');
  console.log('PASS customer links (estimate): private token, no costs or notes shown, per-job approve/decline with signature, audit, locked after answer, back-to-draft reset, declined jobs left off the invoice, revoke, expiry');
+ // v24.58.0: estimate → work order (approved jobs only) → invoice linked to the work order.
+ const e3=await request('/api/estimates',{method:'POST',token:owner,body:{customerName:'WO Fleet',unitNumber:'88',vin:'1XKYD49X0LJ000088',mileage:'512000'}});
+ const k1=await request(`/api/estimates/${e3.id}/lines`,{method:'POST',token:owner,body:{lineType:'labor',description:'Replace front brakes',quantity:3,unitPrice:140}});
+ await request(`/api/estimates/${e3.id}/lines`,{method:'POST',token:owner,body:{lineType:'part',parentLineId:k1.id,description:'Brake pad set',partNumber:'BP-100',quantity:2,unitPrice:95}});
+ await request(`/api/estimates/${e3.id}/lines`,{method:'POST',token:owner,body:{lineType:'labor',description:'Replace mud flaps',quantity:0.5,unitPrice:140}});
+ const t3=(await request('/api/customer-links',{method:'POST',token:owner,body:{kind:'estimate',refId:String(e3.id)}})).url.split('/c/')[1],v3=await pub(t3);
+ await pub(t3,{path:'/decide',method:'POST',body:{name:'Sam Fleet',agree:true,jobs:{[v3.jobs[0].key]:'approve',[v3.jobs[1].key]:'decline'}}});
+ eq((await request(`/api/estimates/${e3.id}/work-order`,{method:'POST',token:mech,body:{},allowError:true})).status,403,'mechanics cannot create work orders from estimates');
+ eq((await request(`/api/estimates/${e3.id}/work-order`,{method:'POST',token:owner,body:{mechanic:'nobody'},allowError:true})).status,400,'unknown mechanic refused');
+ const wo3=await request(`/api/estimates/${e3.id}/work-order`,{method:'POST',token:owner,body:{mechanic:'mech1',priority:'High'}});ok(wo3.ok&&wo3.jobs===1,'work order created with the approved job only');
+ const w3=(await request('/api/state',{token:owner})).shopflow.payload.workorders.find(w=>String(w.id)===String(wo3.workOrderId));
+ ok(w3&&w3.unit==='88'&&w3.customer==='WO Fleet'&&w3.vin==='1XKYD49X0LJ000088'&&w3.mechanic==='mech1'&&w3.priority==='High'&&w3.truckHere===true&&w3.status==='Open','work order has the vehicle, customer and mechanic');
+ ok(w3.tasks.length===1&&w3.tasks[0].t==='Replace front brakes'&&!w3.tasks.some(t=>/mud flaps/i.test(t.t)),'declined job not on the work order');
+ ok(/Sam Fleet/.test(w3.notes)&&/Brake pad set \(BP-100\) ×2/.test(w3.notes)&&w3.estimateNumber===e3.estimateNumber,'notes say who approved and which parts are planned');
+ ok((await request('/api/state',{token:mech})).shopflow.payload.workorders.some(w=>String(w.id)===String(wo3.workOrderId)),'the assigned mechanic sees it right away');
+ eq((await request(`/api/estimates/${e3.id}`,{token:owner})).estimate.work_order_id,String(wo3.workOrderId),'estimate remembers its work order');
+ eq((await request(`/api/estimates/${e3.id}/work-order`,{method:'POST',token:owner,body:{},allowError:true})).code,'WO_EXISTS','only one work order per estimate');
+ const cv3=await request(`/api/estimates/${e3.id}/convert`,{method:'POST',token:owner,body:{}});eq((await request(`/api/invoices/${cv3.id}`,{token:owner})).invoice.work_order_id,String(wo3.workOrderId),'invoice from the estimate is linked to the work order');
+ console.log('PASS estimate → work order: approved jobs become tasks, declined left out, mechanic/vehicle/notes filled, one per estimate, invoice linked');
  // ---------------------------------------------------------------- customer links: inspection
  const st=(await request('/api/state',{token:owner})).shopflow;
  const wo={id:'7701',status:'Open',unit:'TR-9',customer:'Link Fleet',vin:'1FUJGLDR9CLBP8834',year:'2019',make:'Freightliner',model:'Cascadia',mechanic:'mech1',tasks:[],inspection:{required:true,type:'truck',status:'Completed',completedAt:new Date().toISOString(),results:{engine_oil:{status:'repair',note:'Oil leak at rear main seal'},brakes_front:{status:'ok'}}}};
@@ -128,6 +154,8 @@ try{
   if(f.To==='+15550000000'){res.writeHead(400,{'Content-Type':'application/json'});return res.end(JSON.stringify({message:'Invalid To number'}))}
   res.writeHead(201,{'Content-Type':'application/json'});res.end(JSON.stringify({sid:`SM${sent.length}x${Date.now()}`,status:'queued'}))})});
  await new Promise(r=>fake.listen(0,'127.0.0.1',r));
+ const mailsS=[];const fakeMailS=http.createServer((req,res)=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>{mailsS.push(JSON.parse(b));res.writeHead(200,{'Content-Type':'application/json'});res.end('{"id":"m1"}')})});await new Promise(r=>fakeMailS.listen(0,'127.0.0.1',r));
+ Object.assign(process.env,{RESEND_API_KEY:'re_test',INVOICE_FROM_EMAIL:'Shop <shop@ironttr.test>',RESEND_API_URL:`http://127.0.0.1:${fakeMailS.address().port}/emails`});
  Object.assign(process.env,{TWILIO_ACCOUNT_SID:'ACtest123',TWILIO_AUTH_TOKEN:'twilio-secret',TWILIO_FROM:'+13125550100',TWILIO_API_BASE:`http://127.0.0.1:${fake.address().port}`});
  await stop();await start();
  await db.query("UPDATE fullbay_import_customers SET phone='(312) 555-0199' WHERE id=$1",[cA]);
@@ -155,6 +183,15 @@ try{
  await twPost('/api/sms/inbound',{From:'+13125550199',Body:'Start',MessageSid:'SMin3'});
  ok((await request('/api/sms',{method:'POST',token:owner,body:{to:'3125550199',body:'Welcome back'}})).ok,'START turns it back on');
  ok((await db.query("SELECT 1 FROM server_audit WHERE action='sms_sent'")).rowCount>=2,'texts are in the audit log');
+ // v24.57.0: email a portal link straight from the link window.
+ await db.query("UPDATE fullbay_import_customers SET email='fleet@portal.test' WHERE id=$1",[cA]);
+ const PL2=await request('/api/customer-links',{method:'POST',token:owner,body:{kind:'portal',refId:String(cA)}});eq(PL2.suggestedEmail,'fleet@portal.test','link window suggests the customer email');
+ eq((await request('/api/customer-links/email',{method:'POST',token:owner,body:{kind:'portal',refId:String(cA),url:PL2.url.replace(/.$/,'Z'),to:'fleet@portal.test'},allowError:true})).status,400,'a made-up link cannot be emailed');
+ eq((await request('/api/customer-links/email',{method:'POST',token:owner,body:{kind:'portal',refId:String(cB),url:PL2.url,to:'fleet@portal.test'},allowError:true})).status,400,'a link cannot be emailed for another customer');
+ const em=await request('/api/customer-links/email',{method:'POST',token:owner,body:{kind:'portal',refId:String(cA),url:PL2.url,to:'fleet@portal.test'}});
+ const lm=mailsS.at(-1);ok(em.ok&&lm.to[0]==='fleet@portal.test'&&lm.html.includes(PL2.url)&&lm.text.includes(PL2.url)&&/account/i.test(lm.subject),'portal link emailed with the button and the plain link');
+ fakeMailS.close();for(const k of ['RESEND_API_KEY','INVOICE_FROM_EMAIL','RESEND_API_URL'])delete process.env[k];
+ console.log('PASS email a customer link: suggested address, sent with button, made-up or other-customer links refused');
  fake.close();for(const k of ['TWILIO_ACCOUNT_SID','TWILIO_AUTH_TOKEN','TWILIO_FROM','TWILIO_API_BASE'])delete process.env[k];
  console.log('PASS texting: off until set up, send through Twilio, linked to customer, signed incoming only, no duplicates, unread/read, delivery status, STOP/START');
  // ---------------------------------------------------------------- purchase orders

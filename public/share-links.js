@@ -13,13 +13,16 @@
   try{const d=await apiJSON('/api/customer-links',{method:'POST',body:JSON.stringify({kind:ctx.kind,refId:ctx.refId,days:Number(document.getElementById('shareDays')?.value||14)})});
    out.innerHTML=`<label class="shareUrl">${T('Private link for the customer')}<input id="shareUrlInput" readonly value="${E(d.url)}"></label>
     <div class="shareActs"><button type="button" data-share="copy">${T('Copy link')}</button>${window.ITTR_SMS?.enabled?`<button type="button" class="secondary" data-share="text">${T('Text to customer')}</button>`:''}<a class="button secondary" href="${E(d.url)}" target="_blank" rel="noopener noreferrer">${T('Preview')}</a></div>
-    <div class="muted" style="font-size:12px">${T('Works until')} ${E(when(d.expiresAt))}. ${T('Anyone with this link can see this page, so send it only to the customer.')}</div>`;
+    <div class="muted" style="font-size:12px">${T('Works until')} ${E(when(d.expiresAt))}. ${T('Anyone with this link can see this page, so send it only to the customer.')}</div>
+    <div class="shareActs" style="margin-top:10px"><input id="shareEmailTo" type="email" placeholder="${E(T('Customer email'))}" value="${E(d.suggestedEmail||'')}" style="flex:1 1 240px"><button type="button" data-share="email">✉ ${T('Email to customer')}</button></div>`;
    ctx.url=d.url;try{await navigator.clipboard.writeText(d.url);showToast(T('Link copied. Paste it in a text or email to the customer.'),'success')}catch(_){}
    history();ctx.onDone?.()}catch(e){out.innerHTML=`<div class="err">${E(e.message)}</div>`}}
  document.addEventListener('click',async e=>{const b=e.target.closest('#shareLinkModal [data-share]');if(!b)return;const a=b.dataset.share;
   if(a==='close')return closeModal('shareLinkModal');
   if(a==='create')return create();
   if(a==='copy'){const i=document.getElementById('shareUrlInput');try{await navigator.clipboard.writeText(i.value);showToast(T('Copied.'),'success')}catch(_){i.select()}return}
+  if(a==='email'){const to=document.getElementById('shareEmailTo')?.value.trim();if(!to)return showToast(T('Enter the customer\'s email address.'),'error');b.disabled=true;
+   try{const d=await apiJSON('/api/customer-links/email',{method:'POST',body:JSON.stringify({kind:ctx.kind,refId:ctx.refId,url:ctx.url,to})});showToast(`${T('Emailed to')} ${d.to.join(', ')}.`,'success');history()}catch(err){alert(err.message)}finally{b.disabled=false}return}
   if(a==='text')return window.ITTR_SMS?.compose?.({phone:ctx.phone,customerId:ctx.customerId,body:`${ctx.title}: ${ctx.url}`});
   if(a==='revoke'){if(!confirm(T('Turn off this link? The customer will no longer be able to open it.')))return;try{await apiJSON(`/api/customer-links/${b.dataset.id}`,{method:'DELETE'});history()}catch(err){alert(err.message)}}});
  window.shareCustomerLink=(opts={})=>{ctx={...opts};const m=modal();

@@ -43,7 +43,7 @@ import {ensureSmsSchema,registerSmsRoutes} from "./customer_sms.mjs";
 import {portalView,registerPortalRoutes} from "./customer_portal.mjs";
 import {ensureCustomerLinkSchema,registerCustomerLinkRoutes,createCustomerLink,publicBaseUrl} from "./customer_links.mjs";
 import {ensureCannedJobSchema,registerCannedJobRoutes} from "./canned_jobs.mjs";
-import {ensureMfaSchema,registerMfaRoutes,checkSecondFactor,mfaRequiredForRole,LOGIN_LOCK} from "./security_mfa.mjs";
+import {ensureMfaSchema,registerMfaRoutes,checkSecondFactor,mfaRequiredForRole,LOGIN_LOCK,hasSecondFactor,sendEmailCode,createTrustedDevice,isTrustedDevice,forgetTrustedDevices,TRUSTED_DEVICE_DAYS} from "./security_mfa.mjs";
 import {S3Client,PutObjectCommand,GetObjectCommand,DeleteObjectCommand,HeadBucketCommand} from "@aws-sdk/client-s3";
 import {getSignedUrl} from "@aws-sdk/s3-request-presigner";
 import { fileURLToPath } from "url";
@@ -202,7 +202,7 @@ app.post("/api/stripe/webhook",express.raw({type:"*/*",limit:"1mb"}),async(req,r
   res.json({received:true,recorded:!dup})
  }catch(e){try{await db.query("ROLLBACK")}catch{}console.error("[stripe webhook]",e?.message);res.status(500).json({error:"Could not record the payment."})}finally{db.release()}
 });
-// v24.56.0: the whole-shop record may grow past 3 MB; it gets 10 MB (and an alert past 6 MB) while work orders move to
+// v24.58.0: the whole-shop record may grow past 3 MB; it gets 10 MB (and an alert past 6 MB) while work orders move to
 // their own table. Every other endpoint keeps the 3 MB limit.
 app.use("/api/state",express.json({limit:"10mb"}));
 app.use(express.json({limit:"3mb"}));
@@ -252,7 +252,7 @@ app.use("/api/findings",uploadLimiter);
 function requireDb(){if(!pool){const e=new Error("DATABASE_URL is not configured. Add PostgreSQL to the deployment and set DATABASE_URL.");e.code="DB_NOT_CONFIGURED";throw e;}return pool;}
 function hashToken(t){return crypto.createHash("sha256").update(t).digest("hex")}
 function cleanUsername(v){return String(v||"").trim().toLowerCase().replace(/[^a-z0-9._-]/g,"").slice(0,64)}
-function publicUser(row){return {username:row.username,role:row.role,display:row.display_name||row.username,language:["uk","ua"].includes(String(row.language||"").toLowerCase())?"uk":"en",email:row.email||"",permissions:row.permissions||{},mfa:Boolean(row.totp_enabled),mfaRecommended:row.role==="admin"||row.role==="manager"}}
+function publicUser(row){return {username:row.username,role:row.role,display:row.display_name||row.username,language:["uk","ua"].includes(String(row.language||"").toLowerCase())?"uk":"en",email:row.email||"",permissions:row.permissions||{},mfa:Boolean(row.totp_enabled||row.email_mfa_enabled),mfaRecommended:row.role==="admin"||row.role==="manager"}}
 
 async function initDb(){
  if(!pool){console.warn("ITTR: DATABASE_URL missing. Cloud state/auth unavailable.");return;}
@@ -819,7 +819,7 @@ async function auth(req,res,next){
 const liveWss=new WebSocketServer({server:httpServer,path:"/ws/shop-status"});
 const liveClients=new Set();
 function broadcastShopStatus(type,payload={}){const msg=JSON.stringify({type,at:new Date().toISOString(),...payload});for(const ws of liveClients){if(ws.readyState===WebSocket.OPEN)try{ws.send(msg)}catch(_){}}}
-// v24.56.0: the sign-in token arrives in the first message ({type:"auth",token}), not in the web address, where
+// v24.58.0: the sign-in token arrives in the first message ({type:"auth",token}), not in the web address, where
 // proxies and server logs could record it. The ?token= form still works for app copies loaded before this version.
 async function liveSocketUser(token){if(!token)return null;const q=await requireDb().query(`SELECT u.username,u.display_name,u.role FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now() AND u.active=true`,[hashToken(token)]);return q.rows[0]||null}
 function admitLiveSocket(ws,user){ws.ittrUser=user;ws.isAlive=true;ws.on("pong",()=>{ws.isAlive=true});liveClients.add(ws);ws.send(JSON.stringify({type:"connected",at:new Date().toISOString()}));ws.on("close",()=>liveClients.delete(ws))}
@@ -852,7 +852,7 @@ const MECHANIC_HIDDEN_PART_FIELDS=new Set(["cost","cost_floor","inventory_value"
 function scrubPartCosts(v,depth=0){if(depth>6||v===null||typeof v!=="object")return v;if(Array.isArray(v))return v.map(x=>scrubPartCosts(x,depth+1));const o={};for(const [k,x] of Object.entries(v)){if(MECHANIC_HIDDEN_PART_FIELDS.has(k))continue;o[k]=scrubPartCosts(x,depth+1)}return o}
 function hidePartCostsFromMechanics(req,res,next){if(req.user?.role==="mechanic"){const send=res.json.bind(res);res.json=body=>send(scrubPartCosts(body))}next()}
 function ownerOnly(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Owner/Admin access required."});next()}
-// v24.56.0: a manager may use an area only when the owner ticked it ("denied unless ticked"). Before, every area not
+// v24.58.0: a manager may use an area only when the owner ticked it ("denied unless ticked"). Before, every area not
 // explicitly unticked was allowed, so each new area (Bills, …) was open to every manager automatically.
 const MANAGER_PERMISSION_KEYS=["invoices","financials","inventory","customers","reports","employees"];
 const cleanManagerPermissions=p=>Object.fromEntries(MANAGER_PERMISSION_KEYS.map(k=>[k,p?.[k]===true]));
@@ -1255,7 +1255,9 @@ app.get("/api/parts",auth,hidePartCostsFromMechanics,async(req,res,next)=>{try{
    barcode_aliases,purchase_taxable,sell_taxable,purchase_tax_rate,has_core,default_core_charge,updated_at,
    (coalesce(quantity,0)-coalesce(allocated,0)) available,last_purchase_at,last_purchase_cost
    FROM fullbay_import_parts
-   WHERE ($1='' OR coalesce(part_number,'') ILIKE $2 OR coalesce(description,'') ILIKE $2 OR coalesce(manufacturer,'') ILIKE $2 OR coalesce(vendor,'') ILIKE $2 OR coalesce(location,'') ILIKE $2 OR coalesce(internal_barcode,'') ILIKE $2 OR barcode_aliases::text ILIKE $2)
+   WHERE ($1='' OR coalesce(part_number,'') ILIKE $2 OR coalesce(description,'') ILIKE $2 OR coalesce(manufacturer,'') ILIKE $2 OR coalesce(vendor,'') ILIKE $2 OR coalesce(location,'') ILIKE $2 OR coalesce(internal_barcode,'') ILIKE $2 OR barcode_aliases::text ILIKE $2
+     -- v24.58.0: punctuation and spaces don't matter: "10w30" finds "10W-30", "bp100" finds "BP-100"; every word must match.
+     OR (cardinality($5::text[])>0 AND NOT EXISTS (SELECT 1 FROM unnest($5::text[]) t WHERE regexp_replace(lower(coalesce(part_number,'')||' '||coalesce(description,'')||' '||coalesce(manufacturer,'')),'[^a-z0-9]','','g') NOT LIKE '%'||t||'%')))
    ${extra}
    ORDER BY CASE
      WHEN lower(coalesce(part_number,''))=lower($1) THEN 0
@@ -1264,7 +1266,7 @@ app.get("/api/parts",auth,hidePartCostsFromMechanics,async(req,res,next)=>{try{
      WHEN coalesce(description,'') ILIKE $4 THEN 2
      ELSE 3 END,
      ${order?order+',':''}part_number NULLS LAST
-   LIMIT $3`,[q,like,limit,prefix]);
+   LIMIT $3`,[q,like,limit,prefix,q.toLowerCase().split(/\s+/).map(t=>t.replace(/[^a-z0-9]/g,'')).filter(t=>t.length>=2).slice(0,6)]);
  res.json({items:r.rows})
 }catch(e){next(e)}});
 app.get("/api/parts/scan/:code",auth,hidePartCostsFromMechanics,async(req,res,next)=>{try{const code=String(req.params.code||"").trim();const db=requireDb();let r=await db.query(`SELECT *,coalesce(quantity,0)-coalesce(allocated,0) available FROM fullbay_import_parts WHERE lower(coalesce(internal_barcode,''))=lower($1) OR lower(coalesce(part_number,''))=lower($1) OR barcode_aliases @> jsonb_build_array($1::text) LIMIT 1`,[code]);
@@ -1925,11 +1927,11 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.56.0");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.58.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
-// v24.56.0: sign-in checks, in order: account lock → password → 2-step code (when turned on).
+// v24.58.0: sign-in checks, in order: account lock → password → 2-step code (when turned on).
 // - An unknown username costs the same bcrypt time as a known one, so response time doesn't reveal real usernames.
 // - 8 wrong passwords or codes in a row lock that account for 15 minutes (on top of the per-network rate limit).
 // - With 2-step login on, a correct password alone answers {mfaRequired:true} and no token; the app then asks for
@@ -1942,21 +1944,29 @@ app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
  if(u.locked_until&&new Date(u.locked_until)>new Date()){const min=Math.max(1,Math.ceil((new Date(u.locked_until)-Date.now())/60000));await bcrypt.compare(password,LOGIN_DUMMY_HASH);return res.status(429).json({error:`Too many wrong attempts on this account. Try again in ${min} minute${min===1?"":"s"}.`,code:"ACCOUNT_LOCKED"})}
  const failed=async(msg,code)=>{const r=(await db.query(`UPDATE auth_users SET failed_logins=failed_logins+1,locked_until=CASE WHEN failed_logins+1>=$2 THEN now()+($3||' minutes')::interval ELSE locked_until END WHERE id=$1 RETURNING failed_logins,locked_until`,[u.id,LOGIN_LOCK.maxFailures,String(LOGIN_LOCK.minutes)])).rows[0];if(r&&r.failed_logins>=LOGIN_LOCK.maxFailures){await db.query("UPDATE auth_users SET failed_logins=0 WHERE id=$1",[u.id]);await audit(username,"account_locked",{minutes:LOGIN_LOCK.minutes})}return res.status(401).json({error:msg,...(code?{code}:{})})};
  if(!(await bcrypt.compare(password,u.password_hash)))return failed("Invalid username or password.");
- let second=null;
- if(u.totp_enabled){
-  if(!String(req.body?.code||"").trim())return res.json({mfaRequired:true});
+ let second=null,deviceToken=null;
+ // v24.58.0: a device the user chose to remember (30 days) skips the code; otherwise the code comes from the
+ // authenticator app or by email (sent here when the password is right and no code was typed yet).
+ if(hasSecondFactor(u)&&!(await isTrustedDevice(db,u,req.body?.deviceToken))){
+  const method=u.totp_enabled?"app":"email";
+  if(!String(req.body?.code||"").trim()){
+   if(u.email_mfa_enabled&&(req.body?.sendEmail===true||!u.totp_enabled)){const r=await sendEmailCode(db,u,{purpose:"login",email:u.email,sendEmail:sendShopEmail,shopName:shopProfile().name});
+    return res.json({mfaRequired:true,method:"email",app:Boolean(u.totp_enabled),sentTo:r.ok?r.sentTo:"",emailError:r.ok?"":r.error})}
+   return res.json({mfaRequired:true,method,email:Boolean(u.email_mfa_enabled)});
+  }
   second=await checkSecondFactor(db,u,req.body.code);
-  if(!second.ok)return failed("That code is not correct. Type the newest 6-digit code from your authenticator app, or a recovery code.","BAD_CODE");
+  if(!second.ok)return failed(u.totp_enabled&&!u.email_mfa_enabled?"That code is not correct. Type the newest 6-digit code from your authenticator app, or a recovery code.":"That code is not correct or has expired. Check the newest email, or send a new code.","BAD_CODE");
+  if(req.body?.rememberDevice===true)deviceToken=await createTrustedDevice(db,u,{label:String(req.get("user-agent")||"").slice(0,160),ip:req.ip});
  }
  await db.query("UPDATE auth_users SET failed_logins=0,locked_until=NULL WHERE id=$1",[u.id]);
  const raw=crypto.randomBytes(32).toString("base64url"),days=Math.max(1,Math.min(30,Number(process.env.SESSION_TTL_DAYS||7)));
  await db.query("INSERT INTO auth_sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+($3||' days')::interval)",[hashToken(raw),u.id,String(days)]);
- await audit(username,"login",{mfa:Boolean(u.totp_enabled),...(second?.recoveryUsed?{recoveryCodeUsed:true,recoveryLeft:second.recoveryLeft}:{})});
- res.json({token:raw,user:publicUser(u),...(second?.recoveryUsed?{recoveryLeft:second.recoveryLeft}:{})});
+ await audit(username,"login",{mfa:hasSecondFactor(u),rememberedDevice:Boolean(hasSecondFactor(u)&&!second),...(second?.recoveryUsed?{recoveryCodeUsed:true,recoveryLeft:second.recoveryLeft}:{})});
+ res.json({token:raw,user:publicUser(u),...(deviceToken?{deviceToken,deviceDays:TRUSTED_DEVICE_DAYS}:{}),...(second?.recoveryUsed?{recoveryLeft:second.recoveryLeft}:{})});
 }catch(e){next(e)}});
 app.post("/api/auth/logout",auth,async(req,res,next)=>{try{await requireDb().query("DELETE FROM auth_sessions WHERE token_hash=$1",[hashToken(req.sessionToken)]);res.json({ok:true})}catch(e){next(e)}});
 app.get("/api/auth/me",auth,(req,res)=>res.json({user:publicUser(req.user)}));
-// v24.56.0: every user can change their own password (the owner had no way to) and sign out their other devices.
+// v24.58.0: every user can change their own password (the owner had no way to) and sign out their other devices.
 // Changing the password signs out every other device, so a leaked or shared password stops working everywhere.
 const minPasswordLength=role=>role==="mechanic"?10:12;
 app.post("/api/auth/password",loginLimiter,auth,async(req,res,next)=>{try{
@@ -1967,7 +1977,7 @@ app.post("/api/auth/password",loginLimiter,auth,async(req,res,next)=>{try{
  if(next1.toLowerCase().includes(String(req.user.username||"").toLowerCase()))return res.status(400).json({error:"The new password must not contain your username."});
  const h=await bcrypt.hash(next1,12),db=requireDb();
  await db.query("UPDATE auth_users SET password_hash=$2,updated_at=now() WHERE id=$1",[req.user.id,h]);
- const out=await db.query("DELETE FROM auth_sessions WHERE user_id=$1 AND id<>$2",[req.user.id,req.user.session_id]);
+ const out=await db.query("DELETE FROM auth_sessions WHERE user_id=$1 AND id<>$2",[req.user.id,req.user.session_id]);await forgetTrustedDevices(db,req.user.id);
  await audit(req.user.username,"own_password_changed",{otherSessionsSignedOut:out.rowCount});
  res.json({ok:true,otherSessionsSignedOut:out.rowCount});
 }catch(e){next(e)}});
@@ -1976,7 +1986,7 @@ app.get("/api/auth/sessions",auth,async(req,res,next)=>{try{
  res.json({active:r.rows[0].n,others:Math.max(0,r.rows[0].n-1)});
 }catch(e){next(e)}});
 app.post("/api/auth/sessions/revoke-others",auth,async(req,res,next)=>{try{
- const out=await requireDb().query("DELETE FROM auth_sessions WHERE user_id=$1 AND id<>$2",[req.user.id,req.user.session_id]);
+ const out=await requireDb().query("DELETE FROM auth_sessions WHERE user_id=$1 AND id<>$2",[req.user.id,req.user.session_id]);await forgetTrustedDevices(requireDb(),req.user.id);
  await audit(req.user.username,"other_sessions_signed_out",{count:out.rowCount});res.json({ok:true,signedOut:out.rowCount});
 }catch(e){next(e)}});
 // ITTR v24.28.4 self-service language preference
@@ -2926,7 +2936,7 @@ app.get("/api/admin/productivity",auth,adminOnly,async(req,res,next)=>{try{
   res.json({ok:true,start:start.toISOString(),end:end.toISOString(),mechanic:mechanic||"all",sessions});
 }catch(e){next(e)}});
 
-// v24.56.0: the backup holds every table (invoices, payments, customers, bills, parts…), not only the work-order JSON
+// v24.58.0: the backup holds every table (invoices, payments, customers, bills, parts…), not only the work-order JSON
 // it had before. Secrets are left out: password hashes, sign-in sessions, OAuth states and Gmail tokens. Derived data
 // that is rebuilt on its own (translation cache, manual page text) is skipped to keep the file small. Streamed table by
 // table so a large shop does not need the whole database in memory.
@@ -3248,7 +3258,7 @@ app.delete("/api/photos/:photoId",auth,async(req,res,next)=>{
  }catch(e){next(e)}
 });
 
-// v24.56.0: one place decides a finding (manager button or the customer's approval link). The caller passes a pool
+// v24.58.0: one place decides a finding (manager button or the customer's approval link). The caller passes a pool
 // client; this runs its own transaction. Returns {ok:true,...} or {status,error}.
 async function applyFindingDecision(db,id,value,by){
  try{
@@ -3585,8 +3595,8 @@ app.post("/api/state/import-local",auth,ownerOnly,async(req,res,next)=>{try{
 app.get("/api/admin/staff",auth,managerPermission("employees"),async(req,res,next)=>{try{const q=await requireDb().query("SELECT username,display_name,role,email,permissions,language,active,created_at FROM auth_users ORDER BY role,display_name");res.json({items:q.rows.map(publicUser)})}catch(e){next(e)}});
 app.post("/api/admin/managers",auth,ownerOnly,async(req,res,next)=>{try{const username=cleanUsername(req.body?.username),display=String(req.body?.display||'').trim(),email=String(req.body?.email||'').trim(),password=String(req.body?.password||''),permissions=cleanManagerPermissions(req.body?.permissions);if(!username||!display||password.length<12)return res.status(400).json({error:'Username, name and password of at least 12 characters are required.'});const hash=await bcrypt.hash(password,12);await requireDb().query("INSERT INTO auth_users(username,display_name,password_hash,role,email,permissions) VALUES($1,$2,$3,'manager',$4,$5::jsonb)",[username,display,hash,email||null,JSON.stringify(permissions)]);await audit(req.user.username,'manager_created',{username,permissions});res.json({ok:true})}catch(e){if(e?.code==='23505')return res.status(409).json({error:'That username already exists.'});next(e)}});
 // v24.41.7: the owner can see manager accounts and reset their passwords (create/edit/delete already existed).
-app.get("/api/admin/managers",auth,ownerOnly,async(req,res,next)=>{try{const r=await requireDb().query("SELECT username,display_name,email,permissions,active,created_at,totp_enabled FROM auth_users WHERE role='manager' ORDER BY display_name");res.json({items:r.rows})}catch(e){next(e)}});
-app.patch("/api/admin/managers/:username/password",auth,ownerOnly,async(req,res,next)=>{try{const username=cleanUsername(req.params.username),password=String(req.body?.password||"");if(password.length<12)return res.status(400).json({error:"Manager passwords must be at least 12 characters."});const h=await bcrypt.hash(password,12);const q=await requireDb().query("UPDATE auth_users SET password_hash=$2,updated_at=now() WHERE username=$1 AND role='manager' RETURNING id",[username,h]);if(!q.rowCount)return res.status(404).json({error:"Manager not found."});await requireDb().query("DELETE FROM auth_sessions WHERE user_id=$1",[q.rows[0].id]);await audit(req.user.username,"manager_password_changed",{username});res.json({ok:true})}catch(e){next(e)}});
+app.get("/api/admin/managers",auth,ownerOnly,async(req,res,next)=>{try{const r=await requireDb().query("SELECT username,display_name,email,permissions,active,created_at,(totp_enabled OR email_mfa_enabled) totp_enabled FROM auth_users WHERE role='manager' ORDER BY display_name");res.json({items:r.rows})}catch(e){next(e)}});
+app.patch("/api/admin/managers/:username/password",auth,ownerOnly,async(req,res,next)=>{try{const username=cleanUsername(req.params.username),password=String(req.body?.password||"");if(password.length<12)return res.status(400).json({error:"Manager passwords must be at least 12 characters."});const h=await bcrypt.hash(password,12);const q=await requireDb().query("UPDATE auth_users SET password_hash=$2,updated_at=now() WHERE username=$1 AND role='manager' RETURNING id",[username,h]);if(!q.rowCount)return res.status(404).json({error:"Manager not found."});await requireDb().query("DELETE FROM auth_sessions WHERE user_id=$1",[q.rows[0].id]);await forgetTrustedDevices(requireDb(),q.rows[0].id);await audit(req.user.username,"manager_password_changed",{username});res.json({ok:true})}catch(e){next(e)}});
 app.put("/api/admin/managers/:username",auth,ownerOnly,async(req,res,next)=>{try{const username=cleanUsername(req.params.username),permissions=cleanManagerPermissions(req.body?.permissions),display=String(req.body?.display||'').trim(),email=String(req.body?.email||'').trim();const q=await requireDb().query("UPDATE auth_users SET display_name=coalesce(nullif($2,''),display_name),email=nullif($3,''),permissions=$4::jsonb,updated_at=now() WHERE username=$1 AND role='manager' RETURNING *",[username,display,email,JSON.stringify(permissions)]);if(!q.rowCount)return res.status(404).json({error:'Manager not found.'});await audit(req.user.username,'manager_permissions_updated',{username,permissions});res.json({user:publicUser(q.rows[0])})}catch(e){next(e)}});
 app.delete("/api/admin/managers/:username",auth,ownerOnly,async(req,res,next)=>{try{const q=await requireDb().query("DELETE FROM auth_users WHERE username=$1 AND role='manager' RETURNING username",[cleanUsername(req.params.username)]);if(!q.rowCount)return res.status(404).json({error:'Manager not found.'});await audit(req.user.username,'manager_deleted',{username:req.params.username});res.json({ok:true})}catch(e){next(e)}});
 app.post("/api/admin/users",auth,managerPermission("employees"),async(req,res,next)=>{try{
@@ -3596,7 +3606,7 @@ app.post("/api/admin/users",auth,managerPermission("employees"),async(req,res,ne
  await pool.query("INSERT INTO auth_users(username,display_name,password_hash,role) VALUES($1,$2,$3,'mechanic')",[username,display,h]);
  await audit(req.user.username,"mechanic_created",{username});res.json({user:{username,display,role:"mechanic"}});
 }catch(e){if(e?.code==="23505")return res.status(409).json({error:"That username already exists."});next(e)}});
-app.patch("/api/admin/users/:username/password",auth,managerPermission("employees"),async(req,res,next)=>{try{const username=cleanUsername(req.params.username),password=String(req.body?.password||"");if(password.length<10)return res.status(400).json({error:"Password must be at least 10 characters."});const h=await bcrypt.hash(password,12);const q=await pool.query("UPDATE auth_users SET password_hash=$2,updated_at=now() WHERE username=$1 AND role='mechanic' RETURNING id,username",[username,h]);if(!q.rowCount)return res.status(404).json({error:"Mechanic account not found."});await pool.query("DELETE FROM auth_sessions WHERE user_id=$1",[q.rows[0].id]);await audit(req.user.username,"mechanic_password_changed",{username,sessionsRevoked:true});res.json({ok:true})}catch(e){next(e)}});
+app.patch("/api/admin/users/:username/password",auth,managerPermission("employees"),async(req,res,next)=>{try{const username=cleanUsername(req.params.username),password=String(req.body?.password||"");if(password.length<10)return res.status(400).json({error:"Password must be at least 10 characters."});const h=await bcrypt.hash(password,12);const q=await pool.query("UPDATE auth_users SET password_hash=$2,updated_at=now() WHERE username=$1 AND role='mechanic' RETURNING id,username",[username,h]);if(!q.rowCount)return res.status(404).json({error:"Mechanic account not found."});await pool.query("DELETE FROM auth_sessions WHERE user_id=$1",[q.rows[0].id]);await forgetTrustedDevices(pool,q.rows[0].id);await audit(req.user.username,"mechanic_password_changed",{username,sessionsRevoked:true});res.json({ok:true})}catch(e){next(e)}});
 app.delete("/api/admin/users/:username",auth,managerPermission("employees"),async(req,res,next)=>{try{const username=cleanUsername(req.params.username);const q=await pool.query("DELETE FROM auth_users WHERE username=$1 AND role='mechanic' RETURNING username",[username]);if(!q.rowCount)return res.status(404).json({error:"Mechanic account not found."});await audit(req.user.username,"mechanic_deleted",{username});res.json({ok:true})}catch(e){next(e)}});
 
 function parseAiJson(text){let t=String(text||'').trim();t=t.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');return JSON.parse(t)}
@@ -4068,7 +4078,7 @@ app.patch('/api/invoices/:id/payments/:paymentId',auth,managerPermission("invoic
  // v24.49.0: one payment split over several invoices keeps one method / transaction ID.
  if(cur.customer_payment_id){await db.query('UPDATE customer_invoice_payments SET method=$2,reference=$3 WHERE customer_payment_id=$1::bigint',[cur.customer_payment_id,method,reference]);await db.query('UPDATE customer_payments SET method=$2,reference=$3 WHERE id=$1::bigint',[cur.customer_payment_id,method,reference])}
  await audit(req.user.username,'invoice_payment_edited',{invoiceId:req.params.id,paymentId:cur.id,before:{method:cur.method,reference:cur.reference},after:{method,reference}});res.json({ok:true})}catch(e){next(e)}});
-// v24.56.0: a transaction ID is found wherever it lives: on an invoice payment (also when the reference was typed
+// v24.58.0: a transaction ID is found wherever it lives: on an invoice payment (also when the reference was typed
 // differently, via the Gmail email it was applied from), on a customer credit not used yet, or still only on a
 // Zelle email in the Gmail inbox that was never applied.
 app.get('/api/payments/search',auth,managerPermission("invoices"),async(req,res,next)=>{try{const q=String(req.query.q||'').trim().slice(0,80);if(q.length<2)return res.json({items:[],credits:[],inbox:[]});
@@ -4814,19 +4824,19 @@ registerAICenterRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit,aiM
 registerComplianceRoutes(app,{auth,ownerOnly,adminOnly,requireDb,audit,PDFDocument,shopProfile,lookupFmcsaCarrier,searchFmcsaCarriersByName,samsaraPaged,samsaraConfigured:samsaraTokenPresent});
 // v24.48.0: Bills — every shop purchase, by expense category, ready for QuickBooks.
 registerBillRoutes(app,{auth,managerPermission,ownerOnly,requireDb,audit,resolveVendor,knownVendor,reportRange});
-// v24.56.0: customer links (estimate approval, inspection share; the fleet portal plugs in through portalView).
+// v24.58.0: customer links (estimate approval, inspection share; the fleet portal plugs in through portalView).
 const publicLimiter=rateLimit({windowMs:60*1000,max:60,standardHeaders:true,legacyHeaders:false,message:{error:"Too many requests. Please wait a minute and try again."}});
 async function readShopflowState(db){const r=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");const p=r.rows[0]?.payload;return p&&typeof p==="object"?p:{workorders:[],issues:[]}}
 async function findingPhotoUrls(db,findingIds){const out={};if(!findingIds.length||!r2Configured)return out;
  const rows=(await db.query("SELECT finding_id,r2_key FROM finding_photos WHERE finding_id = ANY($1::text[]) ORDER BY created_at",[findingIds]).catch(()=>({rows:[]}))).rows;
  for(const r of rows.slice(0,60)){try{(out[r.finding_id]||(out[r.finding_id]=[])).push(await getSignedUrl(requireR2(),new GetObjectCommand({Bucket:r2Bucket,Key:r.r2_key}),{expiresIn:3600}))}catch(_){}}return out}
 const customerLinkDeps={auth,adminOnly,managerPermission,requireDb,audit,publicLimiter,shopProfile,readShopflow:readShopflowState,applyFindingDecision,
- englishText:t=>englishFindingNote(t),findingPhotoUrls,inspectionItemsFor,broadcastShopStatus,publicFile:f=>path.join(__dirname,"public",f)};
+ englishText:t=>englishFindingNote(t),findingPhotoUrls,inspectionItemsFor,broadcastShopStatus,publicFile:f=>path.join(__dirname,"public",f),sendEmail:sendShopEmail};
 const portalShopInfo=()=>{const s=shopProfile();return {name:s.name,phone:s.phone,email:s.email||"",address:[s.address1,s.address2].filter(Boolean).join(", ")}};
 customerLinkDeps.portalView=(db,link)=>portalView(db,link,{shopInfo:portalShopInfo});
 registerCustomerLinkRoutes(app,customerLinkDeps);
 registerSmsRoutes(app,{auth,adminOnly,requireDb,audit,broadcastShopStatus,publicLimiter,formParser:express.urlencoded({extended:false,limit:"64kb"})});
-// v24.56.0: put parts on the shelf from a purchase order with the same cost rules as a manual receive (weighted
+// v24.58.0: put parts on the shelf from a purchase order with the same cost rules as a manual receive (weighted
 // average cost, last/previous purchase cost, purchase history). Runs inside the caller's transaction.
 async function receivePartStock(db,{partId,qty,unitCost,vendor,reference,username,note}){
  const r=(await db.query("SELECT * FROM fullbay_import_parts WHERE id=$1 FOR UPDATE",[partId])).rows[0];if(!r)throw Object.assign(new Error("A part on this order was deleted from stock."),{status:409});
@@ -4841,8 +4851,48 @@ registerPurchaseOrderRoutes(app,{auth,managerPermission,requireDb,audit,receiveS
 registerWorkOrderStoreRoutes(app,{auth,adminOnly,ownerOnly,requireDb,audit,broadcastShopStatus});
 registerWarrantyRoutes(app,{auth,adminOnly,ownerOnly,managerPermission,requireDb,audit,reportRange});
 registerPortalRoutes(app,{requireDb,publicLimiter,audit,invoicePdf:async(db,id)=>{const x=await getInvoiceBundle(db,id);return x?await invoicePdfBuffer(x):null}});
+// v24.58.0: estimate → work order. Approved (or not yet answered) jobs become tasks the mechanics can start; jobs the
+// customer declined are left out. Parts from the estimate are listed in the notes. The estimate remembers the work
+// order, and converting it to an invoice later links the invoice to the same work order.
+app.post("/api/estimates/:id/work-order",auth,managerPermission("invoices"),async(req,res,next)=>{
+ const db=await requireDb().connect();
+ try{
+  await db.query("BEGIN");
+  const e=(await db.query("SELECT * FROM customer_estimates WHERE id=$1::bigint FOR UPDATE",[req.params.id])).rows[0];
+  if(!e){await db.query("ROLLBACK");return res.status(404).json({error:"Estimate not found."})}
+  if(["declined","converted"].includes(e.status)){await db.query("ROLLBACK");return res.status(409).json({error:`This estimate is ${e.status}.`})}
+  const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
+  const sf=q.rows[0]?.payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
+  if(e.work_order_id&&sf.workorders.some(w=>String(w?.id)===String(e.work_order_id))){await db.query("ROLLBACK");return res.status(409).json({error:`Work order #${e.work_order_id} was already created from this estimate.`,workOrderId:e.work_order_id,code:"WO_EXISTS"})}
+  const lines=(await db.query("SELECT * FROM customer_estimate_lines WHERE estimate_id=$1::bigint ORDER BY sort_order,id",[e.id])).rows.filter(l=>l.customer_decision!=="declined");
+  const jobs=lines.filter(l=>l.line_type==="labor").map(l=>String(l.job_name||l.description||"").trim()).filter(Boolean);
+  if(!jobs.length){await db.query("ROLLBACK");return res.status(409).json({error:"There is no approved labor job on this estimate to put on a work order."})}
+  const parts=lines.filter(l=>l.line_type==="part").map(l=>`${l.description||l.part_number}${l.part_number&&l.description?` (${l.part_number})`:""} ×${Number(l.quantity)}`);
+  const mech=String(req.body?.mechanic||"").trim().toLowerCase();
+  if(mech&&!(await db.query("SELECT 1 FROM auth_users WHERE username=$1 AND role='mechanic' AND active=true",[mech])).rowCount){await db.query("ROLLBACK");return res.status(400).json({error:"Choose a mechanic from the list."})}
+  const unit=e.unit_id?(await db.query("SELECT * FROM customer_units WHERE id=$1::bigint",[e.unit_id])).rows[0]||{}:{};
+  const cust=e.customer_id?(await db.query("SELECT dot_number FROM fullbay_import_customers WHERE id=$1::bigint",[e.customer_id])).rows[0]||{}:{};
+  const id=(await highestUsedWorkOrderId(db,sf))+1;sf.lastWorkOrderId=id;const now=new Date(),here=req.body?.truckHere!==false;
+  const w={id,unit:e.unit_number||unit.unit_number||"",customer:e.customer_name||"",customerId:e.customer_id?String(e.customer_id):"",unitRecordId:e.unit_id?String(e.unit_id):"",
+   vin:e.vin||unit.vin||"",dotNumber:e.dot_number||cust.dot_number||"",year:unit.year||"",make:unit.make||"",model:unit.model||"",plate:unit.plate||"",mileage:Number(e.mileage||0)||"",
+   date:now.toISOString().slice(0,10),time:now.toTimeString().slice(0,5),mechanic:mech,helpers:[],priority:["Low","Normal","High","Urgent"].includes(req.body?.priority)?req.body.priority:"Normal",parking:"",
+   unitType:"customer",truckHere:here,status:"Open",notes:[`From estimate ${e.estimate_number}${e.customer_signed_name?` (approved online by ${e.customer_signed_name})`:e.status==="approved"?" (approved)":""}.`,parts.length?`Parts on the estimate: ${parts.join("; ")}.`:"",String(req.body?.notes||"").slice(0,1000)].filter(Boolean).join("\n"),
+   ...(here?{arrivedAt:now.toISOString(),arrivedBy:req.user.username}:{}),createdAt:now.toISOString(),createdBy:req.user.username,createdVia:"estimate",estimateId:String(e.id),estimateNumber:e.estimate_number,outcomeWorkflowVersion:1,
+   inspection:{required:false,type:"",subtype:"",status:"Not Required",currentSection:0,results:{}},
+   history:[{type:"created_from_estimate",at:now.toISOString(),by:req.user.username,estimateId:String(e.id),estimateNumber:e.estimate_number,jobs:jobs.length}],
+   tasks:jobs.map((text,i)=>({uid:`wo-${id}-task-${i}-${crypto.randomBytes(4).toString("hex")}`,t:text,done:false,startedAt:"",stoppedAt:"",runningBy:"",elapsedMs:0,completedAt:"",taskOutcome:"",outcomeNote:"",outcomeAt:"",outcomeBy:"",paused:false,pausedAt:"",pauseReason:"",pauseNote:"",source:"estimate"}))};
+  sf.workorders.push(w);
+  const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version",[JSON.stringify(sf),req.user.username]);
+  await db.query("UPDATE customer_estimates SET work_order_id=$2,updated_at=now() WHERE id=$1::bigint",[e.id,String(id)]);
+  await syncMechanicInspections(db,sf);
+  await db.query("COMMIT");
+  await audit(req.user.username,"work_order_from_estimate",{estimateId:e.id,estimateNumber:e.estimate_number,workOrderId:id,jobs:jobs.length,mechanic:mech||null});
+  broadcastShopStatus("work_order_created",{workOrderId:id,by:req.user.username,version:Number(u.rows[0].version)});
+  res.status(201).json({ok:true,workOrderId:id,jobs:jobs.length,version:Number(u.rows[0].version)});
+ }catch(err){try{await db.query("ROLLBACK")}catch(_){}next(err)}finally{db.release()}
+});
 registerCannedJobRoutes(app,{auth,adminOnly,managerPermission,requireDb,audit});
-registerMfaRoutes(app,{auth,ownerOnly,requireDb,audit,bcrypt,bwipjs,limiter:loginLimiter,cleanUsername});
+registerMfaRoutes(app,{auth,ownerOnly,requireDb,audit,bcrypt,bwipjs,limiter:loginLimiter,cleanUsername,sendEmail:sendShopEmail,shopName:shopProfile().name});
 // v24.49.0: one customer payment split across several invoices; the rest stays as customer credit.
 registerCustomerPaymentRoutes(app,{auth,managerPermission,requireDb,audit,recalcInvoice,paymentMethod});
 app.use("/api",(req,res)=>res.status(404).json({error:"API endpoint not found"}));
