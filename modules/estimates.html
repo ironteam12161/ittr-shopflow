@@ -22,7 +22,7 @@
 .estLookup{position:relative}.estLookupDrop{position:absolute;z-index:5;left:0;right:0;top:100%;background:#fff;border:1px solid var(--est-line);border-radius:10px;box-shadow:0 12px 30px rgba(15,23,42,.15);max-height:260px;overflow:auto}
 .estLookupDrop button{display:block;width:100%;text-align:left;background:#fff;color:var(--est-ink);border-radius:0;border-bottom:1px solid var(--est-line);font-weight:600;min-height:auto;padding:9px 12px}
 .estLookupDrop button small{display:block;color:var(--est-muted);font-weight:500}
-.estJob{border:1px solid var(--est-line);border-radius:12px;margin-bottom:12px;overflow:hidden}
+.estJob{border:1px solid var(--est-line);border-radius:12px;margin-bottom:12px;position:relative}.estJob>:first-child{border-radius:11px 11px 0 0}.estJob>:last-child{border-radius:0 0 11px 11px}
 .estJobHead{display:flex;gap:8px;align-items:center;background:var(--est-soft);padding:10px 12px;border-bottom:1px solid var(--est-line)}
 .estJobHead .estNo{background:#c2410c;color:#fff;border-radius:6px;min-width:24px;text-align:center;font-weight:800;font-size:12px;padding:3px 0}
 .estRow{display:grid;grid-template-columns:52px minmax(0,1fr) 110px 76px 90px 44px 90px 32px;gap:6px;align-items:center;padding:6px 12px;border-bottom:1px solid #f1f5f9}
@@ -33,7 +33,7 @@
 .estRow .del{background:transparent;color:#b42318;min-height:32px;padding:4px}
 .estRowHead{font-size:11px;color:var(--est-muted);font-weight:700;background:#fff;text-transform:uppercase;letter-spacing:.03em;padding-top:0;padding-bottom:0}
 .estJobFoot{display:flex;gap:8px;padding:8px 12px;flex-wrap:wrap}.estJobFoot button{min-height:34px;padding:6px 10px;font-size:13px}
-.estPartDrop{position:relative}.estPartDrop .estLookupDrop{min-width:320px}
+.estPartDrop{position:relative}.estPartDrop .estLookupDrop{min-width:320px;z-index:30}
 .estSide{display:flex;flex-direction:column;gap:12px}
 .estTotals{border:1px solid var(--est-line);border-radius:12px;padding:12px}
 .estTotals div{display:flex;justify-content:space-between;padding:5px 0;font-variant-numeric:tabular-nums}
