@@ -131,7 +131,7 @@ function render(){
 }
 function applyTab(){
  // v24.51.0: old tab names from before the rebuild.
- S.tab=({parts:'spend',vendors:'spend'})[S.tab]||S.tab;const team=['mech','clock','labor'].includes(S.tab);if(team)S.teamTab=S.tab;
+ S.tab=({parts:'spend',vendors:'spend'})[S.tab]||S.tab;const team=['mech','clock','labor','comebacks'].includes(S.tab);if(team)S.teamTab=S.tab;
  S.scope.host.querySelectorAll('.repTabs [data-rep="tab"]').forEach(b=>{const on=b.dataset.group==='team'?team:b.dataset.t===S.tab;b.classList.toggle('active',on);b.setAttribute('aria-selected',on)});
  S.scope.host.querySelectorAll('#repSubTabs [data-rep="tab"]').forEach(b=>b.classList.toggle('active',b.dataset.t===S.tab));$('#repSubTabs')?.classList.toggle('on',team);
  S.scope.host.querySelectorAll('.repPanel').forEach(p=>p.classList.toggle('active',p.dataset.panel===S.tab));
@@ -142,6 +142,7 @@ function applyTab(){
  if(S.tab==='mech')loadMech();
  if(S.tab==='clock')loadClock();
  if(S.tab==='labor')loadLabor();
+ if(S.tab==='comebacks')loadComebacks();
  if(S.tab==='spend')loadVendors();
  if(S.tab==='ai')loadAiUsage();
  requestAnimationFrame(drawCharts);
@@ -265,6 +266,20 @@ function shiftForm(s){const ms=S.clock.mechanics,m=repModal(`<h2 style="margin-t
 // ---------------------------------------------------------------- Labor times
 const hh=v=>v==null?'—':`${Number(v).toFixed(1)} h`;
 const pctTag=p=>p==null?'—':`<span class="repTag ${p<=-10?'ok':p>=15?'late':''}">${p>0?'+':''}${p}%</span>`;
+// v24.55.0: comebacks: the same repair on the same unit again within the comeback window (Warranty settings).
+async function loadComebacks(){const box=$('#repComebacks');if(!box)return;const key=`${S.range.from}|${S.range.to}`;if(S.cb&&S.cbKey===key)return renderComebacks();
+ box.innerHTML='<div class="repEmpty">Looking for repeat repairs…</div>';
+ try{S.cb=await api(`/api/reports/comebacks?from=${S.range.from}&to=${S.range.to}`);S.cbKey=key;renderComebacks()}catch(e){box.innerHTML=`<div class="repEmpty">${h(e.message)}</div>`}}
+function renderComebacks(){const d=S.cb,box=$('#repComebacks');if(!box||!d)return;const s=d.settings;
+ const cols=[{key:'again',label:'Came back',sortVal:r=>r.again.date,html:r=>`${h(r.again.date)}<div class="muted">${h(r.again.ref)}</div>`},{key:'unit',label:'Unit',html:r=>`<b>${h(r.unit)}</b><div class="muted">${h(r.customer)}</div>`},
+  {key:'label',label:'Repair',html:r=>`<b>${h(r.label)}</b><div class="muted" title="${h(r.again.text)}">${h(String(r.again.text||'').slice(0,90))}</div>`},{key:'days',label:'Days later',num:true,html:r=>`<b>${r.days}</b>`},
+  {key:'first',label:'First repair',sortVal:r=>r.first.date,html:r=>`${h(r.first.date)} · ${h(r.first.ref)}<div class="muted">${h(r.first.mechanic||'—')}</div>`}];
+ const bar=(list)=>list.length?`<div class="repBars">${list.slice(0,8).map(x=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:4px 0;border-bottom:1px solid #f2f4f7"><span>${h(x.name)}</span><b>${x.n}</b></div>`).join('')}</div>`:'<div class="muted">None.</div>';
+ box.innerHTML=`<div class="repKpiRow" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:12px">
+   <div class="repCard"><div class="sub">Repairs done</div><b style="font-size:24px">${d.repairs}</b></div><div class="repCard"><div class="sub">Came back within ${s.comebackDays} days</div><b style="font-size:24px;color:${d.comebacks?'#b42318':'#067647'}">${d.comebacks}</b></div><div class="repCard"><div class="sub">Comeback rate</div><b style="font-size:24px">${d.rate}%</b></div></div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">${card('By repair type','Which repairs come back most.',bar(d.byType))}${card('By mechanic (first repair)','Who did the repair that came back. Use it to coach, not to blame: parts fail too.',bar(d.byMechanic))}</div>
+  ${card('Comebacks','The same kind of repair on the same unit again. PM, inspections, diagnostics, tires, lights, body and welding are not counted.',table('comebacks',cols,d.items,{empty:'No comebacks in this period.'}))}
+  ${isOwner()?card('Warranty terms','Used for comebacks here and for the "under warranty" notice on work orders.',`<div class="repForm"><div class="field"><label>Labor warranty (days)</label><input id="wtLabor" type="number" min="0" value="${s.laborDays}"></div><div class="field"><label>Parts warranty (days)</label><input id="wtParts" type="number" min="0" value="${s.partsDays}"></div><div class="field"><label>Count as comeback within (days)</label><input id="wtCome" type="number" min="1" value="${s.comebackDays}"></div></div><div style="display:flex;justify-content:flex-end;margin-top:10px"><button data-rep="save-warranty">Save warranty terms</button></div>`):''}`}
 async function loadLabor(){
  const box=$('#repLabor');if(!box)return;const key=`${S.range.from}|${S.range.to}|${S.laborSrc||'all'}`;
  if(S.labor&&S.laborKey===key)return renderLabor();
@@ -515,7 +530,7 @@ async function onClick(ev){
  try{
   if(a==='preset'){S.preset=b.dataset.p;S.range=presetRange(S.preset);return load()}
   if(a==='tab'){S.tab=b.dataset.group==='team'?(S.teamTab||'mech'):b.dataset.t;try{sessionStorage.setItem('ittr_reports_tab',S.tab)}catch(_){}return applyTab()}
-  if(a==='sort'){const cur=S.sort[b.dataset.table];S.sort[b.dataset.table]={key:b.dataset.key,dir:cur?.key===b.dataset.key?-cur.dir:-1};return S.tab==='mech'?renderMech():S.tab==='clock'?renderClock():S.tab==='labor'?renderLabor():S.tab==='spend'?(renderVendors()):S.tab==='ai'?renderAiUsage():render()}
+  if(a==='sort'){const cur=S.sort[b.dataset.table];S.sort[b.dataset.table]={key:b.dataset.key,dir:cur?.key===b.dataset.key?-cur.dir:-1};return S.tab==='mech'?renderMech():S.tab==='clock'?renderClock():S.tab==='labor'?renderLabor():S.tab==='comebacks'?renderComebacks():S.tab==='spend'?(renderVendors()):S.tab==='ai'?renderAiUsage():render()}
   if(a==='csv')return downloadCsv(b.dataset.k);
   if(a==='save-hours'){const wd=[...S.scope.host.querySelectorAll('[data-wd]')].filter(x=>x.checked).map(x=>Number(x.dataset.wd));await api('/api/reports/mechanics/settings',{method:'PUT',body:{start:$('#shOpen').value,end:$('#shClose').value,timezone:$('#shTz').value,breakAllowanceMinutes:$('#shLunch').value,idleGapMinutes:$('#shGap').value,workdays:wd}});S.mech=null;toast('Shop hours saved.','success');return loadMech()}
   if(a==='print')return window.print();
@@ -525,6 +540,7 @@ async function onClick(ev){
   if(a==='shift-del'){const reason=prompt('Why delete this shift? (kept in the history)');if(!reason)return;await api(`/api/timeclock/shifts/${b.dataset.id}`,{method:'DELETE',body:{reason}});toast('Shift deleted.','success');S.clock=null;S.mech=null;return loadClock()}
   if(a==='shift-hist'){const d=await api(`/api/timeclock/shifts/${b.dataset.id}/history`);const f=x=>x?`${dt(x.clockIn)} → ${x.clockOut?dt(x.clockOut):'open'}`:'—';repModal(`<h2 style="margin-top:0">Shift history</h2>${d.items.map(e=>`<div style="padding:8px 0;border-bottom:1px solid #eef0f3"><b>${h(e.action)}</b> by ${h(e.edited_by)} · ${h(dt(e.edited_at))}<div class="muted">${h(f(e.before))} ⟶ ${h(f(e.after))}</div><div>Reason: ${h(e.reason)}</div></div>`).join('')||'<div class="repEmpty">No changes.</div>'}<div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="secondary" data-close>Close</button></div>`);return}
   if(a==='clock-settings'){await api('/api/timeclock/settings',{method:'PUT',body:{autoClockIn:$('#tcAuto').value==='yes',requireClockIn:$('#tcRequire').value==='yes',weeklyOvertimeHours:$('#tcOt').value,weekStartsOn:$('#tcWeek').value,maxShiftHours:$('#tcMax').value}});toast('Time clock settings saved.','success');S.clock=null;return loadClock()}
+  if(a==='save-warranty'){try{await api('/api/warranty/settings',{method:'PUT',body:{laborDays:Number($('#wtLabor').value),partsDays:Number($('#wtParts').value),comebackDays:Number($('#wtCome').value)}});toast('Warranty terms saved.','success');S.cb=null;return loadComebacks()}catch(err){return toast(err.message,'error')}}
   if(a==='labor-src'){S.laborSrc=b.dataset.k;return loadLabor()}
   if(a==='labor-edit')return openLaborEditor();
   if(a==='jt-add'){readLaborEditor();S.jobTypes.unshift({key:'',label:'',keywords:[],bookHours:null});return paintLaborEditor()}

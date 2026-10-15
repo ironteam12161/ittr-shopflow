@@ -37,7 +37,7 @@ export function documentEmailHtml({ kind = 'invoice', doc = {}, lines = [], mess
     .map(([k, v], i, a) => `<tr><td style="padding:4px 0;font-size:${i === a.length - 1 ? 15 : 13}px;color:${i === a.length - 1 ? PALETTE.ink : PALETTE.muted};${i === a.length - 1 ? 'font-weight:800' : ''}">${k}</td><td style="padding:4px 0;text-align:right;font-size:${i === a.length - 1 ? 15 : 13}px;color:${PALETTE.ink};font-weight:${i === a.length - 1 ? 800 : 600}">${money(v)}</td></tr>`).join('');
   const button = (href, label, bg, fg = '#fff', border = bg) => `<a href="${escHtml(href)}" style="display:inline-block;background:${bg};color:${fg};border:2px solid ${border};padding:13px 22px;border-radius:10px;text-decoration:none;font-weight:800;font-size:15px;margin:4px 6px 4px 0">${label}</a>`;
   const ctas = [
-    payUrl && !isEst && balance > 0.004 ? button(payUrl, payLabel, accent) : '',
+    payUrl && (isEst || balance > 0.004) ? button(payUrl, payLabel, accent) : '',
     shop.phone ? button(`tel:${String(shop.phone).replace(/[^\d+]/g, '')}`, `Call ${escHtml(shop.phone)}`, '#ffffff', PALETTE.ink, PALETTE.line) : ''
   ].join('');
   const preheader = isEst ? `Estimate ${number} — ${money(total)}` : balance > 0.004 ? `Invoice ${number} — ${money(balance)} due` : `Invoice ${number} — paid in full`;

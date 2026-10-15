@@ -85,7 +85,7 @@ check('language role-sync marker present',root.includes('ITTR_LANGUAGE_ROLE_SYNC
 const partsInsert=server.match(/INSERT INTO fullbay_import_parts\([\s\S]*?VALUES\(([^)]*)\)[\s\S]*?ON CONFLICT\(source_key\)/);
 if(partsInsert){const refs=[...partsInsert[1].matchAll(/\$(\d+)/g)].map(m=>Number(m[1]));const max=refs.length?Math.max(...refs):0;check('Fullbay v23.7.1 max parameter remains $22',max===22,`max=$${max}`);check('Fullbay v23.7.1 has no $23',!refs.includes(23));}else check('Fullbay inventory INSERT regression target found',false);
 
-for(const name of ['customers','invoices','parts','procenter','trucksearch','estimates','reports','compliance','bills']){
+for(const name of ['customers','invoices','parts','procenter','trucksearch','estimates','reports','compliance','bills','purchaseorders']){
  for(const ext of ['html','js']){
   const a=`modules/${name}.${ext}`,b=`public/modules/${name}.${ext}`;
   check(`${name}.${ext} exists in both module trees`,exists(a)&&exists(b));

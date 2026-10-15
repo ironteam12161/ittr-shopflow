@@ -80,7 +80,7 @@ function renderEditor(){
  const labors=lines.filter(l=>l.line_type==='labor'),used=new Set();
  const jobs=labors.map((lab,n)=>{const kids=lines.filter(l=>l.line_type!=='labor'&&String(l.parent_line_id||'')===String(lab.id));kids.forEach(k=>used.add(k.id));used.add(lab.id);
   const sum=[lab,...kids].reduce((a,l)=>a+Number(l.line_total||0),0);
-  return `<div class="estJob"><div class="estJobHead"><span class="estNo">${n+1}</span><b style="flex:1">${h(lab.description||lab.job_name||'Job')}</b><span class="estNum">${usd(sum)}</span></div>
+  return `<div class="estJob"><div class="estJobHead"><span class="estNo">${n+1}</span><b style="flex:1">${h(lab.description||lab.job_name||'Job')}${lab.customer_decision?` <span class="estPill ${lab.customer_decision==='approved'?'approved':'declined'}" title="Customer answer from the online link">${lab.customer_decision==='approved'?'Customer approved':'Customer declined'}</span>`:''}</b><span class="estNum">${usd(sum)}</span></div>
    ${lineRow(lab,locked,true)}${kids.map(k=>lineRow(k,locked,false)).join('')}
    ${locked?'':`<div class="estJobFoot"><span class="estPartDrop"><input data-est-input="part" data-parent="${lab.id}" placeholder="+ Add part: search inventory or type…" style="min-width:260px;padding:7px 10px;border:1px solid #d0d5dd;border-radius:8px"><span class="estLookupDrop hidden" data-part-drop="${lab.id}"></span></span><button class="secondary" data-est="add-other" data-parent="${lab.id}">+ Other charge</button></div>`}</div>`}).join('');
  const others=lines.filter(l=>!used.has(l.id));
@@ -88,6 +88,7 @@ function renderEditor(){
  const actions=[];
  actions.push(`<button class="secondary" data-est="pdf">PDF</button>`);
  if(e.status!=='converted')actions.push(`<button class="secondary" data-est="email">Email</button>`);
+ if(['draft','sent'].includes(e.status)&&lines.length)actions.push(`<button class="secondary" data-est="share" title="Private link: the customer approves or declines each job and signs">📤 Send for approval</button>`);
  if(e.status==='draft')actions.push(`<button class="secondary" data-est="status" data-to="sent">Mark sent</button>`);
  if(['draft','sent'].includes(e.status))actions.push(`<button class="success" data-est="status" data-to="approved">Approved</button><button class="danger" data-est="status" data-to="declined">Declined</button>`);
  if(['approved','sent','draft'].includes(e.status))actions.push(`<button data-est="convert">Convert to invoice →</button>`);
@@ -105,7 +106,7 @@ function renderEditor(){
   ${lines.length?`<div class="estJob" style="margin-bottom:6px;border:0">${ROW_HEAD}</div>`:''}
   ${jobs||'<div class="empty" style="border:1px dashed #cbd5e1;border-radius:12px;margin-bottom:12px">No jobs yet. Add the first labor operation below.</div>'}
   ${others.length?`<div class="estJob"><div class="estJobHead"><b style="flex:1">Other items & fees</b><span class="estNum">${usd(others.reduce((a,l)=>a+Number(l.line_total||0),0))}</span></div>${others.map(l=>lineRow(l,locked,false)).join('')}</div>`:''}
-  ${locked?'':`<div class="estAddJob"><input id="estNewJob" placeholder="New job, e.g. Replace front brakes" aria-label="New job description"><input id="estNewJobHours" type="number" step="0.1" min="0" value="1" style="max-width:90px" aria-label="Hours"><button data-est="add-job">+ Add job</button></div>`}
+  ${locked?'':`<div class="estAddJob"><input id="estNewJob" placeholder="New job, e.g. Replace front brakes" aria-label="New job description"><input id="estNewJobHours" type="number" step="0.1" min="0" value="1" style="max-width:90px" aria-label="Hours"><button data-est="add-job">+ Add job</button><button type="button" class="secondary" data-est="canned" title="Add a saved job package (labor + parts)">+ Canned job</button></div>`}
  </div>
  <aside class="estSide">
   <div class="estTotals"><div><span>Subtotal</span><b>${usd(Number(e.subtotal)+Number(e.discount||0))}</b></div>${Number(e.discount)?`<div><span>Discount</span><span>−${usd(e.discount)}</span></div>`:''}<div><span>Tax (${Number(e.tax_rate||0)}%)</span><span>${usd(e.tax)}</span></div><div class="grand"><span>Total</span><span>${usd(e.total)}</span></div></div>
@@ -184,6 +185,8 @@ async function onClick(ev){
   if(act==='open-invoice')return goInvoice(b.dataset.id);
   if(act==='delete'){if(!confirm(`Delete ${S.cur.estimate.estimate_number}? This cannot be undone.`))return;await api(`/api/estimates/${id}`,{method:'DELETE'});toast('Estimate deleted.');return closeEditor()}
   if(act==='del-line')return api(`/api/estimates/${id}/lines/${b.dataset.id}`,{method:'DELETE'}).then(reload);
+  if(act==='share')return window.shareCustomerLink?.({kind:'estimate',refId:String(S.cur.estimate.id),title:`Estimate ${S.cur.estimate.estimate_number}`,customerId:S.cur.estimate.customer_id,onDone:reload});
+  if(act==='canned')return window.openCannedJobs?.({target:'estimate',id:S.cur.estimate.id,onDone:reload});
   if(act==='add-job'){const d=String($('#estNewJob')?.value||'').trim();if(!d)return toast('Describe the job first.','error');return addLine({lineType:'labor',description:d,quantity:Number($('#estNewJobHours')?.value||1),unitPrice:defaultRate(),taxable:false})}
   if(act==='add-other')return addLine({lineType:'other',description:'Other charge',quantity:1,unitPrice:0,parentLineId:b.dataset.parent});
   if(act==='pick-part'){const p=S.partResults[Number(b.dataset.i)];if(p)return addLine({lineType:'part',parentLineId:b.dataset.parent,inventoryPartId:p.id,partNumber:p.part_number,description:p.description,quantity:1,unitPrice:Number(p.price||0),unitCost:Number(p.cost||0),taxable:p.sell_taxable!==false});return}
