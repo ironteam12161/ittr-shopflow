@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.52.0-SECURITY-20261015">
+<meta name="ittr-build" content="ITTR-24.53.0-2STEP-20261015">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -26,7 +26,7 @@
  P.removeItem=function(k){rm.call(this,k);if(this===sessionStorage&&keys[k])try{rm.call(localStorage,'ittr_app_'+k)}catch(e){}};
 }catch(e){}})();
 </script>
-<title>ITTR ShopFlow v24.52.0</title>
+<title>ITTR ShopFlow v24.53.0</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -51,7 +51,7 @@ form .row{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.field{margi
 .modal{display:none;position:fixed;inset:0;background:rgba(17,24,39,.55);z-index:30;padding:18px;overflow:auto}.modal.open{display:block}.modalbox{max-width:800px;background:#fff;margin:30px auto;border-radius:15px;padding:20px}.modalhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.x{background:#eef2f7;color:#111827}
 .jobcard{margin-bottom:12px}.jobtop{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.jobs{display:grid;grid-template-columns:1fr 1fr;gap:12px}.muted{color:var(--muted);font-size:13px}.task{padding:10px;border:1px solid var(--line);border-radius:9px;margin:8px 0;display:flex;gap:9px;align-items:flex-start}.task input{margin-top:3px}.taskrow{padding:12px;border:1px solid var(--line);border-radius:10px;margin:8px 0;background:#fff}.taskhead{display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap}.taskcontrols{display:flex;gap:7px;flex-wrap:wrap;align-items:center}.timerinfo{font-size:12px;color:var(--muted);margin-top:7px}.running{border-color:#f79009;background:#fffcf5}.taskdone{border-color:#75e0a7;background:#f6fef9}.historyitem{padding:10px 0;border-bottom:1px solid var(--line)}.historyitem:last-child{border-bottom:0}.reactivated{background:#fff7ed;border:1px solid #fedf89;border-radius:10px;padding:10px;margin:10px 0}.futureNote{background:#f9fafb;border-left:4px solid #98a2b3;padding:10px;border-radius:8px;margin:8px 0}
 .issue{border-left:4px solid #f79009}.photo{width:100%;max-width:320px;max-height:320px;object-fit:cover;border-radius:8px;margin-top:8px;border:1px solid var(--line);background:#f2f4f7}.photoLoading{min-height:90px}.photoError{font-size:12px;color:#b42318;margin-top:6px}
-.hidden{display:none!important}.empty{text-align:center;padding:30px;color:var(--muted)}
+.mfaBox{display:grid;gap:8px}.mfaHead{display:flex;justify-content:space-between;gap:10px}.mfaOn{font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;background:#ecfdf3;color:#067647}.mfaOff{font-size:11px;font-weight:800;padding:2px 8px;border-radius:999px;background:#fef3f2;color:#b42318}.mfaRow{display:flex;gap:8px;flex-wrap:wrap}.mfaRow input{flex:1 1 150px;min-width:0}.mfaQr{display:flex;justify-content:center}.mfaQr svg{width:190px;height:190px;background:#fff;border-radius:8px}.mfaKey{font-size:13px;letter-spacing:.04em;user-select:all}.mfaSteps{margin:4px 0;padding-left:20px;font-size:13px}.mfaCodes{display:grid;grid-template-columns:1fr 1fr;gap:6px}.mfaCodes code{font-size:14px;text-align:center;padding:6px;border:1px dashed #d0d5dd;border-radius:6px;letter-spacing:.05em}button.danger{color:#b42318}.hidden{display:none!important}.empty{text-align:center;padding:30px;color:var(--muted)}
 .filterbar{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px}.filterbtn{background:#eef2f7;color:#344054}.filterbtn.active{background:#111827;color:white}
 .notice{background:#fffaeb;border:1px solid #fedf89;color:#7a2e0e;border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:12px}
 @media(max-width:900px){.grid{grid-template-columns:1fr 1fr}.jobs{grid-template-columns:1fr}form .row{grid-template-columns:1fr}header{align-items:flex-start;flex-direction:column}}
@@ -825,7 +825,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.52.0">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.53.0">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -981,7 +981,7 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.52.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.53.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -992,6 +992,7 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
     <form id="loginForm">
       <div class="field"><label>Username</label><input id="loginUser" required autocomplete="username"></div>
       <div class="field"><label>Password</label><input id="loginPass" type="password" required autocomplete="current-password"></div>
+      <div class="field hidden" id="loginCodeField"><label for="loginCode">6-digit code from your authenticator app</label><input id="loginCode" inputmode="numeric" autocomplete="one-time-code" placeholder="123 456 or a recovery code" maxlength="20"></div>
       <div id="loginError" class="muted" style="color:#b42318;margin-bottom:10px"></div>
       <button type="submit" style="width:100%">Sign In</button>
     </form>
@@ -1550,7 +1551,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.52.0';
+const FRONTEND_VERSION='24.53.0';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1913,7 +1914,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.52.0";
+const ROUTE_MODULE_VERSION="24.53.0";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -1993,7 +1994,7 @@ const APP_VIEWS=["dashboard","workorders","estimates","invoices","bills","report
 let currentView=null;
 let viewHistory=[];
 
-function managerCan(permission){return session?.role!=="manager" || session?.permissions?.[permission]!==false}
+function managerCan(permission){return session?.role!=="manager" || session?.permissions?.[permission]===true}
 function managerViewAllowed(view){
  const map={invoices:"invoices",estimates:"invoices",bills:"invoices",reports:"reports",compliance:"customers",customers:"customers",trucksearch:"customers",parts:"inventory",activityhistory:"reports",accounts:"employees"};
  const key=map[view];return !key||managerCan(key);
@@ -2124,7 +2125,7 @@ function bindNavigation(){
 let liveSocket=null,liveReconnectTimer=null,liveReconnectAttempt=0,liveSocketStopped=false;
 function setLiveStatus(stateName,label){const dot=document.getElementById("liveStatusDot"),text=document.getElementById("liveStatusText"),badge=document.getElementById("liveStatusBadge");if(dot){dot.className=`liveStatusDot ${stateName}`}if(badge){badge.dataset.state=stateName;badge.title=stateName==="connected"?"Live: changes from other people appear instantly":stateName==="offline"?"Offline: your changes are saved on this device and sync when you are back online":"Reconnecting to the shop server…"}if(text)text.textContent=stateName==="offline"?translateDynamicText("Offline · saved here"):translateDynamicText(label)}
 function stopLiveStatusSocket(){liveSocketStopped=true;clearTimeout(liveReconnectTimer);liveReconnectTimer=null;try{liveSocket?.close()}catch(_){}liveSocket=null}
-function connectLiveStatusSocket(){if(!cloudToken||!navigator.onLine)return;if(liveSocket&&[WebSocket.OPEN,WebSocket.CONNECTING].includes(liveSocket.readyState))return;liveSocketStopped=false;setLiveStatus("reconnecting",liveReconnectAttempt?"Reconnecting":"Connecting");const proto=location.protocol==="https:"?"wss":"ws";const ws=new WebSocket(`${proto}://${location.host}/ws/shop-status?token=${encodeURIComponent(cloudToken)}`);liveSocket=ws;ws.onopen=()=>{liveReconnectAttempt=0;setLiveStatus("connected","Live")};ws.onmessage=e=>{try{const msg=JSON.parse(e.data);if(["shopflow_changed","task_changed","work_order_created"].includes(msg.type))refreshCloudStateSilently()}catch(_){}};ws.onclose=()=>{liveSocket=null;if(liveSocketStopped||!navigator.onLine)return;liveReconnectAttempt++;const delay=Math.min(30000,1000*(2**Math.min(5,liveReconnectAttempt-1)))+Math.floor(Math.random()*500);setLiveStatus("reconnecting","Reconnecting");clearTimeout(liveReconnectTimer);liveReconnectTimer=setTimeout(connectLiveStatusSocket,delay)};ws.onerror=()=>{try{ws.close()}catch(_){}}}
+function connectLiveStatusSocket(){if(!cloudToken||!navigator.onLine)return;if(liveSocket&&[WebSocket.OPEN,WebSocket.CONNECTING].includes(liveSocket.readyState))return;liveSocketStopped=false;setLiveStatus("reconnecting",liveReconnectAttempt?"Reconnecting":"Connecting");const proto=location.protocol==="https:"?"wss":"ws";const ws=new WebSocket(`${proto}://${location.host}/ws/shop-status`);liveSocket=ws;ws.onopen=()=>{try{ws.send(JSON.stringify({type:"auth",token:cloudToken}))}catch(_){}};ws.onmessage=e=>{try{const msg=JSON.parse(e.data);if(msg.type==="connected"){liveReconnectAttempt=0;setLiveStatus("connected","Live")}if(["shopflow_changed","task_changed","work_order_created"].includes(msg.type))refreshCloudStateSilently()}catch(_){}};ws.onclose=()=>{liveSocket=null;if(liveSocketStopped||!navigator.onLine)return;liveReconnectAttempt++;const delay=Math.min(30000,1000*(2**Math.min(5,liveReconnectAttempt-1)))+Math.floor(Math.random()*500);setLiveStatus("reconnecting","Reconnecting");clearTimeout(liveReconnectTimer);liveReconnectTimer=setTimeout(connectLiveStatusSocket,delay)};ws.onerror=()=>{try{ws.close()}catch(_){}}}
 function updateOnlineState(){
  const b=document.getElementById("offlineBanner");
  if(b)b.style.display=navigator.onLine?"none":"block";
@@ -2170,7 +2171,13 @@ document.getElementById("loginForm").onsubmit=async e=>{
   const p=document.getElementById("loginPass").value;
   const err=document.getElementById("loginError");err.textContent="Signing in…";
   try{
-    const d=await apiJSON("/api/auth/login",{method:"POST",body:JSON.stringify({username:u,password:p})});
+    // v24.53.0: with 2-step login on, the password alone returns mfaRequired; then the code field appears.
+    const codeField=document.getElementById("loginCodeField"),code=document.getElementById("loginCode")?.value.trim()||"";
+    const d=await apiJSON("/api/auth/login",{method:"POST",body:JSON.stringify({username:u,password:p,...(code?{code}:{})})});
+    if(d.mfaRequired){codeField?.classList.remove("hidden");err.textContent=tr("Enter the 6-digit code from your authenticator app.");setTimeout(()=>document.getElementById("loginCode")?.focus(),30);return}
+    if(codeField){codeField.classList.add("hidden");document.getElementById("loginCode").value=""}
+    if(d.recoveryLeft!=null)setTimeout(()=>showToast(`${tr("Recovery code used.")} ${d.recoveryLeft} ${tr("left. Make new ones in 🔒 Password.")}`,"warning",9000),800);
+    if(d.user?.mfaRecommended&&!d.user?.mfa)setTimeout(()=>showToast(tr("Protect your account: turn on 2-step login in 🔒 Password."),"warning",9000),1500);
     cloudToken=d.token;sessionStorage.setItem("ittr_cloud_token",cloudToken);
     session={username:d.user.username,role:d.user.role,display:d.user.display,language:d.user.language||localStorage.getItem("ittr_language")||"en"};
     currentLanguage=session.language;localStorage.setItem("ittr_language",currentLanguage);
@@ -2179,7 +2186,7 @@ document.getElementById("loginForm").onsubmit=async e=>{
     err.textContent="";document.getElementById("loginScreen").style.display="none";applyRole();render();
   }catch(ex){err.textContent=ex.message||"Sign in failed."}
 };
-// v24.52.0: every user changes their own password here and can sign out their other devices (lost phone, shared PC).
+// v24.53.0: every user changes their own password here and can sign out their other devices (lost phone, shared PC).
 async function openAccountSecurity(){
  let m=document.getElementById("accountSecurityModal");
  if(!m){m=document.createElement("div");m.className="modal";m.id="accountSecurityModal";document.body.appendChild(m)}
@@ -2191,13 +2198,36 @@ async function openAccountSecurity(){
  <div class="field"><label>${esc(tr("Confirm new password"))}</label><input type="password" name="confirmPassword" autocomplete="new-password" minlength="${min}" required></div>
  <div class="muted" style="font-size:12px;margin:-2px 0 10px">${esc(tr("Changing your password signs you out on every other phone and computer."))}</div>
  <div class="actions"><button type="submit">${esc(tr("Change password"))}</button></div></form>
+ <hr style="margin:16px 0;border:0;border-top:1px solid #e4e7ec"><div id="mfaBox" class="mfaBox"></div>
  <hr style="margin:16px 0;border:0;border-top:1px solid #e4e7ec"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><b>${esc(tr("Other devices"))}</b><div class="muted" style="font-size:12px">${others==null?"":others===0?esc(tr("You are only signed in here.")):`${others} ${esc(tr(others===1?"other device is signed in.":"other devices are signed in."))}`}</div></div>
  <button type="button" class="secondary" ${others===0?"disabled":""} onclick="signOutOtherDevices()">${esc(tr("Sign out other devices"))}</button></div>${session?.role==="admin"?`<hr style="margin:16px 0;border:0;border-top:1px solid #e4e7ec"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><b>${esc(tr("Full backup"))}</b><div class="muted" style="font-size:12px">${esc(tr("Every invoice, payment, customer, bill, part and work order in one file. Passwords and Gmail keys are left out. Keep it somewhere safe."))}</div></div><button type="button" class="secondary" id="fullBackupBtn" onclick="downloadFullBackup()">${esc(tr("Download backup"))}</button></div>`:""}</div>`;
  m.querySelector("#accountPasswordForm").onsubmit=async e=>{e.preventDefault();const f=e.target,np=f.newPassword.value;
   if(np!==f.confirmPassword.value)return alert(tr("The new passwords do not match."));
   try{const d=await apiJSON("/api/auth/password",{method:"POST",body:JSON.stringify({currentPassword:f.currentPassword.value,newPassword:np})});closeModal("accountSecurityModal");showToast(`${tr("Password changed.")}${d.otherSessionsSignedOut?` ${d.otherSessionsSignedOut} ${tr("other device(s) signed out.")}`:""}`,"success")}catch(err){alert(err.message||tr("Password was not changed."))}};
- m.classList.add("open");setTimeout(()=>m.querySelector('input[name="currentPassword"]')?.focus(),50);
+ m.classList.add("open");renderMfaBox();setTimeout(()=>m.querySelector('input[name="currentPassword"]')?.focus(),50);
 }
+// v24.53.0: 2-step login (authenticator app) inside the 🔒 Password window.
+async function renderMfaBox(){const box=document.getElementById("mfaBox");if(!box)return;let st=null;try{st=await apiJSON("/api/auth/2fa")}catch(_){box.innerHTML="";return}
+ box.innerHTML=st.enabled
+  ?`<div class="mfaHead"><div><b>${esc(tr("2-step login"))}</b> <span class="mfaOn">${esc(tr("On"))}</span><div class="muted" style="font-size:12px">${esc(tr("Signing in needs your password and the code from your phone."))} ${st.recoveryLeft} ${esc(tr("recovery codes left."))}</div></div></div>
+    <div class="mfaRow"><input type="password" id="mfaPw" placeholder="${esc(tr("Your password"))}" autocomplete="current-password"><input id="mfaCode" inputmode="numeric" autocomplete="one-time-code" placeholder="${esc(tr("Code (to turn off)"))}"></div>
+    <div class="mfaRow"><button type="button" class="secondary" onclick="mfaNewCodes()">${esc(tr("New recovery codes"))}</button><button type="button" class="secondary danger" onclick="mfaDisable()">${esc(tr("Turn off"))}</button></div>`
+  :`<div class="mfaHead"><div><b>${esc(tr("2-step login"))}</b> <span class="mfaOff">${esc(tr("Off"))}</span><div class="muted" style="font-size:12px">${esc(st.recommended?tr("Strongly recommended for your account: a stolen password alone will not get in."):tr("A stolen password alone will not get in."))}</div></div></div>
+    <div class="mfaRow"><input type="password" id="mfaSetupPw" placeholder="${esc(tr("Your password"))}" autocomplete="current-password"><button type="button" onclick="mfaStart()">${esc(tr("Turn on 2-step login"))}</button></div>`}
+async function mfaStart(){const box=document.getElementById("mfaBox");try{const d=await apiJSON("/api/auth/2fa/setup",{method:"POST",body:JSON.stringify({password:document.getElementById("mfaSetupPw")?.value||""})});
+ box.innerHTML=`<b>${esc(tr("2-step login"))}</b><ol class="mfaSteps"><li>${esc(tr("Open Google Authenticator, Microsoft Authenticator or Authy on your phone and scan this code."))}</li></ol>
+  <div class="mfaQr">${d.qrSvg||""}</div><div class="muted" style="font-size:12px;text-align:center">${esc(tr("Can't scan? Type this key:"))} <code class="mfaKey">${esc(d.secret)}</code></div>
+  <ol class="mfaSteps" start="2"><li>${esc(tr("Type the 6-digit code the app shows."))}</li></ol>
+  <div class="mfaRow"><input id="mfaSetupCode" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123456"><button type="button" onclick="mfaEnable()">${esc(tr("Turn on"))}</button></div>`;
+ setTimeout(()=>document.getElementById("mfaSetupCode")?.focus(),30)}catch(err){alert(err.message)}}
+function mfaShowCodes(codes,title){const box=document.getElementById("mfaBox");
+ box.innerHTML=`<b>${esc(title)}</b><div class="muted" style="font-size:12px;margin:4px 0 8px">${esc(tr("Save these recovery codes somewhere safe (print or photo). Each one works once if you lose your phone. They will not be shown again."))}</div>
+  <div class="mfaCodes">${codes.map(c=>`<code>${esc(c)}</code>`).join("")}</div>
+  <div class="mfaRow"><button type="button" class="secondary" onclick="navigator.clipboard?.writeText(${esc(JSON.stringify(codes.join("\n")))}).then(()=>showToast(tr('Copied.'),'success')).catch(()=>{})">${esc(tr("Copy codes"))}</button><button type="button" onclick="renderMfaBox()">${esc(tr("I saved them"))}</button></div>`}
+async function mfaEnable(){try{const d=await apiJSON("/api/auth/2fa/enable",{method:"POST",body:JSON.stringify({code:document.getElementById("mfaSetupCode")?.value||""})});mfaShowCodes(d.recoveryCodes,tr("2-step login is on"));if(d.otherSessionsSignedOut)showToast(`${d.otherSessionsSignedOut} ${tr("other device(s) signed out.")}`,"success")}catch(err){alert(err.message)}}
+async function mfaNewCodes(){try{const d=await apiJSON("/api/auth/2fa/recovery-codes",{method:"POST",body:JSON.stringify({password:document.getElementById("mfaPw")?.value||""})});mfaShowCodes(d.recoveryCodes,tr("New recovery codes"))}catch(err){alert(err.message)}}
+async function mfaDisable(){if(!confirm(tr("Turn off 2-step login? Your account will be protected by the password only.")))return;
+ try{await apiJSON("/api/auth/2fa/disable",{method:"POST",body:JSON.stringify({password:document.getElementById("mfaPw")?.value||"",code:document.getElementById("mfaCode")?.value||""})});showToast(tr("2-step login turned off."),"success");renderMfaBox()}catch(err){alert(err.message)}}
 async function downloadFullBackup(){const b=document.getElementById("fullBackupBtn");if(b){b.disabled=true;b.textContent=tr("Preparing…")}
  try{const r=await fetch("/api/admin/backup",{headers:authHeaders()});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.error||`Backup failed (${r.status}).`)}
   const blob=await r.blob(),a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`ittr-backup-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000);showToast(tr("Backup downloaded."),"success")}
@@ -2232,7 +2262,7 @@ const today=new Date().toISOString().slice(0,10);
 const UI_TRANSLATIONS={
  "Truck & Trailer Repair Operations":"Керування ремонтом вантажівок і причепів",
  "Logout":"Вийти",
- "🔒 Password":"🔒 Пароль","My password & devices":"Мій пароль і пристрої","Current password":"Поточний пароль","New password":"Новий пароль","Confirm new password":"Підтвердьте новий пароль","characters":"символів","Changing your password signs you out on every other phone and computer.":"Зміна пароля виконує вихід на всіх інших телефонах і комп’ютерах.","Change password":"Змінити пароль","Other devices":"Інші пристрої","You are only signed in here.":"Ви ввійшли лише тут.","other device is signed in.":"інший пристрій увійшов.","other devices are signed in.":"інших пристроїв увійшли.","Sign out other devices":"Вийти на інших пристроях","Full backup":"Повна резервна копія","Every invoice, payment, customer, bill, part and work order in one file. Passwords and Gmail keys are left out. Keep it somewhere safe.":"Усі рахунки, платежі, клієнти, витрати, запчастини та наряди в одному файлі. Паролі та ключі Gmail не включено. Зберігайте його в надійному місці.","Download backup":"Завантажити копію","Preparing…":"Підготовка…","Backup downloaded.":"Копію завантажено.","The new passwords do not match.":"Нові паролі не збігаються.","Password changed.":"Пароль змінено.","other device(s) signed out.":"інших пристроїв вийшли.","Password was not changed.":"Пароль не змінено.","Sign out on all your other phones and computers? You stay signed in here.":"Вийти на всіх інших телефонах і комп’ютерах? Тут ви залишитеся в системі.",
+ "🔒 Password":"🔒 Пароль","My password & devices":"Мій пароль і пристрої","Current password":"Поточний пароль","New password":"Новий пароль","Confirm new password":"Підтвердьте новий пароль","characters":"символів","Changing your password signs you out on every other phone and computer.":"Зміна пароля виконує вихід на всіх інших телефонах і комп’ютерах.","Change password":"Змінити пароль","Other devices":"Інші пристрої","You are only signed in here.":"Ви ввійшли лише тут.","other device is signed in.":"інший пристрій увійшов.","other devices are signed in.":"інших пристроїв увійшли.","Sign out other devices":"Вийти на інших пристроях","Enter the 6-digit code from your authenticator app.":"Введіть 6-значний код із застосунку автентифікації.","Recovery code used.":"Використано резервний код.","left. Make new ones in 🔒 Password.":"залишилось. Створіть нові в 🔒 Пароль.","Protect your account: turn on 2-step login in 🔒 Password.":"Захистіть обліковий запис: увімкніть двоетапний вхід у 🔒 Пароль.","2-step login":"Двоетапний вхід","On":"Увімкнено","Off":"Вимкнено","Signing in needs your password and the code from your phone.":"Для входу потрібні пароль і код із телефона.","recovery codes left.":"резервних кодів залишилось.","Your password":"Ваш пароль","Code (to turn off)":"Код (щоб вимкнути)","New recovery codes":"Нові резервні коди","Turn off":"Вимкнути","Strongly recommended for your account: a stolen password alone will not get in.":"Наполегливо рекомендовано: самого лише викраденого пароля не вистачить для входу.","A stolen password alone will not get in.":"Самого лише викраденого пароля не вистачить для входу.","Turn on 2-step login":"Увімкнути двоетапний вхід","Open Google Authenticator, Microsoft Authenticator or Authy on your phone and scan this code.":"Відкрийте Google Authenticator, Microsoft Authenticator або Authy на телефоні та відскануйте цей код.","Can't scan? Type this key:":"Не вдається відсканувати? Введіть цей ключ:","Type the 6-digit code the app shows.":"Введіть 6-значний код, який показує застосунок.","Turn on":"Увімкнути","Save these recovery codes somewhere safe (print or photo). Each one works once if you lose your phone. They will not be shown again.":"Збережіть ці резервні коди в надійному місці (роздрукуйте або сфотографуйте). Кожен працює один раз, якщо ви втратите телефон. Їх більше не буде показано.","Copy codes":"Копіювати коди","I saved them":"Я їх зберіг","2-step login is on":"Двоетапний вхід увімкнено","Turn off 2-step login? Your account will be protected by the password only.":"Вимкнути двоетапний вхід? Обліковий запис буде захищено лише паролем.","2-step login turned off.":"Двоетапний вхід вимкнено.","Copied.":"Скопійовано.","Full backup":"Повна резервна копія","Every invoice, payment, customer, bill, part and work order in one file. Passwords and Gmail keys are left out. Keep it somewhere safe.":"Усі рахунки, платежі, клієнти, витрати, запчастини та наряди в одному файлі. Паролі та ключі Gmail не включено. Зберігайте його в надійному місці.","Download backup":"Завантажити копію","Preparing…":"Підготовка…","Backup downloaded.":"Копію завантажено.","The new passwords do not match.":"Нові паролі не збігаються.","Password changed.":"Пароль змінено.","other device(s) signed out.":"інших пристроїв вийшли.","Password was not changed.":"Пароль не змінено.","Sign out on all your other phones and computers? You stay signed in here.":"Вийти на всіх інших телефонах і комп’ютерах? Тут ви залишитеся в системі.",
  "Calendar":"Календар",
  "Admin Work Orders":"Наряди на роботи",
  "Completed Jobs":"Завершені роботи",
@@ -6371,7 +6401,7 @@ async function editInvoicePayment(invoiceId,paymentId){const p=(activeInvoice?.p
 let invoiceSearchText="",invoicePaySearchTimer=0,invoicePayHitIds=new Set();
 function onInvoiceSearch(v){invoiceSearchText=String(v||"").trim().toLowerCase();invoicePayHitIds=new Set();renderInvoices();clearTimeout(invoicePaySearchTimer);const box=document.getElementById("invoicePaymentHits");if(!box)return;if(invoiceSearchText.length<3){box.innerHTML="";return}
  invoicePaySearchTimer=setTimeout(async()=>{try{const d=await apiJSON(`/api/payments/search?q=${encodeURIComponent(invoiceSearchText)}`);invoicePayHitIds=new Set(d.items.map(p=>String(p.invoice_id)));renderInvoices();
- // v24.52.0: the same transaction ID can also be customer credit not used yet, or a Zelle email never applied.
+ // v24.53.0: the same transaction ID can also be customer credit not used yet, or a Zelle email never applied.
  const credits=d.credits||[],inbox=d.inbox||[];
  box.innerHTML=d.items.length||credits.length||inbox.length?`<div class="card payHits"><b>Payments matching “${esc(v)}”</b>${d.items.map(p=>`<button type="button" class="payHit" onclick="openInvoiceWorkspace(${Number(p.invoice_id)})"><span><b>${esc(p.method||"Other")} ${esc(p.reference||"")}</b> · ${invMoney(p.amount)} · ${esc(String(p.paid_at||"").slice(0,10))}</span><span class="muted">Invoice ${esc(p.invoice_number)} · ${esc(p.customer_name||"")}${p.unit_number?` · Unit ${esc(p.unit_number)}`:""}</span></button>`).join("")}${credits.map(c=>`<button type="button" class="payHit" ${c.customer_id?`onclick="openCustomerProfile(${Number(c.customer_id)})"`:"disabled"}><span><b>${esc(c.method||"Other")} ${esc(c.reference||"")}</b> · ${invMoney(c.amount)} · ${esc(String(c.paid_at||"").slice(0,10))}</span><span class="muted">${invMoney(c.unapplied)} kept as credit · ${esc(c.customer_name||"")} — not applied to an invoice yet</span></button>`).join("")}${inbox.map(m=>`<button type="button" class="payHit" onclick="openGmailInbox()"><span><b>Zelle ${esc(m.confirmation||"")}</b> · ${m.amount!=null?invMoney(m.amount):"—"} · ${esc(String(m.received_at||"").slice(0,10))}</span><span class="muted">${esc(m.counterparty||m.from_email||"")} · in the Gmail inbox, ${m.status==="new"?"not applied to any invoice yet":`marked ${esc(m.status)}, not applied`}</span></button>`).join("")}</div>`:(String(v).replace(/\D/g,"").length>=5?`<div class="card payHits"><b>No payment with “${esc(v)}”</b><span class="muted">Not on any invoice payment, customer credit or Zelle email.</span></div>`:"")}catch(_){box.innerHTML=""}},300)}
 function openGmailInbox(){try{sessionStorage.setItem("ittr_reports_tab","inbox")}catch(_){}showView("reports")}
@@ -6430,20 +6460,21 @@ async function loadStaffAccounts(){
  const box=document.getElementById('managerAccountsTable');if(!box||session?.role!=='admin')return;
  try{MANAGER_ACCOUNTS=(await apiJSON('/api/admin/managers')).items||[]}catch(e){box.innerHTML=`<tr><td colspan="4" class="muted">${esc(e.message)}</td></tr>`;return}
  const P={invoices:'Invoices',financials:'Financials',inventory:'Parts',customers:'Customers',reports:'Reports',employees:'Employees'};
- box.innerHTML=MANAGER_ACCOUNTS.map(m=>{const perms=Object.entries(P).filter(([k])=>m.permissions?.[k]!==false).map(([,l])=>`<span class="badge" style="margin:2px">${l}</span>`).join('');const u=encodeURIComponent(m.username);
+ box.innerHTML=MANAGER_ACCOUNTS.map(m=>{const perms=Object.entries(P).filter(([k])=>m.permissions?.[k]===true).map(([,l])=>`<span class="badge" style="margin:2px">${l}</span>`).join('');const u=encodeURIComponent(m.username);
   return `<tr><td>${esc(m.display_name||m.username)}${m.email?`<div class="muted">${esc(m.email)}</div>`:''}</td><td>${esc(m.username)}</td><td>Manager<div>${perms||'<span class="muted">No access</span>'}</div></td><td>
-   <button class="secondary" data-username="${u}" onclick="openEditManager(decodeURIComponent(this.dataset.username))">Permissions</button>
+   <button class="secondary" data-username="${u}" onclick="openEditManager(decodeURIComponent(this.dataset.username))">Permissions</button>${m.totp_enabled?`<button class="secondary" data-username="${u}" title="The manager lost their phone: turn 2-step login off so they can sign in and set it up again" onclick="resetManagerMfa(decodeURIComponent(this.dataset.username))">Reset 2-step</button>`:''}
    <button class="secondary" data-username="${u}" onclick="changeManagerPassword(decodeURIComponent(this.dataset.username))">Change Password</button>
    <button class="danger" data-username="${u}" onclick="deleteManagerAccount(decodeURIComponent(this.dataset.username))">Delete</button></td></tr>`}).join('');
 }
 function openEditManager(username){const m=MANAGER_ACCOUNTS.find(x=>x.username===username);if(!m)return;const form=document.getElementById('managerAccountForm');form.reset();form.dataset.editing=username;
  form.elements.display.value=m.display_name||'';form.elements.username.value=m.username;form.elements.username.readOnly=true;form.elements.email.value=m.email||'';
  form.elements.password.required=false;document.getElementById('mgrPasswordField').style.display='none';
- for(const k of ['invoices','financials','inventory','customers','reports','employees'])if(form.elements[k])form.elements[k].checked=m.permissions?.[k]!==false&&(k!=='employees'||m.permissions?.employees===true);
+ for(const k of ['invoices','financials','inventory','customers','reports','employees'])if(form.elements[k])form.elements[k].checked=m.permissions?.[k]===true;
  document.getElementById('mgrModalTitle').textContent=`Edit ${m.display_name||m.username}`;document.getElementById('mgrSubmit').textContent='Save Permissions';
  document.getElementById('managerAccountModal')?.classList.add('open')}
 async function changeManagerPassword(username){const pw=prompt(`New password for ${username} (at least 12 characters). They will be signed out everywhere.`);if(pw==null)return;if(pw.length<12)return alert('Manager passwords must be at least 12 characters.');
  try{await apiJSON(`/api/admin/managers/${encodeURIComponent(username)}/password`,{method:'PATCH',body:{password:pw}});showToast('Password changed. The manager must sign in again.','success')}catch(e){alert(e.message)}}
+async function resetManagerMfa(username){if(!confirm(`Turn off 2-step login for ${username}? Use this only when they lost their phone. They will be signed out and should turn it on again.`))return;try{await apiJSON(`/api/admin/managers/${encodeURIComponent(username)}/2fa`,{method:'DELETE'});showToast('2-step login reset. Ask them to turn it on again.','success');loadStaffAccounts()}catch(e){alert(e.message)}}
 async function deleteManagerAccount(username){if(!confirm(`Delete manager account ${username}? They will lose access immediately.`))return;try{await apiJSON(`/api/admin/managers/${encodeURIComponent(username)}`,{method:'DELETE'});showToast('Manager deleted.','success');loadStaffAccounts()}catch(e){alert(e.message)}}
 async function openManualLibrary(){
   document.getElementById('manualLibraryModal')?.classList.add('open');

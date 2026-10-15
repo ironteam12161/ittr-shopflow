@@ -35,6 +35,7 @@ import {registerFluidRoutes,registerPartDeleteRoutes,isGallonUom,FLUID_UNITS,ens
 import {ensureComplianceSchema,registerComplianceRoutes,startFleetScheduler} from "./compliance_center.mjs";
 import os from "os";
 import bwipjs from "bwip-js";
+import {ensureMfaSchema,registerMfaRoutes,checkSecondFactor,mfaRequiredForRole,LOGIN_LOCK} from "./security_mfa.mjs";
 import {S3Client,PutObjectCommand,GetObjectCommand,DeleteObjectCommand,HeadBucketCommand} from "@aws-sdk/client-s3";
 import {getSignedUrl} from "@aws-sdk/s3-request-presigner";
 import { fileURLToPath } from "url";
@@ -240,7 +241,7 @@ app.use("/api/findings",uploadLimiter);
 function requireDb(){if(!pool){const e=new Error("DATABASE_URL is not configured. Add PostgreSQL to the deployment and set DATABASE_URL.");e.code="DB_NOT_CONFIGURED";throw e;}return pool;}
 function hashToken(t){return crypto.createHash("sha256").update(t).digest("hex")}
 function cleanUsername(v){return String(v||"").trim().toLowerCase().replace(/[^a-z0-9._-]/g,"").slice(0,64)}
-function publicUser(row){return {username:row.username,role:row.role,display:row.display_name||row.username,language:["uk","ua"].includes(String(row.language||"").toLowerCase())?"uk":"en",email:row.email||"",permissions:row.permissions||{}}}
+function publicUser(row){return {username:row.username,role:row.role,display:row.display_name||row.username,language:["uk","ua"].includes(String(row.language||"").toLowerCase())?"uk":"en",email:row.email||"",permissions:row.permissions||{},mfa:Boolean(row.totp_enabled),mfaRecommended:row.role==="admin"||row.role==="manager"}}
 
 async function initDb(){
  if(!pool){console.warn("ITTR: DATABASE_URL missing. Cloud state/auth unavailable.");return;}
@@ -807,7 +808,17 @@ async function auth(req,res,next){
 const liveWss=new WebSocketServer({server:httpServer,path:"/ws/shop-status"});
 const liveClients=new Set();
 function broadcastShopStatus(type,payload={}){const msg=JSON.stringify({type,at:new Date().toISOString(),...payload});for(const ws of liveClients){if(ws.readyState===WebSocket.OPEN)try{ws.send(msg)}catch(_){}}}
-liveWss.on("connection",async(ws,req)=>{try{const u=new URL(req.url,"http://localhost"),token=String(u.searchParams.get("token")||"").trim();if(!token){ws.close(1008,"Authentication required");return}const q=await requireDb().query(`SELECT u.username,u.display_name,u.role FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now() AND u.active=true`,[hashToken(token)]);if(!q.rowCount){ws.close(1008,"Session expired");return}ws.ittrUser=q.rows[0];ws.isAlive=true;ws.on("pong",()=>{ws.isAlive=true});liveClients.add(ws);ws.send(JSON.stringify({type:"connected",at:new Date().toISOString()}));ws.on("close",()=>liveClients.delete(ws))}catch(e){console.error("WebSocket auth",e.message);try{ws.close(1011,"Connection error")}catch(_){}}});
+// v24.53.0: the sign-in token arrives in the first message ({type:"auth",token}), not in the web address, where
+// proxies and server logs could record it. The ?token= form still works for app copies loaded before this version.
+async function liveSocketUser(token){if(!token)return null;const q=await requireDb().query(`SELECT u.username,u.display_name,u.role FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now() AND u.active=true`,[hashToken(token)]);return q.rows[0]||null}
+function admitLiveSocket(ws,user){ws.ittrUser=user;ws.isAlive=true;ws.on("pong",()=>{ws.isAlive=true});liveClients.add(ws);ws.send(JSON.stringify({type:"connected",at:new Date().toISOString()}));ws.on("close",()=>liveClients.delete(ws))}
+liveWss.on("connection",async(ws,req)=>{try{
+ const legacy=String(new URL(req.url,"http://localhost").searchParams.get("token")||"").trim();
+ if(legacy){const u=await liveSocketUser(legacy);if(!u){ws.close(1008,"Session expired");return}admitLiveSocket(ws,u);return}
+ const timer=setTimeout(()=>{try{ws.close(1008,"Authentication required")}catch(_){}},10000);
+ ws.once("message",async data=>{clearTimeout(timer);try{const m=JSON.parse(String(data).slice(0,2000));const u=m?.type==="auth"?await liveSocketUser(String(m.token||"").trim()):null;if(!u){ws.close(1008,"Session expired");return}admitLiveSocket(ws,u)}catch(_){try{ws.close(1008,"Authentication required")}catch(__){}}});
+ ws.on("close",()=>clearTimeout(timer));
+}catch(e){console.error("[live socket]",e?.message);try{ws.close(1011,"Server error")}catch(_){}}});
 const liveHeartbeat=setInterval(()=>{for(const ws of liveClients){if(ws.isAlive===false){liveClients.delete(ws);try{ws.terminate()}catch(_){}continue}ws.isAlive=false;try{ws.ping()}catch(_){}}},25000);liveHeartbeat.unref?.();
 
 async function ensurePartsSearchPerformance(){
@@ -830,8 +841,21 @@ const MECHANIC_HIDDEN_PART_FIELDS=new Set(["cost","cost_floor","inventory_value"
 function scrubPartCosts(v,depth=0){if(depth>6||v===null||typeof v!=="object")return v;if(Array.isArray(v))return v.map(x=>scrubPartCosts(x,depth+1));const o={};for(const [k,x] of Object.entries(v)){if(MECHANIC_HIDDEN_PART_FIELDS.has(k))continue;o[k]=scrubPartCosts(x,depth+1)}return o}
 function hidePartCostsFromMechanics(req,res,next){if(req.user?.role==="mechanic"){const send=res.json.bind(res);res.json=body=>send(scrubPartCosts(body))}next()}
 function ownerOnly(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Owner/Admin access required."});next()}
-function can(req,key){return req.user?.role==="admin" || (req.user?.role==="manager" && req.user?.permissions?.[key]!==false)}
-function managerPermission(key){return (req,res,next)=>{if(req.user?.role==="admin")return next();if(req.user?.role!=="manager")return res.status(403).json({error:"Manager access required."});if(req.user?.permissions?.[key]===false)return res.status(403).json({error:`Manager permission required: ${key}.`});next()}}
+// v24.53.0: a manager may use an area only when the owner ticked it ("denied unless ticked"). Before, every area not
+// explicitly unticked was allowed, so each new area (Bills, …) was open to every manager automatically.
+const MANAGER_PERMISSION_KEYS=["invoices","financials","inventory","customers","reports","employees"];
+const cleanManagerPermissions=p=>Object.fromEntries(MANAGER_PERMISSION_KEYS.map(k=>[k,p?.[k]===true]));
+function can(req,key){return req.user?.role==="admin" || (req.user?.role==="manager" && req.user?.permissions?.[key]===true)}
+// One-time carry-over: each existing manager keeps the areas they have today. "Employees" stays on only where the
+// owner ticked it, because the owner's form already showed it off unless ticked (the server used to allow it anyway).
+async function migrateManagerPermissionsDefaultDeny(db){
+ const done=(await db.query("SELECT 1 FROM shop_settings WHERE setting_key='manager_permissions_default_deny'")).rowCount;if(done)return 0;
+ const rows=(await db.query("SELECT id,permissions FROM auth_users WHERE role='manager'")).rows;
+ for(const r of rows){const p=r.permissions||{},next=Object.fromEntries(MANAGER_PERMISSION_KEYS.map(k=>[k,k==="employees"?p[k]===true:p[k]!==false]));await db.query("UPDATE auth_users SET permissions=$2::jsonb WHERE id=$1",[r.id,JSON.stringify(next)])}
+ await db.query("INSERT INTO shop_settings(setting_key,value) VALUES('manager_permissions_default_deny',$1::jsonb) ON CONFLICT(setting_key) DO NOTHING",[JSON.stringify({at:new Date().toISOString(),managers:rows.length})]);
+ if(rows.length)console.log(`ITTR: manager permissions switched to "denied unless ticked"; ${rows.length} manager(s) kept their current access.`);
+ return rows.length}
+function managerPermission(key){return (req,res,next)=>{if(req.user?.role==="admin")return next();if(req.user?.role!=="manager")return res.status(403).json({error:"Manager access required."});if(req.user?.permissions?.[key]!==true)return res.status(403).json({error:`Manager permission required: ${key}.`});next()}}
 async function audit(username,action,details={}){try{if(pool)await pool.query("INSERT INTO server_audit(username,action,details) VALUES($1,$2,$3::jsonb)",[username||null,action,JSON.stringify(details)])}catch(e){console.error("audit",e.message)}}
 
 
@@ -1890,21 +1914,38 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.52.0");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.53.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
+// v24.53.0: sign-in checks, in order: account lock → password → 2-step code (when turned on).
+// - An unknown username costs the same bcrypt time as a known one, so response time doesn't reveal real usernames.
+// - 8 wrong passwords or codes in a row lock that account for 15 minutes (on top of the per-network rate limit).
+// - With 2-step login on, a correct password alone answers {mfaRequired:true} and no token; the app then asks for
+//   the 6-digit code (or a recovery code) and sends it with the same username and password.
+const LOGIN_DUMMY_HASH=bcrypt.hashSync("ittr-unknown-user-timing-guard",12);
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
- const username=cleanUsername(req.body?.username),password=String(req.body?.password||"");
- const q=await requireDb().query("SELECT * FROM auth_users WHERE username=$1 AND active=true",[username]);
- if(!q.rowCount || !(await bcrypt.compare(password,q.rows[0].password_hash)))return res.status(401).json({error:"Invalid username or password."});
+ const username=cleanUsername(req.body?.username),password=String(req.body?.password||""),db=requireDb();
+ const u=(await db.query("SELECT * FROM auth_users WHERE username=$1 AND active=true",[username])).rows[0];
+ if(!u){await bcrypt.compare(password,LOGIN_DUMMY_HASH);return res.status(401).json({error:"Invalid username or password."})}
+ if(u.locked_until&&new Date(u.locked_until)>new Date()){const min=Math.max(1,Math.ceil((new Date(u.locked_until)-Date.now())/60000));await bcrypt.compare(password,LOGIN_DUMMY_HASH);return res.status(429).json({error:`Too many wrong attempts on this account. Try again in ${min} minute${min===1?"":"s"}.`,code:"ACCOUNT_LOCKED"})}
+ const failed=async(msg,code)=>{const r=(await db.query(`UPDATE auth_users SET failed_logins=failed_logins+1,locked_until=CASE WHEN failed_logins+1>=$2 THEN now()+($3||' minutes')::interval ELSE locked_until END WHERE id=$1 RETURNING failed_logins,locked_until`,[u.id,LOGIN_LOCK.maxFailures,String(LOGIN_LOCK.minutes)])).rows[0];if(r&&r.failed_logins>=LOGIN_LOCK.maxFailures){await db.query("UPDATE auth_users SET failed_logins=0 WHERE id=$1",[u.id]);await audit(username,"account_locked",{minutes:LOGIN_LOCK.minutes})}return res.status(401).json({error:msg,...(code?{code}:{})})};
+ if(!(await bcrypt.compare(password,u.password_hash)))return failed("Invalid username or password.");
+ let second=null;
+ if(u.totp_enabled){
+  if(!String(req.body?.code||"").trim())return res.json({mfaRequired:true});
+  second=await checkSecondFactor(db,u,req.body.code);
+  if(!second.ok)return failed("That code is not correct. Type the newest 6-digit code from your authenticator app, or a recovery code.","BAD_CODE");
+ }
+ await db.query("UPDATE auth_users SET failed_logins=0,locked_until=NULL WHERE id=$1",[u.id]);
  const raw=crypto.randomBytes(32).toString("base64url"),days=Math.max(1,Math.min(30,Number(process.env.SESSION_TTL_DAYS||7)));
- await pool.query("INSERT INTO auth_sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+($3||' days')::interval)",[hashToken(raw),q.rows[0].id,String(days)]);
- await audit(username,"login",{}); res.json({token:raw,user:publicUser(q.rows[0])});
+ await db.query("INSERT INTO auth_sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+($3||' days')::interval)",[hashToken(raw),u.id,String(days)]);
+ await audit(username,"login",{mfa:Boolean(u.totp_enabled),...(second?.recoveryUsed?{recoveryCodeUsed:true,recoveryLeft:second.recoveryLeft}:{})});
+ res.json({token:raw,user:publicUser(u),...(second?.recoveryUsed?{recoveryLeft:second.recoveryLeft}:{})});
 }catch(e){next(e)}});
 app.post("/api/auth/logout",auth,async(req,res,next)=>{try{await requireDb().query("DELETE FROM auth_sessions WHERE token_hash=$1",[hashToken(req.sessionToken)]);res.json({ok:true})}catch(e){next(e)}});
 app.get("/api/auth/me",auth,(req,res)=>res.json({user:publicUser(req.user)}));
-// v24.52.0: every user can change their own password (the owner had no way to) and sign out their other devices.
+// v24.53.0: every user can change their own password (the owner had no way to) and sign out their other devices.
 // Changing the password signs out every other device, so a leaked or shared password stops working everywhere.
 const minPasswordLength=role=>role==="mechanic"?10:12;
 app.post("/api/auth/password",loginLimiter,auth,async(req,res,next)=>{try{
@@ -2873,12 +2914,12 @@ app.get("/api/admin/productivity",auth,adminOnly,async(req,res,next)=>{try{
   res.json({ok:true,start:start.toISOString(),end:end.toISOString(),mechanic:mechanic||"all",sessions});
 }catch(e){next(e)}});
 
-// v24.52.0: the backup holds every table (invoices, payments, customers, bills, parts…), not only the work-order JSON
+// v24.53.0: the backup holds every table (invoices, payments, customers, bills, parts…), not only the work-order JSON
 // it had before. Secrets are left out: password hashes, sign-in sessions, OAuth states and Gmail tokens. Derived data
 // that is rebuilt on its own (translation cache, manual page text) is skipped to keep the file small. Streamed table by
 // table so a large shop does not need the whole database in memory.
 const BACKUP_SKIP_TABLES=new Set(["auth_sessions","gmail_oauth_states","ai_translation_cache","workshop_manual_pages"]);
-const BACKUP_SECRET_COLUMNS={auth_users:["password_hash"],gmail_accounts:["refresh_token_enc","access_token_enc"],email_sender:["refresh_token_enc","access_token_enc"]};
+const BACKUP_SECRET_COLUMNS={auth_users:["password_hash","totp_secret","totp_pending_secret","totp_recovery"],gmail_accounts:["refresh_token_enc","access_token_enc"],email_sender:["refresh_token_enc","access_token_enc"]};
 app.get("/api/admin/backup",auth,ownerOnly,async(req,res,next)=>{let started=false;try{
   const db=requireDb();
   const tables=(await db.query("SELECT table_name FROM information_schema.tables WHERE table_schema=current_schema() AND table_type='BASE TABLE' ORDER BY table_name")).rows.map(r=>r.table_name).filter(t=>!BACKUP_SKIP_TABLES.has(t));
@@ -3526,11 +3567,11 @@ app.post("/api/state/import-local",auth,ownerOnly,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 
 app.get("/api/admin/staff",auth,managerPermission("employees"),async(req,res,next)=>{try{const q=await requireDb().query("SELECT username,display_name,role,email,permissions,language,active,created_at FROM auth_users ORDER BY role,display_name");res.json({items:q.rows.map(publicUser)})}catch(e){next(e)}});
-app.post("/api/admin/managers",auth,ownerOnly,async(req,res,next)=>{try{const username=cleanUsername(req.body?.username),display=String(req.body?.display||'').trim(),email=String(req.body?.email||'').trim(),password=String(req.body?.password||''),permissions=req.body?.permissions&&typeof req.body.permissions==='object'?req.body.permissions:{};if(!username||!display||password.length<12)return res.status(400).json({error:'Username, name and password of at least 12 characters are required.'});const hash=await bcrypt.hash(password,12);await requireDb().query("INSERT INTO auth_users(username,display_name,password_hash,role,email,permissions) VALUES($1,$2,$3,'manager',$4,$5::jsonb)",[username,display,hash,email||null,JSON.stringify(permissions)]);await audit(req.user.username,'manager_created',{username,permissions});res.json({ok:true})}catch(e){if(e?.code==='23505')return res.status(409).json({error:'That username already exists.'});next(e)}});
+app.post("/api/admin/managers",auth,ownerOnly,async(req,res,next)=>{try{const username=cleanUsername(req.body?.username),display=String(req.body?.display||'').trim(),email=String(req.body?.email||'').trim(),password=String(req.body?.password||''),permissions=cleanManagerPermissions(req.body?.permissions);if(!username||!display||password.length<12)return res.status(400).json({error:'Username, name and password of at least 12 characters are required.'});const hash=await bcrypt.hash(password,12);await requireDb().query("INSERT INTO auth_users(username,display_name,password_hash,role,email,permissions) VALUES($1,$2,$3,'manager',$4,$5::jsonb)",[username,display,hash,email||null,JSON.stringify(permissions)]);await audit(req.user.username,'manager_created',{username,permissions});res.json({ok:true})}catch(e){if(e?.code==='23505')return res.status(409).json({error:'That username already exists.'});next(e)}});
 // v24.41.7: the owner can see manager accounts and reset their passwords (create/edit/delete already existed).
-app.get("/api/admin/managers",auth,ownerOnly,async(req,res,next)=>{try{const r=await requireDb().query("SELECT username,display_name,email,permissions,active,created_at FROM auth_users WHERE role='manager' ORDER BY display_name");res.json({items:r.rows})}catch(e){next(e)}});
+app.get("/api/admin/managers",auth,ownerOnly,async(req,res,next)=>{try{const r=await requireDb().query("SELECT username,display_name,email,permissions,active,created_at,totp_enabled FROM auth_users WHERE role='manager' ORDER BY display_name");res.json({items:r.rows})}catch(e){next(e)}});
 app.patch("/api/admin/managers/:username/password",auth,ownerOnly,async(req,res,next)=>{try{const username=cleanUsername(req.params.username),password=String(req.body?.password||"");if(password.length<12)return res.status(400).json({error:"Manager passwords must be at least 12 characters."});const h=await bcrypt.hash(password,12);const q=await requireDb().query("UPDATE auth_users SET password_hash=$2,updated_at=now() WHERE username=$1 AND role='manager' RETURNING id",[username,h]);if(!q.rowCount)return res.status(404).json({error:"Manager not found."});await requireDb().query("DELETE FROM auth_sessions WHERE user_id=$1",[q.rows[0].id]);await audit(req.user.username,"manager_password_changed",{username});res.json({ok:true})}catch(e){next(e)}});
-app.put("/api/admin/managers/:username",auth,ownerOnly,async(req,res,next)=>{try{const username=cleanUsername(req.params.username),permissions=req.body?.permissions&&typeof req.body.permissions==='object'?req.body.permissions:{},display=String(req.body?.display||'').trim(),email=String(req.body?.email||'').trim();const q=await requireDb().query("UPDATE auth_users SET display_name=coalesce(nullif($2,''),display_name),email=nullif($3,''),permissions=$4::jsonb,updated_at=now() WHERE username=$1 AND role='manager' RETURNING *",[username,display,email,JSON.stringify(permissions)]);if(!q.rowCount)return res.status(404).json({error:'Manager not found.'});await audit(req.user.username,'manager_permissions_updated',{username,permissions});res.json({user:publicUser(q.rows[0])})}catch(e){next(e)}});
+app.put("/api/admin/managers/:username",auth,ownerOnly,async(req,res,next)=>{try{const username=cleanUsername(req.params.username),permissions=cleanManagerPermissions(req.body?.permissions),display=String(req.body?.display||'').trim(),email=String(req.body?.email||'').trim();const q=await requireDb().query("UPDATE auth_users SET display_name=coalesce(nullif($2,''),display_name),email=nullif($3,''),permissions=$4::jsonb,updated_at=now() WHERE username=$1 AND role='manager' RETURNING *",[username,display,email,JSON.stringify(permissions)]);if(!q.rowCount)return res.status(404).json({error:'Manager not found.'});await audit(req.user.username,'manager_permissions_updated',{username,permissions});res.json({user:publicUser(q.rows[0])})}catch(e){next(e)}});
 app.delete("/api/admin/managers/:username",auth,ownerOnly,async(req,res,next)=>{try{const q=await requireDb().query("DELETE FROM auth_users WHERE username=$1 AND role='manager' RETURNING username",[cleanUsername(req.params.username)]);if(!q.rowCount)return res.status(404).json({error:'Manager not found.'});await audit(req.user.username,'manager_deleted',{username:req.params.username});res.json({ok:true})}catch(e){next(e)}});
 app.post("/api/admin/users",auth,managerPermission("employees"),async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),display=String(req.body?.display||"").trim(),password=String(req.body?.password||"");
@@ -4011,7 +4052,7 @@ app.patch('/api/invoices/:id/payments/:paymentId',auth,managerPermission("invoic
  // v24.49.0: one payment split over several invoices keeps one method / transaction ID.
  if(cur.customer_payment_id){await db.query('UPDATE customer_invoice_payments SET method=$2,reference=$3 WHERE customer_payment_id=$1::bigint',[cur.customer_payment_id,method,reference]);await db.query('UPDATE customer_payments SET method=$2,reference=$3 WHERE id=$1::bigint',[cur.customer_payment_id,method,reference])}
  await audit(req.user.username,'invoice_payment_edited',{invoiceId:req.params.id,paymentId:cur.id,before:{method:cur.method,reference:cur.reference},after:{method,reference}});res.json({ok:true})}catch(e){next(e)}});
-// v24.52.0: a transaction ID is found wherever it lives: on an invoice payment (also when the reference was typed
+// v24.53.0: a transaction ID is found wherever it lives: on an invoice payment (also when the reference was typed
 // differently, via the Gmail email it was applied from), on a customer credit not used yet, or still only on a
 // Zelle email in the Gmail inbox that was never applied.
 app.get('/api/payments/search',auth,managerPermission("invoices"),async(req,res,next)=>{try{const q=String(req.query.q||'').trim().slice(0,80);if(q.length<2)return res.json({items:[],credits:[],inbox:[]});
@@ -4707,7 +4748,7 @@ app.post("/api/ai/shop-chat",auth,async(req,res)=>{try{
   const sf=st.rows[0]?.payload||{};
   workorders=(Array.isArray(sf.workorders)?sf.workorders:[]).filter(w=>String(w.unit||'').toLowerCase()===String(unit.unit_number||'').toLowerCase()||String(w.vin||'').toLowerCase()===String(unit.vin||'').toLowerCase()).slice(-60).map(w=>({id:w.id,unit:w.unit,status:w.status,date:w.date,completedAt:w.completedAt,mileage:w.mileage,tasks:(w.tasks||[]).map(t=>({name:t.t,outcome:t.taskOutcome||'',note:t.outcomeNote||'',elapsedMs:t.elapsedMs||0}))}));
  }
- const financialAllowed=req.user.role==='admin'||(req.user.role==='manager'&&req.user.permissions?.financials!==false);
+ const financialAllowed=req.user.role==='admin'||(req.user.role==='manager'&&req.user.permissions?.financials===true);
  const recentIttrServices=compactInvoiceHistory(invoices);
  const pmInvoiceMatches=recentIttrServices.filter(x=>pmServiceIntent((x.lines||[]).map(l=>`${l.description} ${l.partNumber||''}`).join(' ')));
  const pmWorkorderMatches=workorders.filter(w=>pmServiceIntent((w.tasks||[]).map(t=>`${t.name||''} ${t.outcome||''} ${t.note||''}`).join(' ')));
@@ -4757,6 +4798,7 @@ registerAICenterRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit,aiM
 registerComplianceRoutes(app,{auth,ownerOnly,adminOnly,requireDb,audit,PDFDocument,shopProfile,lookupFmcsaCarrier,searchFmcsaCarriersByName,samsaraPaged,samsaraConfigured:samsaraTokenPresent});
 // v24.48.0: Bills — every shop purchase, by expense category, ready for QuickBooks.
 registerBillRoutes(app,{auth,managerPermission,ownerOnly,requireDb,audit,resolveVendor,knownVendor,reportRange});
+registerMfaRoutes(app,{auth,ownerOnly,requireDb,audit,bcrypt,bwipjs,limiter:loginLimiter,cleanUsername});
 // v24.49.0: one customer payment split across several invoices; the rest stays as customer credit.
 registerCustomerPaymentRoutes(app,{auth,managerPermission,requireDb,audit,recalcInvoice,paymentMethod});
 app.use("/api",(req,res)=>res.status(404).json({error:"API endpoint not found"}));
@@ -4786,6 +4828,8 @@ initDb()
   .then(()=>pool&&ensureAIUsageSchema(pool))
   .then(()=>pool&&ensureVendorBillSchema(pool))
   .then(()=>pool&&ensureBillSchema(pool))
+  .then(()=>pool&&ensureMfaSchema(pool))
+  .then(()=>pool&&migrateManagerPermissionsDefaultDeny(pool))
   .then(()=>pool&&ensureCustomerPaymentSchema(pool))
   .then(()=>pool&&ensureFluidSchema(pool))
   // v24.41.1: odometer readings typed with a dot as thousands separator ("304.538") were saved as 304.538 miles. Repair once.
