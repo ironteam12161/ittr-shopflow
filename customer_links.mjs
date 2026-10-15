@@ -20,7 +20,8 @@ export async function ensureCustomerLinkSchema(db) {
   ALTER TABLE customer_estimate_lines ADD COLUMN IF NOT EXISTS customer_decision TEXT;
   ALTER TABLE customer_estimates ADD COLUMN IF NOT EXISTS customer_signed_name TEXT;
   ALTER TABLE customer_estimates ADD COLUMN IF NOT EXISTS customer_decided_at TIMESTAMPTZ;
-  ALTER TABLE customer_estimates ADD COLUMN IF NOT EXISTS customer_decision_ip TEXT;`);
+  ALTER TABLE customer_estimates ADD COLUMN IF NOT EXISTS customer_decision_ip TEXT;
+  ALTER TABLE customer_estimates ADD COLUMN IF NOT EXISTS work_order_id TEXT;`);
 }
 
 export async function findActiveLink(db, token, { touch = false } = {}) {

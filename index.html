@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.57.0-EMAILCODE-20261015">
+<meta name="ittr-build" content="ITTR-24.58.0-EMAILCODE-20261015">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -26,7 +26,7 @@
  P.removeItem=function(k){rm.call(this,k);if(this===sessionStorage&&keys[k])try{rm.call(localStorage,'ittr_app_'+k)}catch(e){}};
 }catch(e){}})();
 </script>
-<title>ITTR ShopFlow v24.57.0</title>
+<title>ITTR ShopFlow v24.58.0</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -825,7 +825,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.57.0">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.58.0">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -981,7 +981,7 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.57.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.58.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1553,7 +1553,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.57.0';
+const FRONTEND_VERSION='24.58.0';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1916,7 +1916,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.57.0";
+const ROUTE_MODULE_VERSION="24.58.0";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -2184,7 +2184,7 @@ document.getElementById("loginForm").onsubmit=async e=>{
   const p=document.getElementById("loginPass").value;
   const err=document.getElementById("loginError");err.textContent="Signing in…";
   try{
-    // v24.57.0: with 2-step login on, the password alone returns mfaRequired; the code comes from the authenticator
+    // v24.58.0: with 2-step login on, the password alone returns mfaRequired; the code comes from the authenticator
     // app or by email. A remembered device (30 days) sends its key and skips the code.
     const d=await loginRequest(u,p,{});
     if(d.mfaRequired){showLoginCodeStep(d);return}
@@ -2201,7 +2201,7 @@ document.getElementById("loginForm").onsubmit=async e=>{
     err.textContent="";document.getElementById("loginScreen").style.display="none";applyRole();render();
   }catch(ex){err.textContent=ex.message||"Sign in failed."}
 };
-// v24.57.0: every user changes their own password here and can sign out their other devices (lost phone, shared PC).
+// v24.58.0: every user changes their own password here and can sign out their other devices (lost phone, shared PC).
 async function openAccountSecurity(){
  let m=document.getElementById("accountSecurityModal");
  if(!m){m=document.createElement("div");m.className="modal";m.id="accountSecurityModal";document.body.appendChild(m)}
@@ -2221,7 +2221,7 @@ async function openAccountSecurity(){
   try{const d=await apiJSON("/api/auth/password",{method:"POST",body:JSON.stringify({currentPassword:f.currentPassword.value,newPassword:np})});closeModal("accountSecurityModal");showToast(`${tr("Password changed.")}${d.otherSessionsSignedOut?` ${d.otherSessionsSignedOut} ${tr("other device(s) signed out.")}`:""}`,"success")}catch(err){alert(err.message||tr("Password was not changed."))}};
  m.classList.add("open");renderMfaBox();setTimeout(()=>m.querySelector('input[name="currentPassword"]')?.focus(),50);
 }
-// v24.57.0: 2-step login (authenticator app) inside the 🔒 Password window.
+// v24.58.0: 2-step login (authenticator app) inside the 🔒 Password window.
 async function renderMfaBox(){const box=document.getElementById("mfaBox");if(!box)return;let st=null;try{st=await apiJSON("/api/auth/2fa")}catch(_){box.innerHTML="";return}
  const how=[st.email?`${esc(tr("a code emailed to"))} <b>${esc(st.emailTo)}</b>`:"",st.app?esc(tr("the authenticator app")):""].filter(Boolean).join(` ${esc(tr("or"))} `);
  box.innerHTML=st.enabled
@@ -4089,7 +4089,7 @@ function hideUnitSuggestions(mode){const el=document.getElementById(mode==="edit
 function workOrderFormEl(mode,name){const form=document.getElementById(mode==="edit"?"editForm":"woForm");return form?.elements?.namedItem(name)||null}
 function renderUnitSuggestions(mode,items){const box=document.getElementById(mode==="edit"?"editUnitSuggestions":"woUnitSuggestions");if(!box)return;box.innerHTML=(items||[]).map(x=>`<button type="button" class="unitSuggestItem" onclick="applyUnitSuggestion('${mode}',${Number(x.id)})"><b>Unit ${esc(cleanVehicleMeta(x.unit_number)||"")}</b> — ${esc(cleanImportedDisplayText(x.customer_name)||"No customer")}<div class="muted">${esc(smartResultMeta([cleanVehicleMeta(x.vin)||"",vehicleDisplayName(x),x.plate?`Plate ${cleanVehicleMeta(x.plate)}`:""])||"No vehicle details")}</div></button>`).join("")}
 function renderWorkOrderVehicleMatch(mode,x){const box=document.getElementById(mode==="edit"?"editVehicleMatch":"woVehicleMatch");if(!box)return;if(!x){box.classList.add("hidden");box.innerHTML="";return}box.classList.remove("hidden");box.innerHTML=`<div class="vehicleMatchCard"><b>Matched Unit ${esc(cleanVehicleMeta(x.unit_number)||"")}</b><div>${esc(cleanImportedDisplayText(x.customer_name)||"")}${x.dot_number?` · DOT ${esc(cleanVehicleMeta(x.dot_number))}`:""}</div><div class="muted">${esc(smartResultMeta([cleanVehicleMeta(x.vin)||"",vehicleDisplayName(x),x.plate?`Plate ${cleanVehicleMeta(x.plate)}`:"",x.mileage!=null?`${Number(x.mileage).toLocaleString()} mi`:""])||"Vehicle details can be added in Customers")}</div></div><div class="warrantyNote hidden" data-warranty></div>`;loadUnitWarranty(box,x.unit_number,x.customer_name)}
-// v24.57.0: repairs on this unit still under warranty, so a returning failure is caught before it is billed again.
+// v24.58.0: repairs on this unit still under warranty, so a returning failure is caught before it is billed again.
 async function loadUnitWarranty(box,unit,customer){const el=box.querySelector("[data-warranty]");if(!el||!unit)return;try{const d=await apiJSON(`/api/warranty/unit?unit=${encodeURIComponent(unit)}&customer=${encodeURIComponent(customer||"")}`);if(!d.items.length||!el.isConnected)return;
  el.innerHTML=`<b>⚠ ${d.items.length} repair${d.items.length===1?"":"s"} on this unit still under warranty</b><ul>${d.items.slice(0,6).map(x=>`<li>${esc(x.date)} · ${esc(x.label||"Repair")} — ${esc(String(x.text||"").slice(0,80))} <span class="muted">(${esc(x.ref)}${x.mechanic?`, ${esc(x.mechanic)}`:""}; ${x.laborWarranty?`labor until ${esc(x.laborUntil)}`:`parts until ${esc(x.partsUntil)}`})</span></li>`).join("")}</ul><div class="muted">If the same thing failed again, it may be a warranty comeback: check before charging.</div>`;el.classList.remove("hidden")}catch(_){}}
 async function customerUnitSuggest(input,mode){clearTimeout(unitLookupTimer);const q=String(input?.value||"").trim();if(q.length<1){hideUnitSuggestions(mode);return}unitLookupTimer=setTimeout(async()=>{try{const d=await apiJSON(`/api/customer-units/suggest?q=${encodeURIComponent(q)}`);unitSuggestionCache=d.items||[];renderUnitSuggestions(mode,unitSuggestionCache);const exact=unitSuggestionCache.filter(x=>String(x.unit_number||"").toLowerCase()===q.toLowerCase());if(exact.length===1)applyUnitSuggestion(mode,exact[0].id,false)}catch{}},160)}
@@ -4842,7 +4842,7 @@ function openIssue(workOrderId=null){if(!requireMechanic())return;if(!state.work
 function closeModal(id){
  const modal=document.getElementById(id);
  if(modal) modal.classList.remove("open");
- // v24.57.0: a closed window keeps no typed password, so the browser never pairs it with other boxes and offers to "save" it.
+ // v24.58.0: a closed window keeps no typed password, so the browser never pairs it with other boxes and offers to "save" it.
  if(modal) modal.querySelectorAll('input[type="password"]').forEach(i=>{i.value=""});
  updateMobileBackButton();
 }
@@ -6439,7 +6439,7 @@ async function editInvoicePayment(invoiceId,paymentId){const p=(activeInvoice?.p
 let invoiceSearchText="",invoicePaySearchTimer=0,invoicePayHitIds=new Set();
 function onInvoiceSearch(v){invoiceSearchText=String(v||"").trim().toLowerCase();invoicePayHitIds=new Set();renderInvoices();clearTimeout(invoicePaySearchTimer);const box=document.getElementById("invoicePaymentHits");if(!box)return;if(invoiceSearchText.length<3){box.innerHTML="";return}
  invoicePaySearchTimer=setTimeout(async()=>{try{const d=await apiJSON(`/api/payments/search?q=${encodeURIComponent(invoiceSearchText)}`);invoicePayHitIds=new Set(d.items.map(p=>String(p.invoice_id)));renderInvoices();
- // v24.57.0: the same transaction ID can also be customer credit not used yet, or a Zelle email never applied.
+ // v24.58.0: the same transaction ID can also be customer credit not used yet, or a Zelle email never applied.
  const credits=d.credits||[],inbox=d.inbox||[];
  box.innerHTML=d.items.length||credits.length||inbox.length?`<div class="card payHits"><b>Payments matching “${esc(v)}”</b>${d.items.map(p=>`<button type="button" class="payHit" onclick="openInvoiceWorkspace(${Number(p.invoice_id)})"><span><b>${esc(p.method||"Other")} ${esc(p.reference||"")}</b> · ${invMoney(p.amount)} · ${esc(String(p.paid_at||"").slice(0,10))}</span><span class="muted">Invoice ${esc(p.invoice_number)} · ${esc(p.customer_name||"")}${p.unit_number?` · Unit ${esc(p.unit_number)}`:""}</span></button>`).join("")}${credits.map(c=>`<button type="button" class="payHit" ${c.customer_id?`onclick="openCustomerProfile(${Number(c.customer_id)})"`:"disabled"}><span><b>${esc(c.method||"Other")} ${esc(c.reference||"")}</b> · ${invMoney(c.amount)} · ${esc(String(c.paid_at||"").slice(0,10))}</span><span class="muted">${invMoney(c.unapplied)} kept as credit · ${esc(c.customer_name||"")} — not applied to an invoice yet</span></button>`).join("")}${inbox.map(m=>`<button type="button" class="payHit" onclick="openGmailInbox()"><span><b>Zelle ${esc(m.confirmation||"")}</b> · ${m.amount!=null?invMoney(m.amount):"—"} · ${esc(String(m.received_at||"").slice(0,10))}</span><span class="muted">${esc(m.counterparty||m.from_email||"")} · in the Gmail inbox, ${m.status==="new"?"not applied to any invoice yet":`marked ${esc(m.status)}, not applied`}</span></button>`).join("")}</div>`:(String(v).replace(/\D/g,"").length>=5?`<div class="card payHits"><b>No payment with “${esc(v)}”</b><span class="muted">Not on any invoice payment, customer credit or Zelle email.</span></div>`:"")}catch(_){box.innerHTML=""}},300)}
 function openGmailInbox(){try{sessionStorage.setItem("ittr_reports_tab","inbox")}catch(_){}showView("reports")}
@@ -6628,9 +6628,9 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
 <script src="./finance-shared.js?v=24.47.3"></script>
 <script src="./inspection-checklist.js?v=3"></script>
 <script src="./inspection-workflow.js?v=8"></script>
-<script src="./canned-jobs.js?v=24.57.0"></script>
-<script src="./share-links.js?v=24.57.0"></script>
-<script src="./sms.js?v=24.57.0"></script>
+<script src="./canned-jobs.js?v=24.58.0"></script>
+<script src="./share-links.js?v=24.58.0"></script>
+<script src="./sms.js?v=24.58.0"></script>
 <script>
 /* v24.46.2: Start a Truck keeps what the mechanic typed until the work order is created.
    Saved on this phone (localStorage) while typing and when the screen locks; restored when the wizard is opened

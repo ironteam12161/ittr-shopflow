@@ -90,6 +90,25 @@ try{
  await request(`/api/customer-links/${links[0].id}`,{method:'DELETE',token:owner});eq((await pub(t2)).code,'LINK_GONE','turned-off link stops working');
  await db.query("UPDATE customer_links SET expires_at=now()-interval '1 minute' WHERE id=$1",[links[1].id]);eq((await pub(t1)).code,'LINK_GONE','expired link stops working');
  console.log('PASS customer links (estimate): private token, no costs or notes shown, per-job approve/decline with signature, audit, locked after answer, back-to-draft reset, declined jobs left off the invoice, revoke, expiry');
+ // v24.58.0: estimate → work order (approved jobs only) → invoice linked to the work order.
+ const e3=await request('/api/estimates',{method:'POST',token:owner,body:{customerName:'WO Fleet',unitNumber:'88',vin:'1XKYD49X0LJ000088',mileage:'512000'}});
+ const k1=await request(`/api/estimates/${e3.id}/lines`,{method:'POST',token:owner,body:{lineType:'labor',description:'Replace front brakes',quantity:3,unitPrice:140}});
+ await request(`/api/estimates/${e3.id}/lines`,{method:'POST',token:owner,body:{lineType:'part',parentLineId:k1.id,description:'Brake pad set',partNumber:'BP-100',quantity:2,unitPrice:95}});
+ await request(`/api/estimates/${e3.id}/lines`,{method:'POST',token:owner,body:{lineType:'labor',description:'Replace mud flaps',quantity:0.5,unitPrice:140}});
+ const t3=(await request('/api/customer-links',{method:'POST',token:owner,body:{kind:'estimate',refId:String(e3.id)}})).url.split('/c/')[1],v3=await pub(t3);
+ await pub(t3,{path:'/decide',method:'POST',body:{name:'Sam Fleet',agree:true,jobs:{[v3.jobs[0].key]:'approve',[v3.jobs[1].key]:'decline'}}});
+ eq((await request(`/api/estimates/${e3.id}/work-order`,{method:'POST',token:mech,body:{},allowError:true})).status,403,'mechanics cannot create work orders from estimates');
+ eq((await request(`/api/estimates/${e3.id}/work-order`,{method:'POST',token:owner,body:{mechanic:'nobody'},allowError:true})).status,400,'unknown mechanic refused');
+ const wo3=await request(`/api/estimates/${e3.id}/work-order`,{method:'POST',token:owner,body:{mechanic:'mech1',priority:'High'}});ok(wo3.ok&&wo3.jobs===1,'work order created with the approved job only');
+ const w3=(await request('/api/state',{token:owner})).shopflow.payload.workorders.find(w=>String(w.id)===String(wo3.workOrderId));
+ ok(w3&&w3.unit==='88'&&w3.customer==='WO Fleet'&&w3.vin==='1XKYD49X0LJ000088'&&w3.mechanic==='mech1'&&w3.priority==='High'&&w3.truckHere===true&&w3.status==='Open','work order has the vehicle, customer and mechanic');
+ ok(w3.tasks.length===1&&w3.tasks[0].t==='Replace front brakes'&&!w3.tasks.some(t=>/mud flaps/i.test(t.t)),'declined job not on the work order');
+ ok(/Sam Fleet/.test(w3.notes)&&/Brake pad set \(BP-100\) ×2/.test(w3.notes)&&w3.estimateNumber===e3.estimateNumber,'notes say who approved and which parts are planned');
+ ok((await request('/api/state',{token:mech})).shopflow.payload.workorders.some(w=>String(w.id)===String(wo3.workOrderId)),'the assigned mechanic sees it right away');
+ eq((await request(`/api/estimates/${e3.id}`,{token:owner})).estimate.work_order_id,String(wo3.workOrderId),'estimate remembers its work order');
+ eq((await request(`/api/estimates/${e3.id}/work-order`,{method:'POST',token:owner,body:{},allowError:true})).code,'WO_EXISTS','only one work order per estimate');
+ const cv3=await request(`/api/estimates/${e3.id}/convert`,{method:'POST',token:owner,body:{}});eq((await request(`/api/invoices/${cv3.id}`,{token:owner})).invoice.work_order_id,String(wo3.workOrderId),'invoice from the estimate is linked to the work order');
+ console.log('PASS estimate → work order: approved jobs become tasks, declined left out, mechanic/vehicle/notes filled, one per estimate, invoice linked');
  // ---------------------------------------------------------------- customer links: inspection
  const st=(await request('/api/state',{token:owner})).shopflow;
  const wo={id:'7701',status:'Open',unit:'TR-9',customer:'Link Fleet',vin:'1FUJGLDR9CLBP8834',year:'2019',make:'Freightliner',model:'Cascadia',mechanic:'mech1',tasks:[],inspection:{required:true,type:'truck',status:'Completed',completedAt:new Date().toISOString(),results:{engine_oil:{status:'repair',note:'Oil leak at rear main seal'},brakes_front:{status:'ok'}}}};

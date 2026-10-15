@@ -756,6 +756,8 @@ export function registerFinanceRoutes(app, deps) {
       VALUES($1,$2::bigint,$3,$4,$5::bigint,$6,$7,$8,$9::numeric,$10,CURRENT_DATE,CURRENT_DATE+$11::int,$12,$13::numeric,$14::numeric,$15::numeric,$16,$17::numeric,$18,$19,$20,$21,$22,$23,$24) RETURNING id`,
     [invoiceNumber, est.customer_id, est.customer_name, est.customer_email, est.unit_id, est.unit_number || '', est.vin || '', est.dot_number || '', est.mileage, est.po_number || '', days, terms, est.tax_rate, est.shop_supplies, est.environmental_fee, est.discount_type || 'fixed', est.discount_value || 0,
       est.billing_address, est.billing_city, est.billing_state, est.billing_postal_code, est.customer_note || '', [`Created from estimate ${est.estimate_number}.`, est.internal_note || ''].filter(Boolean).join('\n'), req.user.username])).rows[0];
+    // v24.58.0: an estimate that already has a work order links the invoice to it.
+    if (est.work_order_id) await db.query(`UPDATE customer_invoices SET work_order_id=$2 WHERE id=$1::bigint AND coalesce(work_order_id,'')=''`, [inv.id, String(est.work_order_id)]);
     const idMap = new Map();
     const ordered = [...lines.filter(l => l.line_type === 'labor'), ...lines.filter(l => l.line_type !== 'labor')];
     for (const l of ordered) {
