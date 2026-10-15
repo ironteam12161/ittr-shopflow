@@ -1,0 +1,33 @@
+<style>
+.po{--line:#e4e7ec;--mut:#667085;--soft:#f9fafb}
+.poHead{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:14px}.poHead h1{margin:0}.poHead .acts{display:flex;gap:8px;flex-wrap:wrap}
+.poFilters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:12px}
+.poChips{display:flex;gap:4px;flex-wrap:wrap}.poChips button{background:#fff;color:#344054;border:1px solid var(--line);min-height:34px;padding:5px 11px;font-size:13px}.poChips button.on{background:#101828;color:#fff;border-color:#101828}
+.poFilters input{flex:1;min-width:180px;min-height:38px}
+.poScroll{overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff}
+.poTable{width:100%;border-collapse:collapse;font-size:13px}.poTable th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);background:var(--soft);text-align:left;white-space:nowrap}
+.poTable td,.poTable th{padding:9px 10px;border-bottom:1px solid #eef0f3;vertical-align:middle}.poTable tbody tr{cursor:pointer}.poTable tbody tr:hover{background:#f8fafc}
+.poTable .n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.poPill{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;background:#f2f4f7;color:#475467}
+.poPill.ordered{background:#eff8ff;color:#175cd3}.poPill.partial{background:#fffaeb;color:#b54708}.poPill.received{background:#ecfdf3;color:#067647}.poPill.cancelled{text-decoration:line-through}
+.poBar{height:6px;border-radius:99px;background:#eef0f3;overflow:hidden;min-width:70px}.poBar i{display:block;height:100%;background:#12b76a}
+.poEmpty{padding:30px;text-align:center;color:var(--mut)}
+.poModal{position:fixed;inset:0;z-index:70;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;padding:24px 12px;overflow:auto}
+.poModal>.box{background:#fff;border-radius:16px;max-width:960px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(15,23,42,.3);display:grid;gap:12px}
+.poModal h2{margin:0}.poBoxHead{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.poBoxHead .x{background:transparent;color:#475467;font-size:24px;min-height:auto;padding:0 6px}
+.poGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.poGrid label{display:grid;gap:4px;font-size:12px;font-weight:700}.poGrid .span2{grid-column:span 2}
+.poLines{width:100%;border-collapse:collapse;font-size:13px}.poLines th{font-size:11px;text-transform:uppercase;color:var(--mut);text-align:left;padding:4px 6px}.poLines td{padding:4px 6px;vertical-align:middle;border-top:1px solid #f2f4f7}
+.poLines input{width:100%;min-height:34px;padding:5px 8px}.poLines .q{width:80px}.poLines .c{width:110px}.poLines .n{text-align:right;font-variant-numeric:tabular-nums}
+.poFind{position:relative}.poFind input{width:100%}.poFindList{position:absolute;z-index:5;left:0;right:0;top:100%;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 30px rgba(15,23,42,.15);max-height:260px;overflow:auto}
+.poFindList button{display:block;width:100%;text-align:left;background:#fff;color:#101828;border-radius:0;border-bottom:1px solid #f2f4f7;min-height:auto;padding:8px 10px;font-size:13px}
+.poFoot{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center}.poFoot .acts{display:flex;gap:8px;flex-wrap:wrap}
+.poInfo{display:flex;flex-wrap:wrap;gap:4px 18px;color:var(--mut);font-size:13px}
+@media(max-width:760px){.poGrid{grid-template-columns:1fr 1fr}.poGrid .span2{grid-column:1/-1}}
+</style>
+<div class="po">
+ <div class="poHead"><div><h1>Purchase orders</h1><div class="muted">What you ordered from vendors. Receive parts against the order, then create the vendor's bill from it.</div></div>
+  <div class="acts"><button type="button" data-po="new">+ New purchase order</button><button type="button" class="secondary" data-po="reorder" title="Parts at or below their reorder point">Low-stock reorder</button></div></div>
+ <div class="poFilters"><div class="poChips" id="poStatus"><button data-s="" class="on">Open &amp; recent</button><button data-s="draft">Draft</button><button data-s="ordered">Ordered</button><button data-s="partial">Partly received</button><button data-s="received">Received</button><button data-s="cancelled">Cancelled</button></div>
+  <input type="search" data-f="q" placeholder="Search PO #, vendor, part #…" aria-label="Search purchase orders"></div>
+ <div class="poScroll"><table class="poTable"><thead><tr><th>PO #</th><th>Vendor</th><th>Created</th><th>Needed by</th><th>Received</th><th class="n">Total</th><th>Status</th></tr></thead><tbody id="poRows"><tr><td colspan="7" class="poEmpty">Loading…</td></tr></tbody></table></div>
+</div>

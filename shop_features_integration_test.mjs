@@ -1,6 +1,9 @@
 import {spawn} from 'node:child_process';
 import net from 'node:net';
 import pg from 'pg';
+import http from 'node:http';
+import {twilioSignature} from './customer_sms.mjs';
+import {findComebacks,unitKey} from './warranty.mjs';
 import {totpCode,totpStep} from './security_mfa.mjs';
 
 if(process.env.ITTR_LANGUAGE_TEST_DB!=='1'&&process.env.ITTR_OPERATIONS_TEST_DB!=='1'){console.log('SKIP shop features integration test: disposable DB flag is not enabled');process.exit(0)}
@@ -20,6 +23,7 @@ try{
  const owner=(await login('opsadmin','CI-Ops-Admin-2026!')).token;ok(owner,'owner signs in');
  await request('/api/admin/users',{method:'POST',token:owner,body:{username:'mech1',display:'Mech One',password:'Mechanic-Pass-1'}});
  const mech=(await login('mech1','Mechanic-Pass-1')).token;
+ await request('/api/admin/managers',{method:'POST',token:owner,body:{username:'mgr0',display:'Manager Zero',password:'Manager-Pass-2026',permissions:{invoices:true}}});const mgt0=(await login('mgr0','Manager-Pass-2026')).token;
  // ---------------------------------------------------------------- canned jobs
  const pad=(await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,quantity,cost,price,status,inventory_managed,raw) VALUES('cj-pad','BP-100','Brake pad set',8,40,95,'Active',true,'{}'::jsonb) RETURNING id`)).rows[0].id;
  const cj=(await request('/api/canned-jobs',{method:'POST',token:owner,body:{name:'Front brakes',category:'Brakes',lines:[{lineType:'labor',description:'Replace front brake pads',quantity:2,unitPrice:135},{lineType:'part',description:'Brake pad set',partNumber:'bp-100',quantity:1,unitPrice:90,taxable:true},{lineType:'fee',description:'Shop supplies',quantity:1,unitPrice:15}]}})).item;
@@ -117,5 +121,84 @@ try{
  eq((await fetch(`http://127.0.0.1:${port}/api/public/link/${tp}/invoice/${iB}/pdf`)).status,404,'cannot download another customer\'s invoice');
  eq((await pub(t2.replace(/./,'Z'),{path:`/invoice/${iA}/pdf`})).status,404,'a non-portal or wrong token cannot download invoices');
  console.log('PASS fleet portal: own units, invoices (owed/overdue, PDF), estimates to approve; another customer\'s data never shown or downloadable');
+ // ---------------------------------------------------------------- texting (fake Twilio)
+ eq((await request('/api/sms/config',{token:owner})).enabled,false,'texting is off until Twilio keys are set');
+ eq((await request('/api/sms',{method:'POST',token:owner,body:{to:'3125550199',body:'hi'},allowError:true})).code,'SMS_NOT_CONFIGURED','sending without Twilio is refused clearly');
+ const sent=[];const fake=http.createServer((req,res)=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>{const f=Object.fromEntries(new URLSearchParams(b));sent.push({path:req.url,auth:req.headers.authorization,f});
+  if(f.To==='+15550000000'){res.writeHead(400,{'Content-Type':'application/json'});return res.end(JSON.stringify({message:'Invalid To number'}))}
+  res.writeHead(201,{'Content-Type':'application/json'});res.end(JSON.stringify({sid:`SM${sent.length}x${Date.now()}`,status:'queued'}))})});
+ await new Promise(r=>fake.listen(0,'127.0.0.1',r));
+ Object.assign(process.env,{TWILIO_ACCOUNT_SID:'ACtest123',TWILIO_AUTH_TOKEN:'twilio-secret',TWILIO_FROM:'+13125550100',TWILIO_API_BASE:`http://127.0.0.1:${fake.address().port}`});
+ await stop();await start();
+ await db.query("UPDATE fullbay_import_customers SET phone='(312) 555-0199' WHERE id=$1",[cA]);
+ eq((await request('/api/sms/config',{token:owner})).enabled,true,'texting on with Twilio keys');
+ eq((await request('/api/sms/threads',{token:mech,allowError:true})).status,403,'mechanics do not see texts');
+ eq((await request('/api/sms',{method:'POST',token:owner,body:{to:'123',body:'hi'},allowError:true})).status,400,'bad number refused');
+ const s1=await request('/api/sms',{method:'POST',token:owner,body:{to:'312-555-0199',body:'Your truck is ready.'}});ok(s1.ok&&s1.sid,'text sent');
+ const tw=sent.at(-1);ok(tw.path==='/2010-04-01/Accounts/ACtest123/Messages.json'&&tw.f.To==='+13125550199'&&tw.f.From==='+13125550100'&&tw.f.Body==='Your truck is ready.'&&/\/api\/sms\/status$/.test(tw.f.StatusCallback),'Twilio got the right number, sender, text and status callback');
+ ok(tw.auth===`Basic ${Buffer.from('ACtest123:twilio-secret').toString('base64')}`,'Twilio account auth');
+ eq((await db.query("SELECT customer_id FROM sms_messages WHERE twilio_sid=$1",[s1.sid])).rows[0].customer_id,String(cA),'text linked to the customer by phone');
+ eq((await request('/api/sms',{method:'POST',token:owner,body:{to:'5550000000',body:'x'},allowError:true})).status,502,'a Twilio error is shown');
+ const twPost=async(path,params,sign=true)=>{const url=`http://127.0.0.1:${port}${path}`;return fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded',...(sign?{'X-Twilio-Signature':twilioSignature('twilio-secret',url,params)}:{})},body:new URLSearchParams(params)})};
+ const inb={From:'+13125550199',To:'+13125550100',Body:'Thanks, coming at 3',MessageSid:'SMin1'};
+ eq((await twPost('/api/sms/inbound',inb,false)).status,403,'unsigned incoming text refused');
+ eq((await twPost('/api/sms/inbound',{...inb,Body:'tampered'},false)).status,403,'forged incoming text refused');
+ const ir=await twPost('/api/sms/inbound',inb);ok(ir.ok&&/<Response\/>/.test(await ir.text()),'signed incoming text accepted');
+ await twPost('/api/sms/inbound',inb);eq((await db.query("SELECT count(*)::int n FROM sms_messages WHERE twilio_sid='SMin1'")).rows[0].n,1,'Twilio retry is not stored twice');
+ eq((await request('/api/sms/config',{token:owner})).unread,1,'unread count');
+ const th=(await request('/api/sms/threads',{token:owner})).items[0];ok(th.customer_name==='Portal Fleet LLC'&&th.unread===1,'conversation matched to the customer');
+ const conv2=await request(`/api/sms/thread?phone=${encodeURIComponent('+13125550199')}`,{token:owner});ok(conv2.items.length===2&&conv2.items[0].direction==='out','conversation in order');
+ eq((await request('/api/sms/config',{token:owner})).unread,0,'opening it marks it read');
+ await twPost('/api/sms/status',{MessageSid:s1.sid,MessageStatus:'delivered'});eq((await db.query("SELECT status FROM sms_messages WHERE twilio_sid=$1",[s1.sid])).rows[0].status,'delivered','delivery status updated');
+ await twPost('/api/sms/inbound',{From:'+13125550199',Body:'STOP',MessageSid:'SMin2'});
+ eq((await request('/api/sms',{method:'POST',token:owner,body:{to:'3125550199',body:'x'},allowError:true})).code,'SMS_OPTED_OUT','STOP turns texting off for that number');
+ await twPost('/api/sms/inbound',{From:'+13125550199',Body:'Start',MessageSid:'SMin3'});
+ ok((await request('/api/sms',{method:'POST',token:owner,body:{to:'3125550199',body:'Welcome back'}})).ok,'START turns it back on');
+ ok((await db.query("SELECT 1 FROM server_audit WHERE action='sms_sent'")).rowCount>=2,'texts are in the audit log');
+ fake.close();for(const k of ['TWILIO_ACCOUNT_SID','TWILIO_AUTH_TOKEN','TWILIO_FROM','TWILIO_API_BASE'])delete process.env[k];
+ console.log('PASS texting: off until set up, send through Twilio, linked to customer, signed incoming only, no duplicates, unread/read, delivery status, STOP/START');
+ // ---------------------------------------------------------------- purchase orders
+ const filt=(await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,quantity,cost,last_purchase_cost,price,status,inventory_managed,reorder_point,max_qty,vendor,raw) VALUES('po-f','FF-55','Fuel filter',2,20,20,45,'Active',true,5,10,'FleetPride','{}'::jsonb) RETURNING id`)).rows[0].id;
+ const sug=(await request('/api/purchase-orders/suggestions?vendor=FleetPride',{token:owner})).items.find(x=>x.inventoryPartId===Number(filt));ok(sug&&sug.suggestQty===8&&sug.unitCost===20,'low-stock suggestion fills up to max');
+ eq((await request('/api/purchase-orders',{token:mech,allowError:true})).status,403,'mechanics do not see purchase orders');
+ eq((await request('/api/purchase-orders',{method:'POST',token:owner,body:{vendor:'FleetPride',lines:[]},allowError:true})).status,400,'a PO needs lines');
+ const po=await request('/api/purchase-orders',{method:'POST',token:owner,body:{vendor:'FleetPride',vendorEmail:'orders@fleetpride.test',workOrderId:'7701',lines:[{partNumber:'ff-55',qty:8,unitCost:22},{description:'Shop rags (box)',qty:1,unitCost:30}]}});
+ ok(/^PO-\d{4}-00001$/.test(po.poNumber),'PO number');let pb=await request(`/api/purchase-orders/${po.id}`,{token:owner});
+ ok(Number(pb.lines[0].inventory_part_id)===Number(filt)&&pb.lines[0].description==='Fuel filter'&&!pb.lines[1].inventory_part_id,'part number linked to stock; non-stock line kept');eq(Number(pb.po.total),206,'PO total');
+ await request(`/api/purchase-orders/${po.id}/status`,{method:'POST',token:owner,body:{status:'ordered'}});
+ const r1=await request(`/api/purchase-orders/${po.id}/receive`,{method:'POST',token:owner,body:{reference:'FP-INV-1',lines:[{id:pb.lines[0].id,qty:5},{id:pb.lines[1].id,qty:1}]}});eq(r1.status,'partial','partly received');
+ const pp=(await db.query('SELECT quantity,cost,last_purchase_cost,previous_purchase_cost FROM fullbay_import_parts WHERE id=$1',[filt])).rows[0];
+ ok(Number(pp.quantity)===7&&Math.abs(Number(pp.cost)-150/7)<0.001&&Number(pp.last_purchase_cost)===22&&Number(pp.previous_purchase_cost)===20,'stock and average cost updated on receive');
+ ok((await db.query("SELECT 1 FROM part_inventory_transactions WHERE part_id=$1 AND transaction_type='receive' AND reference='FP-INV-1'",[filt])).rowCount===1&&(await db.query("SELECT 1 FROM part_purchase_cost_history WHERE part_id=$1 AND unit_cost=22",[filt])).rowCount===1,'receive is in the part history and purchase history');
+ eq((await request(`/api/purchase-orders/${po.id}/receive`,{method:'POST',token:owner,body:{lines:[{id:pb.lines[0].id,qty:4}]},allowError:true})).status,400,'cannot receive more than is still due');
+ ok(!(await request('/api/purchase-orders/suggestions?vendor=FleetPride',{token:owner})).items.some(x=>x.inventoryPartId===Number(filt)),'parts still on order are not suggested again');
+ eq((await request(`/api/purchase-orders/${po.id}`,{method:'PUT',token:owner,body:{vendor:'FleetPride',lines:[{partNumber:'FF-55',qty:20,unitCost:1}]},allowError:true})).status,409,'lines locked after parts arrived');
+ eq((await request(`/api/purchase-orders/${po.id}/status`,{method:'POST',token:owner,body:{status:'cancelled'},allowError:true})).status,409,'cannot cancel after parts arrived');
+ eq((await request(`/api/purchase-orders/${po.id}/status`,{method:'POST',token:owner,body:{status:'received'}})).status,'received','close short');
+ ok((await request('/api/purchase-orders?q=ff-55',{token:owner})).items.some(x=>x.po_number===po.poNumber),'search by part number');
+ const po2=await request('/api/purchase-orders',{method:'POST',token:owner,body:{vendor:'TruckPro',lines:[{description:'Wiper blades',qty:2,unitCost:9}]}});
+ eq((await request(`/api/purchase-orders/${po2.id}/status`,{method:'POST',token:owner,body:{status:'cancelled'}})).status,'cancelled','cancel an untouched order');
+ console.log('PASS purchase orders: low-stock suggestions, stock-linked lines, partial receive with average cost and history, over-receive refused, locked after receipt, close short, cancel, search');
+ // ---------------------------------------------------------------- warranty & comebacks
+ ok(unitKey('Acme Trucking LLC','Unit #101')===unitKey('ACME trucking','101')&&unitKey('Acme','101')!==unitKey('Beta Freight','101'),'unit identity: same fleet matches, same number at another fleet does not');
+ eq(findComebacks([{source:'invoice',type:'brakes',customer:'A',unit:'1',date:'2026-01-01',ref:'I1'},{source:'invoice',type:'brakes',customer:'A',unit:'1',date:'2026-02-01',ref:'I2'}],{within:90}).length,1,'pure: repeat within window is a comeback');
+ eq(findComebacks([{source:'invoice',type:'pm_service',customer:'A',unit:'1',date:'2026-01-01',ref:'I1'},{source:'invoice',type:'pm_service',customer:'A',unit:'1',date:'2026-02-01',ref:'I2'}],{within:90,ignore:['pm_service']}).length,0,'pure: PM repeating is not a comeback');
+ const wDay=n=>`CURRENT_DATE-${n}`;
+ const wInv=async(num,cust,unit,ago,desc)=>{const id=(await db.query(`INSERT INTO customer_invoices(invoice_number,customer_name,status,invoice_date,unit_number,created_by) VALUES($1,$2,'sent',${wDay(ago)},$3,'test') RETURNING id`,[num,cust,unit])).rows[0].id;
+  await db.query(`INSERT INTO customer_invoice_lines(invoice_id,job_uid,job_name,line_type,description,quantity,unit_price) VALUES($1,$2,$3,'labor',$3,1.5,140)`,[id,`w-${num}`,desc]);return id};
+ await wInv('W-1','Warranty Fleet','W9',60,'Replace wheel seal LH');await wInv('W-2','Warranty Fleet','W9',10,'Replace wheel seal LH again, leaking');
+ await wInv('W-3','Other Carrier','W9',5,'Replace wheel seal RH');await wInv('W-4','Warranty Fleet','W9',300,'Replace wheel seal RH');
+ await wInv('W-5','Warranty Fleet','W9',40,'PM service A');await wInv('W-6','Warranty Fleet','W9',8,'PM service A');
+ const iso=d=>new Date(Date.now()-d*86400000).toISOString().slice(0,10);
+ const cb=await request(`/api/reports/comebacks?from=${iso(30)}&to=${iso(0)}`,{token:owner});
+ const mine=cb.items.filter(c=>c.unit==='W9');ok(mine.length===1&&mine[0].days===50&&/wheel seal/i.test(mine[0].label)&&mine[0].first.ref==='Invoice W-1','one comeback: the wheel seal 50 days later (PM and the other carrier\'s unit W9 not counted)');
+ ok(cb.repairs>=2&&cb.rate>0&&cb.byType.length>=1,'comeback rate and breakdowns');
+ const wu=await request(`/api/warranty/unit?unit=W9&customer=${encodeURIComponent('Warranty Fleet LLC')}`,{token:owner});
+ ok(wu.items.some(x=>x.ref==='Invoice W-2'&&x.laborWarranty)&&!wu.items.some(x=>x.ref==='Invoice W-3')&&!wu.items.some(x=>/PM service/.test(x.text)),'unit warranty lists this fleet\'s repairs still covered');
+ ok(wu.items.some(x=>x.ref==='Invoice W-4'&&!x.laborWarranty&&x.partsWarranty),'older repair still under parts warranty only');
+ await request('/api/warranty/settings',{method:'PUT',token:owner,body:{laborDays:30,partsDays:200,comebackDays:45}});
+ const cb2=await request(`/api/reports/comebacks?from=${iso(30)}&to=${iso(0)}`,{token:owner});ok(!cb2.items.some(c=>c.unit==='W9'),'shorter comeback window drops the 50-day repeat');
+ eq((await request('/api/warranty/settings',{method:'PUT',token:mgt0,body:{laborDays:1},allowError:true})).status,403,'only the owner sets warranty terms');
+ console.log('PASS warranty & comebacks: same repair on the same fleet unit within the window, routine work and other fleets excluded, unit warranty lookup, owner-set terms');
  console.log('Shop features integration: all scenarios passed');
 }finally{await stop().catch(()=>{});await db.end().catch(()=>{})}
