@@ -6,6 +6,8 @@ import {twilioSignature} from './customer_sms.mjs';
 import {findComebacks,unitKey} from './warranty.mjs';
 import {totpCode,totpStep} from './security_mfa.mjs';
 import {repairWorkOrderLinks,sameName} from './link_repair.mjs';
+import {assistantRole,createAssistantTools,runShopAssistant} from './shop_assistant.mjs';
+await import('./public/sync-merge.js');const rebaseShopflow=globalThis.ittrRebaseShopflow; // browser script: it puts the function on the global object
 
 if(process.env.ITTR_LANGUAGE_TEST_DB!=='1'&&process.env.ITTR_OPERATIONS_TEST_DB!=='1'){console.log('SKIP shop features integration test: disposable DB flag is not enabled');process.exit(0)}
 const url=String(process.env.DATABASE_URL||'');if(!url)throw new Error('DATABASE_URL is required');
@@ -368,5 +370,29 @@ try{
  eq((await request('/api/invoices/999999',{token:owner,allowError:true})).status,404,'normal not-found is not an alert');await new Promise(r=>setTimeout(r,200));eq(alerts.length,1,'no alert for a 404');
  hook.close();delete process.env.ALERT_WEBHOOK_URL;delete process.env.ALERT_WEBHOOK_ALLOW_HTTP;
  console.log('PASS error alerts: 500s go to the webhook with the incident number, repeats throttled, 404s ignored');
+ // ---------------------------------------------------------------- v24.66.0 save collisions are merged, not dropped
+ {const wo=(id,x={})=>({id,unit:'U'+id,status:'Open',tasks:[],...x});
+  const base={workorders:[wo('1'),wo('2'),wo('3')],issues:[{id:'i1',wo:'1',note:'a'}],settings:{rate:120}};
+  const local={workorders:[wo('1',{status:'In Progress'}),wo('2'),wo('4')],issues:[{id:'i1',wo:'1',note:'a'},{id:'i2',wo:'4',note:'new'}],settings:{rate:120}};
+  const remote={workorders:[wo('1'),wo('2',{priority:'High'}),wo('3'),wo('5')],issues:[{id:'i1',wo:'1',note:'a'}],settings:{rate:125}};
+  const m=rebaseShopflow(base,local,remote),ids=m.payload.workorders.map(w=>w.id).join(',');
+  eq(ids,'1,2,5,4','merged list: my edit to 1, their edit to 2, my delete of 3, their new 5, my new 4');
+  ok(m.payload.workorders[0].status==='In Progress'&&m.payload.workorders[1].priority==='High','both edits kept');
+  eq(m.payload.issues.length,2,'my new finding kept');eq(m.payload.settings.rate,125,'their settings change kept (I did not touch it)');eq(m.conflicts.length,0,'no conflict');
+  const both=rebaseShopflow(base,{...base,workorders:[wo('1',{status:'Completed'}),wo('2'),wo('3')]},{...base,workorders:[wo('1',{status:'Waiting Parts'}),wo('2'),wo('3')]});
+  eq(both.payload.workorders[0].status,'Waiting Parts','same work order changed on both devices: the saved copy is kept');eq(both.conflicts[0],'Work order 1','and it is reported');
+  ok(!rebaseShopflow(base,base,remote).changed,'nothing changed here: the server copy is used as is');}
+ console.log('PASS save collisions: changes from two devices are merged per work order; only a work order changed on both is reported');
+ // ---------------------------------------------------------------- v24.66.0 Workshop AI follows manager permissions
+ {const noCust=assistantRole({role:'manager',username:'m',permissions:{invoices:true}}),cust=assistantRole({role:'manager',username:'m',permissions:{customers:true}}),mechWho=assistantRole({role:'mechanic',username:'mech1'});
+  const tools=w=>createAssistantTools({db,who:w,getShopflow:async()=>({workorders:[]}),searchManuals:async()=>({}),readManual:async()=>({}),samsaraVehicle:async()=>null});
+  ok(/not have access/.test((await tools(noCust).search_customers({query:'air'})).error||''),'a manager without Customers cannot look customers up through the AI');
+  ok(!(await tools(cust).search_customers({query:'air'})).error,'a manager with Customers can');
+  ok(/not have access/.test((await tools(cust).invoices({})).error||''),'and cannot see invoices without the Invoices permission');
+  ok(/not have access/.test((await tools(mechWho).vendor_bills({})).error||''),'a mechanic cannot see vendor bills');
+  const offered=async w=>{let names=[];await runShopAssistant({question:'hi',who:w,tools:tools(w),today:'2026-10-15',chat:async(_m,t)=>{names=(t||[]).map(x=>x.function.name);return {choices:[{message:{content:'ok'}}]}}});return names};
+  const o1=await offered(noCust),o2=await offered(cust);
+  ok(o1.includes('invoices')&&!o1.includes('search_customers'),'the AI is only offered the lookups the account may use');ok(o2.includes('search_customers')&&!o2.includes('vendor_bills'),'per permission');}
+ console.log('PASS Workshop AI: lookups follow the same manager permissions as the pages');
  console.log('Shop features integration: all scenarios passed');
 }finally{await stop().catch(()=>{});await db.end().catch(()=>{})}

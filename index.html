@@ -6,12 +6,14 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.65.0-AUDIT-20261015">
+<meta name="ittr-build" content="ITTR-24.66.0-REVIEW-20261015">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ITTR ShopFlow">
 <link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="apple-touch-icon" href="/assets/app-icon-180.png">
 <script>
 /* v24.46.0: inside the ShopFlow phone app the login is kept when the app is closed (the browser keeps it only
@@ -26,7 +28,7 @@
  P.removeItem=function(k){rm.call(this,k);if(this===sessionStorage&&keys[k])try{rm.call(localStorage,'ittr_app_'+k)}catch(e){}};
 }catch(e){}})();
 </script>
-<title>ITTR ShopFlow v24.65.0</title>
+<title>ITTR ShopFlow v24.66.0</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -58,6 +60,13 @@ form .row{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.field{margi
 .loginScreen{position:fixed;inset:0;background:#111827;z-index:100;display:flex;align-items:center;justify-content:center;padding:20px}
 .loginBox{width:100%;max-width:420px;background:#fff;border-radius:16px;padding:24px;box-shadow:0 20px 50px rgba(0,0,0,.35)}
 .loginBox h1{margin-bottom:4px}.loginBox .muted{margin-bottom:18px}
+/* v24.66.0: logo on the sign-in card, show-password button, no AI button before sign-in */
+.loginLogo{display:block;width:150px;height:150px;object-fit:contain;margin:-8px auto 6px}.loginBox h1,.loginBox>.muted{text-align:center}
+.loginPassWrap{position:relative}.loginPassWrap input{padding-right:72px!important}.loginPassShow{position:absolute;right:6px;top:50%;transform:translateY(-50%);min-height:34px!important;padding:4px 12px!important;font-size:13px!important;background:#f2f4f7!important;color:#344054!important;border:0!important;width:auto!important;border-radius:8px!important}
+body.loggedOut #shopAiFab,body.loggedOut #shopAiPanel{display:none!important}
+.aiMsgHead{display:flex;align-items:center;justify-content:space-between;gap:8px}.aiCopyBtn{min-height:26px!important;padding:2px 10px!important;font-size:12px!important;background:transparent!important;color:#475467!important;border:1px solid #d0d5dd!important;border-radius:8px!important;width:auto!important;box-shadow:none!important}.aiCopyBtn:hover{background:#f2f4f7!important}
+.aiMsgText ul,.aiMsgText ol{margin:4px 0 4px 20px;padding:0}.aiMsgText li{margin:2px 0}.aiMsgText code{background:#f2f4f7;border-radius:4px;padding:0 4px;font-size:.92em}.aiMsgText .aiGap{height:6px}
+@media(max-height:640px){.loginLogo{width:96px;height:96px}}
 .userbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .rolepill{background:#eef2ff;color:#3730a3;padding:5px 8px;border-radius:999px;font-size:11px;font-weight:800}.notifyBadge{background:#d92d20;color:#fff;border-radius:999px;padding:2px 7px;font-size:11px;font-weight:800;margin-left:4px}.decision{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.b-wait{background:#fff7ed;color:#b54708}.b-approved{background:#ecfdf3;color:#067647}.b-declined{background:#fef3f2;color:#b42318}
 .adminOnly.hiddenRole,.mechanicOnly.hiddenRole{display:none!important}
@@ -825,7 +834,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.65.0">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.66.0">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -842,6 +851,7 @@ body.invoiceWorkspaceMode .invoiceRateWrap{display:grid!important;grid-template-
 @media(max-width:900px){body.invoiceWorkspaceMode .invoiceGridHeader{display:none!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow{grid-template-columns:1fr 1fr!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceGridItemLabel,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLaborDescription{grid-column:1/-1!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceQtyUnit,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceTaxCell,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLineNet{grid-column:1!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLaborRateField,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceDiscountControl,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceRowActions{grid-column:2!important}}
 </style>
 <link rel="stylesheet" href="./inspection-workflow.css?v=3">
+<script src="./sync-merge.js?v=24.66.0"></script>
 <style id="ittrNavLayoutV2">
 /* v24.39.0 desktop navigation: one full-width tab strip grouped by workflow (Shop · Money · Records · Operations). */
 @media(min-width:761px){
@@ -858,7 +868,9 @@ body.invoiceWorkspaceMode .invoiceRateWrap{display:grid!important;grid-template-
  header>nav .navbtn.active .navIco{opacity:1}
  header>nav .adminOnly.hiddenRole,header>nav .mechanicOnly.hiddenRole{display:none!important}
 }
-.toastRegion{top:150px}
+/* v24.66.0: messages pop up at the bottom (above the AI button), so they never cover the page's main buttons. */
+.toastRegion{top:auto!important;bottom:90px;right:16px}
+@media(max-width:760px){.toastRegion{bottom:calc(var(--mobile-nav-height,64px) + 72px + env(safe-area-inset-bottom));right:12px;left:12px;width:auto}}
 .stage-scheduled{--st:#98a2b3;--stbg:#f2f4f7;--stfg:#344054}.stage-ready{--st:#2e90fa;--stbg:#eff8ff;--stfg:#175cd3}.stage-working{--st:#eaaa08;--stbg:#fefbe8;--stfg:#854a0e}.stage-paused{--st:#f97316;--stbg:#fff4ed;--stfg:#b93815}.stage-done{--st:#17b26a;--stbg:#ecfdf3;--stfg:#067647}
 .calJob[class*="stage-"]{border-left:5px solid var(--st)!important;background:var(--stbg)!important}
 tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-working td,tr.woRow.stage-paused td{background:var(--stbg)}
@@ -871,6 +883,11 @@ tr.woRow td:first-child{box-shadow:inset 5px 0 0 var(--st)}tr.woRow.stage-workin
 #invoiceKpis .stat b{font-size:22px;color:#101828;font-variant-numeric:tabular-nums}#invoiceKpis .stat span{font-size:12px;color:#667085;font-weight:600}
 @media(max-width:560px){#invoiceKpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(min-width:761px) and (max-width:1500px){header>nav .navGroupLabel{display:none}}
+/* v24.66.0: the tab strip stays on one row on laptops (it wrapped "Operations" onto a second row up to ~1600px wide). */
+@media(min-width:1000px){header>nav{flex-wrap:nowrap!important;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;min-width:0!important;max-width:calc(100% + 40px)!important;box-sizing:border-box}header>nav::-webkit-scrollbar{display:none}}
+@media(min-width:761px) and (max-width:1700px){header>nav{gap:2px 12px!important}header>nav .navGroup+.navGroup{padding-left:12px!important}header>nav .navbtn{padding:12px 9px 11px!important;gap:5px!important}}
+@media(min-width:761px) and (max-width:1460px){header>nav .navIco{display:none!important}}
+@media(min-width:761px) and (max-width:1180px){header>nav{gap:2px 8px!important}header>nav .navGroup+.navGroup{padding-left:8px!important}header>nav .navbtn{padding:11px 7px 10px!important;font-size:12.5px!important}}
 @media(min-width:761px) and (max-width:1180px){header>nav{gap:2px 10px}header>nav .navGroup+.navGroup{padding-left:10px}header>nav .navbtn{padding:11px 9px 10px;font-size:13px}}
 </style>
 <style id="ittrV24418Phone">
@@ -888,6 +905,9 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
  header .userbar .languageSelect{min-height:36px!important;padding:4px 6px!important;font-size:13px!important;width:auto!important}
  header .userbar .navbtn{min-height:36px!important;padding:6px 10px!important;font-size:13px!important}
  header .mobileBackBtn.visible{order:-1;flex:none}
+ /* v24.66.0: phone header keeps the shop name readable: the password button is just the lock, and the name hides while Back is shown. */
+ header .userbar #accountSecurityBtn{font-size:0!important;padding:6px 10px!important}header .userbar #accountSecurityBtn::before{content:"🔒";font-size:16px}
+ header:has(.mobileBackBtn.visible) .brandText{display:none!important}
 }
 </style>
 <style id="ittrV24420InvCheck">
@@ -980,18 +1000,19 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 .receiveTotals span{display:inline-flex;gap:6px;align-items:baseline;color:#475467}
 </style>
 </head>
-<body>
-<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.65.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<body class="loggedOut">
+<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.66.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
 <div id="loginScreen" class="loginScreen">
   <div class="loginBox">
+    <img class="loginLogo" src="/assets/iron-team-logo.png" alt="Iron Team Truck &amp; Trailer Repair" width="168" height="168">
     <h1>ITTR ShopFlow Login</h1>
     <div class="muted">Sign in with your shop account.</div>
     <form id="loginForm">
       <div class="field"><label>Username</label><input id="loginUser" required autocomplete="username"></div>
-      <div class="field"><label>Password</label><input id="loginPass" type="password" required autocomplete="current-password"></div>
+      <div class="field"><label>Password</label><div class="loginPassWrap"><input id="loginPass" type="password" required autocomplete="current-password"><button type="button" class="loginPassShow" aria-label="Show password" aria-pressed="false" onclick="const i=document.getElementById('loginPass'),on=i.type==='password';i.type=on?'text':'password';this.setAttribute('aria-pressed',on);this.textContent=on?'Hide':'Show'">Show</button></div></div>
       <div class="field hidden" id="loginCodeField"><label for="loginCode" id="loginCodeLabel">6-digit sign-in code</label><input id="loginCode" inputmode="numeric" autocomplete="one-time-code" placeholder="123 456 or a recovery code" maxlength="20"><label class="loginRemember"><input type="checkbox" id="loginRemember" checked> Remember this device for 30 days</label><button type="button" class="secondary hidden" id="loginSendEmail">Email me a code</button></div>
       <div id="loginError" class="muted" style="color:#b42318;margin-bottom:10px"></div>
       <button type="submit" style="width:100%">Sign In</button>
@@ -1001,7 +1022,7 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 
 <header>
   <button id="mobileBackBtn" class="mobileBackBtn" type="button" aria-label="Go back">‹ Back</button>
-  <div class="brand"><img class="brandLogo" src="/assets/iron-team-logo.png" alt="Iron Team"><div class="brandText"><strong>Iron Team</strong><small>Truck & Trailer Repair · ShopFlow</small></div></div><div class="smartHeaderSearch adminOnly"><input id="globalSmartSearch" type="search" placeholder="Search customer, unit, VIN, plate, DOT, work order…" autocomplete="off" oninput="scheduleGlobalSmartSearch(this.value)" onfocus="scheduleGlobalSmartSearch(this.value)"><div id="globalSmartSearchResults" class="smartSearchDrop hidden"></div></div><div class="userbar">
+  <div class="brand"><img class="brandLogo" src="/assets/iron-team-logo.png" alt="Iron Team"><div class="brandText"><strong>Iron Team</strong><small>Truck & Trailer Repair · ShopFlow</small></div></div><div class="smartHeaderSearch adminOnly"><input id="globalSmartSearch" type="search" title="Shortcut: press / or Ctrl+K" aria-keyshortcuts="/ Control+K" placeholder="Search customer, unit, VIN, plate, DOT, work order…" autocomplete="off" oninput="scheduleGlobalSmartSearch(this.value)" onfocus="scheduleGlobalSmartSearch(this.value)"><div id="globalSmartSearchResults" class="smartSearchDrop hidden"></div></div><div class="userbar">
   <span id="currentUser"></span>
   <span id="currentRole" class="rolepill"></span>
   <span id="liveStatusBadge" class="liveStatusBadge" title="Live shop connection"><span id="liveStatusDot" class="liveStatusDot"></span><span id="liveStatusText">Live</span></span>
@@ -1015,7 +1036,7 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
     <span>AI translate</span>
   </label>
   <button class="navbtn adminOnly hidden" id="smsNavBtn" type="button" onclick="ITTR_SMS.inbox()" title="Text messages with customers">💬 Texts <span id="smsUnread" class="smsUnread hidden"></span></button>
-  <button class="navbtn" type="button" onclick="openAccountSecurity()" title="Change your password or sign out your other devices">🔒 Password</button>
+  <button class="navbtn" id="accountSecurityBtn" type="button" onclick="openAccountSecurity()" title="Change your password or sign out your other devices" aria-label="Password and 2-step login">🔒 Password</button>
   <button class="navbtn" onclick="logout()">Logout</button>
 </div>
   <nav aria-label="Main">
@@ -1557,7 +1578,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.65.0';
+const FRONTEND_VERSION='24.66.0';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1593,14 +1614,47 @@ async function applyInventoryRepair(){if(!confirm('Apply these stock corrections
 async function resetInventoryToZero(){const c=prompt('This sets the on-hand quantity of EVERY part to 0.\nUse it right before a full physical count.\n\nType RESET to confirm:');if(c==null)return;if(String(c).trim().toUpperCase()!=='RESET')return alert('Not reset — you did not type RESET.');try{const d=await apiJSON('/api/parts/inventory/reset-to-zero',{method:'POST',body:JSON.stringify({confirm:'RESET'})});alert(`Done. ${d.partsReset} part(s) set to 0. Start your count now.`);try{if(typeof refreshInventoryCount==='function')await refreshInventoryCount()}catch(_){}try{if(typeof render==='function')render()}catch(_){}}catch(e){alert(e.message||'Reset failed.')}}
 async function apiJSON(url,options={}){const normalizedBody=options.body&&typeof options.body==="object"&&!(options.body instanceof FormData)&&!(options.body instanceof Blob)?JSON.stringify(options.body):options.body;const opts={...options,body:normalizedBody,headers:authHeaders({"Content-Type":"application/json",...(options.headers||{})})};const r=await fetch(url,opts);let d={};try{d=await r.json()}catch(_){}if(r.status===401&&!url.includes("/api/auth/login")){cloudToken="";sessionStorage.removeItem("ittr_cloud_token");session=null;sessionStorage.removeItem("ittr_session");showLogin();throw new Error(d.error||"Session expired.")}if(!r.ok)throw Object.assign(new Error(d.error||`Server error ${r.status}`),{status:r.status,code:d.code||""});if(d&&d.stockWarning){try{typeof showToast==="function"?showToast(d.stockWarning):alert(d.stockWarning)}catch(_){}}return d}
 function updateSyncQueueBadge(){reconcileCloudPendingGhosts();const badge=document.getElementById("sync-queue-badge"),text=document.getElementById("syncQueueText");if(!badge||!text)return;const pending=Math.max(cloudPending.size,persistentSyncCount()),offline=!navigator.onLine;badge.classList.toggle("is-visible",pending>0||offline);badge.classList.toggle("is-offline",offline);text.textContent=offline?`Offline (${pending} Pending)`:pending?`Syncing (${pending})…`:`Synced`}
-async function pushQueuedState(key,payload,baseVersion=null){const expected=baseVersion==null?Number(cloudVersions[key]||0):Number(baseVersion||0);if(expected<=0)throw new Error("This offline change has no safe server version. Refresh before syncing so newer shop data is protected.");const d=await apiJSON(`/api/state/${key}`,{method:"PUT",body:JSON.stringify({payload,expectedVersion:expected})});if(d?.version!=null)cloudVersions[key]=Number(d.version);removePersistedState(key)}
-function queueCloudState(key,payload){if(session?.role==="mechanic"&&key!=="shopflow"){removePersistedState(key);cloudPending.delete(key);updateSyncQueueBadge();return}persistQueuedState(key,payload);cloudPending.add(key);updateSyncQueueBadge();if(!cloudReady||!cloudToken||!navigator.onLine)return;clearTimeout(cloudSaving[key]);cloudSaving[key]=setTimeout(async()=>{try{await pushQueuedState(key,payload)}catch(e){handleCloudSyncError(key,e)}finally{cloudPending.delete(key);cloudSaving[key]=null;updateSyncQueueBadge()}},180)}
+async function pushQueuedState(key,payload,baseVersion=null){const expected=baseVersion==null?Number(cloudVersions[key]||0):Number(baseVersion||0);if(expected<=0)throw new Error("This offline change has no safe server version. Refresh before syncing so newer shop data is protected.");const json=JSON.stringify(payload??null);const d=await apiJSON(`/api/state/${key}`,{method:"PUT",body:`{"payload":${json},"expectedVersion":${expected}}`});if(d?.version!=null)cloudVersions[key]=Number(d.version);cloudBaseJson[key]=json;removePersistedState(key)}
+/* v24.66.0: the last copy this device and the server agreed on, so a save that collides with another device's save
+   can be replayed on top of the newer copy (public/sync-merge.js) instead of being thrown away. */
+let cloudBaseJson={},ittrRebaseBusy=false,ittrRebaseAgain=false;
+async function ittrRebaseAfterConflict(){
+ if(ittrRebaseBusy){ittrRebaseAgain=true;return true}
+ if(!cloudBaseJson.shopflow||typeof window.ittrRebaseShopflow!=="function")return false;
+ ittrRebaseBusy=true;let conflicts=[];
+ try{
+  for(let attempt=0;attempt<3;attempt++){
+   ittrRebaseAgain=false;
+   const d=await apiJSON("/api/state"),remote=d.shopflow;if(!remote)return false;
+   const localJson=JSON.stringify(state),out=window.ittrRebaseShopflow(JSON.parse(cloudBaseJson.shopflow),JSON.parse(localJson),remote.payload||{});conflicts=out.conflicts;
+   try{
+    if(out.changed)await pushQueuedState("shopflow",out.payload,Number(remote.version));
+    else{cloudVersions.shopflow=Number(remote.version||0);cloudBaseJson.shopflow=JSON.stringify(remote.payload||{});removePersistedState("shopflow")}
+   }catch(e){if(e?.code==="STATE_VERSION_CONFLICT")continue;throw e}
+   const merged=out.changed?out.payload:(remote.payload||{workorders:[],issues:[]});
+   if(cloudSaving.shopflow){clearTimeout(cloudSaving.shopflow);cloudSaving.shopflow=null}
+   // Edits made on this device while the merge was being saved are carried over and saved next.
+   if(JSON.stringify(state)!==localJson){state=window.ittrRebaseShopflow(JSON.parse(localJson),state,merged).payload;ittrRebaseAgain=true}else state=merged;
+   try{window.reapplyInspectionEdits?.()}catch(_){}
+   localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));render();
+   if(conflicts.length)showToast(currentLanguage==="uk"?`Інший пристрій змінив те саме одночасно (${conflicts.slice(0,3).join(", ")}). Залишено його версію — перевірте свою зміну там.`:`Another device changed the same thing at the same time (${conflicts.slice(0,3).join(", ")}). Their version was kept — please check your change there.`,"warning",9000);
+   if(!ittrRebaseAgain)return true;
+  }
+  return false;
+ }catch(_){return false}
+ finally{ittrRebaseBusy=false;cloudPending.delete("shopflow");updateSyncQueueBadge();if(ittrRebaseAgain){ittrRebaseAgain=false;queueCloudState("shopflow",state)}}
+}
+function queueCloudState(key,payload){if(session?.role==="mechanic"&&key!=="shopflow"){removePersistedState(key);cloudPending.delete(key);updateSyncQueueBadge();return}persistQueuedState(key,payload);cloudPending.add(key);updateSyncQueueBadge();if(!cloudReady||!cloudToken||!navigator.onLine)return;clearTimeout(cloudSaving[key]);cloudSaving[key]=setTimeout(async()=>{try{if(key==="shopflow"&&payload!==state)payload=state;/* v24.66.0: never send a copy that was replaced (by newer data from another device) while this save waited */await pushQueuedState(key,payload)}catch(e){handleCloudSyncError(key,e)}finally{cloudPending.delete(key);cloudSaving[key]=null;updateSyncQueueBadge()}},180)}
 async function flushPersistentSyncQueue(){if(!cloudReady||!cloudToken||!navigator.onLine)return;const q=readPersistentSyncQueue();for(const [key,item] of Object.entries(q)){if(session?.role==="mechanic"&&key!=="shopflow"){removePersistedState(key);cloudPending.delete(key);continue}cloudPending.add(key);updateSyncQueueBadge();try{await pushQueuedState(key,item?.payload,Number(item?.baseVersion||0))}catch(e){handleCloudSyncError(key,e);break}finally{cloudPending.delete(key);updateSyncQueueBadge()}}}
-async function refreshCloudStateSilently(){if(!cloudReady||!cloudToken||cloudRefreshBusy)return;cloudRefreshBusy=true;try{const d=await apiJSON("/api/state");let changed=false;const apply=(key,fn)=>{const remote=d[key];if(!remote||cloudPending.has(key)||readPersistentSyncQueue()[key])return;const rv=Number(remote.version||0),lv=Number(cloudVersions[key]||0);if(rv>lv){fn(remote.payload);cloudVersions[key]=rv;changed=true}};apply("users",payload=>{USERS=payload||{};localStorage.setItem("ittr_users_v1",JSON.stringify(USERS))});apply("shopflow",payload=>{state=payload||{workorders:[],issues:[]};try{window.reapplyInspectionEdits?.()}catch(_){}localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state))});apply("pro",payload=>{PRO=Object.assign({vehicles:[],maintenance:[],audit:[],notifications:[],delays:[]},payload||{});for(const k of ['vehicles','maintenance','audit','notifications','delays'])if(!Array.isArray(PRO[k]))PRO[k]=[];localStorage.setItem(PRO_KEY,JSON.stringify(PRO))});if(changed)render()}catch(e){}finally{cloudRefreshBusy=false}}
+async function refreshCloudStateSilently(){if(!cloudReady||!cloudToken||cloudRefreshBusy)return;cloudRefreshBusy=true;try{const d=await apiJSON("/api/state");let changed=false;const apply=(key,fn)=>{const remote=d[key];if(!remote||cloudPending.has(key)||readPersistentSyncQueue()[key])return;const rv=Number(remote.version||0),lv=Number(cloudVersions[key]||0);if(rv>lv){fn(remote.payload);cloudVersions[key]=rv;changed=true}};apply("users",payload=>{USERS=payload||{};localStorage.setItem("ittr_users_v1",JSON.stringify(USERS))});apply("shopflow",payload=>{state=payload||{workorders:[],issues:[]};cloudBaseJson.shopflow=JSON.stringify(state);try{window.reapplyInspectionEdits?.()}catch(_){}localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state))});apply("pro",payload=>{PRO=Object.assign({vehicles:[],maintenance:[],audit:[],notifications:[],delays:[]},payload||{});for(const k of ['vehicles','maintenance','audit','notifications','delays'])if(!Array.isArray(PRO[k]))PRO[k]=[];localStorage.setItem(PRO_KEY,JSON.stringify(PRO))});if(changed)render()}catch(e){}finally{cloudRefreshBusy=false}}
 function showToast(message,type="info",timeout=5000){const region=document.getElementById("toastRegion");if(!region){console[type==="error"?"error":"log"](message);return}const toast=document.createElement("div");toast.className=`appToast ${type}`;toast.setAttribute("role",type==="error"?"alert":"status");toast.textContent=String(message||"Something went wrong.");region.appendChild(toast);const remove=()=>toast.remove();toast.onclick=remove;setTimeout(remove,timeout)}
 // v24.47.3: a version conflict (someone else saved first) is not retried forever with the same stale copy: the stuck
 // save is dropped, the newest shop data is loaded, and the user is told plainly to check their last change.
 function handleCloudSyncError(key,e){
+ if(key==="shopflow"&&e?.code==="STATE_VERSION_CONFLICT"&&cloudBaseJson.shopflow&&!e.noRebase){
+  cloudPending.add(key);updateSyncQueueBadge();
+  ittrRebaseAfterConflict().then(ok=>{if(!ok)handleCloudSyncError(key,Object.assign(e,{noRebase:true}))});return;
+ }
  if(e?.code==="STATE_VERSION_CONFLICT"||e?.code==="STATE_VERSION_REQUIRED"){
   removePersistedState(key);cloudPending.delete(key);updateSyncQueueBadge();
   cloudVersions[key]=0;setTimeout(()=>refreshCloudStateSilently(),50);
@@ -1920,7 +1974,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.65.0";
+const ROUTE_MODULE_VERSION="24.66.0";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -2050,6 +2104,9 @@ function updateMobileBackButton(){
  syncModalState();
 }
 
+const ITTR_VIEW_NAMES={dashboard:'Dashboard',workorders:'Work Orders',estimates:'Estimates',invoices:'Invoices',bills:'Bills',purchaseorders:'Orders',reports:'Reports',compliance:'Compliance',trucksearch:'Truck Search',customers:'Customers & Vehicles',parts:'Parts',procenter:'Operations',activityhistory:'Activity Log',mechanic:'My Work Orders',completed:'Completed Work',approvals:'Findings',accounts:'Accounts',inspection:'Findings',mycompleted:'Completed'};
+function ittrSetTabTitle(view){if(document.body.classList.contains('invoiceWorkspaceMode'))return;const b=document.querySelector(`.navbtn[data-view="${view}"]`);const name=(b?.textContent||'').replace(/^[^\p{L}\p{N}]+/u,'').replace(/\s*\d+$/,'').trim()||ITTR_VIEW_NAMES[view]||'';document.title=name?`${name} · ITTR ShopFlow`:'ITTR ShopFlow'}
+function ittrViewFromHash(){const v=decodeURIComponent(String(location.hash||'').replace(/^#\/?/,''));return APP_VIEWS.includes(v)&&allowedViewForRole(v)?v:''}
 async function showView(view,{push=true,replace=false}={}){
  if(!allowedViewForRole(view))view=defaultViewForRole();
  if(!view)return;
@@ -2076,7 +2133,10 @@ async function showView(view,{push=true,replace=false}={}){
  if(instance&&typeof instance.module.afterShow==="function")await instance.module.afterShow(instance.scope);
 
  const state={ittr:true,view};
- try{if(replace)history.replaceState(state,"",location.href);else if(push)history.pushState(state,"",location.href)}catch(e){}
+ // v24.66.0: the page is kept in the address (#invoices), so a reload or a bookmark opens the same page, and the tab shows its name.
+ const url=document.body.classList.contains('invoiceWorkspaceMode')?location.href:location.pathname+location.search+'#'+view;
+ try{if(replace)history.replaceState(state,"",url);else if(push)history.pushState(state,"",url)}catch(e){}
+ ittrSetTabTitle(view);
  window.scrollTo(0,0);updateMobileBackButton();
 
  // Heavy route DOM is removed after navigation. Module-level listeners are aborted first.
@@ -2120,7 +2180,7 @@ function bindNavigation(){
      closeTopOpenModal();
      return;
    }
-   const requested=e.state?.view;
+   const requested=e.state?.view||ittrViewFromHash();
    if(requested && allowedViewForRole(requested)){
      if(viewHistory.length)viewHistory.pop();
      showView(requested,{push:false});
@@ -2146,6 +2206,7 @@ window.addEventListener("unhandledrejection",e=>{showToast(`App error: ${e.reaso
 window.addEventListener("offline",()=>{updateOnlineState();updateSyncQueueBadge();setLiveStatus("offline","Offline")});
 
 function applyRole(){
+ document.body.classList.toggle('loggedOut',!session);
  // ITTR_LANGUAGE_ROLE_SYNC
  // ITTR_LANGUAGE_ACCOUNT_AUTHORITATIVE
  if(session?.language){
@@ -2164,12 +2225,13 @@ function applyRole(){
   document.getElementById("currentUser").textContent=session?(session.display||session.username):"";
   document.getElementById("currentRole").textContent=session?session.role.toUpperCase():"";
   if(!session) return;
-  const firstView=isAdmin?"dashboard":"mechanic";
+  shopAiRestore();
+  const firstView=ittrViewFromHash()||(isAdmin?"dashboard":"mechanic");
   viewHistory=[]; currentView=null; showView(firstView,{push:false,replace:true});
   setTimeout(()=>activateInvoiceWorkspaceFromURL?.(),0);
 }
 function showLogin(){
-  document.getElementById("loginScreen").style.display=session?"none":"flex";
+  document.getElementById("loginScreen").style.display=session?"none":"flex";document.body.classList.toggle("loggedOut",!session);
   if(session) applyRole();
 }
 function loginDeviceToken(u){try{return localStorage.getItem(`ittr_device_${String(u).toLowerCase()}`)||""}catch(_){return ""}}
@@ -2202,7 +2264,7 @@ document.getElementById("loginForm").onsubmit=async e=>{
     currentLanguage=session.language;localStorage.setItem("ittr_language",currentLanguage);
     sessionStorage.setItem("ittr_session",JSON.stringify(session));
     await loadCloudStateAfterLogin();
-    err.textContent="";document.getElementById("loginScreen").style.display="none";applyRole();render();
+    err.textContent="";document.getElementById("loginScreen").style.display="none";document.body.classList.remove("loggedOut");applyRole();render();
   }catch(ex){err.textContent=ex.message||"Sign in failed."}
 };
 // v24.58.1: every user changes their own password here and can sign out their other devices (lost phone, shared PC).
@@ -2271,11 +2333,11 @@ async function downloadFullBackup(){const b=document.getElementById("fullBackupB
  catch(err){alert(err.message)}finally{if(b){b.disabled=false;b.textContent=tr("Download backup")}}}
 async function signOutOtherDevices(){if(!confirm(tr("Sign out on all your other phones and computers? You stay signed in here.")))return;
  try{const d=await apiJSON("/api/auth/sessions/revoke-others",{method:"POST",body:"{}"});showToast(`${d.signedOut} ${tr("other device(s) signed out.")}`,"success");openAccountSecurity()}catch(err){alert(err.message)}}
-async function logout(){stopLiveStatusSocket();
+async function logout(){stopLiveStatusSocket();try{clearShopAI();toggleShopAI(false)}catch(_){}
   try{if(cloudToken)await apiJSON("/api/auth/logout",{method:"POST",body:"{}"})}catch(_){ }
   cloudToken="";cloudReady=false;session=null;currentView=null;viewHistory=[];
   sessionStorage.removeItem("ittr_cloud_token");sessionStorage.removeItem("ittr_session");
-  document.getElementById("loginUser").value="";document.getElementById("loginPass").value="";document.getElementById("loginScreen").style.display="flex";
+  document.getElementById("loginUser").value="";document.getElementById("loginPass").value="";document.getElementById("loginScreen").style.display="flex";document.body.classList.add("loggedOut");document.title="ITTR ShopFlow";
 }
 function requireAdmin(){
   if(!["admin","manager"].includes(session?.role)){alert(tr("Manager access required."));return false}
@@ -3240,7 +3302,18 @@ function toggleShopAiVoice(){const SR=window.SpeechRecognition||window.webkitSpe
 
 
 let shopAiBusy=false;
-function shopAiMessageHtml(role,text,sources=[]){const head=role==='user'?'You':'Workshop AI';const chips=(sources||[]).map(s=>`<span class="aiSourceChip ${s.type==='manual'?'manual':''}"${s.manualId?` onclick="openManualDocument(${Number(s.manualId)})"`:''}>${esc(s.label||s.type||'Source')}</span>`).join('');return `<div class="aiMsg ${role}"><div class="aiMsgHead">${head}</div><div>${esc(String(text||'')).replace(/\n/g,'<br>')}</div>${chips?`<div class="aiSources">${chips}</div>`:''}</div>`}
+/* v24.66.0: AI answers show **bold**, bullet and numbered lists instead of raw * marks. Text is escaped first. */
+function shopAiFormat(text){const lines=esc(String(text||'')).split('\n');let out='',list='';const inline=x=>x.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/^#{1,4}\s+(.*)$/,'<b>$1</b>');const close=()=>{if(list){out+=`</${list}>`;list=''}};
+ for(const raw of lines){const b=raw.match(/^\s*(?:[-*•])\s+(.*)$/),n=raw.match(/^\s*\d+[.)]\s+(.*)$/);if(b||n){const t=b?'ul':'ol';if(list!==t){close();out+=`<${t}>`;list=t}out+=`<li>${inline((b||n)[1])}</li>`;continue}close();out+=raw.trim()?`<div>${inline(raw)}</div>`:'<div class="aiGap"></div>'}close();return out}
+function shopAiMessageHtml(role,text,sources=[]){const head=role==='user'?'You':'Workshop AI';const chips=(sources||[]).map(s=>`<span class="aiSourceChip ${s.type==='manual'?'manual':''}"${s.manualId?` onclick="openManualDocument(${Number(s.manualId)})"`:''}>${esc(s.label||s.type||'Source')}</span>`).join('');return `<div class="aiMsg ${role}"><div class="aiMsgHead">${head}${role==='assistant'?'<button type="button" class="aiCopyBtn" onclick="shopAiCopy(this)" title="Copy this answer">Copy</button>':''}</div><div class="aiMsgText">${role==='user'?esc(String(text||'')).replace(/\n/g,'<br>'):shopAiFormat(text)}</div>${chips?`<div class="aiSources">${chips}</div>`:''}</div>`}
+/* v24.66.0: the chat stays when the page reloads (this tab only, this user only) and is wiped on logout. */
+let shopAiLog=[];const shopAiStoreKey=()=>`ittr_ai_chat_${session?.username||''}`;
+async function shopAiCopy(btn){const t=btn.closest('.aiMsg')?.querySelector('.aiMsgText')?.innerText||'';try{await navigator.clipboard.writeText(t);btn.textContent='Copied ✓';setTimeout(()=>btn.textContent='Copy',1500)}catch(_){showToast('Copy is blocked by this browser. Select the text and copy it instead.','warning')}}
+/* v24.66.0: press / (or Ctrl+K) anywhere in the office screens to jump to the search box. */
+document.addEventListener('keydown',e=>{const k=e.key,typing=/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName||'')||document.activeElement?.isContentEditable;if(!((k==='/'&&!typing&&!e.ctrlKey&&!e.metaKey&&!e.altKey)||((e.ctrlKey||e.metaKey)&&String(k).toLowerCase()==='k')))return;const box=document.getElementById('globalSmartSearch');if(!box||!box.offsetParent||document.querySelector('.modal.open'))return;e.preventDefault();box.focus();box.select()});
+function shopAiSave(){try{sessionStorage.setItem(shopAiStoreKey(),JSON.stringify({log:shopAiLog.slice(-30),history:shopAiHistory.slice(-16)}))}catch(_){}}
+function shopAiRemember(role,text,sources){shopAiLog.push({role,text:String(text||'').slice(0,6000),sources:(sources||[]).slice(0,8)});if(shopAiLog.length>30)shopAiLog=shopAiLog.slice(-30);shopAiSave()}
+function shopAiRestore(){if(!session?.username)return;try{const d=JSON.parse(sessionStorage.getItem(shopAiStoreKey())||'null');if(!d||!Array.isArray(d.log)||!d.log.length)return;shopAiLog=d.log;shopAiHistory=Array.isArray(d.history)?d.history:[];const body=document.getElementById('shopAiMessages');if(body)body.innerHTML=shopAiLog.map(m=>shopAiMessageHtml(m.role,m.text,m.sources)).join('')}catch(_){}}
 let shopAiPendingFile=null,shopAiImportDraft=null;
 function shopAiAcceptFile(file,source='attached'){
   if(!file)return false;
@@ -3283,9 +3356,9 @@ async function commitShopAiHistoryDraft(){if(!shopAiImportDraft)return showToast
 async function commitShopAiInvoiceDraft(){if(!shopAiImportDraft)return showToast('No AI import draft is waiting for review.','warning');if(!confirm('Create a DRAFT invoice from this AI extraction? You can review and edit it before finalizing.'))return;const r=await fetch('/api/ai/import/commit-invoice',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({draft:shopAiImportDraft})});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Could not create draft invoice.');shopAiImportDraft=null;showToast('Draft invoice created. Opening it in a new tab.','success');openInvoiceWorkspace?.(d.id)}
 let shopAiHistory=[];
 async function tryShopAiAction(message){const r=await fetch('/api/ai/copilot/action',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({message})});const d=await r.json().catch(()=>({}));if(!r.ok||!d.action)return false;const a=d.action,body=document.getElementById('shopAiMessages');if(a.type==='navigate'){body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`${a.label}.`));toggleShopAI(false);showView(a.view);return true}if(a.type==='diagnostic'){body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`${a.label}\\n${(a.report?.checks||[]).map(x=>'✓ '+x).join('\\n')}\\nRecent audit events: ${a.report?.recentAuditEvents??0}\\n${a.report?.note||''}`));return true}return false}
-async function sendShopAI(){if(shopAiBusy)return;const input=document.getElementById('shopAiInput'),unit=document.getElementById('shopAiUnit'),body=document.getElementById('shopAiMessages'),sendBtn=document.getElementById('shopAiSend');const message=String(input?.value||'').trim();if(!message&&!shopAiPendingFile)return;shopAiBusy=true;if(sendBtn)sendBtn.disabled=true;body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('user',message));if(input)input.value='';const thinking=document.createElement('div');thinking.className='aiThinking';thinking.innerHTML='<span class="aiDot"></span><span class="aiDot"></span><span class="aiDot"></span><span>Workshop AI is checking shop records…</span>';body?.appendChild(thinking);body?.scrollTo({top:body.scrollHeight,behavior:'smooth'});try{if(shopAiPendingFile){thinking.remove();await analyzeShopAiAttachment(message);return}if(await tryShopAiAction(message)){thinking.remove();return}const r=await fetch('/api/ai/shop-chat',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({message,unit:String(unit?.value||'').trim(),history:shopAiHistory.slice(-8)})});let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.error||`AI request failed (${r.status})`);thinking.remove();shopAiHistory.push({role:'user',content:message},{role:'assistant',content:String(d.result||'').slice(0,1500)});if(shopAiHistory.length>16)shopAiHistory=shopAiHistory.slice(-16);body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',d.result||'No response returned.',d.sources||[]));if(d.matchedUnit&&unit&&!unit.value)unit.value=d.matchedUnit}catch(e){thinking.remove();body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`Unable to answer: ${e.message}`));showToast?.(e.message,'error',8000)}finally{shopAiBusy=false;if(sendBtn)sendBtn.disabled=false;body?.scrollTo({top:body.scrollHeight,behavior:'smooth'})}}
+async function sendShopAI(){if(shopAiBusy)return;const input=document.getElementById('shopAiInput'),unit=document.getElementById('shopAiUnit'),body=document.getElementById('shopAiMessages'),sendBtn=document.getElementById('shopAiSend');const message=String(input?.value||'').trim();if(!message&&!shopAiPendingFile)return;shopAiBusy=true;if(sendBtn)sendBtn.disabled=true;body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('user',message));if(message&&!shopAiPendingFile)shopAiRemember('user',message);if(input)input.value='';const thinking=document.createElement('div');thinking.className='aiThinking';thinking.innerHTML='<span class="aiDot"></span><span class="aiDot"></span><span class="aiDot"></span><span>Workshop AI is checking shop records…</span>';body?.appendChild(thinking);body?.scrollTo({top:body.scrollHeight,behavior:'smooth'});try{if(shopAiPendingFile){thinking.remove();await analyzeShopAiAttachment(message);return}if(await tryShopAiAction(message)){thinking.remove();return}const r=await fetch('/api/ai/shop-chat',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({message,unit:String(unit?.value||'').trim(),history:shopAiHistory.slice(-8)})});let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.error||`AI request failed (${r.status})`);thinking.remove();shopAiHistory.push({role:'user',content:message},{role:'assistant',content:String(d.result||'').slice(0,1500)});if(shopAiHistory.length>16)shopAiHistory=shopAiHistory.slice(-16);body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',d.result||'No response returned.',d.sources||[]));shopAiRemember('assistant',d.result||'No response returned.',d.sources||[]);if(d.matchedUnit&&unit&&!unit.value)unit.value=d.matchedUnit}catch(e){thinking.remove();body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`Unable to answer: ${e.message}`));showToast?.(e.message,'error',8000)}finally{shopAiBusy=false;if(sendBtn)sendBtn.disabled=false;body?.scrollTo({top:body.scrollHeight,behavior:'smooth'})}}
 function shopAiAskQuick(text){const input=document.getElementById('shopAiInput');if(input)input.value=text;sendShopAI()}
-function clearShopAI(){const body=document.getElementById('shopAiMessages');if(body)body.innerHTML='<div class="aiWelcome"><b>New Workshop AI chat</b><div class="muted" style="margin-top:5px">Ask about unit history, repair records, parts context, or a licensed manual.</div></div>';const input=document.getElementById('shopAiInput');if(input)input.value=''}
+function clearShopAI(){shopAiHistory=[];shopAiLog=[];shopAiImportDraft=null;try{sessionStorage.removeItem(shopAiStoreKey())}catch(_){}const body=document.getElementById('shopAiMessages');if(body)body.innerHTML='<div class="aiWelcome"><b>New Workshop AI chat</b><div class="muted" style="margin-top:5px">Ask about unit history, repair records, parts context, or a licensed manual.</div></div>';const input=document.getElementById('shopAiInput');if(input)input.value=''}
 function workOrderHistoryEntry(type,data={}){
  return {
    type,
@@ -4130,7 +4203,8 @@ async function loadCloudStateAfterLogin(){
  PRO=Object.assign({vehicles:[],maintenance:[],audit:[],notifications:[],delays:[]},PRO||{});for(const k of ['vehicles','maintenance','audit','notifications','delays'])if(!Array.isArray(PRO[k]))PRO[k]=[];
  cloudVersions={users:Number(fresh.users?.version||0),shopflow:Number(fresh.shopflow?.version||0),pro:Number(fresh.pro?.version||0)};
  localStorage.setItem("ittr_users_v1",JSON.stringify(USERS));
- localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));
+ cloudBaseJson={shopflow:JSON.stringify(state)};
+ localStorage.setItem("ittr_shopflow_v2",cloudBaseJson.shopflow);
  localStorage.setItem(PRO_KEY,JSON.stringify(PRO));
  cloudReady=true;const legacyQuarantined=quarantineUnsafeLegacySyncQueue();if(legacyQuarantined)showToast(`${legacyQuarantined} old offline change${legacyQuarantined===1?" was":"s were"} set aside because it had no safe server version. Current server data was kept.`,"warning",9000);updateSyncQueueBadge();flushPersistentSyncQueue();connectLiveStatusSocket();
 }
@@ -6704,9 +6778,9 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
 <script src="./finance-shared.js?v=24.47.3"></script>
 <script src="./inspection-checklist.js?v=3"></script>
 <script src="./inspection-workflow.js?v=8"></script>
-<script src="./canned-jobs.js?v=24.65.0"></script>
-<script src="./share-links.js?v=24.65.0"></script>
-<script src="./sms.js?v=24.65.0"></script>
+<script src="./canned-jobs.js?v=24.66.0"></script>
+<script src="./share-links.js?v=24.66.0"></script>
+<script src="./sms.js?v=24.66.0"></script>
 <script>
 /* v24.46.2: Start a Truck keeps what the mechanic typed until the work order is created.
    Saved on this phone (localStorage) while typing and when the screen locks; restored when the wizard is opened
