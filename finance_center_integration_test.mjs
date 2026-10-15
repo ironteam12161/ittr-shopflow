@@ -11,7 +11,7 @@ import {compileJobTypes,classifyJob,DEFAULT_JOB_TYPES,leadMechanic,describe,comp
 import {serviceStatus,cleanInspectionFields,renderInspectionTemplate} from './compliance_center.mjs';
 import {PDFDocument as PdfLib} from 'pdf-lib';
 import {validTranslation,parseBatchTranslations} from './translation_guard.mjs';
-import {cleanMiles,parseZelleEmail,parseVendorBillEmail,scoreZelleMatch,encryptToken,decryptToken,tireFeeQuantities,estimateTotals,vendorNameFromSender} from './finance_center.mjs';
+import {cleanMiles,parseZelleEmail,isBankZelleNotice,classifyGmailMessage,setAsideNonBankZelle,parseVendorBillEmail,scoreZelleMatch,encryptToken,decryptToken,tireFeeQuantities,estimateTotals,vendorNameFromSender} from './finance_center.mjs';
 
 const assert=(v,label)=>{if(!v)throw new Error(label)};
 const near=(a,b,label)=>{if(Math.abs(Number(a)-Number(b))>0.005)throw new Error(`${label}: expected ${b}, got ${a}`)};
@@ -25,6 +25,10 @@ const near=(a,b,label)=>{if(Math.abs(Number(a)-Number(b))>0.005)throw new Error(
  const out=parseZelleEmail({subject:'You sent $300.00 to FleetPride',body:'Your Zelle® payment was sent.'});
  assert(out?.kind==='zelle_out'&&out.counterparty==='FleetPride','outgoing Zelle');near(out.amount,300,'outgoing amount');
  assert(parseZelleEmail({subject:'Your statement is ready',body:'no payment'})===null,'non-Zelle ignored');
+ assert(!isBankZelleNotice('Re: You received money with Zelle®','office@ironttr.com')&&!isBankZelleNotice('FW: You received money with Zelle®','alerts@chase.com'),'replies and forwards of a Zelle notice are not payments');
+ assert(!isBankZelleNotice('You received money with Zelle®','someone@gmail.com')&&isBankZelleNotice('You received money with Zelle®','no.reply.alerts@chase.com')&&isBankZelleNotice('You received money with Zelle®','alerts@mail.somebank.com'),'Zelle notices must come from a bank, not a personal mailbox');
+ {const fake={id:'r1',threadId:'t',payload:{headers:[{name:'From',value:'Vitalii <office@ironttr.com>'},{name:'Subject',value:'Re: You received money with Zelle®'}],mimeType:'text/plain',body:{data:Buffer.from('VITALII HNATIUK sent you $1,161.00').toString('base64url')}}};
+  assert(classifyGmailMessage(fake)?.kind!=='zelle_in','a reply quoting a Zelle notice is not listed as money received');}
  // v24.48.3: the bank's confirmation number is the payment's transaction ID.
  assert(parseZelleEmail({subject:'You received money with Zelle®',body:'AIR DELIVERY CORPORATION sent you $54.00\nTransaction number: 22198765432\nMemo: IT-2026-00007'}).confirmation==='22198765432','Chase transaction number');
  assert(parseZelleEmail({subject:'You received $54.00 from AIR DELIVERY CORPORATION',body:'Zelle® payment deposited. Confirmation number: bac5x9qk2'}).confirmation==='BAC5X9QK2','BofA confirmation number');
@@ -234,6 +238,12 @@ try{
  // An email synced before v24.48.3 has no confirmation stored: applying it reads the number from Gmail again.
  await db.query('UPDATE gmail_finance_messages SET confirmation=NULL WHERE id=$1',[z.id]);
  await request(`/api/gmail/messages/${z.id}/apply-payment`,{method:'POST',body:{invoiceId:open.id}});
+ {const acc=(await db.query('SELECT account_id FROM gmail_finance_messages WHERE id=$1',[z.id])).rows[0].account_id;
+  await db.query(`INSERT INTO gmail_finance_messages(account_id,gmail_message_id,kind,from_email,subject,amount,counterparty) VALUES($1,'old-re','zelle_in','office@ironttr.com','Re: You received money with Zelle®',1161,'Vitalii Hnatiuk'),($1,'old-gm','zelle_in','x@gmail.com','You received money with Zelle®',804,'Vitalii Hnatiuk'),($1,'old-ok','zelle_in','alerts@chase.com','You received money with Zelle®',150,'Real Payer')`,[acc]);
+  assert(await setAsideNonBankZelle(db)===2,'already-listed reply / personal-mailbox Zelle emails are set aside');
+  const st=Object.fromEntries((await db.query("SELECT gmail_message_id,status FROM gmail_finance_messages WHERE gmail_message_id LIKE 'old-%'")).rows.map(r=>[r.gmail_message_id,r.status]));
+  assert(st['old-re']==='ignored'&&st['old-gm']==='ignored'&&st['old-ok']==='new','real bank notices stay in the inbox');
+  await db.query("DELETE FROM gmail_finance_messages WHERE gmail_message_id LIKE 'old-%'");}
  const twice=await request(`/api/gmail/messages/${z.id}/apply-payment`,{method:'POST',body:{invoiceId:open.id},allowError:true});assert(twice.status===409,'Zelle cannot be applied twice');
  const paidInv=await request(`/api/invoices/${open.id}`);assert(paidInv.invoice.status==='paid'&&paidInv.payments[0].method==='Zelle','Zelle payment recorded and invoice paid');assert(paidInv.payments[0].reference==='22198765432',`Zelle payment reference is the bank confirmation number (${paidInv.payments[0].reference})`);assert(/From: ACME TRUCKING LLC/.test(paidInv.payments[0].note||''),'sender kept in the note');
  const mechGmail=await request('/api/gmail/messages',{tok:mechToken,allowError:true});assert(mechGmail.status===403,'mechanic cannot read Gmail inbox');

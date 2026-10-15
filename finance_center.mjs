@@ -409,13 +409,28 @@ export function parseFromHeader(v) {
   const s = String(v || ''); const m = s.match(/^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/);
   return m ? { name: m[1].trim(), email: m[2].trim().toLowerCase() } : { name: '', email: s.trim().toLowerCase() };
 }
+// v24.51.1: a Zelle payment notice comes from the bank, never as a reply or forward ("Re: You received money with
+// Zelle®") and never from a personal mailbox. Those were listed as money received although no Zelle ever came in.
+const REPLY_SUBJECT = /^\s*(?:re|fwd?|fw|aw|tr)\s*:/i;
+const PERSONAL_MAIL = /@(?:gmail|googlemail|yahoo|ymail|outlook|hotmail|live|msn|icloud|me|mac|aol|proton|protonmail|gmx|zoho|yandex|comcast|att|sbcglobal|verizon)\.(?:com|net|org|me|ch|de|ru|co\.uk)$/i;
+export function isBankZelleNotice(subject, fromEmail) {
+  return !REPLY_SUBJECT.test(String(subject || '')) && !PERSONAL_MAIL.test(String(fromEmail || '').trim());
+}
+// Emails already listed before v24.51.1 that are replies/forwards or came from a personal mailbox: set aside, not deleted.
+export async function setAsideNonBankZelle(db) {
+  const r = await db.query(`UPDATE gmail_finance_messages SET status='ignored',handled_by='system',handled_at=now()
+    WHERE kind IN ('zelle_in','zelle_out') AND status='new' AND (subject ~* '^\\s*(re|fwd?|fw|aw|tr)\\s*:' OR from_email ~* $1)`,
+  [PERSONAL_MAIL.source]).catch(() => ({ rowCount: 0 }));
+  if (r.rowCount) console.log(`Gmail inbox: set aside ${r.rowCount} Zelle email(s) that were replies/forwards or not from a bank.`);
+  return r.rowCount;
+}
 export function classifyGmailMessage(msg) {
   const headers = Object.fromEntries((msg.payload?.headers || []).map(h => [String(h.name).toLowerCase(), h.value]));
   const parts = walkParts(msg.payload);
   const body = parts.plain.trim() ? collapse(parts.plain) : htmlToText(parts.html);
   const from = parseFromHeader(headers.from), subject = str(headers.subject, 300);
   const base = { gmailMessageId: msg.id, threadId: msg.threadId, fromName: from.name, fromEmail: from.email, subject, snippet: str(htmlToText(msg.snippet || ''), 300), receivedAt: msg.internalDate ? new Date(Number(msg.internalDate)).toISOString() : null, attachments: parts.attachments };
-  const z = parseZelleEmail({ subject, body });
+  const z = isBankZelleNotice(subject, from.email) ? parseZelleEmail({ subject, body }) : null;
   if (z) return { ...base, ...z };
   const v = parseVendorBillEmail({ subject, body, fromName: from.name, fromEmail: from.email, attachments: parts.attachments });
   if (v) return { ...base, ...v };
