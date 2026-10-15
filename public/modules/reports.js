@@ -82,7 +82,7 @@ function render(){
   ['Customers owe',usd0(k.outstanding),k.overdue>0?`<small class="bad">${usd0(k.overdue)} overdue</small>`:`${k.openInvoices} open invoice${k.openInvoices===1?'':'s'}`,true],
   ['Parts profit',usd0(k.partsMargin),`${k.partsMarginPct}% margin on ${usd0(k.parts)}`],
   ['Tire fees',usd0(d.tireFees.totalAmount),`${qty(d.tireFees.userFeeQty)} new · ${qty(d.tireFees.disposalQty)} disposed`],
-  ['Parts purchased',usd0(k.partsPurchased),`${d.vendorSpend.length} vendor${d.vendorSpend.length===1?'':'s'}`]
+  ['Spent on bills',usd0(k.partsPurchased),`${d.vendorSpend.length} vendor${d.vendorSpend.length===1?'':'s'} · see Spending`]
  ].map(([l,v,s,raw])=>`<div class="repKpi"><span>${l}</span><b>${v}</b>${raw?s:`<small>${s}</small>`}</div>`).join('');
  const fullMonth=m=>{const [y,mo]=String(m).split('-').map(Number);return new Date(y,mo-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'})};
  const months=d.monthly.map(m=>({...m,label:fullMonth(m.month),short:monthLabel(m.month)}));
@@ -92,39 +92,24 @@ function render(){
  registerCsv('monthly',[{key:'month',label:'Month'},{key:'labor',label:'Labor'},{key:'parts',label:'Parts'},{key:'other',label:'Fees & other (net of discounts)'},{key:'tax',label:'Sales tax'},{key:'billed',label:'Total billed'},{key:'collected',label:'Collected'},{key:'partsPurchased',label:'Parts purchased'}],d.monthly);
  registerCsv('customers',[{key:'customerName',label:'Customer'},{key:'invoices',label:'Invoices'},{key:'billed',label:'Billed'},{key:'balance',label:'Current balance'}],d.topCustomers);
  const mixTotal=d.revenueMix.reduce((a,x)=>a+x.amount,0);
+ // v24.51.0: four cards — money in, where it comes from, how it was paid, best customers.
  $('#repOverview').innerHTML=`<div class="repGrid"><div>
-   ${card('Sales by month','Labor, parts and fees on finalized invoices (before tax).',legend(revSeries)+vbars({rows:months,series:revSeries}),'monthly')}
-   ${card('Billed vs. collected','What was invoiced each month next to what actually came in.',legend(flowSeries)+vbars({rows:months,series:flowSeries,stacked:false}))}
+   ${card('Billed vs. collected','What was invoiced each month next to what actually came in.',legend(flowSeries)+vbars({rows:months,series:flowSeries,stacked:false}),'monthly')}
+   ${card('Top customers',`By amount billed in this range.`,table('top',[{key:'customerName',label:'Customer'},{key:'billed',label:'Billed',num:true,fmt:usd},{key:'balance',label:'Owes now',num:true,fmt:usd}],d.topCustomers,{empty:'No invoices in this range.'}),'customers')}
   </div><div>
    ${card('Where the money comes from',`${usd(mixTotal)} in sales for this range.`,hbars(d.revenueMix.map(x=>({label:x.label,value:x.amount,tip:`${x.label}: ${usd(x.amount)} (${mixTotal?Math.round(x.amount/mixTotal*100):0}%)`}))))}
    ${card('How customers paid','Payments received in this range.',hbars(d.paymentMethods.map(p=>({label:p.method,value:p.amount,tip:`${p.method}: ${usd(p.amount)} · ${p.count} payment${p.count===1?'':'s'}`}))))}
-   ${card('Top customers',`By amount billed in this range.`,table('top',[{key:'customerName',label:'Customer'},{key:'billed',label:'Billed',num:true,fmt:usd},{key:'balance',label:'Owes now',num:true,fmt:usd}],d.topCustomers,{empty:'No invoices in this range.'}),'customers')}
-   ${card('Estimates','Estimates written in this range.',hbars(d.estimates.filter(e=>e.count).map(e=>({label:e.status==='converted'?'Invoiced':e.status[0].toUpperCase()+e.status.slice(1),value:e.total,tip:`${e.count} estimate${e.count===1?'':'s'} · ${usd(e.total)}`}))))}
   </div></div>`;
- // Receivables
- const agingLabels={current:'Not due yet','1-30':'1–30 days late','31-60':'31–60 days late','61-90':'61–90 days late','90+':'Over 90 days late'},agingColors=['var(--q1)','var(--q2)','var(--q3)','var(--q4)','var(--q5)'];
- const custCols=[{key:'customerName',label:'Customer'},{key:'invoices',label:'Open invoices',num:true},{key:'balance',label:'Owes',num:true,fmt:usd},{key:'overdue',label:'Overdue',num:true,fmt:usd},{key:'daysPastDue',label:'Oldest (days late)',num:true,html:r=>r.daysPastDue>0?`<span class="repTag ${r.daysPastDue>30?'late':''}">${r.daysPastDue}</span>`:'<span class="repTag ok">on time</span>',csv:r=>r.daysPastDue}];
- const invCols=[{key:'invoice_number',label:'Invoice'},{key:'customer_name',label:'Customer'},{key:'unit_number',label:'Unit'},{key:'invoice_date',label:'Date',fmt:day,csv:r=>String(r.invoice_date||'').slice(0,10)},{key:'due_date',label:'Due',fmt:day,csv:r=>String(r.due_date||'').slice(0,10)},{key:'total',label:'Total',num:true,fmt:usd},{key:'amount_paid',label:'Paid',num:true,fmt:usd},{key:'balance_due',label:'Balance',num:true,fmt:usd},{key:'days_past_due',label:'Days late',num:true,html:r=>r.days_past_due>0?`<span class="repTag ${r.days_past_due>30?'late':''}">${r.days_past_due}</span>`:'—',csv:r=>Math.max(0,r.days_past_due)}];
- registerCsv('receivables-customers',custCols,d.customersOwing);registerCsv('open-invoices',invCols,d.openInvoices);registerCsv('aging',[{key:'bucket',label:'Bucket'},{key:'count',label:'Invoices'},{key:'amount',label:'Amount'}],d.aging);
- $('#repAr').innerHTML=`<div id="repArAging"></div><div class="repGrid"><div>${card('Who owes you money',`${usd(k.outstanding)} across ${k.openInvoices} open invoice${k.openInvoices===1?'':'s'} (as of today, all dates).`,table('owing',custCols,d.customersOwing,{empty:'Nobody owes you money right now. 🎉'}),'receivables-customers')}</div>
-  <div>${card('How late are the payments','Unpaid balance by days past the due date.',hbars(d.aging.map((a,i)=>({label:agingLabels[a.bucket],value:a.amount,color:agingColors[i],tip:`${agingLabels[a.bucket]}: ${usd(a.amount)} · ${a.count} invoice${a.count===1?'':'s'}`}))),'aging')}
-  ${d.kpis.draftInvoices?`<div class="repNotice warn">${d.kpis.draftInvoices} draft invoice${d.kpis.draftInvoices===1?'':'s'} (${usd(d.kpis.draftValue)}) not finalized yet — they are not counted as owed until you finalize them.</div>`:''}</div></div>
-  ${card('Open invoices','Click an invoice to open it.',table('openinv',invCols,d.openInvoices,{rowAttr:r=>`data-inv="${r.id}"`,empty:'No open invoices.'}),'open-invoices')}`;
+ // Receivables — v24.51.0: the A/R aging table covers who owes, how late, open invoices and credit.
+ $('#repAr').innerHTML=`<div id="repArAging"></div>${d.kpis.draftInvoices?`<div class="repNotice warn">${d.kpis.draftInvoices} draft invoice${d.kpis.draftInvoices===1?'':'s'} (${usd(d.kpis.draftValue)}) not finalized yet — they are not counted as owed until you finalize them (or tick “Include drafts”).</div>`:''}`;
  // Parts
  const puCols=[{key:'partNumber',label:'Part #'},{key:'description',label:'Description'},{key:'timesUsed',label:'Times used',num:true},{key:'qty',label:'Qty',num:true,fmt:qty},{key:'cost',label:'Our cost',num:true,fmt:usd},{key:'revenue',label:'Sold for',num:true,fmt:usd},{key:'margin',label:'Profit',num:true,fmt:usd},{key:'lastUsed',label:'Last used',fmt:day,csv:r=>String(r.lastUsed||'').slice(0,10)}];
- const vsCols=[{key:'vendor',label:'Vendor'},{key:'bills',label:'Bills',num:true},{key:'subtotal',label:'Parts',num:true,fmt:usd},{key:'discount',label:'Discounts',num:true,fmt:v=>Number(v)?'−'+usd(v):'—'},{key:'tax',label:'Tax',num:true,fmt:usd},{key:'freight',label:'Freight',num:true,fmt:usd},{key:'total',label:'Total',num:true,fmt:usd},{key:'lastBill',label:'Last bill',fmt:day,csv:r=>String(r.lastBill||'').slice(0,10)}];
- const vbCols=[{key:'invoice_date',label:'Date',fmt:day,csv:r=>String(r.invoice_date||'').slice(0,10)},{key:'vendor',label:'Vendor'},{key:'invoice_number',label:'Vendor invoice #'},{key:'subtotal',label:'Parts',num:true,fmt:usd},{key:'discount',label:'Discounts',num:true,fmt:v=>Number(v)?'−'+usd(v):'—'},{key:'tax',label:'Tax',num:true,fmt:usd},{key:'freight',label:'Freight',num:true,fmt:usd},{key:'total',label:'Total',num:true,fmt:usd}];
- registerCsv('parts-usage',puCols,d.partsUsage);registerCsv('vendor-spend',vsCols,d.vendorSpend);registerCsv('vendor-bills',vbCols,d.vendorBills);
- const mostUsed=[...d.partsUsage].sort((a,b)=>b.timesUsed-a.timesUsed||b.qty-a.qty).slice(0,10);
- $('#repParts').innerHTML=`<div class="repGrid"><div>
-   ${card('Parts purchased by month','Received vendor bills (Smart Receiving), including tax and freight.',vbars({rows:months,series:[{key:'partsPurchased',name:'Parts purchased',color:C.one}]}))}
-   ${card('Spending by vendor',`${usd(k.partsPurchased)} in parts bills this range.`,hbars(d.vendorSpend.slice(0,12).map(v=>({label:v.vendor,value:v.total,tip:`${v.vendor}: ${usd(v.total)} · ${v.bills} bill${v.bills===1?'':'s'}`})))+'<div style="height:10px"></div>'+table('vs',vsCols,d.vendorSpend,{empty:'No vendor bills received in this range.'}),'vendor-spend')}
-  </div><div>
-   ${card('Most-used parts','How many invoices each part went on.',hbars(mostUsed.map(p=>({label:p.partNumber||p.description,value:p.timesUsed,tip:`${p.partNumber||''} ${p.description||''}\nUsed on ${p.timesUsed} invoice${p.timesUsed===1?'':'s'} · qty ${qty(p.qty)}`})),{fmt:v=>`${v}×`}))}
-   ${card('Parts profit',`Sold for ${usd(k.parts)} · cost ${usd(k.partsCost)}.`,`<div class="repHbar"><span class="lbl">Profit</span><span></span><span class="num">${usd(k.partsMargin)}</span></div><div class="repHbar"><span class="lbl">Margin</span><span></span><span class="num">${k.partsMarginPct}%</span></div>`)}
-  </div></div>
-  ${card('Parts used on invoices','Every part billed in this range — how many times, how many, what it cost you and what you charged.',table('pu',puCols,d.partsUsage,{empty:'No parts billed in this range.'}),'parts-usage')}
-  ${card('Vendor bills','Each received parts invoice.',table('vb',vbCols,d.vendorBills,{empty:'No vendor bills.'}),'vendor-bills')}`;
+ registerCsv('parts-usage',puCols,d.partsUsage);
+ // v24.51.0: parts are part of Spending — profit and every part sold (sortable, CSV). Purchases by vendor/category are above it.
+ const pp=$('#repPartsSec');if(pp)pp.innerHTML=`<h2 class="repSection">Parts you sold</h2><div class="repKpis" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+   <div class="repKpi"><span>Parts sold</span><b>${usd0(k.parts)}</b><small>on invoices in this range</small></div><div class="repKpi"><span>Their cost</span><b>${usd0(k.partsCost)}</b><small>what you paid</small></div>
+   <div class="repKpi"><span>Parts profit</span><b>${usd0(k.partsMargin)}</b><small>${k.partsMarginPct}% margin</small></div></div>
+  ${card('Parts used on invoices','Every part billed in this range. Click a column to sort — “Times used” shows your most-used parts.',table('pu',puCols,d.partsUsage,{empty:'No parts billed in this range.'}),'parts-usage')}`;
  // Tires
  const t=d.tireFees,ts=d.tireSettings,byMonth={};
  t.monthly.forEach(x=>{const m=byMonth[x.month]||(byMonth[x.month]={month:x.month,label:fullMonth(x.month),short:monthLabel(x.month),userQty:0,userAmt:0,dispQty:0,dispAmt:0});if(x.category==='tire_user_fee'){m.userQty+=x.qty;m.userAmt+=x.amount}else{m.dispQty+=x.qty;m.dispAmt+=x.amount}});
@@ -145,7 +130,10 @@ function render(){
  applyTab();
 }
 function applyTab(){
- S.scope.host.querySelectorAll('[data-rep="tab"]').forEach(b=>{b.classList.toggle('active',b.dataset.t===S.tab);b.setAttribute('aria-selected',b.dataset.t===S.tab)});
+ // v24.51.0: old tab names from before the rebuild.
+ S.tab=({parts:'spend',vendors:'spend'})[S.tab]||S.tab;const team=['mech','clock','labor'].includes(S.tab);if(team)S.teamTab=S.tab;
+ S.scope.host.querySelectorAll('.repTabs [data-rep="tab"]').forEach(b=>{const on=b.dataset.group==='team'?team:b.dataset.t===S.tab;b.classList.toggle('active',on);b.setAttribute('aria-selected',on)});
+ S.scope.host.querySelectorAll('#repSubTabs [data-rep="tab"]').forEach(b=>b.classList.toggle('active',b.dataset.t===S.tab));$('#repSubTabs')?.classList.toggle('on',team);
  S.scope.host.querySelectorAll('.repPanel').forEach(p=>p.classList.toggle('active',p.dataset.panel===S.tab));
  setTimeout(()=>{try{const t=S.scope?.host.querySelector('[data-rep="tab"].active'),bar=t?.parentElement;if(t&&bar)bar.scrollLeft=Math.max(0,t.offsetLeft-bar.offsetLeft-24)}catch(_){}},60);
  $('#repKpis').style.display=S.tab==='overview'?'':'none';
@@ -154,7 +142,7 @@ function applyTab(){
  if(S.tab==='mech')loadMech();
  if(S.tab==='clock')loadClock();
  if(S.tab==='labor')loadLabor();
- if(S.tab==='vendors')loadVendors();
+ if(S.tab==='spend')loadVendors();
  if(S.tab==='ai')loadAiUsage();
  requestAnimationFrame(drawCharts);
 }
@@ -322,30 +310,11 @@ async function loadVendors(force=false){
  const box=$('#repVendors');if(!box)return;const key=`${S.range.from}|${S.range.to}`;
  if(!force&&S.vend&&S.vendKey===key)return renderVendors();
  box.innerHTML='<div class="repEmpty">Loading vendor bills…</div>';
- try{S.vend=await api(`/api/vendor-invoices/analysis?from=${S.range.from}&to=${S.range.to}`);S.vendKey=key;S.vendBills=null;renderVendors();if(S.vendSel)loadVendorBills()}
+ try{const [v,bl,bm]=await Promise.all([api(`/api/vendor-invoices/analysis?from=${S.range.from}&to=${S.range.to}`),api(`/api/bills?from=${S.range.from}&to=${S.range.to}`).catch(()=>null),S.billMeta?Promise.resolve(S.billMeta):api('/api/bills/meta').catch(()=>null)]);
+  S.vend=v;S.bills=bl;S.billMeta=bm;S.vendKey=key;S.vendBills=null;renderVendors();if(S.vendSel)loadVendorBills()}
  catch(e){box.innerHTML=`<div class="repEmpty">${h(e.message)}</div>`}
 }
 const pctUp=v=>`<span class="repTag late">+${Number(v).toFixed(1)}%</span>`;
-function vendorQueueHtml(){
- const q=S.vbQueue||[];if(!q.length)return '';
- return card('Scanned bills — check and save',`AI read ${q.length} bill${q.length===1?'':'s'}. Check the vendor, number, date and total, then save. Nothing is saved until you click Save.`,q.map((x,i)=>{
-  if(x.status==='scanning')return `<div class="repMsg"><div><b>${h(x.name)}</b><div class="meta">Reading with AI…</div></div></div>`;
-  if(x.status==='error')return `<div class="repMsg"><div><b>${h(x.name)}</b><div class="meta" style="color:#b42318">${h(x.error)}</div></div><div class="acts"><button class="secondary" data-rep="vbq-drop" data-i="${i}">Remove</button></div></div>`;
-  if(x.status==='saved')return `<div class="repMsg"><div><span class="repTag ok">Saved</span> <b>${h(x.draft.invoice.vendor)}</b> · #${h(x.draft.invoice.invoiceNumber||'—')} · ${usd(x.draft.invoice.total)}<div class="meta">Filed for bookkeeping. Parts are not in inventory yet.</div></div><div class="acts"><button data-rep="vb-receive" data-id="${x.savedId}">📦 Receive into stock</button></div></div>`;
-  const d=x.draft,inv=d.invoice,warn=[...(d.mathProblems||[]).map(p=>p.message),...(d.alreadyFiled?[`This vendor and invoice number are already saved (${d.alreadyFiled.status}).`]:[])];
-  return `<div class="repMsg" style="grid-template-columns:1fr"><div><b>${h(x.name)}</b> <span class="muted">· ${d.lines.length} line${d.lines.length===1?'':'s'}${d.gmailMessageId?' · from Gmail':''}</span></div>
-   <div class="repForm vbqForm">
-    <div class="field vbqVendor"><label>Vendor</label><input data-vbq="vendor" data-i="${i}" value="${h(inv.vendor)}" list="vbVendorList"></div>
-    <div class="field"><label>Invoice #</label><input data-vbq="invoiceNumber" data-i="${i}" value="${h(inv.invoiceNumber)}"></div>
-    <div class="field"><label>Date</label><input type="date" data-vbq="invoiceDate" data-i="${i}" value="${h(inv.invoiceDate)}"></div>
-    <div class="field"><label>Due</label><input type="date" data-vbq="dueDate" data-i="${i}" value="${h(inv.dueDate)}"></div>
-    <div class="field"><label>Discount $</label><input type="number" min="0" step="0.01" data-vbq="discount" data-i="${i}" value="${Math.abs(Number(inv.discount||0))}" title="Rebates, programs, credits. Lowers what you owe — part costs stay at the line price."></div>
-    <div class="field"><label>Total $</label><input type="number" step="0.01" data-vbq="total" data-i="${i}" value="${Number(inv.total||0)}"></div>
-   </div>
-   ${warn.length?`<div class="repNotice warn" style="margin:8px 0 0">${warn.map(h).join('<br>')}</div>`:''}
-   ${d.lines.length?`<details style="margin-top:6px"><summary class="muted">Lines</summary>${table('vbq'+i,[{key:'partNumber',label:'Part #'},{key:'description',label:'Description'},{key:'quantity',label:'Qty',num:true},{key:'unitCost',label:'Unit',num:true,fmt:usd},{key:'lineTotal',label:'Total',num:true,fmt:usd}],d.lines)}</details>`:''}
-   <div class="acts"><button data-rep="vbq-save" data-i="${i}">Save bill</button><button class="secondary" data-rep="vbq-drop" data-i="${i}">Discard</button></div></div>`}).join(''));
-}
 function renderVendors(){
  const d=S.vend,box=$('#repVendors');if(!d||!box)return;const t=d.totals,al=d.alerts;
  const vCols=[{key:'vendor',label:'Vendor'},{key:'bills',label:'Bills',num:true},{key:'total',label:'Spend',num:true,fmt:usd},{key:'share',label:'Share',num:true,fmt:v=>`${v}%`},{key:'avgBill',label:'Avg bill',num:true,fmt:usd},{key:'lastBill',label:'Last bill',fmt:v=>day(v)},{key:'unpaid',label:'Unpaid',num:true,fmt:usd},{key:'overdue',label:'Overdue',num:true,html:r=>r.overdue>0?`<span class="repTag late">${usd(r.overdue)}</span>`:'—',csv:r=>r.overdue},{key:'coresValue',label:'Cores owed',num:true,fmt:usd},{key:'priceIncreases',label:'Price ↑',num:true,html:r=>r.priceIncreases?`<span class="repTag late">${r.priceIncreases}</span>`:'—',csv:r=>r.priceIncreases}];
@@ -355,10 +324,12 @@ function renderVendors(){
  const upCols=[{key:'vendor',label:'Vendor'},{key:'invoiceNumber',label:'Invoice #'},{key:'dueDate',label:'Due',fmt:v=>day(v)},{key:'daysLate',label:'Days late',num:true},{key:'total',label:'Amount',num:true,fmt:usd}];
  registerCsv('vendor-price-increases',piCols,al.priceIncreases);registerCsv('vendor-cheaper',ceCols,al.cheaperElsewhere);registerCsv('vendor-unpaid',upCols,al.unpaidPastDue);
  const checks=al.priceIncreases.length+al.cheaperElsewhere.length+al.mathProblems.length+al.duplicates.length+al.unpaidPastDue.length+al.coresPastDue.length;
- box.innerHTML=`<div class="repNotice">Every vendor bill in one place, <b>separated by vendor</b>: parts you received with Smart Receiving, bills you upload here (AI reads them) and vendor-bill emails from Gmail (<b>Money inbox → Vendor bills → Scan &amp; file</b>). Bills added here are for bookkeeping until you click <b>📦 Receive</b>, which opens Smart Receiving with the lines matched to your parts (by part number, or by description for fluids and bulk items). ShopFlow also checks for price increases, parts that were cheaper at another vendor, bills whose numbers don't add up, possible double bills, bills past due and cores to return.</div>
-  <div class="repNoPrint" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"><label class="button" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;background:#2563eb;color:#fff;border-radius:10px;padding:9px 14px;font-weight:700">+ Add vendor bills (PDF / photo)<input type="file" id="vbFiles" accept="application/pdf,image/*" multiple hidden></label><button class="secondary" data-rep="vb-ai">✦ AI summary</button><input id="vbSearch" placeholder="Search bills: invoice #, part #, description" value="${h(S.vendQ||'')}" style="flex:1;min-width:200px"></div>
-  <datalist id="vbVendorList">${d.vendors.map(v=>`<option value="${h(v.vendor)}">`).join('')}</datalist>
-  ${vendorQueueHtml()}
+
+ // v24.51.0: Spending = what the shop bought (all bills, by category and by vendor), what to check, and parts sold.
+ const bt=S.bills?.totals,catName=k=>S.billMeta?.categories?.find(c=>c.key===k)?.name||k,cats=Object.entries(S.bills?.byCategory||{}).sort((x,y)=>y[1]-x[1]);
+ registerCsv('spend-categories',[{key:'category',label:'Category'},{key:'amount',label:'Spent'}],cats.map(([k,v])=>({category:catName(k),amount:v})));
+ box.innerHTML=`<div class="repNoPrint" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:space-between;align-items:center;margin-bottom:12px"><div class="muted">Everything bought in this range — from <b>Bills</b> (typed, scanned, Gmail and parts received into stock).</div>
+   <span style="display:flex;gap:8px"><button data-rep="go-bills" class="secondary">Open Bills →</button><button data-rep="vb-ai" class="secondary">✦ AI summary</button></span></div>
   <div id="vbAiOut"></div>
   <div class="repKpis"><div class="repKpi"><span>Spent with vendors</span><b>${usd0(t.spend)}</b><small>${t.bills} bill${t.bills===1?'':'s'} · ${t.vendors} vendor${t.vendors===1?'':'s'}</small></div>
    <div class="repKpi" title="Bills you added here, and received bills once they have a due date. Mark a bill paid from its details."><span>Owed to vendors</span><b>${usd0(t.unpaid)}</b><small class="${t.overdue>0?'bad':''}">${t.overdue>0?`${usd0(t.overdue)} overdue`:'nothing overdue'}</small></div>
@@ -366,6 +337,7 @@ function renderVendors(){
    <div class="repKpi"><span>Price increases</span><b>${al.priceIncreases.length}</b><small>${usd0(t.priceIncreaseCost)} extra paid</small></div>
    <div class="repKpi"><span>Cheaper elsewhere</span><b>${usd0(t.possibleSavings)}</b><small>${al.cheaperElsewhere.length} part${al.cheaperElsewhere.length===1?'':'s'}</small></div>
    <div class="repKpi"><span>Bills to check</span><b>${al.mathProblems.length+al.duplicates.length}</b><small>math or possible duplicate</small></div></div>
+  ${cats.length?card('Spending by category',`${usd(bt?.total||0)} on ${bt?.count||0} bill${bt?.count===1?'':'s'} · ${usd(bt?.unpaid||0)} still to pay. Categories map to your QuickBooks accounts.`,hbars(cats.map(([k,v])=>({label:catName(k),value:v,tip:`${catName(k)}: ${usd(v)}`}))),'spend-categories'):''}
   <div class="repGrid">${card('Spending by vendor','Click a vendor in the table to see its bills and top parts.',hbars(d.vendors.slice(0,12).map(v=>({label:v.vendor,value:v.total,tip:`${v.vendor}: ${usd(v.total)} · ${v.bills} bills · ${v.share}%`}))))}
    ${card('Monthly spend, top vendors','',(()=>{const top=d.vendors.slice(0,4),months=[...new Set(top.flatMap(v=>Object.keys(v.byMonth)))].sort();const cols=['var(--s1)','var(--s2)','var(--s3)','#7a5af8'];const series=top.map((v,i)=>({key:'v'+i,name:v.vendor,color:cols[i]}));return legend(series)+vbars({rows:months.map(m=>Object.assign({label:monthLabel(m)},...top.map((v,i)=>({['v'+i]:v.byMonth[m]||0})))),series})})())}</div>
   ${card('Vendors','',table('vendors',vCols,d.vendors,{rowAttr:r=>`data-vend="${h(r.vendor)}" class="${r.vendor===S.vendSel?'mechSel':''}" style="cursor:pointer"`,empty:'No vendor bills in this range yet. Add bills above, receive parts with Smart Receiving, or scan vendor-bill emails.'}),'vendors')}
@@ -410,18 +382,12 @@ async function openVendorBill(id){
   if(a==='save'){const paidOn=m.querySelector('#vbdPaidOn').value,ref=m.querySelector('#vbdRef').value.trim();await api(`/api/vendor-invoices/${id}`,{method:'PATCH',body:{dueDate:m.querySelector('#vbdDue').value||null,...(paidOn||ref?{paid:true,paidOn,paidReference:ref}:{})}})}
   m.remove();toast('Vendor bill updated.','success');loadVendors(true)}catch(err){toast(err.message,'error')}});
 }
-async function scanVendorFiles(files){
- S.vbQueue=S.vbQueue||[];const start=S.vbQueue.length;
- for(const f of files)S.vbQueue.push({name:f.name,status:'scanning'});renderVendors();
- // One at a time: keeps AI cost predictable and avoids provider rate limits.
- for(let k=0;k<files.length;k++){const x=S.vbQueue[start+k];try{const fd=new FormData();fd.append('file',files[k]);const r=await fetch('/api/vendor-invoices/scan',{method:'POST',headers:window.authHeaders(),body:fd});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||`Scan failed (${r.status})`);x.draft=d;x.status='ready'}catch(e){x.status='error';x.error=e.message}renderVendors()}
-}
+// v24.51.0: a vendor-bill email is filed in Bills: AI reads the attachment and the Bills form opens filled in.
 async function scanGmailBill(id,btn){
  if(btn){btn.disabled=true;btn.textContent='Reading…'}
- try{const d=await api(`/api/vendor-invoices/gmail/${id}/scan`,{method:'POST',body:{}});S.vbQueue=S.vbQueue||[];S.vbQueue.push({name:d.file?.name||'Gmail bill',status:'ready',draft:d});S.tab='vendors';try{sessionStorage.setItem('ittr_reports_tab','vendors')}catch(_){}applyTab();toast('Bill read. Check it and click Save.','success')}
- catch(e){toast(e.message,'error');if(btn){btn.disabled=false;btn.textContent='✦ Scan & file'}}
+ try{const d=await api(`/api/vendor-invoices/gmail/${id}/scan`,{method:'POST',body:{}});window.__ittrBillDraft={...d,gmailMessageId:d.gmailMessageId||Number(id)};await window.showView?.('bills');window.dispatchEvent(new Event('ittr:bill-draft'));toast('Bill read. Check it, choose categories, then save.','info')}
+ catch(e){toast(e.message,'error')}finally{if(btn){btn.disabled=false;btn.textContent='✦ Scan & file'}}
 }
-function readQueue(i){const x=S.vbQueue[i];S.scope.host.querySelectorAll(`[data-vbq][data-i="${i}"]`).forEach(el=>{x.draft.invoice[el.dataset.vbq]=el.type==='number'?Number(el.value||0):el.value.trim()});return x}
 
 // ---------------------------------------------------------------- AI usage (v24.42.0)
 async function loadAiUsage(){
@@ -548,8 +514,8 @@ async function onClick(ev){
  const b=ev.target.closest('[data-rep]');if(!b)return;const a=b.dataset.rep;
  try{
   if(a==='preset'){S.preset=b.dataset.p;S.range=presetRange(S.preset);return load()}
-  if(a==='tab'){S.tab=b.dataset.t;try{sessionStorage.setItem('ittr_reports_tab',S.tab)}catch(_){}return applyTab()}
-  if(a==='sort'){const cur=S.sort[b.dataset.table];S.sort[b.dataset.table]={key:b.dataset.key,dir:cur?.key===b.dataset.key?-cur.dir:-1};return S.tab==='mech'?renderMech():S.tab==='clock'?renderClock():S.tab==='labor'?renderLabor():S.tab==='vendors'?(renderVendors()):S.tab==='ai'?renderAiUsage():render()}
+  if(a==='tab'){S.tab=b.dataset.group==='team'?(S.teamTab||'mech'):b.dataset.t;try{sessionStorage.setItem('ittr_reports_tab',S.tab)}catch(_){}return applyTab()}
+  if(a==='sort'){const cur=S.sort[b.dataset.table];S.sort[b.dataset.table]={key:b.dataset.key,dir:cur?.key===b.dataset.key?-cur.dir:-1};return S.tab==='mech'?renderMech():S.tab==='clock'?renderClock():S.tab==='labor'?renderLabor():S.tab==='spend'?(renderVendors()):S.tab==='ai'?renderAiUsage():render()}
   if(a==='csv')return downloadCsv(b.dataset.k);
   if(a==='save-hours'){const wd=[...S.scope.host.querySelectorAll('[data-wd]')].filter(x=>x.checked).map(x=>Number(x.dataset.wd));await api('/api/reports/mechanics/settings',{method:'PUT',body:{start:$('#shOpen').value,end:$('#shClose').value,timezone:$('#shTz').value,breakAllowanceMinutes:$('#shLunch').value,idleGapMinutes:$('#shGap').value,workdays:wd}});S.mech=null;toast('Shop hours saved.','success');return loadMech()}
   if(a==='print')return window.print();
@@ -585,15 +551,14 @@ async function onClick(ev){
   if(a==='vb-open')return openVendorBill(b.dataset.id);
   if(a==='vb-receive')return window.receiveFiledBill?.(Number(b.dataset.id));
   if(a==='vend-clear'){S.vendSel='';S.vendBills=null;return renderVendors()}
-  if(a==='vbq-drop'){S.vbQueue.splice(Number(b.dataset.i),1);return renderVendors()}
-  if(a==='vbq-save'){const x=readQueue(Number(b.dataset.i));b.disabled=true;const r=await api('/api/vendor-invoices',{method:'POST',body:{invoice:x.draft.invoice,lines:x.draft.lines,file:x.draft.file,gmailMessageId:x.draft.gmailMessageId||null}});x.status='saved';x.savedId=r.id;x.draft.invoice.vendor=r.vendor;toast(`Saved under ${r.vendor}.`,'success');S.vbQueue=S.vbQueue.filter(q=>q.status!=='saved'||q===x);return loadVendors(true)}
+  if(a==='go-bills'){await window.showView?.('bills');return}
   if(a==='vb-ai'){const out=$('#vbAiOut');b.disabled=true;out.innerHTML='<div class="repNotice">✦ AI is reading your vendor numbers…</div>';try{const d=await api('/api/vendor-invoices/analysis/summary',{method:'POST',body:{from:S.range.from,to:S.range.to}});out.innerHTML=card('AI summary',`${day(S.range.from)} – ${day(S.range.to)}`,`<div style="white-space:pre-wrap;line-height:1.55">${h(d.summary)}</div>`)}catch(e){out.innerHTML='';throw e}finally{b.disabled=false}return}
   if(a==='ai-days'){S.aiDays=Number(b.dataset.k);return loadAiUsage()}
   if(a==='ai-budget'){const d=await api('/api/ai/budget',{method:'PUT',body:{monthlyLimit:Number($('#aiBudget').value),warnAt:Number($('#aiWarn').value)}});toast(`AI budget set to ${usd(d.budget.monthlyLimit)} a month.`,'success');return loadAiUsage()}
   if(a==='gmail-queries'){await api('/api/finance/settings/gmail-queries',{method:'PUT',body:{zelle:$('#gqZelle').value,vendor:$('#gqVendor').value}});toast('Gmail searches saved.','success');return}
  }catch(e){b.disabled=false;toast(e.message,'error');if(a==='gmail-sync')loadInbox()}
 }
-function onChange(ev){if(ev.target.id==='vbFiles'){const f=[...ev.target.files];ev.target.value='';if(f.length)scanVendorFiles(f);return}
+function onChange(ev){
  if(ev.target.id==='vbSearch'){S.vendQ=ev.target.value.trim();S.vendBills=null;return renderVendors()}
  if(ev.target.id==='repFrom'||ev.target.id==='repTo'){const f=$('#repFrom').value,t=$('#repTo').value;if(f&&t){S.preset='';S.range={from:f,to:t};load()}}}
 function onMove(ev){const tip=$('#repTip');if(!tip)return;const el=ev.target.closest?.('[data-tip]');if(!el){tip.style.display='none';return}

@@ -268,6 +268,9 @@ export function registerBillRoutes(app, deps) {
         fileKey ? 'ai_file' : 'manual', fileKey, fileKey ? str(file.mime, 60) : null, fileKey ? str(file.name, 255) || null : null]);
       const id = ins.rows[0].id;
       await writeLines(c, id, d.lines);
+      // v24.51.0: a bill filed from a vendor-bill email marks that email handled.
+      const gmailId = Number(req.body?.gmailMessageId) || null;
+      if (gmailId) await c.query(`UPDATE parts_vendor_invoices SET gmail_message_id=$2,source_method='gmail' WHERE id=$1`, [id, gmailId]).then(() => c.query(`UPDATE gmail_finance_messages SET status='reviewed',handled_by=$2,handled_at=now() WHERE id=$1 AND status='new'`, [gmailId, req.user.username]));
       await c.query('COMMIT');
       await audit(req.user.username, 'bill_created', { id, vendor, kind: d.kind, total: d.total, lines: d.lines.length });
       return { ok: true, id: Number(id) };

@@ -787,7 +787,7 @@ export function registerFinanceRoutes(app, deps) {
   app.get('/api/reports/finance', auth, reportsPerm, invoicesPerm, read(async (db, req) => buildFinanceReport(db, reportRange(req.query))));
 
   // ----- v24.47.0: send email from the shop's Google account (Gmail API, gmail.send scope)
-  const friendlyGoogleError = e => { const m = String(e?.message || ''); return /invalid_grant|expired|revoked/i.test(m) ? 'Google sign-in for sending email expired or was removed. The owner needs to press "Connect Google email" again (Reports → Money inbox → Email sending).' : /insufficient|scope|permission/i.test(m) ? 'Google did not allow sending. Reconnect the email and tick "Send email on your behalf".' : m.slice(0, 300) || 'Google email failed.'; };
+  const friendlyGoogleError = e => { const m = String(e?.message || ''); return /invalid_grant|expired|revoked/i.test(m) ? 'Google sign-in for sending email expired or was removed. The owner needs to press "Connect Google email" again (Reports → Gmail inbox → Email sending).' : /insufficient|scope|permission/i.test(m) ? 'Google did not allow sending. Reconnect the email and tick "Send email on your behalf".' : m.slice(0, 300) || 'Google email failed.'; };
   registerGoogleSender({
     async status() { const r = (await requireDb().query('SELECT email,connected_by,connected_at,last_sent_at,last_error,last_error_at FROM email_sender WHERE id=1')).rows[0]; return r ? { connected: true, ...r } : { connected: false }; },
     async send(msg) {

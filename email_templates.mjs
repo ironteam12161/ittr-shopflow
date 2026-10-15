@@ -112,7 +112,7 @@ export async function emailSenderStatus() {
   const resend = resendConfigured();
   return { configured: !!g.connected || resend, provider: g.connected ? 'gmail' : resend ? 'resend' : '', from: g.connected ? g.email : (resend ? String(process.env.INVOICE_FROM_EMAIL || '') : ''), google: g, resend };
 }
-export const EMAIL_NOT_CONNECTED = 'Email is not connected yet. The owner can connect the shop Google email in Reports → Money inbox → Email sending.';
+export const EMAIL_NOT_CONNECTED = 'Email is not connected yet. The owner can connect the shop Google email in Reports → Gmail inbox → Email sending.';
 export async function sendShopEmail(msg) {
   const g = googleSender ? await googleSender.status().catch(() => ({ connected: false })) : { connected: false };
   if (g.connected) {
