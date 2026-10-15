@@ -28,7 +28,7 @@ import {parseBatchTranslations,validTranslation} from "./translation_guard.mjs";
 import {aiContext,featureForPath,createAIMeter,ensureAIUsageSchema} from "./ai_usage.mjs";
 import {registerAICenterRoutes} from "./ai_center.mjs";
 import {ensureVendorBillSchema,splitDiscountLines,knownVendor} from "./vendor_bills.mjs";
-import {ensureBillSchema,registerBillRoutes,recordCoreMoney} from "./bills.mjs";
+import {ensureBillSchema,registerBillRoutes,recordCoreMoney,isOwnShopName} from "./bills.mjs";
 import {ensureCustomerPaymentSchema,registerCustomerPaymentRoutes} from "./customer_payments.mjs";
 import {matchInvoiceLines} from "./part_matching.mjs";
 import {registerFluidRoutes,registerPartDeleteRoutes,isGallonUom,FLUID_UNITS,ensureFluidSchema} from "./fluids.mjs";
@@ -1944,7 +1944,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.62.0");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.63.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
@@ -3669,7 +3669,7 @@ app.post("/api/parts/receiving/match",auth,managerPermission("inventory"),async(
 }catch(e){next(e)}});
 app.post("/api/parts/receiving/receive",auth,managerPermission("inventory"),async(req,res,next)=>{const db=await requireDb().connect();let stage="validate";try{
  const inv=req.body?.invoice||{},lines=Array.isArray(req.body?.lines)?req.body.lines:[];
- if(!String(inv.vendor||'').trim())return res.status(400).json({error:'Vendor is required so purchase history and cores are owed to the correct company.'});
+ if(!String(inv.vendor||'').trim())return res.status(400).json({error:'Vendor is required so purchase history and cores are owed to the correct company.'});if(isOwnShopName(inv.vendor))return res.status(400).json({error:'The vendor is the company you bought from — not your own shop. Check the letterhead at the top of the bill.'});
  if(!lines.length)return res.status(400).json({error:'No invoice lines to receive.'});
  const usable=lines.map((l,i)=>({l:l||{},i})).filter(x=>Number(x.l.quantity||0)>0);
  if(!usable.length)return res.status(400).json({error:'Every invoice line has zero quantity. Enter the quantity received.'});
