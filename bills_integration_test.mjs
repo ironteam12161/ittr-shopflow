@@ -59,6 +59,12 @@ try{
  one=await request(`/api/bills/${scanned.id}`,{token:admin});ok(one.bill.hasFile,'scanned bill keeps its file');eq(one.bill.source,'ai_file','scanned source');eq(one.lines[0].category,'parts','part-number line defaults to Parts');
  const draft=await request(`/api/vendor-invoices/${scanned.id}/receiving-draft`,{token:admin});eq(Number(draft.filedBillId),scanned.id,'parts bill from Bills can be received into stock');
  console.log('PASS scanned bill keeps file; parts bill can be received into stock');
+ // v24.61.0: a core deposit line on a bill goes back onto its part when received; "15 OCT 26" dates are fixed.
+ const mk=await request('/api/bills',{method:'POST',token:admin,body:{kind:'expense',vendor:'M&K Truck Centers',billNumber:'1273549CA',billDate:today,paymentMethod:'card',paperTotal:284.33,lines:[{description:'TRL-08CK ABSORBER',partNumber:'RF-23288403',quantity:4,unitCost:48,amount:192,category:'parts'},{description:'16-52 R CARTRIDGE',partNumber:'85151066',quantity:1,unitCost:62.33,amount:62.33,category:'parts'},{description:'Core deposit – 85151066',quantity:1,unitCost:30,amount:30,category:'parts'}]}});
+ const d2=await request(`/api/vendor-invoices/${mk.id}/receiving-draft`,{token:admin});
+ ok(d2.extract.lines.length===2&&Number(d2.extract.lines[1].coreCost)===30&&!d2.extract.lines.some(l=>/core deposit/i.test(l.description||'')),'core deposit line folded onto its part as a core charge');
+ const vb=await import('./vendor_bills.mjs');eq(vb.fixInvoiceDate('2015-10-26','2026-10-15'),'2026-10-15','“15 OCT 26” read as 2015-10-26 is turned around');eq(vb.fixInvoiceDate('2026-09-30','2026-10-15'),'2026-09-30','normal date unchanged');eq(vb.fixInvoiceDate('2019-03-04','2026-10-15'),'2019-03-04','old date that cannot be swapped unchanged');
+ console.log('PASS core deposit lines fold onto their part when received; swapped 2-digit-year dates fixed');
 
  // Edit: replace lines; QuickBooks marked for update once synced.
  await db.query(`UPDATE parts_vendor_invoices SET qb_status='synced',qb_id='77' WHERE id=$1`,[created.id]);

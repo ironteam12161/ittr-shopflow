@@ -30,6 +30,32 @@ export async function ensureVendorBillSchema(pool) {
 // v24.45.3: discounts, rebates and credits on a vendor bill ("Marketing Program 2%  -1,518.52") lower what is owed, not
 // the cost of the parts. Negative lines are taken off the line list into `discount`; a fee and its own reversal
 // ("Tire User Fee" +25 / "Resale (Tire User Fee)" -25) cancel out and are both dropped. Mutates and returns `parsed`.
+// v24.61.0: "15 OCT 26" is day-month-year (2026-10-15). If the AI read it as 2015-10-26 (year and day swapped), a date
+// years in the past whose day makes a year near today is turned around.
+export function fixInvoiceDate(d, today = new Date().toISOString().slice(0, 10)) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d || '')); if (!m) return d;
+  const y = Number(m[1]), mo = Number(m[2]), dd = Number(m[3]), ty = Number(today.slice(0, 4));
+  if (y >= ty - 2 || dd > 31) return d;
+  const swapped = 2000 + dd, day = y % 100;
+  if (Math.abs(swapped - ty) > 1 || day < 1 || day > 31) return d;
+  const out = `${swapped}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  return Number.isNaN(Date.parse(`${out}T00:00:00Z`)) ? d : out;
+}
+// v24.61.0: a bill keeps a core deposit as its own line ("Core deposit – 85151066", no part #). When the bill is received
+// into stock that line goes back onto its part as a core charge, so it is tracked as a core owed, not stocked as a part.
+export const CORE_LINE_RE = /^\s*(core\s*(deposit|charge|chg|dep)?|dirty\s*core|inherent\s*core)\b/i;
+export function foldCoreLines(lines) {
+  const out = [];
+  for (const l of lines) {
+    const prev = out[out.length - 1];
+    if (!l.partNumber && CORE_LINE_RE.test(l.description || '') && prev && prev.partNumber) {
+      const amt = num(l.lineTotal) || num(l.quantity || 1) * num(l.unitCost), q = num(prev.quantity) || 1;
+      prev.coreCost = money(num(prev.coreCost) + amt / q); continue;
+    }
+    out.push({ ...l });
+  }
+  return out;
+}
 export function splitDiscountLines(parsed) {
   if (!parsed || typeof parsed !== 'object') return parsed;
   const lines = Array.isArray(parsed.lines) ? parsed.lines : [];
@@ -217,7 +243,8 @@ export function registerVendorBillRoutes(app, deps) {
     const lines = (Array.isArray(parsed?.lines) ? parsed.lines : []).map(l => ({ partNumber: str(l.partNumber, 80), manufacturer: str(l.manufacturer, 80), description: str(l.description, 300), quantity: num(l.quantity), unitCost: num(l.unitCost), coreCost: num(l.coreCost), lineTotal: num(l.lineTotal) }));
     const vendor = parsed?.vendor ? await knownVendor(db, resolveVendor, parsed.vendor, false) : '';
     const invoice = { vendor, invoiceNumber: str(parsed?.invoiceNumber, 80), invoiceDate: str(parsed?.invoiceDate, 10), dueDate: str(parsed?.dueDate, 10), poNumber: str(parsed?.poNumber, 80), terms: str(parsed?.terms, 60), subtotal: num(parsed?.subtotal), discount: num(parsed?.discount), tax: num(parsed?.tax), freight: num(parsed?.freight), total: num(parsed?.total) };
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(invoice.invoiceDate)) invoice.invoiceDate = '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(invoice.invoiceDate)) invoice.invoiceDate = ''; else invoice.invoiceDate = fixInvoiceDate(invoice.invoiceDate);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(invoice.dueDate)) invoice.dueDate = fixInvoiceDate(invoice.dueDate);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(invoice.dueDate)) invoice.dueDate = '';
     const net = /net\s*(\d{1,3})/i.exec(invoice.terms);
     if (!invoice.dueDate && invoice.invoiceDate && net) invoice.dueDate = new Date(new Date(`${invoice.invoiceDate}T00:00:00Z`).getTime() + Number(net[1]) * 864e5).toISOString().slice(0, 10);
@@ -248,8 +275,9 @@ export function registerVendorBillRoutes(app, deps) {
     const i = (await db.query('SELECT * FROM parts_vendor_invoices WHERE id=$1::bigint', [req.params.id])).rows[0]; if (!i) fail(404, 'Vendor bill not found.');
     if (i.status === 'received') fail(409, 'This bill was already received into stock.', 'ALREADY_RECEIVED');
     if (i.status === 'void') fail(409, 'This bill is void.');
+    if (['credit', 'journal'].includes(i.bill_kind)) fail(409, 'A core credit has nothing to receive into stock.');
     const raw = (await db.query('SELECT vendor_part_number,manufacturer,description,quantity,unit_cost,core_cost,line_total FROM parts_vendor_invoice_lines WHERE invoice_id=$1 ORDER BY line_no,id', [i.id])).rows;
-    const lines = await matchInvoiceLines(db, raw.map(l => ({ partNumber: l.vendor_part_number || '', manufacturer: l.manufacturer || '', description: l.description || '', quantity: num(l.quantity), unitCost: num(l.unit_cost) || (num(l.quantity) ? money(num(l.line_total) / num(l.quantity)) : 0), coreCost: num(l.core_cost), lineTotal: num(l.line_total) })));
+    const lines = await matchInvoiceLines(db, foldCoreLines(raw.map(l => ({ partNumber: l.vendor_part_number || '', manufacturer: l.manufacturer || '', description: l.description || '', quantity: num(l.quantity), unitCost: num(l.unit_cost) || (num(l.quantity) ? money(num(l.line_total) / num(l.quantity)) : 0), coreCost: num(l.core_cost), lineTotal: num(l.line_total) }))));
     return { filedBillId: i.id, hasFile: !!i.file_key, extract: { vendor: i.vendor || '', invoiceNumber: i.invoice_number || '', invoiceDate: day(i.invoice_date) || '', poNumber: i.po_number || '', subtotal: money(i.subtotal), discount: money(i.discount), tax: money(i.tax), freight: money(i.freight), total: money(i.total), lines } };
   }));
   app.get('/api/vendor-invoices/:id/file', auth, perm, async (req, res, next) => {

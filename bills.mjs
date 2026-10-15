@@ -12,7 +12,7 @@ const str = (v, n = 200) => String(v ?? '').trim().slice(0, n);
 const ymd = v => { if (!v) return null; if (v instanceof Date) return isNaN(v) ? null : v.toISOString().slice(0, 10); const s = String(v); return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : null; };
 
 export const PAYMENT_METHODS = { cash: 'Cash', check: 'Check', card: 'Credit / debit card', ach: 'ACH / bank transfer', zelle: 'Zelle', other: 'Other' };
-export const BILL_KINDS = { bill: 'Bill (pay later)', expense: 'Expense (already paid)' };
+export const BILL_KINDS = { bill: 'Bill (pay later)', expense: 'Expense (already paid)', credit: 'Vendor credit', journal: 'Core not returned' };
 
 // Starting chart. qb_account is the QuickBooks account name the owner/accountant can change; kind is informational.
 export const DEFAULT_CATEGORIES = [
@@ -32,6 +32,10 @@ export const DEFAULT_CATEGORIES = [
   ['advertising', 'Advertising', 'Advertising & Marketing', 'expense'],
   ['uniforms', 'Uniforms & safety gear', 'Uniforms', 'expense'],
   ['equipment', 'Equipment (large purchase)', 'Machinery & Equipment', 'asset'],
+  // v24.62.0: a core deposit is money the vendor gives back when the old core is returned, so it is not a cost:
+  // QuickBooks "Core Deposits" is an Other Current Asset. A vendor credit for the returned core takes it back off;
+  // a core never returned is moved to parts cost.
+  ['core_deposits', 'Core deposits (refundable)', 'Core Deposits', 'asset'],
   ['other', 'Other', 'Other Business Expenses', 'expense'],
 ];
 
@@ -62,6 +66,21 @@ export async function ensureBillSchema(pool) {
 
 // A line with no category: parts bills from Smart Receiving / scans are parts, anything else is "other".
 export const lineCategory = l => str(l.category, 40) || (str(l.vendor_part_number ?? l.partNumber, 80) || l.matched_part_id ? 'parts' : 'other');
+
+// v24.62.0: a parts bill received into stock keeps each core charge on its part line (core_cost). For QuickBooks, the
+// category totals and the CSV it is its own line on Core deposits, so the lines add up to what the vendor billed.
+export function withCoreLines(lines) {
+  const out = [];
+  for (const l of lines) {
+    out.push(l);
+    const core = num(l.core_cost), q = num(l.quantity) || 1;
+    if (core > 0) out.push({ ...l, id: null, virtual: true, vendor_part_number: '', partNumber: '', description: `Core deposit – ${str(l.vendor_part_number ?? l.partNumber, 80) || str(l.description, 80) || 'part'}`,
+      quantity: q, unit_cost: core, core_cost: 0, line_total: money(core * q), amount: money(core * q), category: 'core_deposits', matched_part_id: null });
+  }
+  return out;
+}
+// Credits are stored negative and "core not returned" entries add up to $0, so every total nets out by itself.
+export const kindOf = r => (['expense', 'credit', 'journal'].includes(r?.bill_kind ?? r?.kind) ? (r.bill_kind ?? r.kind) : 'bill');
 
 // Clean a bill typed in the Bills form. Throws {status:400} with a plain message on bad input.
 export function cleanBill(b = {}, categoryKeys = new Set(DEFAULT_CATEGORIES.map(c => c[0]))) {
@@ -115,7 +134,15 @@ export function allocate(lines, add) {
 export function quickBooksPayload(bill, lines, categories) {
   const cats = new Map(categories.map(c => [c.key, c])), missing = [];
   if (!bill.vendor) missing.push('Vendor');
-  const ls = lines.map(l => ({ ...l, category: lineCategory(l), amount: money(l.line_total ?? l.amount) }));
+  const ls = withCoreLines(lines).map(l => ({ ...l, category: lineCategory(l), amount: money(l.line_total ?? l.amount) }));
+  const kind0 = kindOf(bill);
+  if (kind0 === 'journal') {
+    const Line = ls.map(l => { const c = cats.get(l.category); if (!c?.qb_account && !c?.qb_account_id) missing.push(`QuickBooks account for "${c?.name || l.category}"`);
+      return { DetailType: 'JournalEntryLineDetail', Amount: Math.abs(l.amount), Description: l.description || undefined,
+        JournalEntryLineDetail: { PostingType: l.amount >= 0 ? 'Debit' : 'Credit', AccountRef: c?.qb_account_id ? { value: c.qb_account_id, name: c.qb_account || c.name } : { name: c?.qb_account || c?.name || l.category } } }; });
+    return { object: 'JournalEntry', missing: [...new Set(missing)], payload: { TxnDate: ymd(bill.invoice_date ?? bill.billDate), DocNumber: bill.invoice_number ?? bill.billNumber ?? undefined, PrivateNote: bill.notes || undefined, Line } };
+  }
+  if (kind0 === 'credit') ls.forEach(l => { l.amount = Math.abs(l.amount); });
   const amounts = allocate(ls, money(num(bill.tax) - Math.abs(num(bill.discount))));
   const row = (amount, description, key) => {
     const c = cats.get(key); if (!c?.qb_account && !c?.qb_account_id) missing.push(`QuickBooks account for "${c?.name || key}"`);
@@ -126,12 +153,46 @@ export function quickBooksPayload(bill, lines, categories) {
   if (num(bill.freight)) Line.push(row(money(bill.freight), 'Freight', 'freight'));
   const head = { VendorRef: { name: bill.vendor || '' }, TxnDate: ymd(bill.invoice_date ?? bill.billDate), DocNumber: bill.invoice_number ?? bill.billNumber ?? undefined,
     PrivateNote: [bill.po_number ? `PO ${bill.po_number}` : '', bill.notes || ''].filter(Boolean).join(' · ') || undefined, Line };
-  const kind = (bill.bill_kind ?? bill.kind) === 'expense' ? 'expense' : 'bill';
+  const kind = kind0;
+  if (kind === 'credit') return { object: 'VendorCredit', missing: [...new Set(missing)], payload: head };
   if (kind === 'expense') {
     const m = bill.payment_method ?? bill.paymentMethod;
     return { object: 'Purchase', missing: [...new Set(missing)], payload: { ...head, PaymentType: m === 'card' ? 'CreditCard' : m === 'check' ? 'Check' : 'Cash', DocNumber: head.DocNumber || bill.paid_reference || undefined } };
   }
   return { object: 'Bill', missing: [...new Set(missing)], payload: { ...head, DueDate: ymd(bill.due_date ?? bill.dueDate) || undefined, SalesTermRef: bill.terms ? { name: bill.terms } : undefined } };
+}
+
+// v24.62.0: money side of a core returned to the vendor (Parts → Cores). Only for cores that came in on a vendor bill,
+// whose deposit sits on Core deposits:
+//  - credited → a vendor credit for that vendor (Core deposits −amount; QuickBooks VendorCredit), open until it is used
+//    on a payment ("Mark applied");
+//  - closed with money still open (core kept / never returned) → "core not returned": Parts +amount, Core deposits
+//    −amount, total $0 (QuickBooks JournalEntry);
+//  - reopened → those entries are voided.
+// db is the caller's transaction client.
+export async function recordCoreMoney(db, { core, partNumber, action, amount, date, reference, username }) {
+  if (!core?.vendor_invoice_id) return null;
+  const tag = { coreObligationId: Number(core.id) };
+  if (action === 'reopened') {
+    const r = await db.query(`UPDATE parts_vendor_invoices SET status='void',notes=trim(both ' ' from coalesce(notes,'')||' [Void: core reopened]'),updated_at=now(),updated_by=$2,
+        qb_status=CASE WHEN qb_id IS NOT NULL THEN 'needs_update' ELSE qb_status END WHERE raw_extract->>'coreObligationId'=$1 AND status<>'void' RETURNING id`, [String(core.id), username]);
+    return r.rowCount;
+  }
+  amount = money(amount); if (!(amount > 0) || !['credited', 'closed'].includes(action)) return null;
+  const on = /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? date : new Date().toISOString().slice(0, 10);
+  const what = `${partNumber || 'part'}${core.purchase_reference ? ` (bill ${core.purchase_reference})` : ''}`;
+  const credit = action === 'credited', n = (await db.query(`SELECT count(*)::int n FROM parts_vendor_invoices WHERE raw_extract->>'coreObligationId'=$1`, [String(core.id)])).rows[0].n + 1;
+  const docNumber = `${credit ? 'CORE-CR' : 'CORE-KEPT'}-${core.id}-${n}`;
+  const ins = await db.query(`INSERT INTO parts_vendor_invoices(vendor,invoice_number,invoice_date,subtotal,discount,tax,freight,total,source_method,status,raw_extract,created_by,notes,bill_kind,paid_at,paid_by,updated_at,updated_by)
+      VALUES($1,$2,$3::date,$4,0,0,0,$4,'core','filed',$5::jsonb,$6,$7,$8,$9::timestamptz,$10,now(),$6) RETURNING id`,
+    [core.vendor_name_snapshot || '', docNumber, on, credit ? -amount : 0, JSON.stringify(tag), username,
+      credit ? `Core returned: ${what}${reference ? ` · credit ${reference}` : ''}` : `Core not returned: ${what} — deposit moved to parts cost`,
+      credit ? 'credit' : 'journal', credit ? null : `${on}T12:00:00Z`, credit ? null : username]);
+  const id = ins.rows[0].id, line = (no, desc, amt, cat) => db.query(`INSERT INTO parts_vendor_invoice_lines(invoice_id,line_no,vendor_part_number,description,quantity,unit_cost,core_cost,line_total,match_status,received_quantity,category)
+      VALUES($1,$2,NULL,$3,1,$4,0,$4,'unmatched',0,$5)`, [id, no, desc, amt, cat]);
+  if (credit) await line(1, `Core credit – ${partNumber || 'part'}`, -amount, 'core_deposits');
+  else { await line(1, `Core not returned – ${partNumber || 'part'}`, amount, 'parts'); await line(2, `Core deposit written off – ${partNumber || 'part'}`, -amount, 'core_deposits'); }
+  return Number(id);
 }
 
 const csvCell = v => { const s = String(v ?? ''); return /[",\n\r]/.test(s) || /^[=+\-@]/.test(s) ? `"${(/^[=+\-@]/.test(s) ? "'" : '') + s.replace(/"/g, '""')}"` : s; };
@@ -144,12 +205,12 @@ export function registerBillRoutes(app, deps) {
   const fail = (status, message, code) => { throw Object.assign(new Error(message), { status, code }); };
   const categories = async db => (await db.query('SELECT key,name,qb_account,qb_account_id,kind,sort,active FROM expense_categories ORDER BY sort,name')).rows;
   const statusOf = r => r.status === 'void' ? 'void' : r.paid_at ? 'paid' : r.due_date && ymd(r.due_date) < new Date().toISOString().slice(0, 10) ? 'overdue' : 'unpaid';
-  const view = r => ({ id: Number(r.id), kind: r.bill_kind || 'bill', vendor: r.vendor || '', billNumber: r.invoice_number || '', billDate: ymd(r.invoice_date), dueDate: ymd(r.due_date), terms: r.terms || '',
+  const view = r => ({ id: Number(r.id), kind: kindOf(r), coreObligationId: Number(r.raw_extract?.coreObligationId) || null, vendor: r.vendor || '', billNumber: r.invoice_number || '', billDate: ymd(r.invoice_date), dueDate: ymd(r.due_date), terms: r.terms || '',
     poNumber: r.po_number || '', notes: r.notes || '', subtotal: money(r.subtotal), discount: money(r.discount), tax: money(r.tax), freight: money(r.freight), total: money(r.total),
     paidAt: r.paid_at ? new Date(r.paid_at).toISOString() : null, paymentMethod: r.payment_method || '', paymentReference: r.paid_reference || '', source: r.source_method || '',
     receivedIntoStock: r.status === 'received', status: statusOf(r), hasFile: !!r.file_key, qbStatus: r.qb_status || 'not_synced', qbId: r.qb_id || null, qbError: r.qb_error || null,
     createdBy: r.created_by || '', updatedBy: r.updated_by || '', categories: r.categories || undefined, lineCount: r.line_count ?? undefined });
-  const lineView = l => ({ id: Number(l.id), description: l.description || '', partNumber: l.vendor_part_number || '', quantity: num(l.quantity), unitCost: money(l.unit_cost), amount: money(l.line_total),
+  const lineView = l => ({ id: l.id == null ? null : Number(l.id), virtual: !!l.virtual, description: l.description || '', partNumber: l.vendor_part_number || '', quantity: num(l.quantity), unitCost: money(l.unit_cost), amount: money(l.line_total),
     category: lineCategory(l), workOrderId: l.work_order_id || '', unitNumber: l.unit_number || '', receivedQuantity: num(l.received_quantity) });
   const loadBill = async (db, id) => {
     const r = (await db.query('SELECT * FROM parts_vendor_invoices WHERE id=$1::bigint', [id])).rows[0]; if (!r) fail(404, 'Bill not found.');
@@ -211,7 +272,7 @@ export function registerBillRoutes(app, deps) {
     // to Freight. The category totals therefore add up to "Spent in period".
     const { from, to } = reportRange(req.query);
     const bills = (await db.query(`SELECT id,tax,discount,freight FROM parts_vendor_invoices i WHERE i.status<>'void' AND coalesce(i.invoice_date,i.received_at::date,i.created_at::date) BETWEEN $1::date AND $2::date`, [from, to])).rows;
-    const allLines = bills.length ? (await db.query('SELECT invoice_id,line_total,category,vendor_part_number,matched_part_id FROM parts_vendor_invoice_lines WHERE invoice_id=ANY($1::bigint[]) ORDER BY invoice_id,line_no,id', [bills.map(x => x.id)])).rows : [];
+    const allLines = bills.length ? withCoreLines((await db.query('SELECT invoice_id,line_total,category,vendor_part_number,matched_part_id,quantity,core_cost,description FROM parts_vendor_invoice_lines WHERE invoice_id=ANY($1::bigint[]) ORDER BY invoice_id,line_no,id', [bills.map(x => x.id)])).rows) : [];
     const byBill = new Map(); for (const l of allLines) { const k = String(l.invoice_id); if (!byBill.has(k)) byBill.set(k, []); byBill.get(k).push({ ...l, category: lineCategory(l), amount: money(l.line_total) }); }
     const catTotals = {}, addCat = (k, v) => { if (v) catTotals[k] = money((catTotals[k] || 0) + v); };
     for (const r of bills) { const ls = byBill.get(String(r.id)) || [], amounts = allocate(ls, money(num(r.tax) - Math.abs(num(r.discount)))); ls.forEach((l, i) => addCat(l.category, amounts[i])); addCat('freight', money(r.freight)); }
@@ -225,9 +286,9 @@ export function registerBillRoutes(app, deps) {
     const ids = rows.map(r => r.id), lines = ids.length ? (await db.query('SELECT * FROM parts_vendor_invoice_lines WHERE invoice_id=ANY($1::bigint[]) ORDER BY invoice_id,line_no,id', [ids])).rows : [];
     const out = [['Bill No', 'Vendor', 'Bill Date', 'Due Date', 'Terms', 'Type', 'Category', 'QuickBooks Account', 'Description', 'Qty', 'Line Amount', 'Bill Total', 'Status', 'Paid On', 'Paid With', 'Memo']];
     for (const r of rows) {
-      const ls = lines.filter(l => String(l.invoice_id) === String(r.id)).map(l => ({ ...l, category: lineCategory(l), amount: money(l.line_total) }));
+      const ls = withCoreLines(lines.filter(l => String(l.invoice_id) === String(r.id))).map(l => ({ ...l, category: lineCategory(l), amount: money(l.line_total) }));
       const amounts = allocate(ls, money(num(r.tax) - Math.abs(num(r.discount)))), v = view(r);
-      const push = (key, desc, qty, amt) => { const c = cats.get(key); out.push([v.billNumber, v.vendor, v.billDate, v.dueDate || '', v.terms, v.kind === 'expense' ? 'Expense' : 'Bill', c?.name || key, c?.qb_account || '', desc, qty, amt.toFixed(2), v.total.toFixed(2), v.status, v.paidAt ? v.paidAt.slice(0, 10) : '', PAYMENT_METHODS[v.paymentMethod] || '', v.notes]); };
+      const push = (key, desc, qty, amt) => { const c = cats.get(key); out.push([v.billNumber, v.vendor, v.billDate, v.dueDate || '', v.terms, ({ expense: 'Expense', credit: 'Vendor credit', journal: 'Journal (core not returned)' })[v.kind] || 'Bill', c?.name || key, c?.qb_account || '', desc, qty, amt.toFixed(2), v.total.toFixed(2), v.status, v.paidAt ? v.paidAt.slice(0, 10) : '', PAYMENT_METHODS[v.paymentMethod] || '', v.notes]); };
       ls.forEach((l, i) => push(l.category, [l.vendor_part_number, l.description].filter(Boolean).join(' — '), num(l.quantity), amounts[i]));
       if (num(r.freight)) push('freight', 'Freight', 1, money(r.freight));
     }
@@ -239,7 +300,7 @@ export function registerBillRoutes(app, deps) {
 
   app.get('/api/bills/:id', auth, perm, wrap(async (db, req) => {
     const { r, lines } = await loadBill(db, req.params.id), cats = await categories(db);
-    return { bill: view(r), lines: lines.map(lineView), quickBooks: quickBooksPayload(r, lines, cats) };
+    return { bill: view(r), lines: withCoreLines(lines).map(lineView), quickBooks: quickBooksPayload(r, lines, cats) };
   }));
 
   const keysOf = async db => new Set((await categories(db)).filter(c => c.active).map(c => c.key));
@@ -282,6 +343,7 @@ export function registerBillRoutes(app, deps) {
   app.put('/api/bills/:id', auth, perm, wrap(async (db, req) => {
     const { r, lines: cur } = await loadBill(db, req.params.id);
     if (r.status === 'void') fail(409, 'This bill is void.');
+    if (['credit', 'journal'].includes(kindOf(r))) fail(409, 'This entry was made from Parts → Cores. Change it there (Reopen the core).');
     const b = req.body || {}, keys = await keysOf(db);
     const c = await db.connect();
     try {
@@ -322,6 +384,7 @@ export function registerBillRoutes(app, deps) {
   app.delete('/api/bills/:id/payment', auth, perm, wrap(async (db, req) => {
     const { r } = await loadBill(db, req.params.id);
     if ((r.bill_kind || 'bill') === 'expense') fail(409, 'An expense is paid when it is entered. Change it to a Bill first if it is not paid.');
+    if (kindOf(r) === 'journal') fail(409, 'This entry has nothing to pay.');
     await db.query('UPDATE parts_vendor_invoices SET paid_at=NULL,paid_reference=NULL,paid_by=NULL,updated_at=now(),updated_by=$2,qb_status=$3 WHERE id=$1', [r.id, req.user.username, touchQb(r)]);
     await audit(req.user.username, 'bill_payment_removed', { id: Number(r.id) });
     return { ok: true };
