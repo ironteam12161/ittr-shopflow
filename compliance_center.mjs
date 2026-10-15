@@ -110,7 +110,7 @@ export async function ensureComplianceSchema(pool) {
   ALTER TABLE fleet_service_items ADD COLUMN IF NOT EXISTS customer_reminder_level TEXT;
   ALTER TABLE fleet_service_items ADD COLUMN IF NOT EXISTS customer_reminded_at TIMESTAMPTZ;
   ALTER TABLE fleet_service_items ADD COLUMN IF NOT EXISTS customer_reminded_to TEXT;
-  DO $$ BEGIN IF to_regclass('public.fullbay_import_customers') IS NOT NULL THEN
+  DO $$ BEGIN IF to_regclass('fullbay_import_customers') IS NOT NULL THEN
     ALTER TABLE fullbay_import_customers ADD COLUMN IF NOT EXISTS pm_reminders BOOLEAN NOT NULL DEFAULT TRUE;
   END IF; END $$;
   CREATE TABLE IF NOT EXISTS fleet_service_history(
@@ -198,7 +198,7 @@ export const RESET_SCOPES = Object.freeze({
 export async function resetData(db, scopes, username) {
   const chosen = scopes.filter(s => RESET_SCOPES[s]), snapshot = {}, counts = {};
   for (const s of chosen) for (const t of RESET_SCOPES[s].tables) {
-    const ok = (await db.query(`SELECT to_regclass($1) t`, [`public.${t}`])).rows[0]?.t; if (!ok) continue;
+    const ok = (await db.query(`SELECT to_regclass($1) t`, [t])).rows[0]?.t; if (!ok) continue;
     snapshot[t] = (await db.query(`SELECT * FROM ${t}`)).rows; counts[t] = snapshot[t].length;
   }
   const state = key => db.query(`SELECT payload FROM app_state WHERE state_key=$1 FOR UPDATE`, [key]).then(r => r.rows[0]?.payload || {});
@@ -340,7 +340,7 @@ export function registerComplianceRoutes(app, deps) {
   // --- owner data reset
   app.get('/api/admin/reset-data/preview', auth, ownerOnly, read(async db => {
     const out = {};
-    for (const [k, v] of Object.entries(RESET_SCOPES)) { let n = 0; for (const t of v.tables) { const ok = (await db.query('SELECT to_regclass($1) t', [`public.${t}`])).rows[0]?.t; if (ok) n += Number((await db.query(`SELECT count(*)::int n FROM ${t}`)).rows[0].n); } out[k] = { label: v.label, rows: n }; }
+    for (const [k, v] of Object.entries(RESET_SCOPES)) { let n = 0; for (const t of v.tables) { const ok = (await db.query('SELECT to_regclass($1) t', [t])).rows[0]?.t; if (ok) n += Number((await db.query(`SELECT count(*)::int n FROM ${t}`)).rows[0].n); } out[k] = { label: v.label, rows: n }; }
     const sf = (await db.query(`SELECT payload FROM app_state WHERE state_key='shopflow'`)).rows[0]?.payload || {};
     out.work_orders.rows += (sf.workorders || []).length;
     return { scopes: out, snapshots: (await db.query('SELECT id,scopes,created_by,created_at FROM data_reset_snapshots ORDER BY id DESC LIMIT 10')).rows };

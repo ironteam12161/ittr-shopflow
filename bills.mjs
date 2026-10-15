@@ -61,7 +61,9 @@ export async function ensureBillSchema(pool) {
     key TEXT PRIMARY KEY, name TEXT NOT NULL, qb_account TEXT, qb_account_id TEXT, kind TEXT NOT NULL DEFAULT 'expense',
     sort INTEGER NOT NULL DEFAULT 100, active BOOLEAN NOT NULL DEFAULT TRUE, updated_by TEXT, updated_at TIMESTAMPTZ DEFAULT now());
   CREATE INDEX IF NOT EXISTS idx_vendor_invoice_lines_category ON parts_vendor_invoice_lines(category);
-  CREATE INDEX IF NOT EXISTS idx_parts_vendor_invoices_qb ON parts_vendor_invoices(qb_status);`);
+  CREATE INDEX IF NOT EXISTS idx_parts_vendor_invoices_qb ON parts_vendor_invoices(qb_status);
+  CREATE INDEX IF NOT EXISTS idx_pvi_credit_applied_to ON parts_vendor_invoices((raw_extract->>'appliedToBillId')) WHERE bill_kind='credit';
+  CREATE INDEX IF NOT EXISTS idx_pvi_core_obligation ON parts_vendor_invoices((raw_extract->>'coreObligationId')) WHERE raw_extract ? 'coreObligationId';`);
   for (const [i, [key, name, qb, kind]] of DEFAULT_CATEGORIES.entries())
     await pool.query('INSERT INTO expense_categories(key,name,qb_account,kind,sort) VALUES($1,$2,$3,$4,$5) ON CONFLICT(key) DO NOTHING', [key, name, qb, kind, (i + 1) * 10]);
 }

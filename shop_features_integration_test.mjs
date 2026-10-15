@@ -5,6 +5,7 @@ import http from 'node:http';
 import {twilioSignature} from './customer_sms.mjs';
 import {findComebacks,unitKey} from './warranty.mjs';
 import {totpCode,totpStep} from './security_mfa.mjs';
+import {repairWorkOrderLinks,sameName} from './link_repair.mjs';
 
 if(process.env.ITTR_LANGUAGE_TEST_DB!=='1'&&process.env.ITTR_OPERATIONS_TEST_DB!=='1'){console.log('SKIP shop features integration test: disposable DB flag is not enabled');process.exit(0)}
 const url=String(process.env.DATABASE_URL||'');if(!url)throw new Error('DATABASE_URL is required');
@@ -194,6 +195,25 @@ try{
   const so=await request('/api/service-orders/from-work-order/9801',{method:'POST',token:owner,body:{},allowError:true});eq(so.code,'SHOP_EQUIPMENT','no service order for shop equipment');
   ok(!((await request('/api/customer-units/suggest?q=Forklift',{token:owner})).items||[]).length,'forklift is not added to Customers as a truck');
   ok((await request('/api/state',{token:mech})).shopflow.payload.workorders.some(w=>String(w.id)==='9801'),'mechanic sees the shop equipment work order');}
+ // v24.65.0: links carried over by the old work-order form bug are repaired; invoices only use links that match.
+ {ok(sameName('Air Delivery Corp','Air Delivery Corporation')&&!sameName('GNAT TRANS INC','Air Delivery Corporation'),'name matching');
+  const air=rv.customer.id,airUnit=rv.unit.id,gnat=(await db.query(`INSERT INTO fullbay_import_customers(source_key,customer_name,active) VALUES('lr-gnat','GNAT TRANS INC',true) RETURNING id`)).rows[0].id;
+  const st=(await request('/api/state',{token:owner})).shopflow;
+  const bad={id:'9802',unit:'2566',customer:'GNAT TRANS INC',customerId:String(air),unitRecordId:String(airUnit),unitType:'customer',truckHere:true,status:'Completed',completedAt:new Date().toISOString(),mechanic:'mech1',tasks:[{uid:'lr-1',t:'Brakes',done:true}],date:'2026-10-15',time:'10:00'};
+  const good={id:'9803',unit:'6600',customer:'Air Delivery Corporation',customerId:String(air),unitRecordId:String(airUnit),unitType:'customer',truckHere:true,status:'Completed',completedAt:new Date().toISOString(),mechanic:'mech1',tasks:[{uid:'lr-2',t:'PM',done:true}],date:'2026-10-15',time:'11:00'};
+  await request('/api/state/shopflow',{method:'PUT',token:owner,body:{expectedVersion:st.version,payload:{...st.payload,workorders:[...(st.payload.workorders||[]),bad,good]}}});
+  const badInv=(await db.query(`INSERT INTO customer_invoices(invoice_number,customer_id,customer_name,status,invoice_date,total,balance_due,created_by) VALUES('LR-1',$1,'GNAT TRANS INC','sent',CURRENT_DATE,100,100,'test') RETURNING id`,[air])).rows[0].id;
+  const r=await repairWorkOrderLinks(db);
+  ok(r.workOrders.some(x=>x.workOrderId==='9802'&&x.customerId&&x.unitRecordId)&&!r.workOrders.some(x=>x.workOrderId==='9803'),'wrong work order links dropped, correct ones kept');
+  ok(r.invoices.some(x=>x.table==='customer_invoices'&&x.id===Number(badInv)&&x.nowCustomerId===Number(gnat)),'invoice re-linked to the company named on it');
+  const wos=(await request('/api/state',{token:owner})).shopflow.payload.workorders;eq(wos.find(w=>String(w.id)==='9802').customerId,'','bad link cleared');eq(wos.find(w=>String(w.id)==='9803').customerId,String(air),'good link kept');
+  eq((await repairWorkOrderLinks(db)).workOrders.length,0,'second run changes nothing');
+  // Even with a wrong link on a work order, the invoice goes to the company named on it.
+  const st2=(await request('/api/state',{token:owner})).shopflow;const bad2={...bad,id:'9804',customerId:String(air)};
+  await request('/api/state/shopflow',{method:'PUT',token:owner,body:{expectedVersion:st2.version,payload:{...st2.payload,workorders:[...st2.payload.workorders,bad2]}}});
+  const inv2=await request('/api/invoices/from-work-order/9804',{method:'POST',token:owner,body:{}});const i2=(await request(`/api/invoices/${inv2.id}`,{token:owner})).invoice;
+  ok(Number(i2.customer_id)===Number(gnat)&&i2.customer_name==='GNAT TRANS INC','invoice from a work order with a wrong link is billed to the right company');}
+ console.log('PASS link repair: wrong carried-over customer/unit links dropped, invoices re-linked, invoices from work orders use only matching links');
  console.log('PASS shop equipment work orders: in-house, visible to mechanics, never billed, not in Customers');
  console.log('PASS office work order: USDOT / VIN lookup, new company + truck added to Customers once, found again next time');
  console.log('PASS Fullbay prices: calculated vs override, compare (missing/different/match, gallons), fill missing only, uploaded file, import fixed');
