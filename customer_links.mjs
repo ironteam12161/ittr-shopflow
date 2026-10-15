@@ -60,7 +60,7 @@ export function estimateJobs(lines) {
 
 export function registerCustomerLinkRoutes(app, deps) {
   const { auth, adminOnly, managerPermission, requireDb, audit, publicLimiter, shopProfile, readShopflow, applyFindingDecision,
-    englishText, findingPhotoUrls, inspectionItemsFor, broadcastShopStatus, publicFile } = deps;
+    englishText, findingPhotoUrls, inspectionItemsFor, broadcastShopStatus, publicFile, sendEmail } = deps;
   const invoicesPerm = managerPermission('invoices');
   const noStore = res => { res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Robots-Tag', 'noindex, nofollow'); res.setHeader('Referrer-Policy', 'no-referrer'); };
   const gone = res => res.status(404).json({ error: 'This link has expired or was turned off. Please contact the shop for a new one.', code: 'LINK_GONE' });
@@ -175,8 +175,40 @@ export function registerCustomerLinkRoutes(app, deps) {
     }
     const link = await createCustomerLink(db, { kind, refId, customerId: Number(customerId) || null, days: req.body?.days, by: req.user.username, base: publicBaseUrl(req) });
     await audit(req.user.username, 'customer_link_created', { kind, refId, linkId: link.id });
-    res.json(link);
+    res.json({ ...link, ...(await linkEmailContext(db, kind, refId, customerId)) });
   } catch (e) { if (e?.status) return res.status(e.status).json({ error: e.message }); next(e); } });
+  // v24.57.0: who to email and what the email says, per link type.
+  async function linkEmailContext(db, kind, refId, customerId) {
+    const cust = customerId ? (await db.query('SELECT customer_name,email FROM fullbay_import_customers WHERE id=$1::bigint', [customerId]).catch(() => ({ rows: [] }))).rows[0] : null;
+    if (kind === 'estimate') { const e = (await db.query('SELECT estimate_number,customer_email,customer_name,unit_number FROM customer_estimates WHERE id=$1::bigint', [refId])).rows[0] || {};
+      return { suggestedEmail: e.customer_email || cust?.email || '', customerName: e.customer_name || cust?.customer_name || '', subject: `Estimate ${e.estimate_number || ''}${e.unit_number ? ` for unit ${e.unit_number}` : ''}: review and approve online`, button: 'Review & approve online',
+        intro: `Your estimate${e.unit_number ? ` for unit ${e.unit_number}` : ''} is ready. Open it to approve or decline each job. Declined jobs are not done or charged.` }; }
+    if (kind === 'inspection') { const w = ((await readShopflow(db)).workorders || []).find(x => String(x?.id) === String(refId)) || {};
+      return { suggestedEmail: cust?.email || '', customerName: w.customer || cust?.customer_name || '', subject: `Inspection report${w.unit ? ` for unit ${w.unit}` : ''}: photos and recommended repairs`, button: 'See the inspection report',
+        intro: `We inspected ${w.unit ? `unit ${w.unit}` : 'your vehicle'}. Open the report to see the photos and approve the repairs you want done.` }; }
+    return { suggestedEmail: cust?.email || '', customerName: cust?.customer_name || '', subject: `Your ${shopProfile().name} account`, button: 'Open your account',
+      intro: 'Here is your private page with your units, estimates and invoices. You can approve estimates and pay invoices online there.' };
+  }
+  // Email a link that was just created. The link must be a live one for this estimate / work order / customer.
+  app.post('/api/customer-links/email', auth, adminOnly, async (req, res, next) => { try {
+    const db = requireDb(), kind = String(req.body?.kind || ''), refId = str(req.body?.refId, 60), url = String(req.body?.url || '').trim();
+    const token = (url.match(/\/c\/([A-Za-z0-9_-]{30,80})$/) || [])[1], link = token ? await findActiveLink(db, token) : null;
+    if (!link || link.kind !== kind || String(link.ref_id) !== refId) return res.status(400).json({ error: 'Create a new link first, then email it.' });
+    const list = String(req.body?.to || '').split(/[,;\s]+/).map(a => a.trim().toLowerCase()).filter(Boolean);
+    if (!list.length || list.some(a => !/^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$/.test(a))) return res.status(400).json({ error: 'Enter the customer\'s email address.' });
+    const c = await linkEmailContext(db, kind, refId, link.customer_id), shop = shopProfile(), esc = v => String(v ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    const note = str(req.body?.message, 1000), hello = c.customerName ? `Hello ${c.customerName},` : 'Hello,';
+    const html = `<div style="font-family:Arial,sans-serif;color:#101828;max-width:560px;line-height:1.5"><p>${esc(hello)}</p><p>${esc(c.intro)}</p>${note ? `<p>${esc(note)}</p>` : ''}
+      <p style="margin:22px 0"><a href="${esc(url)}" style="display:inline-block;background:#c2410c;color:#fff;padding:13px 22px;border-radius:10px;text-decoration:none;font-weight:800">${esc(c.button)}</a></p>
+      <p style="color:#475467;font-size:13px">This private link is for you only and works until ${esc(new Date(link.expires_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }))}.<br>${esc(shop.name)} · ${esc(shop.phone)}</p></div>`;
+    const text = `${hello}\n\n${c.intro}\n${note ? `\n${note}\n` : ''}\n${c.button}: ${url}\n\n${shop.name} · ${shop.phone}`;
+    const r = await sendEmail({ to: list, subject: c.subject, text, html, replyTo: shop.email || '', idempotencyKey: `link-${link.id}-${list.join(',')}`, tags: [{ name: 'document', value: `link_${kind}` }] });
+    if (!r?.ok) return res.status(r?.status || 502).json({ error: r?.error || 'The email was not sent.' });
+    if (kind === 'estimate') await db.query(`UPDATE customer_estimates SET customer_email=coalesce(nullif(customer_email,''),$2) WHERE id=$1::bigint`, [refId, list[0]]);
+    await db.query(`UPDATE customer_links SET meta=meta||$2::jsonb WHERE id=$1`, [link.id, JSON.stringify({ emailedTo: list, emailedAt: new Date().toISOString() })]);
+    await audit(req.user.username, 'customer_link_emailed', { kind, refId, linkId: link.id, to: list });
+    res.json({ ok: true, to: list });
+  } catch (e) { next(e); } });
   app.get('/api/customer-links', auth, adminOnly, async (req, res, next) => { try {
     const r = await requireDb().query(`SELECT id,kind,ref_id,created_by,created_at,expires_at,revoked_at,view_count,last_viewed_at,decided_at,meta->>'name' signed_name FROM customer_links WHERE ($1='' OR kind=$1) AND ($2='' OR ref_id=$2) ORDER BY created_at DESC LIMIT 50`, [str(req.query.kind, 20), str(req.query.refId, 60)]);
     res.json({ items: r.rows });

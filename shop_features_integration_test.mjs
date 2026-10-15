@@ -44,6 +44,13 @@ try{
  eq((await request('/api/canned-jobs',{token:owner})).items.find(x=>x.id===cj.id).lines.length,2,'canned job edited');
  await request(`/api/canned-jobs/${cj.id}`,{method:'DELETE',token:owner});ok(!(await request('/api/canned-jobs',{token:owner})).items.some(x=>x.id===cj.id),'deleted canned job is hidden');
  console.log('PASS canned jobs: save with lines, stock part linked, duplicate/empty refused, apply under one job, use count, edit, delete, mechanics blocked');
+ // v24.57.0: parts search ignores dashes, spaces and dots.
+ await db.query(`INSERT INTO fullbay_import_parts(source_key,part_number,description,quantity,cost,price,status,inventory_managed,raw) VALUES('ps-oil','MO-1030','Motor oil 10W-30 (gal)',40,9,18,'Active',true,'{}'::jsonb)`);
+ const srch=async q=>(await request(`/api/parts?q=${encodeURIComponent(q)}&limit=8`,{token:owner})).items.map(p=>p.part_number);
+ ok((await srch('10w30')).includes('MO-1030')&&(await srch('10W 30')).includes('MO-1030')&&(await srch('oil 10w30')).includes('MO-1030'),'10w30 / 10W 30 / "oil 10w30" find Motor oil 10W-30');
+ ok((await srch('mo1030')).includes('MO-1030')&&(await srch('bp100')).includes('BP-100'),'part numbers match without the dash');
+ ok(!(await srch('10w40')).includes('MO-1030'),'a different oil does not match');
+ console.log('PASS parts search: punctuation and spaces ignored (10w30 finds 10W-30, bp100 finds BP-100)');
  // ---------------------------------------------------------------- customer links: estimate approval
  const pub=(t,opt={})=>request(`/api/public/link/${t}${opt.path||''}`,{...opt,allowError:true});
  const e2=await request('/api/estimates',{method:'POST',token:owner,body:{customerName:'Link Fleet',unitNumber:'55',customerNote:'Thanks for choosing us',internalNote:'SECRET-INTERNAL-NOTE'}});const e2id=e2.id;
@@ -128,6 +135,8 @@ try{
   if(f.To==='+15550000000'){res.writeHead(400,{'Content-Type':'application/json'});return res.end(JSON.stringify({message:'Invalid To number'}))}
   res.writeHead(201,{'Content-Type':'application/json'});res.end(JSON.stringify({sid:`SM${sent.length}x${Date.now()}`,status:'queued'}))})});
  await new Promise(r=>fake.listen(0,'127.0.0.1',r));
+ const mailsS=[];const fakeMailS=http.createServer((req,res)=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>{mailsS.push(JSON.parse(b));res.writeHead(200,{'Content-Type':'application/json'});res.end('{"id":"m1"}')})});await new Promise(r=>fakeMailS.listen(0,'127.0.0.1',r));
+ Object.assign(process.env,{RESEND_API_KEY:'re_test',INVOICE_FROM_EMAIL:'Shop <shop@ironttr.test>',RESEND_API_URL:`http://127.0.0.1:${fakeMailS.address().port}/emails`});
  Object.assign(process.env,{TWILIO_ACCOUNT_SID:'ACtest123',TWILIO_AUTH_TOKEN:'twilio-secret',TWILIO_FROM:'+13125550100',TWILIO_API_BASE:`http://127.0.0.1:${fake.address().port}`});
  await stop();await start();
  await db.query("UPDATE fullbay_import_customers SET phone='(312) 555-0199' WHERE id=$1",[cA]);
@@ -155,6 +164,15 @@ try{
  await twPost('/api/sms/inbound',{From:'+13125550199',Body:'Start',MessageSid:'SMin3'});
  ok((await request('/api/sms',{method:'POST',token:owner,body:{to:'3125550199',body:'Welcome back'}})).ok,'START turns it back on');
  ok((await db.query("SELECT 1 FROM server_audit WHERE action='sms_sent'")).rowCount>=2,'texts are in the audit log');
+ // v24.57.0: email a portal link straight from the link window.
+ await db.query("UPDATE fullbay_import_customers SET email='fleet@portal.test' WHERE id=$1",[cA]);
+ const PL2=await request('/api/customer-links',{method:'POST',token:owner,body:{kind:'portal',refId:String(cA)}});eq(PL2.suggestedEmail,'fleet@portal.test','link window suggests the customer email');
+ eq((await request('/api/customer-links/email',{method:'POST',token:owner,body:{kind:'portal',refId:String(cA),url:PL2.url.replace(/.$/,'Z'),to:'fleet@portal.test'},allowError:true})).status,400,'a made-up link cannot be emailed');
+ eq((await request('/api/customer-links/email',{method:'POST',token:owner,body:{kind:'portal',refId:String(cB),url:PL2.url,to:'fleet@portal.test'},allowError:true})).status,400,'a link cannot be emailed for another customer');
+ const em=await request('/api/customer-links/email',{method:'POST',token:owner,body:{kind:'portal',refId:String(cA),url:PL2.url,to:'fleet@portal.test'}});
+ const lm=mailsS.at(-1);ok(em.ok&&lm.to[0]==='fleet@portal.test'&&lm.html.includes(PL2.url)&&lm.text.includes(PL2.url)&&/account/i.test(lm.subject),'portal link emailed with the button and the plain link');
+ fakeMailS.close();for(const k of ['RESEND_API_KEY','INVOICE_FROM_EMAIL','RESEND_API_URL'])delete process.env[k];
+ console.log('PASS email a customer link: suggested address, sent with button, made-up or other-customer links refused');
  fake.close();for(const k of ['TWILIO_ACCOUNT_SID','TWILIO_AUTH_TOKEN','TWILIO_FROM','TWILIO_API_BASE'])delete process.env[k];
  console.log('PASS texting: off until set up, send through Twilio, linked to customer, signed incoming only, no duplicates, unread/read, delivery status, STOP/START');
  // ---------------------------------------------------------------- purchase orders
