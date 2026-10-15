@@ -102,11 +102,18 @@ function drawForm(keepFocus){const a=document.activeElement,key=a?.dataset?.v||a
 function updateTotals(){const f=S.form,{sub,total}=sums(f);const t=M('#blTotal');if(t)t.textContent=usd(total);const lines=M('.blSums div span+b');if(lines)lines.textContent=usd(sub);
  const paper=f.paperTotal===''?null:money(f.paperTotal),w=M('#blWarn');if(w)w.textContent=paper!=null&&Math.abs(paper-total)>0.01?`Doesn't match: lines + tax + freight − discount = ${usd(total)}`:'';
  f.lines.forEach((l,i)=>{const a=M(`tr[data-i="${i}"] [data-l="amount"]`);if(a&&!l.amountTyped&&document.activeElement!==a)a.value=lineAmount(l)||''})}
+// v24.61.0: a core charge read with a part becomes its own line ("Core deposit – part #"), like on the paper bill, so the
+// lines add up to the bill total. Receiving into stock puts it back on the part as a core owed.
+function scanLines(list){const out=[];for(const l of list){const q=Number(l.quantity)||1,u=Number(l.unitCost)||0,core=Number(l.coreCost)||0;let amt=Number(l.lineTotal)||0;
+ if(core>0&&amt&&Math.abs(amt-(q*u+q*core))<0.02)amt=Math.round(q*u*100)/100;
+ out.push({description:l.description||'',partNumber:l.partNumber||'',category:l.partNumber?'parts':'',quantity:l.quantity||1,unitCost:l.unitCost||'',amount:amt||'',amountTyped:!!amt});
+ if(core>0)out.push({description:`Core deposit – ${l.partNumber||l.description||'part'}`,partNumber:'',category:'parts',quantity:q,unitCost:core,amount:Math.round(q*core*100)/100,amountTyped:true})}
+ return out}
 async function startForm(kind,bill,lines,scan){
  openModal('');S.form=newForm(kind);
  if(scan){const i=scan.invoice||{};Object.assign(S.form,{vendor:i.vendor||'',billNumber:i.invoiceNumber||'',billDate:i.invoiceDate||today(),dueDate:i.dueDate||'',poNumber:i.poNumber||'',
   discount:i.discount||'',tax:i.tax||'',freight:i.freight||'',paperTotal:i.total||'',file:scan.file?.key?scan.file:null,gmailMessageId:scan.gmailMessageId||null,dirty:true,
-  lines:(scan.lines||[]).length?scan.lines.map(l=>({description:l.description||'',partNumber:l.partNumber||'',category:l.partNumber?'parts':'',quantity:l.quantity||1,unitCost:l.unitCost||'',amount:l.lineTotal||'',amountTyped:!!l.lineTotal})):S.form.lines});
+  lines:(scan.lines||[]).length?scanLines(scan.lines):S.form.lines});
   if(!i.dueDate)dueFromTerms(S.form)}
  if(bill){Object.assign(S.form,{id:bill.id,kind:bill.kind,vendor:bill.vendor,billNumber:bill.billNumber,billDate:bill.billDate||today(),terms:bill.terms,dueDate:bill.dueDate||'',poNumber:bill.poNumber,notes:bill.notes,
   discount:bill.discount||'',tax:bill.tax||'',freight:bill.freight||'',paymentMethod:bill.paymentMethod||(bill.kind==='expense'?'card':''),paymentReference:bill.paymentReference||'',paidOn:(bill.paidAt||'').slice(0,10)||today(),received:bill.receivedIntoStock,

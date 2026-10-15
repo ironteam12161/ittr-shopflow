@@ -1944,7 +1944,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.60.0");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.61.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
@@ -3628,7 +3628,7 @@ app.delete("/api/admin/users/:username",auth,managerPermission("employees"),asyn
 
 function parseAiJson(text){let t=String(text||'').trim();t=t.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');return JSON.parse(t)}
 // v24.42.0: also reads the due date / terms so vendor bills can be tracked as paid or overdue.
-const VENDOR_INVOICE_PROMPT=`Extract this heavy-duty truck parts vendor invoice. Return ONLY strict JSON with this shape: {"vendor":"","invoiceNumber":"","invoiceDate":"YYYY-MM-DD or empty","dueDate":"YYYY-MM-DD or empty","terms":"","poNumber":"","subtotal":0,"discount":0,"tax":0,"freight":0,"total":0,"lines":[{"partNumber":"","manufacturer":"","description":"","quantity":0,"unitCost":0,"coreCost":0,"lineTotal":0}]}. "vendor" is the company that SOLD the parts (the letterhead), never the shop being billed (Iron Team Truck & Trailer Repair). Preserve part numbers exactly. Never invent missing values. Costs and quantities must be numbers. If a quantity or cost is unclear use 0. Carefully distinguish unit cost, core charge, tax, freight and line total. Discounts, rebates, marketing or volume programs and credits are NOT lines: add them up as a positive number in "discount". If only payment terms like "Net 30" are printed, put them in "terms" and leave dueDate empty.`;
+const VENDOR_INVOICE_PROMPT=`Extract this heavy-duty truck parts vendor invoice. Return ONLY strict JSON with this shape: {"vendor":"","invoiceNumber":"","invoiceDate":"YYYY-MM-DD or empty","dueDate":"YYYY-MM-DD or empty","terms":"","poNumber":"","subtotal":0,"discount":0,"tax":0,"freight":0,"total":0,"lines":[{"partNumber":"","manufacturer":"","description":"","quantity":0,"unitCost":0,"coreCost":0,"lineTotal":0}]}. "vendor" is the company that SOLD the parts (the letterhead), never the shop being billed (Iron Team Truck & Trailer Repair). Preserve part numbers exactly. Never invent missing values. Costs and quantities must be numbers. If a quantity or cost is unclear use 0. Carefully distinguish unit cost, core charge, tax, freight and line total. Discounts, rebates, marketing or volume programs and credits are NOT lines: add them up as a positive number in "discount". If only payment terms like "Net 30" are printed, put them in "terms" and leave dueDate empty. Dates printed as day, month name, 2-digit year (e.g. "15 OCT 26") mean 2026-10-15; a 2-digit year is 20YY. A "CORE DEPOSIT" / "CORE CHARGE" printed on its own line belongs to the part above it: put its amount per unit in that part's coreCost and do not add it as a separate line.`;
 async function extractVendorInvoiceAny(file){
  const mime=String(file.mimetype||'');
  if(openRouterClient){const r=await openRouterInvoiceExtract(file);return r.parsed||{}}
