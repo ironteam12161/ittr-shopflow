@@ -573,5 +573,5 @@ export async function mount(scope){
  let rt=0;scope.on(window,'resize',()=>{clearTimeout(rt);rt=setTimeout(drawCharts,120)},{passive:true});scope.on(window,'beforeprint',()=>{S.scope.host.querySelectorAll('.repPanel').forEach(p=>p.classList.add('active'));S.scope.host.querySelectorAll('[data-chart]').forEach(el=>el.dataset.w='');drawCharts()});scope.on(window,'afterprint',()=>applyTab());
  await load();
 }
-export async function afterShow(){if(!S.data)await load()}
+export async function afterShow(){try{const t=sessionStorage.getItem('ittr_reports_tab');if(t&&t!==S.tab){S.tab=t;if(S.data)applyTab()}}catch(_){}if(!S.data)await load()}
 export function unmount(){S.scope=null}

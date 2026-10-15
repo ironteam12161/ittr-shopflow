@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.51.1-ZELLEFIX-20261015">
+<meta name="ittr-build" content="ITTR-24.51.2-PAYSEARCH-20261015">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -26,7 +26,7 @@
  P.removeItem=function(k){rm.call(this,k);if(this===sessionStorage&&keys[k])try{rm.call(localStorage,'ittr_app_'+k)}catch(e){}};
 }catch(e){}})();
 </script>
-<title>ITTR ShopFlow v24.51.1</title>
+<title>ITTR ShopFlow v24.51.2</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -825,7 +825,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.51.1">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.51.2">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -981,7 +981,7 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 </style>
 </head>
 <body>
-<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.51.1 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.51.2 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1549,7 +1549,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.51.1';
+const FRONTEND_VERSION='24.51.2';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
 const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
@@ -1912,7 +1912,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.51.1";
+const ROUTE_MODULE_VERSION="24.51.2";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -6343,7 +6343,11 @@ async function editInvoicePayment(invoiceId,paymentId){const p=(activeInvoice?.p
 // Invoice list search: invoice #, customer, unit, VIN, PO, or a payment's transaction ID.
 let invoiceSearchText="",invoicePaySearchTimer=0,invoicePayHitIds=new Set();
 function onInvoiceSearch(v){invoiceSearchText=String(v||"").trim().toLowerCase();invoicePayHitIds=new Set();renderInvoices();clearTimeout(invoicePaySearchTimer);const box=document.getElementById("invoicePaymentHits");if(!box)return;if(invoiceSearchText.length<3){box.innerHTML="";return}
- invoicePaySearchTimer=setTimeout(async()=>{try{const d=await apiJSON(`/api/payments/search?q=${encodeURIComponent(invoiceSearchText)}`);invoicePayHitIds=new Set(d.items.map(p=>String(p.invoice_id)));renderInvoices();box.innerHTML=d.items.length?`<div class="card payHits"><b>Payments matching “${esc(v)}”</b>${d.items.map(p=>`<button type="button" class="payHit" onclick="openInvoiceWorkspace(${Number(p.invoice_id)})"><span><b>${esc(p.method||"Other")} ${esc(p.reference||"")}</b> · ${invMoney(p.amount)} · ${esc(String(p.paid_at||"").slice(0,10))}</span><span class="muted">Invoice ${esc(p.invoice_number)} · ${esc(p.customer_name||"")}${p.unit_number?` · Unit ${esc(p.unit_number)}`:""}</span></button>`).join("")}</div>`:""}catch(_){box.innerHTML=""}},300)}
+ invoicePaySearchTimer=setTimeout(async()=>{try{const d=await apiJSON(`/api/payments/search?q=${encodeURIComponent(invoiceSearchText)}`);invoicePayHitIds=new Set(d.items.map(p=>String(p.invoice_id)));renderInvoices();
+ // v24.51.2: the same transaction ID can also be customer credit not used yet, or a Zelle email never applied.
+ const credits=d.credits||[],inbox=d.inbox||[];
+ box.innerHTML=d.items.length||credits.length||inbox.length?`<div class="card payHits"><b>Payments matching “${esc(v)}”</b>${d.items.map(p=>`<button type="button" class="payHit" onclick="openInvoiceWorkspace(${Number(p.invoice_id)})"><span><b>${esc(p.method||"Other")} ${esc(p.reference||"")}</b> · ${invMoney(p.amount)} · ${esc(String(p.paid_at||"").slice(0,10))}</span><span class="muted">Invoice ${esc(p.invoice_number)} · ${esc(p.customer_name||"")}${p.unit_number?` · Unit ${esc(p.unit_number)}`:""}</span></button>`).join("")}${credits.map(c=>`<button type="button" class="payHit" ${c.customer_id?`onclick="openCustomerProfile(${Number(c.customer_id)})"`:"disabled"}><span><b>${esc(c.method||"Other")} ${esc(c.reference||"")}</b> · ${invMoney(c.amount)} · ${esc(String(c.paid_at||"").slice(0,10))}</span><span class="muted">${invMoney(c.unapplied)} kept as credit · ${esc(c.customer_name||"")} — not applied to an invoice yet</span></button>`).join("")}${inbox.map(m=>`<button type="button" class="payHit" onclick="openGmailInbox()"><span><b>Zelle ${esc(m.confirmation||"")}</b> · ${m.amount!=null?invMoney(m.amount):"—"} · ${esc(String(m.received_at||"").slice(0,10))}</span><span class="muted">${esc(m.counterparty||m.from_email||"")} · in the Gmail inbox, ${m.status==="new"?"not applied to any invoice yet":`marked ${esc(m.status)}, not applied`}</span></button>`).join("")}</div>`:(String(v).replace(/\D/g,"").length>=5?`<div class="card payHits"><b>No payment with “${esc(v)}”</b><span class="muted">Not on any invoice payment, customer credit or Zelle email.</span></div>`:"")}catch(_){box.innerHTML=""}},300)}
+function openGmailInbox(){try{sessionStorage.setItem("ittr_reports_tab","inbox")}catch(_){}showView("reports")}
 function invoiceMatchesSearch(i){if(!invoiceSearchText)return true;if(invoicePayHitIds.has(String(i.id)))return true;return [i.invoice_number,i.customer_name,i.unit_number,i.vin,i.po_number].some(x=>String(x||"").toLowerCase().includes(invoiceSearchText))}
 async function permanentlyDeleteInvoice(id,num){const typed=prompt(`OWNER DELETE — this permanently removes the invoice, line items and payment records. Type ${num} exactly to confirm:`,'');if(typed!==num){if(typed)showToast?.('Invoice number did not match. Nothing was deleted.','warning');return}try{await apiJSON(`/api/invoices/${id}`,{method:'DELETE',body:JSON.stringify({confirmInvoiceNumber:typed})});if(document.body.classList.contains('invoiceWorkspaceMode')){try{window.opener?.loadInvoices?.()}catch(_){ }showToast?.(`Invoice ${num} permanently deleted.`,'success');setTimeout(()=>closeInvoiceWorkspace(),500)}else{closeModal('invoiceModal');await loadInvoices();showToast?.(`Invoice ${num} permanently deleted.`,'success')}}catch(e){showToast?.(e.message,'error',8000)||alert(e.message)}}
 async function createInvoicePaymentLink(id){try{if(!(await persistInvoiceDraftBeforeStructureChange('Saving invoice before payment link')))return;const d=await apiJSON(`/api/invoices/${id}/payment-link`,{method:'POST',body:'{}'});if(d.url){await navigator.clipboard?.writeText(d.url).catch(()=>{});alert('Secure payment link created and copied to clipboard.')}}catch(e){alert(e.message)}}

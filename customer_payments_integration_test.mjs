@@ -44,6 +44,11 @@ try{
  r=await request(`/api/customers/${cust}/receive-payment`,{method:'POST',token:admin,body:{amount:60,method:'Check',reference:'1043',allocations:[]}});eq(r.credit,60,'lump sum kept as credit');
  const p=(await inv(a)).payments[0];await request(`/api/invoices/${a}/payments/${p.id}`,{method:'PATCH',token:admin,body:{reference:'22198765433'}});
  eq((await inv(b)).payments.find(x=>x.customer_payment_id===p.customer_payment_id||String(x.customer_payment_id)===String(p.customer_payment_id))?.reference,'22198765433','reference edit applies to every part of the payment');
+ // v24.51.2: search by transaction ID finds every invoice it paid, and money still sitting as credit.
+ const sAll=await request('/api/payments/search?q=22198765433',{token:admin});ok([a,b].every(id=>sAll.items.some(x=>String(x.invoice_id)===String(id))),'transaction ID search finds every invoice the payment was split over');
+ await request(`/api/customers/${cust}/receive-payment`,{method:'POST',token:admin,body:{amount:75,method:'Zelle',reference:'31199489878',allocations:[]}});
+ const sCr=await request('/api/payments/search?q=31199489878',{token:admin});ok(sCr.items.length===0&&sCr.credits.some(x=>x.reference==='31199489878'&&Number(x.unapplied)===75&&x.customer_name==='Split Pay Fleet LLC'),'transaction ID kept as credit is found, with whose credit it is');
+ await db.query("DELETE FROM customer_payments WHERE reference='31199489878'");
  console.log('PASS customer payment: split over invoices, leftover credit, apply credit later, validations, duplicate guard');
  // v24.50.0: A/R aging by company with credit.
  const ar=await request('/api/reports/ar-aging',{token:admin});
