@@ -1944,7 +1944,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.63.0");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.64.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
@@ -2458,6 +2458,27 @@ async function resolveSelfStartUnit(db,b,customerRow){
  return {row:q.rows[0],created:true};
 }
 
+// v24.64.0: the office "Create Work Order" form looks a company up by USDOT and a truck by VIN like the mechanic check-in.
+// When it is saved with a USDOT or VIN, the company and the truck are found in Customers or added there (with the FMCSA /
+// NHTSA details), so the work order is linked to real customer and unit records.
+app.post("/api/work-orders/resolve-vehicle",auth,async(req,res,next)=>{
+ if(!["admin","manager"].includes(req.user?.role))return res.status(403).json({error:"Office account required."});
+ const b={...(req.body||{})},vin=cleanVin(b.vin||""),dotNumber=cleanUsdot(b.dotNumber||"");
+ if(!vin&&!dotNumber)return res.status(400).json({error:"Enter the USDOT number or the VIN."});
+ if(vin&&!vinCoreValid(vin))return res.status(400).json({error:"VIN must be 17 characters and cannot contain I, O, or Q.",code:"VIN_INVALID"});
+ if(!String(b.unit||"").trim()){if(!vin)return res.status(400).json({error:"Enter the unit # (or the VIN)."});b.unit=`VIN-${vin}`}
+ const db=await requireDb().connect();
+ try{
+  await db.query("BEGIN");
+  const c=await resolveSelfStartCustomer(db,b,req.user),cr=c.row||{id:"",customer_name:String(b.customer||"").trim(),dot_number:dotNumber};
+  const u=await resolveSelfStartUnit(db,b,cr);
+  await db.query("COMMIT");
+  const x=u.row||{};
+  await audit(req.user.username,"work_order_vehicle_resolved",{customerId:cr.id||null,unitId:x.id||null,customerCreated:!!c.created,unitCreated:!!u.created,dotNumber,vin});
+  res.json({customer:{id:cr.id?String(cr.id):"",name:cr.customer_name||"",dotNumber:cr.dot_number||dotNumber||""},customerCreated:!!c.created,unitCreated:!!u.created,
+   unit:x.id?{id:String(x.id),unitNumber:x.unit_number||"",vin:x.vin||"",year:x.year||"",make:x.make||"",model:x.model||"",plate:x.plate||"",mileage:x.mileage??""}:null});
+ }catch(e){try{await db.query("ROLLBACK")}catch(_){}if(e?.status)return res.status(e.status).json({error:e.message,code:e.code});next(e)}finally{db.release()}
+});
 app.post("/api/work-orders/self-start",auth,async(req,res,next)=>{
  if(req.user?.role!=="mechanic")return res.status(403).json({error:"Mechanic account required."});
  {try{await assertClockedIn(requireDb(),req.user)}catch(e){if(e?.code==="CLOCK_IN_REQUIRED")return res.status(409).json({error:e.message,code:e.code});return next(e)}}
