@@ -200,5 +200,27 @@ try{
  const cb2=await request(`/api/reports/comebacks?from=${iso(30)}&to=${iso(0)}`,{token:owner});ok(!cb2.items.some(c=>c.unit==='W9'),'shorter comeback window drops the 50-day repeat');
  eq((await request('/api/warranty/settings',{method:'PUT',token:mgt0,body:{laborDays:1},allowError:true})).status,403,'only the owner sets warranty terms');
  console.log('PASS warranty & comebacks: same repair on the same fleet unit within the window, routine work and other fleets excluded, unit warranty lookup, owner-set terms');
+ // ---------------------------------------------------------------- work orders in their own table + recycle bin
+ const mir=(await db.query("SELECT payload,removed_at FROM work_orders WHERE id='7701'")).rows[0];ok(mir&&mir.payload.unit==='TR-9'&&!mir.removed_at,'every work order is copied into its own row');
+ const before=(await db.query("SELECT updated_at FROM work_orders WHERE id='7701'")).rows[0].updated_at;
+ await db.query("UPDATE app_state SET updated_at=now() WHERE state_key='shopflow'");eq(String((await db.query("SELECT updated_at FROM work_orders WHERE id='7701'")).rows[0].updated_at),String(before),'unchanged work orders are not rewritten');
+ await request('/api/work-orders/7701',{method:'DELETE',token:owner});
+ ok((await db.query("SELECT removed_at FROM work_orders WHERE id='7701'")).rows[0].removed_at,'deleted work order kept in the recycle bin');
+ ok((await request('/api/work-orders/removed',{token:owner})).items.some(w=>w.id==='7701'&&w.unit==='TR-9'),'recycle bin lists it');
+ eq((await request('/api/work-orders/7701/restore',{method:'POST',token:mgt0,body:{},allowError:true})).status,403,'only the owner restores');
+ await request('/api/work-orders/7701/restore',{method:'POST',token:owner,body:{}});
+ ok((await request('/api/state',{token:owner})).shopflow.payload.workorders.some(w=>w.id==='7701'&&w.tasks.some(t=>t.findingId==='f-7701-1')),'restored with its jobs');
+ ok(!(await db.query("SELECT removed_at FROM work_orders WHERE id='7701'")).rows[0].removed_at,'out of the recycle bin again');
+ eq((await request('/api/work-orders/7701/restore',{method:'POST',token:owner,body:{},allowError:true})).status,404,'cannot restore twice');
+ console.log('PASS work orders: one row per work order kept in sync by the database, recycle bin, owner restore');
+ // ---------------------------------------------------------------- error alerts
+ const alerts=[];const hook=http.createServer((req,res)=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>{alerts.push(JSON.parse(b));res.end('ok')})});await new Promise(r=>hook.listen(0,'127.0.0.1',r));
+ Object.assign(process.env,{ALERT_WEBHOOK_URL:`http://127.0.0.1:${hook.address().port}/hook`,ALERT_WEBHOOK_ALLOW_HTTP:'1'});await stop();await start();
+ const boom=await request('/api/invoices/not-a-number',{token:owner,allowError:true});ok(boom.status>=500&&boom.incident,'a server error shows an incident number');
+ await request('/api/invoices/not-a-number',{token:owner,allowError:true});await new Promise(r=>setTimeout(r,400));
+ ok(alerts.length===1&&alerts[0].text.includes(boom.incident)&&alerts[0].content===alerts[0].text,'one alert with the incident number (Slack and Discord format); the repeat is held back');
+ eq((await request('/api/invoices/999999',{token:owner,allowError:true})).status,404,'normal not-found is not an alert');await new Promise(r=>setTimeout(r,200));eq(alerts.length,1,'no alert for a 404');
+ hook.close();delete process.env.ALERT_WEBHOOK_URL;delete process.env.ALERT_WEBHOOK_ALLOW_HTTP;
+ console.log('PASS error alerts: 500s go to the webhook with the incident number, repeats throttled, 404s ignored');
  console.log('Shop features integration: all scenarios passed');
 }finally{await stop().catch(()=>{});await db.end().catch(()=>{})}

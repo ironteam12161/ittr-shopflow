@@ -35,6 +35,8 @@ import {registerFluidRoutes,registerPartDeleteRoutes,isGallonUom,FLUID_UNITS,ens
 import {ensureComplianceSchema,registerComplianceRoutes,startFleetScheduler} from "./compliance_center.mjs";
 import os from "os";
 import bwipjs from "bwip-js";
+import {sendAlert} from "./ops_alerts.mjs";
+import {ensureWorkOrderStore,registerWorkOrderStoreRoutes} from "./work_order_store.mjs";
 import {registerWarrantyRoutes} from "./warranty.mjs";
 import {ensurePurchaseOrderSchema,registerPurchaseOrderRoutes} from "./purchase_orders.mjs";
 import {ensureSmsSchema,registerSmsRoutes} from "./customer_sms.mjs";
@@ -200,6 +202,9 @@ app.post("/api/stripe/webhook",express.raw({type:"*/*",limit:"1mb"}),async(req,r
   res.json({received:true,recorded:!dup})
  }catch(e){try{await db.query("ROLLBACK")}catch{}console.error("[stripe webhook]",e?.message);res.status(500).json({error:"Could not record the payment."})}finally{db.release()}
 });
+// v24.56.0: the whole-shop record may grow past 3 MB; it gets 10 MB (and an alert past 6 MB) while work orders move to
+// their own table. Every other endpoint keeps the 3 MB limit.
+app.use("/api/state",express.json({limit:"10mb"}));
 app.use(express.json({limit:"3mb"}));
 
 // ITTR v24.16.1 hardened frontend path:
@@ -814,7 +819,7 @@ async function auth(req,res,next){
 const liveWss=new WebSocketServer({server:httpServer,path:"/ws/shop-status"});
 const liveClients=new Set();
 function broadcastShopStatus(type,payload={}){const msg=JSON.stringify({type,at:new Date().toISOString(),...payload});for(const ws of liveClients){if(ws.readyState===WebSocket.OPEN)try{ws.send(msg)}catch(_){}}}
-// v24.55.0: the sign-in token arrives in the first message ({type:"auth",token}), not in the web address, where
+// v24.56.0: the sign-in token arrives in the first message ({type:"auth",token}), not in the web address, where
 // proxies and server logs could record it. The ?token= form still works for app copies loaded before this version.
 async function liveSocketUser(token){if(!token)return null;const q=await requireDb().query(`SELECT u.username,u.display_name,u.role FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now() AND u.active=true`,[hashToken(token)]);return q.rows[0]||null}
 function admitLiveSocket(ws,user){ws.ittrUser=user;ws.isAlive=true;ws.on("pong",()=>{ws.isAlive=true});liveClients.add(ws);ws.send(JSON.stringify({type:"connected",at:new Date().toISOString()}));ws.on("close",()=>liveClients.delete(ws))}
@@ -847,7 +852,7 @@ const MECHANIC_HIDDEN_PART_FIELDS=new Set(["cost","cost_floor","inventory_value"
 function scrubPartCosts(v,depth=0){if(depth>6||v===null||typeof v!=="object")return v;if(Array.isArray(v))return v.map(x=>scrubPartCosts(x,depth+1));const o={};for(const [k,x] of Object.entries(v)){if(MECHANIC_HIDDEN_PART_FIELDS.has(k))continue;o[k]=scrubPartCosts(x,depth+1)}return o}
 function hidePartCostsFromMechanics(req,res,next){if(req.user?.role==="mechanic"){const send=res.json.bind(res);res.json=body=>send(scrubPartCosts(body))}next()}
 function ownerOnly(req,res,next){if(req.user?.role!=="admin")return res.status(403).json({error:"Owner/Admin access required."});next()}
-// v24.55.0: a manager may use an area only when the owner ticked it ("denied unless ticked"). Before, every area not
+// v24.56.0: a manager may use an area only when the owner ticked it ("denied unless ticked"). Before, every area not
 // explicitly unticked was allowed, so each new area (Bills, …) was open to every manager automatically.
 const MANAGER_PERMISSION_KEYS=["invoices","financials","inventory","customers","reports","employees"];
 const cleanManagerPermissions=p=>Object.fromEntries(MANAGER_PERMISSION_KEYS.map(k=>[k,p?.[k]===true]));
@@ -1920,11 +1925,11 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.55.0");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.56.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
-// v24.55.0: sign-in checks, in order: account lock → password → 2-step code (when turned on).
+// v24.56.0: sign-in checks, in order: account lock → password → 2-step code (when turned on).
 // - An unknown username costs the same bcrypt time as a known one, so response time doesn't reveal real usernames.
 // - 8 wrong passwords or codes in a row lock that account for 15 minutes (on top of the per-network rate limit).
 // - With 2-step login on, a correct password alone answers {mfaRequired:true} and no token; the app then asks for
@@ -1951,7 +1956,7 @@ app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
 }catch(e){next(e)}});
 app.post("/api/auth/logout",auth,async(req,res,next)=>{try{await requireDb().query("DELETE FROM auth_sessions WHERE token_hash=$1",[hashToken(req.sessionToken)]);res.json({ok:true})}catch(e){next(e)}});
 app.get("/api/auth/me",auth,(req,res)=>res.json({user:publicUser(req.user)}));
-// v24.55.0: every user can change their own password (the owner had no way to) and sign out their other devices.
+// v24.56.0: every user can change their own password (the owner had no way to) and sign out their other devices.
 // Changing the password signs out every other device, so a leaked or shared password stops working everywhere.
 const minPasswordLength=role=>role==="mechanic"?10:12;
 app.post("/api/auth/password",loginLimiter,auth,async(req,res,next)=>{try{
@@ -2066,6 +2071,7 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{
   if(key==="pro"&&!['admin','manager'].includes(req.user?.role)){db.release();return res.status(403).json({error:"Manager access required."})}
   if(req.user?.role==="mechanic"&&key!=="shopflow"){db.release();return res.status(403).json({error:"Mechanics cannot replace shared administrative state."})}
   const payload=req.body?.payload;if(payload===undefined){db.release();return res.status(400).json({error:"payload required"})}
+  if(key==="shopflow"){const bytes=Buffer.byteLength(JSON.stringify(payload));if(bytes>6*1024*1024)sendAlert(`The shop record is ${(bytes/1048576).toFixed(1)} MB (limit 10 MB). Archive old completed work orders soon.`,{key:"state-size"})}
   const expectedVersion=Number(req.body?.expectedVersion||0);
   if(!Number.isInteger(expectedVersion)||expectedVersion<=0){db.release();return res.status(409).json({error:"A current server version is required before saving. Refresh first to protect newer shop data.",code:"STATE_VERSION_REQUIRED"})}
   await db.query('BEGIN');
@@ -2920,7 +2926,7 @@ app.get("/api/admin/productivity",auth,adminOnly,async(req,res,next)=>{try{
   res.json({ok:true,start:start.toISOString(),end:end.toISOString(),mechanic:mechanic||"all",sessions});
 }catch(e){next(e)}});
 
-// v24.55.0: the backup holds every table (invoices, payments, customers, bills, parts…), not only the work-order JSON
+// v24.56.0: the backup holds every table (invoices, payments, customers, bills, parts…), not only the work-order JSON
 // it had before. Secrets are left out: password hashes, sign-in sessions, OAuth states and Gmail tokens. Derived data
 // that is rebuilt on its own (translation cache, manual page text) is skipped to keep the file small. Streamed table by
 // table so a large shop does not need the whole database in memory.
@@ -3242,7 +3248,7 @@ app.delete("/api/photos/:photoId",auth,async(req,res,next)=>{
  }catch(e){next(e)}
 });
 
-// v24.55.0: one place decides a finding (manager button or the customer's approval link). The caller passes a pool
+// v24.56.0: one place decides a finding (manager button or the customer's approval link). The caller passes a pool
 // client; this runs its own transaction. Returns {ok:true,...} or {status,error}.
 async function applyFindingDecision(db,id,value,by){
  try{
@@ -4062,7 +4068,7 @@ app.patch('/api/invoices/:id/payments/:paymentId',auth,managerPermission("invoic
  // v24.49.0: one payment split over several invoices keeps one method / transaction ID.
  if(cur.customer_payment_id){await db.query('UPDATE customer_invoice_payments SET method=$2,reference=$3 WHERE customer_payment_id=$1::bigint',[cur.customer_payment_id,method,reference]);await db.query('UPDATE customer_payments SET method=$2,reference=$3 WHERE id=$1::bigint',[cur.customer_payment_id,method,reference])}
  await audit(req.user.username,'invoice_payment_edited',{invoiceId:req.params.id,paymentId:cur.id,before:{method:cur.method,reference:cur.reference},after:{method,reference}});res.json({ok:true})}catch(e){next(e)}});
-// v24.55.0: a transaction ID is found wherever it lives: on an invoice payment (also when the reference was typed
+// v24.56.0: a transaction ID is found wherever it lives: on an invoice payment (also when the reference was typed
 // differently, via the Gmail email it was applied from), on a customer credit not used yet, or still only on a
 // Zelle email in the Gmail inbox that was never applied.
 app.get('/api/payments/search',auth,managerPermission("invoices"),async(req,res,next)=>{try{const q=String(req.query.q||'').trim().slice(0,80);if(q.length<2)return res.json({items:[],credits:[],inbox:[]});
@@ -4808,7 +4814,7 @@ registerAICenterRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit,aiM
 registerComplianceRoutes(app,{auth,ownerOnly,adminOnly,requireDb,audit,PDFDocument,shopProfile,lookupFmcsaCarrier,searchFmcsaCarriersByName,samsaraPaged,samsaraConfigured:samsaraTokenPresent});
 // v24.48.0: Bills — every shop purchase, by expense category, ready for QuickBooks.
 registerBillRoutes(app,{auth,managerPermission,ownerOnly,requireDb,audit,resolveVendor,knownVendor,reportRange});
-// v24.55.0: customer links (estimate approval, inspection share; the fleet portal plugs in through portalView).
+// v24.56.0: customer links (estimate approval, inspection share; the fleet portal plugs in through portalView).
 const publicLimiter=rateLimit({windowMs:60*1000,max:60,standardHeaders:true,legacyHeaders:false,message:{error:"Too many requests. Please wait a minute and try again."}});
 async function readShopflowState(db){const r=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");const p=r.rows[0]?.payload;return p&&typeof p==="object"?p:{workorders:[],issues:[]}}
 async function findingPhotoUrls(db,findingIds){const out={};if(!findingIds.length||!r2Configured)return out;
@@ -4820,7 +4826,7 @@ const portalShopInfo=()=>{const s=shopProfile();return {name:s.name,phone:s.phon
 customerLinkDeps.portalView=(db,link)=>portalView(db,link,{shopInfo:portalShopInfo});
 registerCustomerLinkRoutes(app,customerLinkDeps);
 registerSmsRoutes(app,{auth,adminOnly,requireDb,audit,broadcastShopStatus,publicLimiter,formParser:express.urlencoded({extended:false,limit:"64kb"})});
-// v24.55.0: put parts on the shelf from a purchase order with the same cost rules as a manual receive (weighted
+// v24.56.0: put parts on the shelf from a purchase order with the same cost rules as a manual receive (weighted
 // average cost, last/previous purchase cost, purchase history). Runs inside the caller's transaction.
 async function receivePartStock(db,{partId,qty,unitCost,vendor,reference,username,note}){
  const r=(await db.query("SELECT * FROM fullbay_import_parts WHERE id=$1 FOR UPDATE",[partId])).rows[0];if(!r)throw Object.assign(new Error("A part on this order was deleted from stock."),{status:409});
@@ -4832,6 +4838,7 @@ async function receivePartStock(db,{partId,qty,unitCost,vendor,reference,usernam
  return {before,after};
 }
 registerPurchaseOrderRoutes(app,{auth,managerPermission,requireDb,audit,receiveStock:receivePartStock,sendShopEmail,shopProfile});
+registerWorkOrderStoreRoutes(app,{auth,adminOnly,ownerOnly,requireDb,audit,broadcastShopStatus});
 registerWarrantyRoutes(app,{auth,adminOnly,ownerOnly,managerPermission,requireDb,audit,reportRange});
 registerPortalRoutes(app,{requireDb,publicLimiter,audit,invoicePdf:async(db,id)=>{const x=await getInvoiceBundle(db,id);return x?await invoicePdfBuffer(x):null}});
 registerCannedJobRoutes(app,{auth,adminOnly,managerPermission,requireDb,audit});
@@ -4842,9 +4849,12 @@ app.use("/api",(req,res)=>res.status(404).json({error:"API endpoint not found"})
 
 
 
+process.on("unhandledRejection",e=>{console.error("[unhandledRejection]",e);sendAlert(`Unhandled error: ${String(e?.stack||e?.message||e).slice(0,500)}`,{key:`rej:${String(e?.message||e).slice(0,80)}`})});
+process.on("uncaughtException",e=>{console.error("[uncaughtException]",e);sendAlert(`Server crashed: ${String(e?.stack||e?.message||e).slice(0,500)}`,{key:`exc:${String(e?.message||e).slice(0,80)}`}).finally(()=>setTimeout(()=>process.exit(1),500))});
 app.use((err,req,res,next)=>{
  const incident=`ITTR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
  console.error(`[${incident}]`,err);
+ const status=Number(err?.status||err?.statusCode||500);if(status>=500&&!["DB_NOT_CONFIGURED","R2_NOT_CONFIGURED"].includes(err?.code))sendAlert(`Server error ${incident} on ${req.method} ${req.path}: ${String(err?.message||err).slice(0,300)}`,{key:`500:${req.method}:${req.route?.path||req.path}:${String(err?.message||"").slice(0,80)}`});
  if(err?.code==="DB_NOT_CONFIGURED"||err?.code==="R2_NOT_CONFIGURED")return res.status(503).json({error:err.message,code:err.code,incident});
  if(err?.code==="LIMIT_FILE_SIZE")return res.status(413).json({error:"Photo is too large. Maximum original file size is 25 MB.",incident});
  if(err?.code==="PHOTO_TYPE"||err?.code==="PHOTO_PROCESSING")return res.status(415).json({error:err.message,code:err.code,incident});
@@ -4870,6 +4880,7 @@ initDb()
   .then(()=>pool&&ensureCustomerLinkSchema(pool))
   .then(()=>pool&&ensureSmsSchema(pool))
   .then(()=>pool&&ensurePurchaseOrderSchema(pool))
+  .then(()=>pool&&ensureWorkOrderStore(pool))
   .then(()=>pool&&migrateManagerPermissionsDefaultDeny(pool))
   .then(()=>pool&&ensureCustomerPaymentSchema(pool))
   .then(()=>pool&&ensureFluidSchema(pool))
