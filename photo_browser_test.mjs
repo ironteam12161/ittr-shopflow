@@ -125,7 +125,7 @@ try {
   await scenario('owner viewer: keyboard, zoom, rotate, swipe, Esc + focus, non-destructive markup', async () => {
     const { ctx, page } = await newPage(); await page.goto(B); await signIn(page, OWNER.username, OWNER.password);
     await page.click('header nav .navbtn[data-view="approvals"]');
-    await page.evaluate(() => setFindingView('all'));
+    await page.evaluate(() => { wsFindingsMode('list'); setFindingView('all'); });
     const g = `.fpGallery[data-fp-finding="${findingId}"]`;
     await until(page, sel => document.querySelectorAll(`${sel} [data-fp-kind="server"]:not(.fpLoading)`).length === 2, g, 15000);
     ok(await page.locator(`${g} .fpTag.before`).count() === 1, 'Before tag on the card');
@@ -168,7 +168,7 @@ try {
 
   await scenario('expired links and broken thumbnails recover with Retry; older embedded photo shows; Ukrainian labels', async () => {
     const { ctx, page } = await newPage(); await page.goto(B); await signIn(page, OWNER.username, OWNER.password);
-    await page.click('header nav .navbtn[data-view="approvals"]'); await page.evaluate(() => setFindingView('all'));
+    await page.click('header nav .navbtn[data-view="approvals"]'); await page.evaluate(() => { wsFindingsMode('list'); setFindingView('all'); });
     const g = `.fpGallery[data-fp-finding="${findingId}"]`;
     await until(page, sel => document.querySelectorAll(`${sel} [data-fp-kind="server"]:not(.fpLoading)`).length === 2, g, 15000);
     STEP = 'legacy';
@@ -200,7 +200,7 @@ try {
     await page.selectOption('#languageSelect', 'uk');
     await page.waitForLoadState('load'); await sleep(500);
     await until(page, () => typeof cloudReady !== 'undefined' && cloudReady && currentLanguage === 'uk', null, 15000);
-    await page.evaluate(() => { document.querySelector('header nav .navbtn[data-view="approvals"]').click(); setFindingView('all'); });
+    await page.evaluate(() => { document.querySelector('header nav .navbtn[data-view="approvals"]').click(); wsFindingsMode('list'); setFindingView('all'); });
     await until(page, () => /Додати фото/.test(document.getElementById('approvalIssues').textContent));
     await page.locator(`${g} [data-fp-kind="server"] .fpImg`).first().click();
     await until(page, () => document.querySelector('.pv'));
