@@ -1,0 +1,96 @@
+/* ITTR ShopFlow design system (v24.69.0) — shared tokens and components.
+   Neutral surfaces, charcoal navigation, Iron Team accent used sparingly. Semantic colours always come with a text
+   label: red = urgent defect / failed, amber = attention / waiting, green = done / saved, blue = in progress / info.
+   New screens use these classes; older screens move over phase by phase (see docs/REDESIGN-PLAN.md). */
+:root{
+  --ds-font:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --ds-text-xs:12px;--ds-text-sm:13px;--ds-text-md:15px;--ds-text-lg:18px;--ds-text-xl:22px;
+  --ds-space-1:4px;--ds-space-2:8px;--ds-space-3:12px;--ds-space-4:16px;--ds-space-5:24px;--ds-space-6:32px;
+  --ds-radius-sm:8px;--ds-radius:12px;--ds-radius-lg:16px;
+  --ds-bg:#f5f7fb;--ds-surface:#ffffff;--ds-surface-2:#f8fafc;--ds-line:#e4e7ec;--ds-line-strong:#d0d5dd;
+  --ds-ink:#101828;--ds-ink-2:#344054;--ds-muted:#475467;--ds-faint:#667085;
+  --ds-nav:#111827;--ds-nav-2:#1f2937;--ds-nav-ink:#e5e7eb;
+  --ds-accent:#c2410c;--ds-accent-soft:#fff4ed;           /* Iron Team orange-red: brand marks only */
+  --ds-primary:#1d4ed8;--ds-primary-hover:#1e40af;--ds-primary-soft:#eff6ff;
+  --ds-danger:#b42318;--ds-danger-soft:#fef3f2;--ds-danger-line:#fecdca;
+  --ds-warn:#b54708;--ds-warn-soft:#fffaeb;--ds-warn-line:#fedf89;
+  --ds-ok:#067647;--ds-ok-soft:#ecfdf3;--ds-ok-line:#abefc6;
+  --ds-info:#175cd3;--ds-info-soft:#eff8ff;--ds-info-line:#b2ddff;
+  --ds-focus:0 0 0 3px rgba(37,99,235,.45);
+  --ds-shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);
+  --ds-shadow-lg:0 20px 40px rgba(16,24,40,.18);
+  --ds-touch:44px;
+}
+/* Visible keyboard focus everywhere (mouse clicks keep the normal look). */
+:where(a,button,input,select,textarea,[tabindex]):focus-visible{outline:none;box-shadow:var(--ds-focus)!important;border-radius:var(--ds-radius-sm)}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+
+.ds-icon{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:-3px}
+.ds-icon.sm{width:15px;height:15px}.ds-icon.lg{width:22px;height:22px}
+
+/* Buttons: label always present; icon optional. */
+.ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--ds-space-2);min-height:var(--ds-touch);padding:0 var(--ds-space-4);border-radius:var(--ds-radius-sm);border:1px solid transparent;font:600 var(--ds-text-md)/1.1 var(--ds-font);cursor:pointer;white-space:nowrap;width:auto;text-decoration:none;transition:background .12s,border-color .12s}
+.ds-btn:disabled{opacity:.55;cursor:not-allowed}
+.ds-btn-primary{background:var(--ds-primary);color:#fff}.ds-btn-primary:hover:not(:disabled){background:var(--ds-primary-hover)}
+.ds-btn-secondary{background:var(--ds-surface);color:var(--ds-ink-2);border-color:var(--ds-line-strong)}.ds-btn-secondary:hover:not(:disabled){background:var(--ds-surface-2)}
+.ds-btn-danger{background:var(--ds-surface);color:var(--ds-danger);border-color:var(--ds-danger-line)}.ds-btn-danger:hover:not(:disabled){background:var(--ds-danger-soft)}
+.ds-btn-ghost{background:transparent;color:var(--ds-ink-2)}.ds-btn-ghost:hover:not(:disabled){background:rgba(16,24,40,.06)}
+.ds-btn-sm{min-height:36px;padding:0 var(--ds-space-3);font-size:var(--ds-text-sm)}
+.ds-btn-icon{width:var(--ds-touch);padding:0}
+
+/* Status chip: colour + icon + words. */
+.ds-chip{display:inline-flex;align-items:center;gap:6px;min-height:26px;padding:2px 10px;border-radius:999px;font:700 var(--ds-text-xs)/1.2 var(--ds-font);border:1px solid var(--ds-line);background:var(--ds-surface-2);color:var(--ds-ink-2);white-space:nowrap}
+.ds-chip.ok{background:var(--ds-ok-soft);color:var(--ds-ok);border-color:var(--ds-ok-line)}
+.ds-chip.warn{background:var(--ds-warn-soft);color:var(--ds-warn);border-color:var(--ds-warn-line)}
+.ds-chip.danger{background:var(--ds-danger-soft);color:var(--ds-danger);border-color:var(--ds-danger-line)}
+.ds-chip.info{background:var(--ds-info-soft);color:var(--ds-info);border-color:var(--ds-info-line)}
+
+.ds-alert{display:flex;gap:var(--ds-space-2);align-items:flex-start;padding:var(--ds-space-3) var(--ds-space-4);border-radius:var(--ds-radius-sm);border:1px solid var(--ds-line);background:var(--ds-surface-2);color:var(--ds-ink-2);font-size:var(--ds-text-sm)}
+.ds-alert.danger{background:var(--ds-danger-soft);border-color:var(--ds-danger-line);color:#7a271a}.ds-alert.warn{background:var(--ds-warn-soft);border-color:var(--ds-warn-line);color:#7a2e0e}.ds-alert.ok{background:var(--ds-ok-soft);border-color:var(--ds-ok-line);color:#054f31}
+.ds-empty{padding:var(--ds-space-5);text-align:center;color:var(--ds-muted);border:1px dashed var(--ds-line-strong);border-radius:var(--ds-radius);background:var(--ds-surface)}
+.ds-skeleton{background:linear-gradient(90deg,#eef2f6 0%,#f8fafc 40%,#eef2f6 80%);background-size:200% 100%;animation:dsShimmer 1.2s linear infinite}
+@keyframes dsShimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+.ds-field{display:grid;gap:6px}.ds-field>label{font:700 var(--ds-text-xs)/1.2 var(--ds-font);color:var(--ds-ink-2);text-transform:none}
+.ds-input{width:100%;min-height:var(--ds-touch);padding:8px 12px;border:1px solid var(--ds-line-strong);border-radius:var(--ds-radius-sm);font:400 var(--ds-text-md)/1.3 var(--ds-font);background:#fff;color:var(--ds-ink)}
+.ds-visually-hidden{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------------------------------------------------------------- finding photos (gallery + upload states) */
+.fpGallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:var(--ds-space-2);margin-top:var(--ds-space-3)}
+.fpGallery:empty{display:none}
+.fpThumb{position:relative;display:flex;flex-direction:column;border:1px solid var(--ds-line);border-radius:var(--ds-radius-sm);background:#0b1220;overflow:hidden;padding:0;min-height:0;cursor:zoom-in;color:#fff;text-align:left}
+.fpThumb .fpImg{aspect-ratio:4/3;width:100%;display:flex;align-items:center;justify-content:center;background:#0b1220}
+.fpThumb img{width:100%;height:100%;object-fit:contain;display:block}  /* whole picture, never cropped */
+.fpThumb .fpCap{padding:5px 7px;font-size:11.5px;line-height:1.25;background:var(--ds-surface);color:var(--ds-ink-2);border-top:1px solid var(--ds-line);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-height:24px}
+.fpThumb .fpTag{position:absolute;top:6px;left:6px;font:800 10.5px/1 var(--ds-font);padding:4px 7px;border-radius:999px;background:rgba(17,24,39,.85);color:#fff;letter-spacing:.02em}
+.fpThumb .fpTag.after{background:#067647}.fpThumb .fpTag.before{background:#b54708}
+.fpThumb .fpMarks{position:absolute;top:6px;right:6px;font:800 10.5px/1 var(--ds-font);padding:4px 7px;border-radius:999px;background:rgba(180,35,24,.9);color:#fff}
+.fpThumb .fpState{position:absolute;left:6px;right:6px;bottom:30px;display:flex;justify-content:center}
+.fpThumb.fpBroken{cursor:pointer}.fpThumb .fpBrokenMsg{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:#fecdca;padding:8px;text-align:center}
+.fpThumb.fpLoading .fpImg{background:#1f2937}
+.fpAdd{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;border:1px dashed var(--ds-line-strong);border-radius:var(--ds-radius-sm);background:var(--ds-surface);color:var(--ds-ink-2);font:700 var(--ds-text-sm)/1.2 var(--ds-font);min-height:112px;cursor:pointer;padding:8px}
+.fpNote{grid-column:1/-1;font-size:var(--ds-text-sm);color:var(--ds-muted)}
+/* Photo picker in the finding form */
+.fpPicker{display:grid;gap:var(--ds-space-2)}
+.fpPickRow{display:grid;grid-template-columns:72px minmax(0,1fr) 112px 40px;gap:var(--ds-space-2);align-items:center;padding:6px;border:1px solid var(--ds-line);border-radius:var(--ds-radius-sm);background:var(--ds-surface)}
+.fpPickRow img{width:72px;height:54px;object-fit:contain;background:#0b1220;border-radius:6px}
+.fpPickRow input,.fpPickRow select{min-height:40px!important;font-size:14px!important}
+.fpPickButtons{display:flex;gap:var(--ds-space-2);flex-wrap:wrap}
+@media(max-width:560px){.fpPickRow{grid-template-columns:64px minmax(0,1fr) 40px}.fpPickRow select{grid-column:2/3}.fpGallery{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* v24.69.0: thumbnail = image button + status chip + action (no nested buttons) */
+.fpWrap{margin-top:var(--ds-space-2)}
+.fpWrap .fpAddBtn{margin-top:var(--ds-space-2)}
+.fpThumb .fpImg{border:0;margin:0;padding:0;min-height:0;width:100%;border-radius:0;cursor:zoom-in;color:#cbd5e1;box-shadow:none}
+.fpThumb .fpImg:hover{background:#0b1220}
+.fpThumb .fpState{flex-direction:column;align-items:center;gap:4px;pointer-events:none}
+.fpThumb .fpState>*{pointer-events:auto}
+.fpThumb .fpState .ds-chip{box-shadow:var(--ds-shadow)}
+.fpThumb .fpState .ds-btn{min-height:30px;padding:0 10px}
+.fpThumb[data-fp-status="uploading"] .fpImg img,.fpThumb[data-fp-status="saving"] .fpImg img{opacity:.75}
+.fpCmpGrid{display:grid;grid-template-columns:1fr 1fr;gap:var(--ds-space-3)}
+.fpCmpFig{margin:0;display:grid;gap:6px}
+.fpCmpFig figcaption{font-size:var(--ds-text-sm);color:var(--ds-ink-2)}
+.fpCmpImg{position:relative;display:block;width:100%;aspect-ratio:4/3;padding:0;border:1px solid var(--ds-line);border-radius:var(--ds-radius-sm);background:#0b1220;overflow:hidden;cursor:zoom-in;min-height:0}
+.fpCmpImg img{position:relative;width:100%;height:100%;object-fit:contain;display:block}
+@media(max-width:560px){.fpCmpGrid{grid-template-columns:1fr}}
+.fpThumb .fpState .ds-chip{max-width:100%;white-space:normal;text-align:center;line-height:1.15}
+.fpPickButtons label.ds-btn{display:inline-flex;margin:0;font:600 var(--ds-text-md)/1.1 var(--ds-font);color:var(--ds-ink-2)}
