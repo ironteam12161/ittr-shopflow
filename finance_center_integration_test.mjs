@@ -12,6 +12,7 @@ import {serviceStatus,cleanInspectionFields,renderInspectionTemplate} from './co
 import {PDFDocument as PdfLib} from 'pdf-lib';
 import {validTranslation,parseBatchTranslations} from './translation_guard.mjs';
 import {cleanMiles,parseZelleEmail,isBankZelleNotice,classifyGmailMessage,setAsideNonBankZelle,parseVendorBillEmail,scoreZelleMatch,encryptToken,decryptToken,tireFeeQuantities,estimateTotals,vendorNameFromSender} from './finance_center.mjs';
+import {dbSuiteGuard} from './test_harness.mjs';
 
 const assert=(v,label)=>{if(!v)throw new Error(label)};
 const near=(a,b,label)=>{if(Math.abs(Number(a)-Number(b))>0.005)throw new Error(`${label}: expected ${b}, got ${a}`)};
@@ -78,7 +79,7 @@ const near=(a,b,label)=>{if(Math.abs(Number(a)-Number(b))>0.005)throw new Error(
  console.log('PASS finance parsers: Zelle (in/out), vendor bills, match scoring, token crypto, tire quantities, estimate totals');
 }
 
-if(process.env.ITTR_LANGUAGE_TEST_DB!=='1'){console.log('SKIP finance center DB integration: disposable DB flag is not enabled');process.exit(0)}
+dbSuiteGuard('finance center DB integration'); // v24.67.0: any disposable-DB flag; a required suite that cannot run fails (test_harness.mjs)
 const url=String(process.env.DATABASE_URL||'');if(!url)throw new Error('DATABASE_URL is required');
 const db=new pg.Pool({connectionString:url,ssl:false});
 const adminUser='finadmin',adminPass='CI-Finance-Admin-2026!',mechUser='finmech',mechPass='CI-Finance-Mech-2026!';

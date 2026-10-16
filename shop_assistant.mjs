@@ -19,12 +19,34 @@ export function assistantRole(user) {
   const can = key => role === 'admin' || (role === 'manager' && user?.permissions?.[key] === true);
   return {
     role, manager, username: lc(user?.username), can,
-    financial: can('financials'),
+    financial: can('financials'), // dollar amounts (see assistantCan 'money')
   };
 }
-// Manager-only tools and the permission each needs (same as the matching page).
-const TOOL_PERMISSION = { search_customers: 'customers', invoices: 'invoices', vendor_bills: 'invoices', cores_owed: 'inventory' };
-const toolAllowed = (name, who) => !TOOL_PERMISSION[name] || !!who.can?.(TOOL_PERMISSION[name]);
+// v24.67.0 data policy for every lookup (the same permissions as the pages/APIs):
+//   invoices  — invoice records anywhere: invoice numbers (ITTR and Fullbay), dates, statuses, lines   (Invoices page)
+//   money     — dollar amounts: invoice totals/balances, part prices, core charges, vendor spend      ("Financial totals")
+//   customers — customer contact details (phone, email, contact, DOT, address)                         (Customers page)
+//   vendors   — vendor bills (Bills page needs Invoices)
+//   inventory — cores owed to vendors                                                                   (Parts page)
+// Owner: everything. Mechanics: their own work orders, repair history without invoice data, parts stock, manuals.
+export function assistantCan(who, what) {
+  if (!who || typeof who.can !== 'function') return false;
+  switch (what) {
+    case 'invoices': case 'vendors': return who.can('invoices');
+    case 'money': return who.can('financials');
+    case 'customers': return who.can('customers');
+    case 'inventory': return who.can('inventory');
+    default: return false;
+  }
+}
+// Manager-only tools and what each needs. A tool the account may not use is not offered to the model AND is refused
+// if the model asks for it anyway (runShopAssistant), on top of the check inside the tool itself.
+const TOOL_PERMISSION = { search_customers: ['customers'], invoices: ['invoices'], vendor_bills: ['vendors', 'money'], cores_owed: ['inventory'] };
+const toolAllowed = (name, who) => (TOOL_PERMISSION[name] || []).every(p => assistantCan(who, p));
+export function assistantToolOffered(name, who) {
+  const t = ASSISTANT_TOOLS.find(x => x.name === name);
+  return !!t && (!!who?.manager || !/^MANAGERS ONLY/.test(t.description)) && toolAllowed(name, who);
+}
 
 function woMechanics(w) { return [w?.mechanic, ...(Array.isArray(w?.helpers) ? w.helpers : [])].map(lc).filter(Boolean); }
 function woVisible(w, who) { return who.manager || woMechanics(w).includes(who.username); }
@@ -34,7 +56,7 @@ function woSummary(w, who) {
     workOrder: w.id, unit: w.unitGenerated ? '' : (w.unit || ''), customer: w.customer || '', status: w.status || '',
     mechanic: w.mechanic || '', helpers: Array.isArray(w.helpers) ? w.helpers : [], date: w.date || '', completedAt: day(w.completedAt),
     jobs: tasks.map(t => ({ job: clip(t.t, 120), done: !!t.done, runningBy: t.runningBy || '', paused: !!t.paused,
-      parts: (Array.isArray(t.parts) ? t.parts : []).map(p => ({ partNumber: p.partNumber || '', qty: num(p.qty), ...(who.financial ? { price: num(p.unitPrice) } : {}) })) })),
+      parts: (Array.isArray(t.parts) ? t.parts : []).map(p => ({ partNumber: p.partNumber || '', qty: num(p.qty), ...(assistantCan(who, 'money') ? { price: num(p.unitPrice) } : {}) })) })),
     inspection: w.inspection?.required ? { type: w.inspection.type, status: w.inspection.status } : undefined,
   };
 }
@@ -96,17 +118,17 @@ export function createAssistantTools({ db, who, getShopflow, searchManuals, read
       const kwSql = terms.length ? `AND (${terms.map((_, i) => `lower(coalesce(complaint,'')||' '||coalesce(actual_correction,'')||' '||coalesce(component,'')||' '||coalesce(system,'')) LIKE $${i + 3}`).join(' OR ')})` : '';
       const fb = (await db.query(`SELECT service_order,invoice_number,action_completed_at,unit_miles,hours,complaint,actual_correction,component,tech FROM fullbay_service_history
         WHERE (lower(coalesce(unit_number,''))=lower($1) OR ($2<>'' AND upper(coalesce(vin,''))=upper($2))) ${kwSql} ORDER BY action_completed_at DESC NULLS LAST LIMIT ${lim}`,
-        [u.unit_number || '', u.vin || '', ...terms.map(t => `%${t}%`)])).rows.map(h => ({ date: day(h.action_completed_at), serviceOrder: h.service_order, invoice: h.invoice_number, miles: h.unit_miles, hours: h.hours, complaint: clip(h.complaint, 160), correction: clip(h.actual_correction, 200), tech: h.tech }));
-      let inv = [];
-      if (who.financial || who.manager) {
+        [u.unit_number || '', u.vin || '', ...terms.map(t => `%${t}%`)])).rows.map(h => ({ date: day(h.action_completed_at), serviceOrder: h.service_order, ...(assistantCan(who, 'invoices') ? { invoice: h.invoice_number } : {}), miles: h.unit_miles, hours: h.hours, complaint: clip(h.complaint, 160), correction: clip(h.actual_correction, 200), tech: h.tech }));
+      let inv;
+      if (assistantCan(who, 'invoices')) {
         const ir = await db.query(`SELECT i.invoice_number,i.invoice_date,i.status,i.mileage,i.total,string_agg(DISTINCT l.description,' | ') jobs FROM customer_invoices i LEFT JOIN customer_invoice_lines l ON l.invoice_id=i.id
           WHERE (i.unit_id::text=$1 OR lower(coalesce(i.unit_number,''))=lower($2) OR ($3<>'' AND upper(coalesce(i.vin,''))=upper($3))) AND i.status<>'void' GROUP BY i.id ORDER BY i.invoice_date DESC NULLS LAST LIMIT ${lim}`, [String(u.id), u.unit_number || '', u.vin || '']);
-        inv = ir.rows.filter(r => match(r.jobs)).map(r => ({ invoice: r.invoice_number, date: day(r.invoice_date), status: r.status, mileage: r.mileage, jobs: clip(r.jobs, 300), ...(who.financial ? { total: num(r.total) } : {}) }));
+        inv = ir.rows.filter(r => match(r.jobs)).map(r => ({ invoice: r.invoice_number, date: day(r.invoice_date), status: r.status, mileage: r.mileage, jobs: clip(r.jobs, 300), ...(assistantCan(who, 'money') ? { total: num(r.total) } : {}) }));
       }
       let insp = [];
       try { insp = (await db.query(`SELECT work_order_id,inspection_type,status,mechanic_username,completed_at,summary,findings FROM mechanic_inspections WHERE unit_id=$1 OR lower(coalesce(unit_number_snapshot,''))=lower($2) ORDER BY coalesce(completed_at,updated_at) DESC LIMIT 5`, [u.id, u.unit_number || ''])).rows
         .map(x => ({ workOrder: x.work_order_id, date: day(x.completed_at), type: x.inspection_type, mechanic: x.mechanic_username, repair: num(x.summary?.repair), attention: num(x.summary?.attention), findings: (Array.isArray(x.findings) ? x.findings : []).slice(0, 8).map(f => clip(`${f.status}: ${f.label || f.id}${f.note ? ` — ${f.note}` : ''}`, 140)) })); } catch (_) {}
-      return { truck: { unit: u.unit_number, vin: u.vin, vehicle: [u.year, u.make, u.model].filter(Boolean).join(' '), customer: u.customer_name, mileage: u.mileage != null ? num(u.mileage) : null, engine: u.engine || '' }, keyword: kw || undefined, ittrWorkOrders: wos, ittrInvoices: inv, fullbayHistory: fb, inspections: insp };
+      return { truck: { unit: u.unit_number, vin: u.vin, vehicle: [u.year, u.make, u.model].filter(Boolean).join(' '), customer: u.customer_name, mileage: u.mileage != null ? num(u.mileage) : null, engine: u.engine || '' }, keyword: kw || undefined, ittrWorkOrders: wos, ...(inv ? { ittrInvoices: inv } : { ittrInvoices: 'not available to this account' }), fullbayHistory: fb, inspections: insp };
     },
 
     async search_parts({ query, low_stock_only = false }) {
@@ -115,7 +137,7 @@ export function createAssistantTools({ db, who, getShopflow, searchManuals, read
       const r = await db.query(`SELECT part_number,description,manufacturer,quantity,allocated,location,uom,has_core,default_core_charge,price,reorder_point,on_order FROM fullbay_import_parts
         WHERE ${where.length ? where.join(' AND ') : 'TRUE'} ${low_stock_only ? "AND coalesce(reorder_point,0)>0 AND coalesce(quantity,0)-coalesce(allocated,0)<=reorder_point" : ''}
         ORDER BY (lower(part_number)=lower($${terms.length + 1})) DESC, coalesce(quantity,0) DESC LIMIT 12`, [...terms.map(t => `%${t}%`), String(query || '').trim()]);
-      return { found: r.rowCount, parts: r.rows.map(p => ({ partNumber: p.part_number, description: clip(p.description, 120), brand: p.manufacturer || '', onHand: num(p.quantity), reserved: num(p.allocated), available: num(p.quantity) - num(p.allocated), location: p.location || '', unit: p.uom || '', onOrder: num(p.on_order) || undefined, hasCore: !!p.has_core || undefined, ...(who.financial ? { price: num(p.price), coreCharge: p.has_core ? num(p.default_core_charge) : undefined } : {}) })) };
+      return { found: r.rowCount, parts: r.rows.map(p => ({ partNumber: p.part_number, description: clip(p.description, 120), brand: p.manufacturer || '', onHand: num(p.quantity), reserved: num(p.allocated), available: num(p.quantity) - num(p.allocated), location: p.location || '', unit: p.uom || '', onOrder: num(p.on_order) || undefined, hasCore: !!p.has_core || undefined, ...(assistantCan(who, 'money') ? { price: num(p.price), coreCharge: p.has_core ? num(p.default_core_charge) : undefined } : {}) })) };
     },
 
     async work_orders({ status = 'open', mechanic = '', unit = '', customer = '' }) {
@@ -144,8 +166,8 @@ export function createAssistantTools({ db, who, getShopflow, searchManuals, read
       const fb = await db.query(`SELECT unit_number,customer_name,action_completed_at,unit_miles,complaint,actual_correction,tech,invoice_number FROM fullbay_service_history
         WHERE ${terms.map((_, i) => `lower(coalesce(complaint,'')||' '||coalesce(actual_correction,'')||' '||coalesce(component,'')||' '||coalesce(system,'')) LIKE $${i + 1}`).join(' AND ')} ${since}
         ORDER BY action_completed_at DESC NULLS LAST LIMIT 12`, params);
-      const out = { fullbay: fb.rows.map(h => ({ unit: h.unit_number, customer: who.manager ? h.customer_name : undefined, date: day(h.action_completed_at), miles: h.unit_miles, complaint: clip(h.complaint, 140), correction: clip(h.actual_correction, 180), tech: h.tech, invoice: who.manager ? h.invoice_number : undefined })) };
-      if (who.manager) {
+      const out = { fullbay: fb.rows.map(h => ({ unit: h.unit_number, customer: who.manager ? h.customer_name : undefined, date: day(h.action_completed_at), miles: h.unit_miles, complaint: clip(h.complaint, 140), correction: clip(h.actual_correction, 180), tech: h.tech, ...(assistantCan(who, 'invoices') ? { invoice: h.invoice_number } : {}) })) };
+      if (assistantCan(who, 'invoices')) {
         const il = await db.query(`SELECT i.invoice_number,i.unit_number,i.customer_name,i.invoice_date,l.description FROM customer_invoice_lines l JOIN customer_invoices i ON i.id=l.invoice_id
           WHERE i.status<>'void' AND ${terms.map((_, i) => `lower(coalesce(l.description,'')||' '||coalesce(l.part_number,'')) LIKE $${i + 1}`).join(' AND ')} ORDER BY i.invoice_date DESC NULLS LAST LIMIT 10`, terms.map(t => `%${t}%`));
         out.ittrInvoices = il.rows.map(r => ({ invoice: r.invoice_number, unit: r.unit_number, customer: r.customer_name, date: day(r.invoice_date), line: clip(r.description, 140) }));
@@ -163,12 +185,13 @@ export function createAssistantTools({ db, who, getShopflow, searchManuals, read
 
     async invoices({ query = '', unpaid_only = false }) {
       if (!toolAllowed('invoices', who)) return denied;
+      const money = assistantCan(who, 'money');
       const terms = likeTerms(query);
       const r = await db.query(`SELECT invoice_number,customer_name,unit_number,status,invoice_date,due_date,total,balance_due FROM customer_invoices
         WHERE status<>'void' ${unpaid_only ? "AND coalesce(balance_due,0)>0 AND status<>'draft'" : ''} ${terms.length ? `AND ${terms.map((_, i) => `lower(coalesce(invoice_number,'')||' '||coalesce(customer_name,'')||' '||coalesce(unit_number,'')) LIKE $${i + 1}`).join(' AND ')}` : ''}
         ORDER BY invoice_date DESC NULLS LAST, id DESC LIMIT 15`, terms.map(t => `%${t}%`));
-      const rows = r.rows.map(i => ({ invoice: i.invoice_number, customer: i.customer_name, unit: i.unit_number, status: i.status, date: day(i.invoice_date), due: day(i.due_date), total: num(i.total), balance: num(i.balance_due) }));
-      return { count: rows.length, totalBalance: Math.round(rows.reduce((a, x) => a + x.balance, 0) * 100) / 100, invoices: rows };
+      const rows = r.rows.map(i => ({ invoice: i.invoice_number, customer: i.customer_name, unit: i.unit_number, status: i.status, date: day(i.invoice_date), due: day(i.due_date), ...(money ? { total: num(i.total), balance: num(i.balance_due) } : {}) }));
+      return { count: rows.length, ...(money ? { totalBalance: Math.round(rows.reduce((a, x) => a + x.balance, 0) * 100) / 100 } : { amounts: 'not available to this account' }), invoices: rows };
     },
 
     async vendor_bills({ vendor = '', days = 90, unpaid_only = false }) {
@@ -189,6 +212,7 @@ export function createAssistantTools({ db, who, getShopflow, searchManuals, read
       const r = await db.query(`SELECT c.vendor_name_snapshot vendor,p.part_number,p.description,c.open_quantity,c.unit_core_charge,c.due_date,c.purchase_reference FROM part_core_obligations c JOIN fullbay_import_parts p ON p.id=c.part_id
         WHERE c.status NOT IN ('closed','credited') AND c.open_quantity>0 ${terms.length ? `AND ${terms.map((_, i) => `lower(coalesce(c.vendor_name_snapshot,'')||' '||coalesce(p.part_number,'')||' '||coalesce(p.description,'')) LIKE $${i + 1}`).join(' AND ')}` : ''} ORDER BY c.due_date NULLS LAST LIMIT 20`, terms.map(t => `%${t}%`));
       const rows = r.rows.map(x => ({ vendor: x.vendor, partNumber: x.part_number, description: clip(x.description, 80), owed: num(x.open_quantity), value: Math.round(num(x.open_quantity) * num(x.unit_core_charge) * 100) / 100, due: day(x.due_date), reference: x.purchase_reference || '' }));
+      if (!assistantCan(who, 'money')) return { coresOwed: rows.reduce((a, x) => a + x.owed, 0), items: rows.map(({ value, ...x }) => x) };
       return { coresOwed: rows.reduce((a, x) => a + x.owed, 0), value: Math.round(rows.reduce((a, x) => a + x.value, 0) * 100) / 100, items: rows };
     },
 
@@ -223,7 +247,7 @@ HOW TO WORK:
 - TORQUE / SPECS / PROCEDURES / WIRING: call manual_search (English terms; pass unit_id when a truck is known), then manual_read on the best 1–4 pages. Give the exact value with units and cite it as: Manual title, page N. Never give a torque or spec from memory; if no manual page has it, say the shop library does not have it yet and name the OEM source to check (e.g. Detroit DDCSP, Cummins QuickServe, PACCAR/Freightliner service site, Eaton, Meritor, Bendix).
 - Safety-critical values (wheel nuts, brakes, steering, suspension, fifth wheel): always quote exactly as written in the manual, including sequences and re-torque notes.
 - You cannot change records. If the user asks you to add a part, create or close a work order, tell them exactly where to do it in ShopFlow.
-- ${who.manager ? `This user is a ${who.role === 'admin' ? 'owner' : 'manager'}. Allowed: ${['customers', 'invoices', 'inventory', 'financials'].filter(k => who.can(k)).join(', ') || 'work orders and parts only'}. If a lookup says the account has no access, tell the user to ask the owner.` : 'This user is a mechanic: do not reveal prices, invoice totals or customer contact details; if asked, say a manager can see that.'}
+- ${who.manager ? `This user is a ${who.role === 'admin' ? 'owner' : 'manager'}. Allowed: ${[['customers', 'customer contact details'], ['invoices', 'invoices and vendor bills'], ['inventory', 'cores'], ['money', 'dollar amounts']].filter(([k]) => assistantCan(who, k)).map(([, l]) => l).join(', ') || 'work orders, repair history and parts stock only'}. If a lookup says the account has no access, tell the user to ask the owner.` : 'This user is a mechanic: do not reveal prices, invoice totals or customer contact details; if asked, say a manager can see that.'}
 STYLE: Short, practical, mechanic-friendly. Lead with the answer. Use short bullets for lists. Mention work order, invoice or service-order numbers and dates so the user can find the record. No filler.`;
 }
 
@@ -236,7 +260,7 @@ export async function runShopAssistant({ question, history = [], who, tools, cha
     if (role && content) messages.push({ role, content });
   }
   messages.push({ role: 'user', content: extraContext ? `${question}\n\n(${extraContext})` : question });
-  const toolDefs = ASSISTANT_TOOLS.filter(t => (who.manager || !/^MANAGERS ONLY/.test(t.description)) && toolAllowed(t.name, who)).map(t => ({ type: 'function', function: t }));
+  const toolDefs = ASSISTANT_TOOLS.filter(t => assistantToolOffered(t.name, who)).map(t => ({ type: 'function', function: t }));
   const usage = { prompt: 0, completion: 0, rounds: 0 }, used = [];
   for (let round = 0; round <= MAX_ROUNDS; round++) {
     const res = await chat(messages, round === MAX_ROUNDS ? undefined : toolDefs);
@@ -246,10 +270,12 @@ export async function runShopAssistant({ question, history = [], who, tools, cha
     if (!calls.length) return { answer: String(msg.content || '').trim(), usage, used };
     messages.push({ role: 'assistant', content: msg.content || '', tool_calls: calls });
     for (const call of calls.slice(0, 6)) {
-      const name = call?.function?.name, fn = tools[name];
+      const name = call?.function?.name, fn = Object.prototype.hasOwnProperty.call(tools, name) ? tools[name] : null;
       let args = {}; try { args = JSON.parse(call?.function?.arguments || '{}') || {}; } catch (_) {}
       let result;
-      try { result = fn ? await fn(args) : { error: `Unknown tool ${name}` }; } catch (e) { result = { error: `Lookup failed: ${clip(e?.message, 160)}` }; }
+      // A tool that was not offered to this account is refused here, whatever the model asks for.
+      if (fn && !assistantToolOffered(name, who)) result = { error: 'This account does not have access to this information. Ask the owner for access.' };
+      else try { result = fn ? await fn(args) : { error: `Unknown tool ${name}` }; } catch (e) { result = { error: `Lookup failed: ${clip(e?.message, 160)}` }; }
       used.push(name);
       let text = JSON.stringify(result); if (text.length > MAX_TOOL_CHARS) text = `${text.slice(0, MAX_TOOL_CHARS)}…(truncated)`;
       messages.push({ role: 'tool', tool_call_id: call.id, content: text });

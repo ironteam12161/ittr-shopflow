@@ -1,11 +1,9 @@
 import {spawn} from 'node:child_process';
 import net from 'node:net';
 import pg from 'pg';
+import {dbSuiteGuard} from './test_harness.mjs';
 
-if(process.env.ITTR_LANGUAGE_TEST_DB!=='1'&&process.env.ITTR_INVENTORY_TEST_DB!=='1'){
- console.log('SKIP inventory invoice integration test: disposable DB flag is not enabled');
- process.exit(0);
-}
+dbSuiteGuard('inventory invoice integration test'); // v24.67.0: any disposable-DB flag; a required suite that cannot run fails (test_harness.mjs)
 const url=String(process.env.DATABASE_URL||'');
 if(!url)throw new Error('DATABASE_URL is required for inventory invoice integration test');
 const {Pool}=pg;

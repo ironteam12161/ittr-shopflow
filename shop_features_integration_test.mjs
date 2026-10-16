@@ -7,9 +7,10 @@ import {findComebacks,unitKey} from './warranty.mjs';
 import {totpCode,totpStep} from './security_mfa.mjs';
 import {repairWorkOrderLinks,sameName} from './link_repair.mjs';
 import {assistantRole,createAssistantTools,runShopAssistant} from './shop_assistant.mjs';
+import {dbSuiteGuard} from './test_harness.mjs';
 await import('./public/sync-merge.js');const rebaseShopflow=globalThis.ittrRebaseShopflow; // browser script: it puts the function on the global object
 
-if(process.env.ITTR_LANGUAGE_TEST_DB!=='1'&&process.env.ITTR_OPERATIONS_TEST_DB!=='1'){console.log('SKIP shop features integration test: disposable DB flag is not enabled');process.exit(0)}
+dbSuiteGuard('shop features integration test'); // v24.67.0: any disposable-DB flag; a required suite that cannot run fails (test_harness.mjs)
 const url=String(process.env.DATABASE_URL||'');if(!url)throw new Error('DATABASE_URL is required');
 const {Pool}=pg,schema=`ittr_shopfeat_${process.pid}_${Date.now()}`.replace(/[^a-z0-9_]/g,''),bootstrap=new Pool({connectionString:url,ssl:false});
 await bootstrap.query(`CREATE SCHEMA ${schema}`);await bootstrap.end();
@@ -24,6 +25,16 @@ try{
  await start();
  const login=async(u,p)=>(await request('/api/auth/login',{method:'POST',body:{username:u,password:p},allowError:true}));
  const owner=(await login('opsadmin','CI-Ops-Admin-2026!')).token;ok(owner,'owner signs in');
+ // ---------------------------------------------------------------- v24.67.0 parts search trigram indexes
+ const trgmNames=['idx_fullbay_parts_number_trgm','idx_fullbay_parts_description_trgm','idx_fullbay_parts_manufacturer_trgm','idx_fullbay_parts_vendor_trgm','idx_fullbay_parts_location_trgm'];
+ const waitIndexes=async()=>{for(let i=0;i<100;i++){const h=await request('/api/health');if(h.partsSearchIndexes&&h.partsSearchIndexes!=='pending')return h.partsSearchIndexes;await sleep(100)}return 'pending'};
+ const validTrgm=async()=>(await db.query(`SELECT c.relname FROM pg_class c JOIN pg_index i ON i.indexrelid=c.oid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=current_schema() AND i.indisvalid AND c.relname=ANY($1)`,[trgmNames])).rowCount;
+ eq(await waitIndexes(),'ready','parts search indexes reported ready (search_path without the extension schema)');
+ eq(await validTrgm(),5,'all five trigram indexes exist and are valid in this schema');
+ ok(!/gin_trgm_ops" does not exist/.test(output),'no operator-class error at startup');
+ const plan=(await db.query(`EXPLAIN SELECT id FROM fullbay_import_parts WHERE part_number ILIKE '%ABC123%'`)).rows.map(r=>Object.values(r)[0]).join(' ');
+ ok(/trgm|Bitmap|Seq Scan/.test(plan),'search query plans');
+ console.log('PASS parts search: trigram indexes built with the extension schema qualified; health reports ready');
  await request('/api/admin/users',{method:'POST',token:owner,body:{username:'mech1',display:'Mech One',password:'Mechanic-Pass-1'}});
  const mech=(await login('mech1','Mechanic-Pass-1')).token;
  await request('/api/admin/managers',{method:'POST',token:owner,body:{username:'mgr0',display:'Manager Zero',password:'Manager-Pass-2026',permissions:{invoices:true}}});const mgt0=(await login('mgr0','Manager-Pass-2026')).token;
@@ -363,7 +374,10 @@ try{
  console.log('PASS work orders: one row per work order kept in sync by the database, recycle bin, owner restore');
  // ---------------------------------------------------------------- error alerts
  const alerts=[];const hook=http.createServer((req,res)=>{let b='';req.on('data',c=>b+=c);req.on('end',()=>{alerts.push(JSON.parse(b));res.end('ok')})});await new Promise(r=>hook.listen(0,'127.0.0.1',r));
+ // An index left INVALID by an interrupted build is rebuilt at the next start.
+ try{await db.query(`UPDATE pg_index SET indisvalid=false WHERE indexrelid=(SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relname='idx_fullbay_parts_vendor_trgm' AND n.nspname=current_schema())`)}catch(e){console.log('note: cannot mark an index invalid without superuser:',e.message)}
  Object.assign(process.env,{ALERT_WEBHOOK_URL:`http://127.0.0.1:${hook.address().port}/hook`,ALERT_WEBHOOK_ALLOW_HTTP:'1'});await stop();await start();
+ eq(await waitIndexes(),'ready','indexes ready after restart');eq(await validTrgm(),5,'invalid index rebuilt');
  const boom=await request('/api/invoices/not-a-number',{token:owner,allowError:true});ok(boom.status>=500&&boom.incident,'a server error shows an incident number');
  await request('/api/invoices/not-a-number',{token:owner,allowError:true});await new Promise(r=>setTimeout(r,400));
  ok(alerts.length===1&&alerts[0].text.includes(boom.incident)&&alerts[0].content===alerts[0].text,'one alert with the incident number (Slack and Discord format); the repeat is held back');

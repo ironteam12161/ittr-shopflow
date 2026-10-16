@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.66.0-REVIEW-20261015">
+<meta name="ittr-build" content="ITTR-24.67.0-SYNCSAFE-20261016">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -28,7 +28,7 @@
  P.removeItem=function(k){rm.call(this,k);if(this===sessionStorage&&keys[k])try{rm.call(localStorage,'ittr_app_'+k)}catch(e){}};
 }catch(e){}})();
 </script>
-<title>ITTR ShopFlow v24.66.0</title>
+<title>ITTR ShopFlow v24.67.0</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -64,6 +64,7 @@ form .row{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.field{margi
 .loginLogo{display:block;width:150px;height:150px;object-fit:contain;margin:-8px auto 6px}.loginBox h1,.loginBox>.muted{text-align:center}
 .loginPassWrap{position:relative}.loginPassWrap input{padding-right:72px!important}.loginPassShow{position:absolute;right:6px;top:50%;transform:translateY(-50%);min-height:34px!important;padding:4px 12px!important;font-size:13px!important;background:#f2f4f7!important;color:#344054!important;border:0!important;width:auto!important;border-radius:8px!important}
 body.loggedOut #shopAiFab,body.loggedOut #shopAiPanel{display:none!important}
+#ittrUpdateBar{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:2000;display:flex;align-items:center;gap:12px;background:#0f172a;color:#fff;padding:8px 10px 8px 16px;border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.3);font-size:14px;font-weight:700;max-width:calc(100vw - 24px)}#ittrUpdateBar[hidden]{display:none}#ittrUpdateBar button{min-height:34px!important;padding:4px 14px!important;width:auto!important}
 .aiMsgHead{display:flex;align-items:center;justify-content:space-between;gap:8px}.aiCopyBtn{min-height:26px!important;padding:2px 10px!important;font-size:12px!important;background:transparent!important;color:#475467!important;border:1px solid #d0d5dd!important;border-radius:8px!important;width:auto!important;box-shadow:none!important}.aiCopyBtn:hover{background:#f2f4f7!important}
 .aiMsgText ul,.aiMsgText ol{margin:4px 0 4px 20px;padding:0}.aiMsgText li{margin:2px 0}.aiMsgText code{background:#f2f4f7;border-radius:4px;padding:0 4px;font-size:.92em}.aiMsgText .aiGap{height:6px}
 @media(max-height:640px){.loginLogo{width:96px;height:96px}}
@@ -834,7 +835,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.66.0">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.67.0">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -851,7 +852,8 @@ body.invoiceWorkspaceMode .invoiceRateWrap{display:grid!important;grid-template-
 @media(max-width:900px){body.invoiceWorkspaceMode .invoiceGridHeader{display:none!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow{grid-template-columns:1fr 1fr!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceGridItemLabel,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLaborDescription{grid-column:1/-1!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceQtyUnit,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceTaxCell,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLineNet{grid-column:1!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLaborRateField,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceDiscountControl,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceRowActions{grid-column:2!important}}
 </style>
 <link rel="stylesheet" href="./inspection-workflow.css?v=3">
-<script src="./sync-merge.js?v=24.66.0"></script>
+<script src="./sync-merge.js?v=24.67.0"></script>
+<script src="./sync-queue.js?v=24.67.0"></script>
 <style id="ittrNavLayoutV2">
 /* v24.39.0 desktop navigation: one full-width tab strip grouped by workflow (Shop · Money · Records · Operations). */
 @media(min-width:761px){
@@ -1001,7 +1003,7 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 </style>
 </head>
 <body class="loggedOut">
-<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.66.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.67.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1578,90 +1580,50 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.66.0';
+const FRONTEND_VERSION='24.67.0';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
-let cloudReady=false,cloudSaving={},cloudVersions={},cloudPending=new Set(),cloudRefreshBusy=false;
-const PERSISTENT_SYNC_KEY="ittr_sync_queue_v2";
-function readPersistentSyncQueue(){try{return JSON.parse(localStorage.getItem(PERSISTENT_SYNC_KEY)||"{}")||{}}catch(_){return {}}}
-function writePersistentSyncQueue(q){localStorage.setItem(PERSISTENT_SYNC_KEY,JSON.stringify(q||{}))}
-function persistentSyncCount(){return Object.keys(readPersistentSyncQueue()).length}
-function quarantineUnsafeLegacySyncQueue(){
- try{
-  const q=readPersistentSyncQueue(),safe={},unsafe={};
-  for(const [key,item] of Object.entries(q||{})){if(Number(item?.baseVersion||0)>0)safe[key]=item;else unsafe[key]=item}
-  const count=Object.keys(unsafe).length;if(!count)return 0;
-  let archive={};try{archive=JSON.parse(localStorage.getItem("ittr_sync_queue_quarantine_v1")||"{}")||{}}catch(_){archive={}}
-  archive[new Date().toISOString()]={reason:"legacy_missing_base_version",items:unsafe};
-  const keys=Object.keys(archive).sort();while(keys.length>8){delete archive[keys.shift()]}
-  localStorage.setItem("ittr_sync_queue_quarantine_v1",JSON.stringify(archive));
-  writePersistentSyncQueue(safe);for(const key of Object.keys(unsafe)){cloudPending.delete(key);if(cloudSaving[key]){clearTimeout(cloudSaving[key]);cloudSaving[key]=null}}return count;
- }catch(_){return 0}
+let cloudReady=false,cloudVersions={},cloudRefreshBusy=false;
+/* v24.67.0: pending saves live in public/sync-queue.js (per account, as change sets, removed only once saved). */
+const ITTR_LIVE={users:()=>USERS,shopflow:()=>state,pro:()=>PRO};
+function ittrSetLive(key,obj){
+ if(key==="shopflow"){state=obj&&typeof obj==="object"?obj:{workorders:[],issues:[]};try{window.reapplyInspectionEdits?.()}catch(_){}try{localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state))}catch(_){}}
+ else if(key==="users"){USERS=obj||{};try{localStorage.setItem("ittr_users_v1",JSON.stringify(USERS))}catch(_){}}
+ else if(key==="pro"){PRO=Object.assign({vehicles:[],maintenance:[],audit:[],notifications:[],delays:[]},obj||{});for(const k of ['vehicles','maintenance','audit','notifications','delays'])if(!Array.isArray(PRO[k]))PRO[k]=[];try{localStorage.setItem(PRO_KEY,JSON.stringify(PRO))}catch(_){}}
+ clearTimeout(ittrSetLive.t);ittrSetLive.t=setTimeout(()=>{try{if(session)render()}catch(_){}},0);
 }
-function persistQueuedState(key,payload){const q=readPersistentSyncQueue();q[key]={payload,queuedAt:new Date().toISOString(),baseVersion:Number(cloudVersions[key]||0)};writePersistentSyncQueue(q);try{navigator.serviceWorker?.ready?.then(r=>r.sync?.register?.('ittr-sync')).catch(()=>{})}catch(_){}}
-function removePersistedState(key){const q=readPersistentSyncQueue();delete q[key];writePersistentSyncQueue(q)}
-function reconcileCloudPendingGhosts(){
- try{
-  const q=readPersistentSyncQueue();
-  for(const key of [...cloudPending]){
-   if(!q[key]&&!cloudSaving[key])cloudPending.delete(key);
-  }
- }catch(_){}
+const ittrSync=window.ittrCreateSyncEngine({
+ storage:localStorage,user:()=>session?.username||"",online:()=>navigator.onLine,
+ getLive:key=>ITTR_LIVE[key]?.(),setLive:ittrSetLive,
+ serverVersion:key=>Number(cloudVersions[key]||0),setServerVersion:(key,v)=>{cloudVersions[key]=Number(v||0)},
+ allowKey:key=>session?.role==="mechanic"?key==="shopflow":(key!=="users"||session?.role==="admin"),
+ fetchState:()=>apiJSON("/api/state"),
+ put:(key,json,expected)=>apiJSON(`/api/state/${key}`,{method:"PUT",body:`{"payload":${json},"expectedVersion":${Number(expected)}}`}),
+ onStatus:()=>updateSyncQueueBadge(),
+ onQueued:()=>{try{navigator.serviceWorker?.ready?.then(r=>r.sync?.register?.('ittr-sync')).catch(()=>{})}catch(_){}},
+ onConflicts:(key,list)=>showToast(currentLanguage==="uk"?`Інший пристрій змінив те саме одночасно (${list.slice(0,3).join(", ")}). Залишено його версію — перевірте свою зміну там.`:`Another device changed the same thing at the same time (${list.slice(0,3).join(", ")}). Their version was kept — please check your change there.`,"warning",9000),
+ onNotice:(kind,info)=>{if(kind==="refused")showToast(`Cloud sync: ${info.message} This change was set aside on this device.`,"warning",9000);else if(kind==="retrying")showToast(currentLanguage==="uk"?"Ще не збережено: інші пристрої зберігали одночасно. Ваші зміни на цьому пристрої — повторюємо.":"Not saved yet: other devices kept saving at the same time. Your changes are kept on this device and will be retried.","warning",8000)}
+});
+window.ittrSync=ittrSync;
+// A server action returned the new shop record (job timer, self-start, scanned part…): it becomes the confirmed
+// copy, and anything still queued on this device is put back on top instead of being thrown away.
+function ittrAdoptServerShopflow(payload,version){
+ if(!payload||typeof payload!=="object")return;
+ const item=ittrSync.item("shopflow");
+ ittrSync.setBase("shopflow",payload,version??cloudVersions.shopflow);if(version!=null)cloudVersions.shopflow=Number(version);
+ ittrSetLive("shopflow",item?window.ittrSyncMerge.applyChanges(payload,item.changes).payload:payload);
+ if(item)ittrSync.changed("shopflow");
 }
 function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
 async function previewInventoryRepair(){const box=document.getElementById('inventoryRepairResult');if(!box)return;box.innerHTML='<div class="muted">Checking…</div>';try{const d=await apiJSON('/api/inventory/repair/preview'),a=d.deletedInvoiceSales||[],b=d.stuckReservations||[];if(!a.length&&!b.length){box.innerHTML='<div class="notice">Nothing to repair — stock and reservations are consistent.</div>';return}
  box.innerHTML=`${a.length?`<b>Return to stock (invoice was deleted):</b><ul>${a.map(x=>`<li>${esc(x.partNumber||'')} ${esc(x.description||'')} — <b>+${Number(x.qty)}</b> <span class="muted">from ${esc(x.invoice)}</span></li>`).join('')}</ul>`:''}${b.length?`<b>Release stuck reservations (work order already invoiced):</b><ul>${b.map(x=>`<li>${esc(x.partNumber||'')} — ${Number(x.qty)} on WO #${esc(x.workOrderId)} ${esc(x.unit?`(Unit ${x.unit})`:'')}</li>`).join('')}</ul>`:''}<button onclick="applyInventoryRepair()">Apply repair</button>`}catch(e){box.innerHTML=`<div class="error">${esc(e.message||'Check failed.')}</div>`}}
 async function applyInventoryRepair(){if(!confirm('Apply these stock corrections? Every change is written to the part history.'))return;try{const d=await apiJSON('/api/inventory/repair/apply',{method:'POST',body:'{}'});alert(`Done. ${d.returned} return(s) to stock, ${d.released} reservation(s) released.`);previewInventoryRepair()}catch(e){alert(e.message||'Repair failed.')}}
 async function resetInventoryToZero(){const c=prompt('This sets the on-hand quantity of EVERY part to 0.\nUse it right before a full physical count.\n\nType RESET to confirm:');if(c==null)return;if(String(c).trim().toUpperCase()!=='RESET')return alert('Not reset — you did not type RESET.');try{const d=await apiJSON('/api/parts/inventory/reset-to-zero',{method:'POST',body:JSON.stringify({confirm:'RESET'})});alert(`Done. ${d.partsReset} part(s) set to 0. Start your count now.`);try{if(typeof refreshInventoryCount==='function')await refreshInventoryCount()}catch(_){}try{if(typeof render==='function')render()}catch(_){}}catch(e){alert(e.message||'Reset failed.')}}
-async function apiJSON(url,options={}){const normalizedBody=options.body&&typeof options.body==="object"&&!(options.body instanceof FormData)&&!(options.body instanceof Blob)?JSON.stringify(options.body):options.body;const opts={...options,body:normalizedBody,headers:authHeaders({"Content-Type":"application/json",...(options.headers||{})})};const r=await fetch(url,opts);let d={};try{d=await r.json()}catch(_){}if(r.status===401&&!url.includes("/api/auth/login")){cloudToken="";sessionStorage.removeItem("ittr_cloud_token");session=null;sessionStorage.removeItem("ittr_session");showLogin();throw new Error(d.error||"Session expired.")}if(!r.ok)throw Object.assign(new Error(d.error||`Server error ${r.status}`),{status:r.status,code:d.code||""});if(d&&d.stockWarning){try{typeof showToast==="function"?showToast(d.stockWarning):alert(d.stockWarning)}catch(_){}}return d}
-function updateSyncQueueBadge(){reconcileCloudPendingGhosts();const badge=document.getElementById("sync-queue-badge"),text=document.getElementById("syncQueueText");if(!badge||!text)return;const pending=Math.max(cloudPending.size,persistentSyncCount()),offline=!navigator.onLine;badge.classList.toggle("is-visible",pending>0||offline);badge.classList.toggle("is-offline",offline);text.textContent=offline?`Offline (${pending} Pending)`:pending?`Syncing (${pending})…`:`Synced`}
-async function pushQueuedState(key,payload,baseVersion=null){const expected=baseVersion==null?Number(cloudVersions[key]||0):Number(baseVersion||0);if(expected<=0)throw new Error("This offline change has no safe server version. Refresh before syncing so newer shop data is protected.");const json=JSON.stringify(payload??null);const d=await apiJSON(`/api/state/${key}`,{method:"PUT",body:`{"payload":${json},"expectedVersion":${expected}}`});if(d?.version!=null)cloudVersions[key]=Number(d.version);cloudBaseJson[key]=json;removePersistedState(key)}
-/* v24.66.0: the last copy this device and the server agreed on, so a save that collides with another device's save
-   can be replayed on top of the newer copy (public/sync-merge.js) instead of being thrown away. */
-let cloudBaseJson={},ittrRebaseBusy=false,ittrRebaseAgain=false;
-async function ittrRebaseAfterConflict(){
- if(ittrRebaseBusy){ittrRebaseAgain=true;return true}
- if(!cloudBaseJson.shopflow||typeof window.ittrRebaseShopflow!=="function")return false;
- ittrRebaseBusy=true;let conflicts=[];
- try{
-  for(let attempt=0;attempt<3;attempt++){
-   ittrRebaseAgain=false;
-   const d=await apiJSON("/api/state"),remote=d.shopflow;if(!remote)return false;
-   const localJson=JSON.stringify(state),out=window.ittrRebaseShopflow(JSON.parse(cloudBaseJson.shopflow),JSON.parse(localJson),remote.payload||{});conflicts=out.conflicts;
-   try{
-    if(out.changed)await pushQueuedState("shopflow",out.payload,Number(remote.version));
-    else{cloudVersions.shopflow=Number(remote.version||0);cloudBaseJson.shopflow=JSON.stringify(remote.payload||{});removePersistedState("shopflow")}
-   }catch(e){if(e?.code==="STATE_VERSION_CONFLICT")continue;throw e}
-   const merged=out.changed?out.payload:(remote.payload||{workorders:[],issues:[]});
-   if(cloudSaving.shopflow){clearTimeout(cloudSaving.shopflow);cloudSaving.shopflow=null}
-   // Edits made on this device while the merge was being saved are carried over and saved next.
-   if(JSON.stringify(state)!==localJson){state=window.ittrRebaseShopflow(JSON.parse(localJson),state,merged).payload;ittrRebaseAgain=true}else state=merged;
-   try{window.reapplyInspectionEdits?.()}catch(_){}
-   localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));render();
-   if(conflicts.length)showToast(currentLanguage==="uk"?`Інший пристрій змінив те саме одночасно (${conflicts.slice(0,3).join(", ")}). Залишено його версію — перевірте свою зміну там.`:`Another device changed the same thing at the same time (${conflicts.slice(0,3).join(", ")}). Their version was kept — please check your change there.`,"warning",9000);
-   if(!ittrRebaseAgain)return true;
-  }
-  return false;
- }catch(_){return false}
- finally{ittrRebaseBusy=false;cloudPending.delete("shopflow");updateSyncQueueBadge();if(ittrRebaseAgain){ittrRebaseAgain=false;queueCloudState("shopflow",state)}}
-}
-function queueCloudState(key,payload){if(session?.role==="mechanic"&&key!=="shopflow"){removePersistedState(key);cloudPending.delete(key);updateSyncQueueBadge();return}persistQueuedState(key,payload);cloudPending.add(key);updateSyncQueueBadge();if(!cloudReady||!cloudToken||!navigator.onLine)return;clearTimeout(cloudSaving[key]);cloudSaving[key]=setTimeout(async()=>{try{if(key==="shopflow"&&payload!==state)payload=state;/* v24.66.0: never send a copy that was replaced (by newer data from another device) while this save waited */await pushQueuedState(key,payload)}catch(e){handleCloudSyncError(key,e)}finally{cloudPending.delete(key);cloudSaving[key]=null;updateSyncQueueBadge()}},180)}
-async function flushPersistentSyncQueue(){if(!cloudReady||!cloudToken||!navigator.onLine)return;const q=readPersistentSyncQueue();for(const [key,item] of Object.entries(q)){if(session?.role==="mechanic"&&key!=="shopflow"){removePersistedState(key);cloudPending.delete(key);continue}cloudPending.add(key);updateSyncQueueBadge();try{await pushQueuedState(key,item?.payload,Number(item?.baseVersion||0))}catch(e){handleCloudSyncError(key,e);break}finally{cloudPending.delete(key);updateSyncQueueBadge()}}}
-async function refreshCloudStateSilently(){if(!cloudReady||!cloudToken||cloudRefreshBusy)return;cloudRefreshBusy=true;try{const d=await apiJSON("/api/state");let changed=false;const apply=(key,fn)=>{const remote=d[key];if(!remote||cloudPending.has(key)||readPersistentSyncQueue()[key])return;const rv=Number(remote.version||0),lv=Number(cloudVersions[key]||0);if(rv>lv){fn(remote.payload);cloudVersions[key]=rv;changed=true}};apply("users",payload=>{USERS=payload||{};localStorage.setItem("ittr_users_v1",JSON.stringify(USERS))});apply("shopflow",payload=>{state=payload||{workorders:[],issues:[]};cloudBaseJson.shopflow=JSON.stringify(state);try{window.reapplyInspectionEdits?.()}catch(_){}localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state))});apply("pro",payload=>{PRO=Object.assign({vehicles:[],maintenance:[],audit:[],notifications:[],delays:[]},payload||{});for(const k of ['vehicles','maintenance','audit','notifications','delays'])if(!Array.isArray(PRO[k]))PRO[k]=[];localStorage.setItem(PRO_KEY,JSON.stringify(PRO))});if(changed)render()}catch(e){}finally{cloudRefreshBusy=false}}
+async function apiJSON(url,options={}){const normalizedBody=options.body&&typeof options.body==="object"&&!(options.body instanceof FormData)&&!(options.body instanceof Blob)?JSON.stringify(options.body):options.body;const opts={...options,body:normalizedBody,headers:authHeaders({"Content-Type":"application/json",...(options.headers||{})})};const r=await fetch(url,opts);let d={};try{d=await r.json()}catch(_){}if(r.status===401&&!url.includes("/api/auth/login")){ittrEndSession();cloudToken="";sessionStorage.removeItem("ittr_cloud_token");session=null;sessionStorage.removeItem("ittr_session");showLogin();throw Object.assign(new Error(d.error||"Session expired."),{status:401,code:d.code||""})}if(!r.ok)throw Object.assign(new Error(d.error||`Server error ${r.status}`),{status:r.status,code:d.code||""});if(d&&d.stockWarning){try{typeof showToast==="function"?showToast(d.stockWarning):alert(d.stockWarning)}catch(_){}}return d}
+function updateSyncQueueBadge(){const badge=document.getElementById("sync-queue-badge"),text=document.getElementById("syncQueueText");if(!badge||!text||!window.ittrSync)return;const st=ittrSync.status(),pending=st.pending,offline=!navigator.onLine,err=st.error;badge.classList.toggle("is-visible",pending>0||offline||!!err);badge.classList.toggle("is-offline",offline||!!err);badge.title=err?.message||"";text.textContent=offline?`Offline (${pending} Pending)`:err?.kind==="signed-out"?`Not saved (${pending}) — sign in`:err?.kind==="storage"?(pending?`Syncing (${pending})… not kept on this device`:`Synced · device storage full`):err?`Not saved yet (${pending}) — retrying`:pending?`Syncing (${pending})…`:`Synced`}
+function queueCloudState(key,payload){if(session?.role==="mechanic"&&key!=="shopflow")return;ittrSync.changed(key)}
+async function flushPersistentSyncQueue(){if(!cloudReady||!cloudToken||!navigator.onLine)return;await ittrSync.syncAll()}
+async function refreshCloudStateSilently(){if(!cloudReady||!cloudToken||cloudRefreshBusy)return;cloudRefreshBusy=true;try{const d=await apiJSON("/api/state");let changed=false;const apply=(key,fn)=>{const remote=d[key];if(!remote||ittrSync.hasPending(key))return;const rv=Number(remote.version||0),lv=Number(cloudVersions[key]||0);if(rv>lv){fn(remote.payload);cloudVersions[key]=rv;ittrSync.setBase(key,remote.payload,rv);changed=true}};apply("users",payload=>{USERS=payload||{};localStorage.setItem("ittr_users_v1",JSON.stringify(USERS))});apply("shopflow",payload=>{state=payload||{workorders:[],issues:[]};try{window.reapplyInspectionEdits?.()}catch(_){}localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state))});apply("pro",payload=>{PRO=Object.assign({vehicles:[],maintenance:[],audit:[],notifications:[],delays:[]},payload||{});for(const k of ['vehicles','maintenance','audit','notifications','delays'])if(!Array.isArray(PRO[k]))PRO[k]=[];localStorage.setItem(PRO_KEY,JSON.stringify(PRO))});if(changed)render()}catch(e){}finally{cloudRefreshBusy=false}}
 function showToast(message,type="info",timeout=5000){const region=document.getElementById("toastRegion");if(!region){console[type==="error"?"error":"log"](message);return}const toast=document.createElement("div");toast.className=`appToast ${type}`;toast.setAttribute("role",type==="error"?"alert":"status");toast.textContent=String(message||"Something went wrong.");region.appendChild(toast);const remove=()=>toast.remove();toast.onclick=remove;setTimeout(remove,timeout)}
-// v24.47.3: a version conflict (someone else saved first) is not retried forever with the same stale copy: the stuck
-// save is dropped, the newest shop data is loaded, and the user is told plainly to check their last change.
-function handleCloudSyncError(key,e){
- if(key==="shopflow"&&e?.code==="STATE_VERSION_CONFLICT"&&cloudBaseJson.shopflow&&!e.noRebase){
-  cloudPending.add(key);updateSyncQueueBadge();
-  ittrRebaseAfterConflict().then(ok=>{if(!ok)handleCloudSyncError(key,Object.assign(e,{noRebase:true}))});return;
- }
- if(e?.code==="STATE_VERSION_CONFLICT"||e?.code==="STATE_VERSION_REQUIRED"){
-  removePersistedState(key);cloudPending.delete(key);updateSyncQueueBadge();
-  cloudVersions[key]=0;setTimeout(()=>refreshCloudStateSilently(),50);
-  showToast(currentLanguage==="uk"?"Хтось змінив дані одночасно з вами. Завантажено найновішу версію — перевірте свою останню зміну.":"Someone else saved at the same time. The newest shop data was loaded — please check your last change.","warning",8000);return;
- }
- showSyncError(e?.message||"Save failed.");
-}
 function showSyncError(msg){showToast(`Cloud sync: ${msg}`,"warning",7000)}
 function saveUsers(){localStorage.setItem("ittr_users_v1",JSON.stringify(USERS));if(session?.role!=="mechanic")queueCloudState("users",USERS)}
 let mechanicWizardStep=1,mechanicWizardMatches=[],mechanicWizardSelected=-1,mechanicWizardReady=false,mechanicLookupData=null,mechanicLookupTimer=null,mechanicLookupBusy=false;
@@ -1782,8 +1744,8 @@ async function submitMechanicStartWizard(e){
  const btn=document.getElementById("mechWizardCreateBtn");if(btn){btn.disabled=true;btn.textContent="Creating…"}
  try{
    const r=await apiJSON("/api/work-orders/self-start",{method:"POST",body:JSON.stringify(payload)});
-   if(r?.shopflow){state=r.shopflow;localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state))}
-   if(r?.version!=null)cloudVersions.shopflow=Number(r.version);removePersistedState("shopflow");window.clearMechStartDraft?.();closeMechanicStartWizard();render();
+   if(r?.shopflow)ittrAdoptServerShopflow(r.shopflow,r.version);else if(r?.version!=null)cloudVersions.shopflow=Number(r.version);
+   window.clearMechStartDraft?.();closeMechanicStartWizard();render();
    const created=[r.customer?.created?"new customer":"",r.unit?.created?"new unit":""].filter(Boolean).join(" + ");
    showToast(`Work Order #${r.workOrder?.id||""} created${created?` with ${created}`:""} and assigned to you.`,"success",6000);
    if(r.workOrder?.id)openDetail(r.workOrder.id)
@@ -1834,7 +1796,7 @@ async function sendMechanicActivity(body){
   USERS[session.username]={...(USERS[session.username]||{role:"mechanic",display:session.display||session.username}),...d.user};
   localStorage.setItem("ittr_users_v1",JSON.stringify(USERS));
   // v24.47.2: the server paused the running job timer (one thing at a time).
-  if(d.shopflow){state=d.shopflow;localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));if(d.shopflowVersion!=null)cloudVersions.shopflow=Number(d.shopflowVersion);render();showToast(currentLanguage==="uk"?"Таймер роботи поставлено на паузу.":"Your job timer was paused.","info",5000)}
+  if(d.shopflow){ittrAdoptServerShopflow(d.shopflow,d.shopflowVersion);render();showToast(currentLanguage==="uk"?"Таймер роботи поставлено на паузу.":"Your job timer was paused.","info",5000)}
   renderMechanicActivity();renderMechanicLiveStatus();return true;
  }catch(e){showToast(e.message||"Activity was not saved.","error",8000);return false}
 }
@@ -1845,7 +1807,7 @@ let endingMechanicActivity=null;
 async function focusMechanicOnInspection(workOrderId){
  if(session?.role!=="mechanic")return;
  try{const d=await apiJSON("/api/mechanic/focus-inspection",{method:"POST",body:{workOrderId}});
-  if(d.shopflow){state=d.shopflow;localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));if(d.version!=null)cloudVersions.shopflow=Number(d.version)}
+  if(d.shopflow)ittrAdoptServerShopflow(d.shopflow,d.version);
   if(d.activity){closeCurrentMechanicActivity(USERS,session.username);try{localStorage.setItem("ittr_users_v1",JSON.stringify(USERS))}catch(_){}}
   if(d.paused)showToast(currentLanguage==="uk"?"Таймер роботи поставлено на паузу — починається інспекція.":"Your job timer was paused — starting the inspection.","info",5000);
   if(d.paused||d.activity){render();renderMechanicActivity()}
@@ -1974,7 +1936,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.66.0";
+const ROUTE_MODULE_VERSION="24.67.0";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -2259,7 +2221,7 @@ document.getElementById("loginForm").onsubmit=async e=>{
     document.getElementById("loginPass").value="";
     if(d.recoveryLeft!=null)setTimeout(()=>showToast(`${tr("Recovery code used.")} ${d.recoveryLeft} ${tr("left. Make new ones in 🔒 Password.")}`,"warning",9000),800);
     if(d.user?.mfaRecommended&&!d.user?.mfa)setTimeout(()=>showToast(tr("Protect your account: turn on 2-step login in 🔒 Password."),"warning",9000),1500);
-    cloudToken=d.token;sessionStorage.setItem("ittr_cloud_token",cloudToken);
+    ittrEndSession();cloudToken=d.token;sessionStorage.setItem("ittr_cloud_token",cloudToken);
     session={username:d.user.username,role:d.user.role,display:d.user.display,language:d.user.language||localStorage.getItem("ittr_language")||"en"};
     currentLanguage=session.language;localStorage.setItem("ittr_language",currentLanguage);
     sessionStorage.setItem("ittr_session",JSON.stringify(session));
@@ -2333,7 +2295,10 @@ async function downloadFullBackup(){const b=document.getElementById("fullBackupB
  catch(err){alert(err.message)}finally{if(b){b.disabled=false;b.textContent=tr("Download backup")}}}
 async function signOutOtherDevices(){if(!confirm(tr("Sign out on all your other phones and computers? You stay signed in here.")))return;
  try{const d=await apiJSON("/api/auth/sessions/revoke-others",{method:"POST",body:"{}"});showToast(`${d.signedOut} ${tr("other device(s) signed out.")}`,"success");openAccountSecurity()}catch(err){alert(err.message)}}
-async function logout(){stopLiveStatusSocket();try{clearShopAI();toggleShopAI(false)}catch(_){}
+/* v24.67.0: the signed-in account is ending (logout, expired session, another account signing in): pending saves
+   stop (they stay queued for that account) and the AI chat is closed so nothing from it reaches the next account. */
+function ittrEndSession(){try{ittrSync.reset()}catch(_){}try{shopAiEndSession()}catch(_){}cloudReady=false}
+async function logout(){stopLiveStatusSocket();try{clearShopAI();toggleShopAI(false)}catch(_){}ittrEndSession();
   try{if(cloudToken)await apiJSON("/api/auth/logout",{method:"POST",body:"{}"})}catch(_){ }
   cloudToken="";cloudReady=false;session=null;currentView=null;viewHistory=[];
   sessionStorage.removeItem("ittr_cloud_token");sessionStorage.removeItem("ittr_session");
@@ -3105,7 +3070,7 @@ let adminFilter="all";
 function save(){localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));queueCloudState("shopflow",state)}
 // v24.41.7: wait until the latest shop-data save has reached the server (saves go out ~0.2 s after a change).
 // Inspection actions that the server reads ("Add to work order", inspection PDF) call this first, so they never use older marks.
-window.syncNow=async function(){const until=Date.now()+5000;await new Promise(r=>setTimeout(r,260));while(Date.now()<until&&(cloudPending.has("shopflow")||cloudSaving.shopflow))await new Promise(r=>setTimeout(r,120))};
+window.syncNow=async function(){const until=Date.now()+5000;await new Promise(r=>setTimeout(r,260));while(Date.now()<until&&ittrSync.status().syncing)await new Promise(r=>setTimeout(r,120))};
 function esc(s){return String(s??"").replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]))}
 // v24.41.1 mileage boxes: show "304,538" while typing (comma, dot or space all work as thousands separators).
 // Code that reads .value, and forms when they submit, always get plain digits ("304538").
@@ -3215,7 +3180,7 @@ function openAddHelper(workOrderId){
 async function addHelperMechanic(workOrderId,username){
  try{
   const d=await apiJSON(`/api/work-orders/${encodeURIComponent(workOrderId)}/helpers`,{method:"POST",body:JSON.stringify({username})});
-  if(d?.shopflow){state=d.shopflow;localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));}
+  if(d?.shopflow){ittrAdoptServerShopflow(d.shopflow,d.version);}
   if(d?.version!=null)cloudVersions.shopflow=Number(d.version);
   closeModal("helperModal");render();openDetail(Number(workOrderId));
  }catch(e){alert(e.message||"Could not add helper mechanic.")}
@@ -3224,7 +3189,7 @@ async function removeHelperMechanic(workOrderId,username){
  if(!confirm(`Remove ${mechanicDisplay(username)} from this work order?`))return;
  try{
   const d=await apiJSON(`/api/work-orders/${encodeURIComponent(workOrderId)}/helpers/${encodeURIComponent(username)}`,{method:"DELETE"});
-  if(d?.shopflow){state=d.shopflow;localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));}
+  if(d?.shopflow){ittrAdoptServerShopflow(d.shopflow,d.version);}
   if(d?.version!=null)cloudVersions.shopflow=Number(d.version);
   render();openDetail(Number(workOrderId));
  }catch(e){alert(e.message||"Could not remove helper mechanic.")}
@@ -3301,19 +3266,31 @@ function toggleShopAI(force){const p=document.getElementById("shopAiPanel");if(!
 function toggleShopAiVoice(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR)return showToast("Voice dictation is not supported by this browser. Use Chrome/Edge on the shop device.","warning",7000);if(shopAiVoiceRecognition){try{shopAiVoiceRecognition.stop()}catch(_){}return}const input=document.getElementById("shopAiInput"),mic=document.getElementById("shopAiMic"),status=document.getElementById("shopAiVoiceStatus"),lang=document.getElementById("shopAiVoiceLanguage")?.value||"en-US";const r=new SR();shopAiVoiceRecognition=r;r.lang=lang;r.continuous=true;r.interimResults=true;let committed=(input?.value||"").trim();r.onstart=()=>{mic?.classList.add("recording");mic?.setAttribute("aria-pressed","true");if(status)status.textContent="Listening…"};r.onresult=e=>{let finalChunk="",interim="";for(let i=e.resultIndex;i<e.results.length;i++){const txt=e.results[i][0]?.transcript||"";if(e.results[i].isFinal)finalChunk+=txt+" ";else interim+=txt}if(finalChunk.trim())committed=[committed,finalChunk.trim()].filter(Boolean).join(" ");if(input)input.value=[committed,interim.trim()].filter(Boolean).join(" ");if(status)status.textContent="Listening…"};r.onerror=e=>{if(e.error!=="no-speech")showToast(`Voice input: ${e.error}`,"warning")};r.onend=()=>{shopAiVoiceRecognition=null;mic?.classList.remove("recording");mic?.setAttribute("aria-pressed","false");if(status)status.textContent=""};try{r.start()}catch(e){shopAiVoiceRecognition=null;showToast(e.message,"error")}}
 
 
-let shopAiBusy=false;
+/* v24.67.0: every Workshop AI request belongs to one conversation of one account. New Chat, logout, an expired
+   session or another account signing in starts a new conversation: requests of the old one are cancelled, and an
+   answer that still arrives is dropped (it never reaches the new chat, its history, its storage or its buttons). */
+let shopAiConv={id:0,user:'',busy:false,ctl:new Set(),log:[],history:[]},shopAiBusy=false;
+function shopAiNewConversation(){for(const c of shopAiConv.ctl){try{c.abort()}catch(_){}}shopAiConv={id:shopAiConv.id+1,user:session?.username||'',busy:false,ctl:new Set(),log:[],history:[]};shopAiBusy=false;shopAiPendingFile=null;shopAiImportDraft=null;const b=document.getElementById('shopAiSend');if(b)b.disabled=false;return shopAiConv}
+function shopAiAlive(c){return c===shopAiConv&&c.user===(session?.username||'')}
+function shopAiFetch(c,url,opts={}){const ctl=new AbortController();c.ctl.add(ctl);return fetch(url,{...opts,signal:ctl.signal}).finally(()=>c.ctl.delete(ctl))}
+const SHOP_AI_WELCOME='<div class="aiWelcome"><b>New Workshop AI chat</b><div class="muted" style="margin-top:5px">Ask about unit history, repair records, parts context, or a licensed manual.</div></div>';
+function shopAiResetView(){const body=document.getElementById('shopAiMessages');if(body)body.innerHTML=SHOP_AI_WELCOME;for(const id of ['shopAiInput','shopAiUnit','shopAiFile']){const el=document.getElementById(id);if(el)el.value=''}if(shopAiVoiceRecognition){try{shopAiVoiceRecognition.stop()}catch(_){}shopAiVoiceRecognition=null}}
 /* v24.66.0: AI answers show **bold**, bullet and numbered lists instead of raw * marks. Text is escaped first. */
 function shopAiFormat(text){const lines=esc(String(text||'')).split('\n');let out='',list='';const inline=x=>x.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/^#{1,4}\s+(.*)$/,'<b>$1</b>');const close=()=>{if(list){out+=`</${list}>`;list=''}};
  for(const raw of lines){const b=raw.match(/^\s*(?:[-*•])\s+(.*)$/),n=raw.match(/^\s*\d+[.)]\s+(.*)$/);if(b||n){const t=b?'ul':'ol';if(list!==t){close();out+=`<${t}>`;list=t}out+=`<li>${inline((b||n)[1])}</li>`;continue}close();out+=raw.trim()?`<div>${inline(raw)}</div>`:'<div class="aiGap"></div>'}close();return out}
 function shopAiMessageHtml(role,text,sources=[]){const head=role==='user'?'You':'Workshop AI';const chips=(sources||[]).map(s=>`<span class="aiSourceChip ${s.type==='manual'?'manual':''}"${s.manualId?` onclick="openManualDocument(${Number(s.manualId)})"`:''}>${esc(s.label||s.type||'Source')}</span>`).join('');return `<div class="aiMsg ${role}"><div class="aiMsgHead">${head}${role==='assistant'?'<button type="button" class="aiCopyBtn" onclick="shopAiCopy(this)" title="Copy this answer">Copy</button>':''}</div><div class="aiMsgText">${role==='user'?esc(String(text||'')).replace(/\n/g,'<br>'):shopAiFormat(text)}</div>${chips?`<div class="aiSources">${chips}</div>`:''}</div>`}
 /* v24.66.0: the chat stays when the page reloads (this tab only, this user only) and is wiped on logout. */
-let shopAiLog=[];const shopAiStoreKey=()=>`ittr_ai_chat_${session?.username||''}`;
+const shopAiStoreKey=(user=session?.username||'')=>`ittr_ai_chat_${user}`;
 async function shopAiCopy(btn){const t=btn.closest('.aiMsg')?.querySelector('.aiMsgText')?.innerText||'';try{await navigator.clipboard.writeText(t);btn.textContent='Copied ✓';setTimeout(()=>btn.textContent='Copy',1500)}catch(_){showToast('Copy is blocked by this browser. Select the text and copy it instead.','warning')}}
 /* v24.66.0: press / (or Ctrl+K) anywhere in the office screens to jump to the search box. */
 document.addEventListener('keydown',e=>{const k=e.key,typing=/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName||'')||document.activeElement?.isContentEditable;if(!((k==='/'&&!typing&&!e.ctrlKey&&!e.metaKey&&!e.altKey)||((e.ctrlKey||e.metaKey)&&String(k).toLowerCase()==='k')))return;const box=document.getElementById('globalSmartSearch');if(!box||!box.offsetParent||document.querySelector('.modal.open'))return;e.preventDefault();box.focus();box.select()});
-function shopAiSave(){try{sessionStorage.setItem(shopAiStoreKey(),JSON.stringify({log:shopAiLog.slice(-30),history:shopAiHistory.slice(-16)}))}catch(_){}}
-function shopAiRemember(role,text,sources){shopAiLog.push({role,text:String(text||'').slice(0,6000),sources:(sources||[]).slice(0,8)});if(shopAiLog.length>30)shopAiLog=shopAiLog.slice(-30);shopAiSave()}
-function shopAiRestore(){if(!session?.username)return;try{const d=JSON.parse(sessionStorage.getItem(shopAiStoreKey())||'null');if(!d||!Array.isArray(d.log)||!d.log.length)return;shopAiLog=d.log;shopAiHistory=Array.isArray(d.history)?d.history:[];const body=document.getElementById('shopAiMessages');if(body)body.innerHTML=shopAiLog.map(m=>shopAiMessageHtml(m.role,m.text,m.sources)).join('')}catch(_){}}
+function shopAiSave(c=shopAiConv){if(!c.user)return;try{sessionStorage.setItem(shopAiStoreKey(c.user),JSON.stringify({log:c.log.slice(-30),history:c.history.slice(-16)}))}catch(_){}}
+function shopAiRemember(c,role,text,sources){if(!shopAiAlive(c))return;c.log.push({role,text:String(text||'').slice(0,6000),sources:(sources||[]).slice(0,8)});if(c.log.length>30)c.log=c.log.slice(-30);shopAiSave(c)}
+// Same account, same tab: the chat comes back after a reload. Any other account starts with an empty chat.
+function shopAiRestore(){if(session?.username&&shopAiConv.user===session.username)return;/* same account still signed in (e.g. language switch): keep the open chat */const c=shopAiNewConversation();shopAiResetView();if(!c.user)return;try{const d=JSON.parse(sessionStorage.getItem(shopAiStoreKey(c.user))||'null');if(!d||!Array.isArray(d.log)||!d.log.length)return;c.log=d.log;c.history=Array.isArray(d.history)?d.history:[];const body=document.getElementById('shopAiMessages');if(body)body.innerHTML=c.log.map(m=>shopAiMessageHtml(m.role,m.text,m.sources)).join('')}catch(_){}}
+// The session ended (logout or expired): stop the chat and empty the screen. The saved copy stays only for that
+// account in this tab (logout deletes it, see clearShopAI).
+function shopAiEndSession(){shopAiNewConversation();shopAiConv.user='';shopAiResetView();try{toggleShopAI(false)}catch(_){}}
 let shopAiPendingFile=null,shopAiImportDraft=null;
 function shopAiAcceptFile(file,source='attached'){
   if(!file)return false;
@@ -3351,14 +3328,19 @@ Labor total: ${d.laborTotal==null?'—':money(d.laborTotal)} · Parts total: ${d
 Needs review: ${warn.join('; ')}`:''}
 
 Nothing has been written to customer/unit history yet.`}
-async function analyzeShopAiAttachment(message){const f=shopAiPendingFile;if(!f)return false;if(/\\.csv$/i.test(f.name)||/csv/i.test(f.type)){showToast('CSV detected. Opening Fullbay Data Center so you can use the safe customer/unit or repair-order importer.','info',6500);shopAiPendingFile=null;document.getElementById('shopAiFile').value='';toggleShopAI(false);showView('operations');setTimeout(()=>{try{showProPanel('fullbay')}catch{}},250);return true}const fd=new FormData();fd.append('file',f);fd.append('message',message||'Import this legacy invoice into ITTR.');const resp=await fetch('/api/ai/import/analyze',{method:'POST',headers:authHeaders(),body:fd});const data=await resp.json().catch(()=>({}));if(!resp.ok)throw new Error(data.error||`AI import failed (${resp.status})`);shopAiImportDraft=data.draft;shopAiPendingFile=null;document.getElementById('shopAiFile').value='';const body=document.getElementById('shopAiMessages');body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',shopAiImportSummary(shopAiImportDraft)));body?.insertAdjacentHTML('beforeend','<div class="aiMsg assistant"><div class="aiMsgHead">Review actions</div><div class="actions"><button class="primary" onclick="commitShopAiHistoryDraft()">Add to Completed History</button><button class="secondary" onclick="commitShopAiInvoiceDraft()">Create Draft Invoice Instead</button><button class="secondary" onclick="shopAiImportDraft=null">Discard</button></div></div>');return true}
-async function commitShopAiHistoryDraft(){if(!shopAiImportDraft)return showToast('No legacy history draft is waiting for review.','warning');if(!shopAiImportDraft.matches?.customer||!shopAiImportDraft.matches?.unit)return showToast('Customer and unit must both match before history can be saved.','warning',8000);if(!confirm('Add these extracted repairs as COMPLETED historical Fullbay work for this customer/unit?'))return;const r=await fetch('/api/ai/import/commit-history',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({draft:shopAiImportDraft})});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Could not add completed history.');shopAiImportDraft=null;showToast(`Completed history added: ${d.serviceOrder}.`,'success',6500);const body=document.getElementById('shopAiMessages');body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`Saved ${d.services} completed service record${d.services===1?'':'s'} to ${d.serviceOrder}. Open the customer or unit Service History to review the repair details.`))}
-async function commitShopAiInvoiceDraft(){if(!shopAiImportDraft)return showToast('No AI import draft is waiting for review.','warning');if(!confirm('Create a DRAFT invoice from this AI extraction? You can review and edit it before finalizing.'))return;const r=await fetch('/api/ai/import/commit-invoice',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({draft:shopAiImportDraft})});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Could not create draft invoice.');shopAiImportDraft=null;showToast('Draft invoice created. Opening it in a new tab.','success');openInvoiceWorkspace?.(d.id)}
-let shopAiHistory=[];
-async function tryShopAiAction(message){const r=await fetch('/api/ai/copilot/action',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({message})});const d=await r.json().catch(()=>({}));if(!r.ok||!d.action)return false;const a=d.action,body=document.getElementById('shopAiMessages');if(a.type==='navigate'){body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`${a.label}.`));toggleShopAI(false);showView(a.view);return true}if(a.type==='diagnostic'){body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`${a.label}\\n${(a.report?.checks||[]).map(x=>'✓ '+x).join('\\n')}\\nRecent audit events: ${a.report?.recentAuditEvents??0}\\n${a.report?.note||''}`));return true}return false}
-async function sendShopAI(){if(shopAiBusy)return;const input=document.getElementById('shopAiInput'),unit=document.getElementById('shopAiUnit'),body=document.getElementById('shopAiMessages'),sendBtn=document.getElementById('shopAiSend');const message=String(input?.value||'').trim();if(!message&&!shopAiPendingFile)return;shopAiBusy=true;if(sendBtn)sendBtn.disabled=true;body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('user',message));if(message&&!shopAiPendingFile)shopAiRemember('user',message);if(input)input.value='';const thinking=document.createElement('div');thinking.className='aiThinking';thinking.innerHTML='<span class="aiDot"></span><span class="aiDot"></span><span class="aiDot"></span><span>Workshop AI is checking shop records…</span>';body?.appendChild(thinking);body?.scrollTo({top:body.scrollHeight,behavior:'smooth'});try{if(shopAiPendingFile){thinking.remove();await analyzeShopAiAttachment(message);return}if(await tryShopAiAction(message)){thinking.remove();return}const r=await fetch('/api/ai/shop-chat',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({message,unit:String(unit?.value||'').trim(),history:shopAiHistory.slice(-8)})});let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.error||`AI request failed (${r.status})`);thinking.remove();shopAiHistory.push({role:'user',content:message},{role:'assistant',content:String(d.result||'').slice(0,1500)});if(shopAiHistory.length>16)shopAiHistory=shopAiHistory.slice(-16);body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',d.result||'No response returned.',d.sources||[]));shopAiRemember('assistant',d.result||'No response returned.',d.sources||[]);if(d.matchedUnit&&unit&&!unit.value)unit.value=d.matchedUnit}catch(e){thinking.remove();body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`Unable to answer: ${e.message}`));showToast?.(e.message,'error',8000)}finally{shopAiBusy=false;if(sendBtn)sendBtn.disabled=false;body?.scrollTo({top:body.scrollHeight,behavior:'smooth'})}}
+async function analyzeShopAiAttachment(c,f,message){if(!f)return false;if(/\.csv$/i.test(f.name)||/csv/i.test(f.type)){showToast('CSV detected. Opening Fullbay Data Center so you can use the safe customer/unit or repair-order importer.','info',6500);document.getElementById('shopAiFile').value='';toggleShopAI(false);showView('operations');setTimeout(()=>{try{showProPanel('fullbay')}catch{}},250);return true}const fd=new FormData();fd.append('file',f);fd.append('message',message||'Import this legacy invoice into ITTR.');const resp=await shopAiFetch(c,'/api/ai/import/analyze',{method:'POST',headers:authHeaders(),body:fd});const data=await resp.json().catch(()=>({}));if(!shopAiAlive(c))return true;if(!resp.ok)throw new Error(data.error||`AI import failed (${resp.status})`);shopAiImportDraft=data.draft;document.getElementById('shopAiFile').value='';const body=document.getElementById('shopAiMessages');body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',shopAiImportSummary(shopAiImportDraft)));body?.insertAdjacentHTML('beforeend','<div class="aiMsg assistant"><div class="aiMsgHead">Review actions</div><div class="actions"><button class="primary" onclick="commitShopAiHistoryDraft()">Add to Completed History</button><button class="secondary" onclick="commitShopAiInvoiceDraft()">Create Draft Invoice Instead</button><button class="secondary" onclick="shopAiImportDraft=null">Discard</button></div></div>');return true}
+async function commitShopAiHistoryDraft(){if(!shopAiImportDraft)return showToast('No legacy history draft is waiting for review.','warning');if(!shopAiImportDraft.matches?.customer||!shopAiImportDraft.matches?.unit)return showToast('Customer and unit must both match before history can be saved.','warning',8000);if(!confirm('Add these extracted repairs as COMPLETED historical Fullbay work for this customer/unit?'))return;const c=shopAiConv,draft=shopAiImportDraft;const r=await shopAiFetch(c,'/api/ai/import/commit-history',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({draft})});const d=await r.json().catch(()=>({}));if(!shopAiAlive(c))return;if(!r.ok)throw new Error(d.error||'Could not add completed history.');shopAiImportDraft=null;showToast(`Completed history added: ${d.serviceOrder}.`,'success',6500);const body=document.getElementById('shopAiMessages');body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`Saved ${d.services} completed service record${d.services===1?'':'s'} to ${d.serviceOrder}. Open the customer or unit Service History to review the repair details.`))}
+async function commitShopAiInvoiceDraft(){if(!shopAiImportDraft)return showToast('No AI import draft is waiting for review.','warning');if(!confirm('Create a DRAFT invoice from this AI extraction? You can review and edit it before finalizing.'))return;const c=shopAiConv,draft=shopAiImportDraft;const r=await shopAiFetch(c,'/api/ai/import/commit-invoice',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({draft})});const d=await r.json().catch(()=>({}));if(!shopAiAlive(c))return;if(!r.ok)throw new Error(d.error||'Could not create draft invoice.');shopAiImportDraft=null;showToast('Draft invoice created. Opening it in a new tab.','success');openInvoiceWorkspace?.(d.id)}
+async function tryShopAiAction(c,message){const r=await shopAiFetch(c,'/api/ai/copilot/action',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({message})});const d=await r.json().catch(()=>({}));if(!shopAiAlive(c))return true;if(!r.ok||!d.action)return false;const a=d.action,body=document.getElementById('shopAiMessages');if(a.type==='navigate'){body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`${a.label}.`));toggleShopAI(false);showView(a.view);return true}if(a.type==='diagnostic'){body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`${a.label}\\n${(a.report?.checks||[]).map(x=>'✓ '+x).join('\\n')}\\nRecent audit events: ${a.report?.recentAuditEvents??0}\\n${a.report?.note||''}`));return true}return false}
+async function sendShopAI(){const c=shopAiConv;if(c.busy)return;if(!c.user)c.user=session?.username||'';const input=document.getElementById('shopAiInput'),unit=document.getElementById('shopAiUnit'),body=document.getElementById('shopAiMessages'),sendBtn=document.getElementById('shopAiSend');const message=String(input?.value||'').trim(),file=shopAiPendingFile;if(!message&&!file)return;shopAiPendingFile=null;c.busy=true;shopAiBusy=true;if(sendBtn)sendBtn.disabled=true;body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('user',message));if(message&&!file)shopAiRemember(c,'user',message);if(input)input.value='';const thinking=document.createElement('div');thinking.className='aiThinking';thinking.innerHTML='<span class="aiDot"></span><span class="aiDot"></span><span class="aiDot"></span><span>Workshop AI is checking shop records…</span>';body?.appendChild(thinking);body?.scrollTo({top:body.scrollHeight,behavior:'smooth'});
+ try{if(file){await analyzeShopAiAttachment(c,file,message);return}if(await tryShopAiAction(c,message))return;
+  const r=await shopAiFetch(c,'/api/ai/shop-chat',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({message,unit:String(unit?.value||'').trim(),history:c.history.slice(-8)})});let d={};try{d=await r.json()}catch{}
+  if(!shopAiAlive(c))return;if(!r.ok)throw new Error(d.error||`AI request failed (${r.status})`);
+  c.history.push({role:'user',content:message},{role:'assistant',content:String(d.result||'').slice(0,1500)});if(c.history.length>16)c.history=c.history.slice(-16);body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',d.result||'No response returned.',d.sources||[]));shopAiRemember(c,'assistant',d.result||'No response returned.',d.sources||[]);if(d.matchedUnit&&unit&&!unit.value)unit.value=d.matchedUnit}
+ catch(e){if(!shopAiAlive(c))return;body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`Unable to answer: ${e.message}`));showToast?.(e.message,'error',8000)}
+ finally{thinking.remove();c.busy=false;if(shopAiAlive(c)){shopAiBusy=false;if(sendBtn)sendBtn.disabled=false;body?.scrollTo({top:body.scrollHeight,behavior:'smooth'})}}}
 function shopAiAskQuick(text){const input=document.getElementById('shopAiInput');if(input)input.value=text;sendShopAI()}
-function clearShopAI(){shopAiHistory=[];shopAiLog=[];shopAiImportDraft=null;try{sessionStorage.removeItem(shopAiStoreKey())}catch(_){}const body=document.getElementById('shopAiMessages');if(body)body.innerHTML='<div class="aiWelcome"><b>New Workshop AI chat</b><div class="muted" style="margin-top:5px">Ask about unit history, repair records, parts context, or a licensed manual.</div></div>';const input=document.getElementById('shopAiInput');if(input)input.value=''}
+function clearShopAI(){const user=session?.username||shopAiConv.user||'';shopAiNewConversation();shopAiResetView();try{if(user)sessionStorage.removeItem(shopAiStoreKey(user))}catch(_){}}
 function workOrderHistoryEntry(type,data={}){
  return {
    type,
@@ -4186,7 +4168,7 @@ function loadPro(){
 let PRO=Object.assign({vehicles:[],maintenance:[],audit:[],notifications:[],delays:[]},loadPro());
 function savePro(){localStorage.setItem(PRO_KEY,JSON.stringify(PRO));if(session?.role!=="mechanic")queueCloudState("pro",PRO)}
 
-async function loadCloudStateAfterLogin(){
+async function loadCloudStateAfterLogin({restored=false}={}){
  const localUsers=USERS,localShop=state,localPro=PRO;
  const d=await apiJSON("/api/state");
  const remoteUsers=d.users?.payload||{},remoteShop=d.shopflow?.payload||{workorders:[],issues:[]},remotePro=d.pro?.payload||{};
@@ -4203,14 +4185,18 @@ async function loadCloudStateAfterLogin(){
  PRO=Object.assign({vehicles:[],maintenance:[],audit:[],notifications:[],delays:[]},PRO||{});for(const k of ['vehicles','maintenance','audit','notifications','delays'])if(!Array.isArray(PRO[k]))PRO[k]=[];
  cloudVersions={users:Number(fresh.users?.version||0),shopflow:Number(fresh.shopflow?.version||0),pro:Number(fresh.pro?.version||0)};
  localStorage.setItem("ittr_users_v1",JSON.stringify(USERS));
- cloudBaseJson={shopflow:JSON.stringify(state)};
- localStorage.setItem("ittr_shopflow_v2",cloudBaseJson.shopflow);
+ localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));
  localStorage.setItem(PRO_KEY,JSON.stringify(PRO));
- cloudReady=true;const legacyQuarantined=quarantineUnsafeLegacySyncQueue();if(legacyQuarantined)showToast(`${legacyQuarantined} old offline change${legacyQuarantined===1?" was":"s were"} set aside because it had no safe server version. Current server data was kept.`,"warning",9000);updateSyncQueueBadge();flushPersistentSyncQueue();connectLiveStatusSocket();
+ // v24.67.0: edits still queued on this device for THIS account are put back on top of the fresh copy, then saved.
+ // A queue saved by the previous app version is taken over only by the account already signed in on this tab.
+ const legacyBase={};for(const need of ittrSync.legacyNeeds(fresh)){try{const h=await apiJSON(`/api/state/${need.key}/version/${need.version}`);(legacyBase[need.key]||(legacyBase[need.key]={}))[need.version]=h.payload}catch(_){}}
+ const back=ittrSync.restore(fresh,{legacyOwner:restored,legacyBase});
+ if(back.quarantined)showToast(`${back.quarantined} offline change${back.quarantined===1?"":"s"} from before this update could not be matched to this account or its starting copy. ${back.quarantined===1?"It was":"They were"} set aside on this device; current server data was kept.`,"warning",10000);
+ cloudReady=true;updateSyncQueueBadge();flushPersistentSyncQueue();connectLiveStatusSocket();
 }
 async function restoreCloudSession(){
  if(!cloudToken||!session)return false;
- try{const d=await apiJSON("/api/auth/me");session={username:d.user.username,role:d.user.role,display:d.user.display,language:d.user.language||localStorage.getItem("ittr_language")||"en"};currentLanguage=session.language;localStorage.setItem("ittr_language",currentLanguage);sessionStorage.setItem("ittr_session",JSON.stringify(session));await loadCloudStateAfterLogin();return true}catch(_){return false}
+ try{const d=await apiJSON("/api/auth/me");session={username:d.user.username,role:d.user.role,display:d.user.display,language:d.user.language||localStorage.getItem("ittr_language")||"en"};currentLanguage=session.language;localStorage.setItem("ittr_language",currentLanguage);sessionStorage.setItem("ittr_session",JSON.stringify(session));await loadCloudStateAfterLogin({restored:true});return true}catch(_){return false}
 }
 
 function audit(action,details="",unit=""){
@@ -4877,8 +4863,7 @@ async function setApproval(id,value){
      body:JSON.stringify({value})
    });
    if(d?.shopflow){
-     state=d.shopflow;
-     localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));
+     ittrAdoptServerShopflow(d.shopflow,d.version);
    }
    if(d?.version!=null)cloudVersions.shopflow=Number(d.version);
    render();
@@ -5406,7 +5391,7 @@ async function openUsePartDialog(partId,pre={}){
   const woId=m.querySelector('#upWo').value,uid=m.querySelector('#upTask').value,qty=Number(m.querySelector('#upQty').value||0),unit=gal?(m.querySelector('[name=upUnit]:checked')?.value||'gal'):undefined;
   if(!uid)return showToast('Choose a job.','warning');if(!(qty>0))return showToast('Enter a quantity.','warning');b.disabled=true;
   try{const d=await apiJSON(`/api/work-orders/${encodeURIComponent(woId)}/tasks/by-uid/${encodeURIComponent(uid)}/parts`,{method:'POST',body:JSON.stringify({inventoryPartId:Number(x.id),partNumber:cleanPartField(x.part_number,''),description:x.description||'',qty,unit,method:'parts_center'})});
-   if(d?.shopflow){state=d.shopflow;try{localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state))}catch(_){}}if(d?.version!=null)cloudVersions.shopflow=Number(d.version);
+   if(d?.shopflow)ittrAdoptServerShopflow(d.shopflow,d.version);else if(d?.version!=null)cloudVersions.shopflow=Number(d.version);
    showToast(`${qtyFmt(qty)} ${unit?fluidUnitLabel(unit,qty):''} added to WO #${woId}.${d?.stockWarning?' '+d.stockWarning:''}`,d?.stockWarning?'warning':'success',6000);close();loadPartsCenter()}
   catch(err){b.disabled=false;showToast(err.message,'error')}});
 }
@@ -5581,7 +5566,7 @@ async function lookupScannedPart(codeOverride=''){const inp=document.getElementB
  if(partsScannerContext.mode==='alias'){const id=Number(partsScannerContext.partId||currentPartDetail.id);if(!id){if(out)out.innerHTML='<div class="error">Part is no longer open.</div>';return}stopPartsCamera();const ok=await addPartBarcodeAlias(id,code);if(ok&&out)out.innerHTML=`<div class="scanSuccess"><b>✓ Manufacturer barcode saved</b><div class="barcodeCode" style="margin-top:6px">${esc(code)}</div><div class="actions"><button onclick="closePartsScanner()">Done</button><button class="secondary" onclick="document.getElementById('partsScanInput').value='';document.getElementById('partsScanResult').innerHTML='';startPartsCamera()">Scan Another</button></div></div>`;return}
  if(partsScannerContext.mode==='count'){const sid=Number(partsScannerContext.sessionId||0);if(!sid){if(out)out.innerHTML='<div class="error">No active inventory count.</div>';return}try{const d=await apiJSON(`/api/parts/inventory-count/${sid}/scan`,{method:'POST',body:JSON.stringify({code})});stopPartsCamera();const x=d.part,l=d.line,variance=Number(l.counted_qty||0)-Number(l.system_qty||0);if(out)out.innerHTML=`<div class="scanSuccess"><b>✓ ${esc(cleanPartField(x.part_number))}</b><div>${esc(cleanPartField(x.description))}</div><div class="muted">${esc(cleanPartField(x.location,'No location'))}</div><div class="row" style="margin-top:10px"><div class="field"><label>System Qty</label><input value="${Number(l.system_qty||0)}" disabled></div><div class="field"><label>Physical Qty</label><input id="countScanQty" type="number" min="0" step="1" inputmode="numeric" value="${Number(l.counted_qty||0)}"></div></div><div class="${variance===0?'varianceGood':'varianceBad'}">Variance: ${variance>0?'+':''}${variance}</div><div class="actions"><button onclick="saveScannedCountQty(${Number(x.id)})">Save Qty</button><button class="secondary" onclick="document.getElementById('partsScanInput').value='';document.getElementById('partsScanResult').innerHTML='';startPartsCamera()">Scan Next</button></div></div>`;await refreshInventoryCountBody(false);return}catch(e){stopPartsCamera();if(e.code==='UNKNOWN_BARCODE'||String(e.message||'').includes('not assigned')){if(out)out.innerHTML=`<div class="countUnknown"><b>Barcode not recognized</b><div class="barcodeCode" style="margin:7px 0">${esc(code)}</div><div class="muted">Assign this manufacturer barcode to an existing part, then scan it again.</div><div class="field" style="margin-top:10px"><label>Find inventory part</label><input id="unknownBarcodePartSearch" placeholder="Part number or description" oninput="searchUnknownBarcodePart('${encodeURIComponent(code).replaceAll("'","%27")}')"></div><div id="unknownBarcodeMatches"></div></div>`;return}if(out)out.innerHTML=`<div class="error">${esc(e.message||'Unable to count barcode.')}</div>`;return}}
  try{const d=await apiJSON(`/api/parts/scan/${encodeURIComponent(code)}`),x=d.item;if(out)out.innerHTML=`<div class="card"><b>${esc(cleanPartField(x.part_number))}</b><div>${esc(cleanPartField(x.description))}</div><div class="${partStockClass(x)}">Available: ${Number(x.available||0).toLocaleString()} ${esc(cleanImportedDisplayText(x.uom)||'')}</div><div class="muted">${esc(cleanPartField(x.location,'No location'))} · ${esc(x.internal_barcode||'')}</div><div class="actions">${partsScannerContext.mode==='workorder'?`<div class="row" style="margin-top:10px"><div class="field"><label>Quantity</label><input id="partsScanQty" type="number" min="0.01" step="any" value="1" inputmode="decimal"></div>${isGallonUom(x.uom)?`<div class="field"><label>Unit</label>${fluidUnitSelect('partsScanUnit')}</div>`:''}<div class="field" style="align-self:end"><button style="width:100%" onclick="confirmScannedPart(${Number(x.id)},'${encodeURIComponent(cleanPartField(x.part_number,''))}','${encodeURIComponent(cleanPartField(x.description,''))}')">Add to This Job</button></div></div>`:`<button onclick="closePartsScanner();showView('parts').then(()=>openPartDetail(${Number(x.id)}))">Open Part</button>`}</div></div>`;stopPartsCamera()}catch(e){if(out)out.innerHTML=`<div class="error">${esc(e.message||'Barcode not found.')}</div>`}}
-async function confirmScannedPart(id,pn,desc){const {workOrderId,taskIndex}=partsScannerContext,w=state.workorders.find(x=>String(x.id)===String(workOrderId)),t=w?.tasks?.[taskIndex];if(!t?.uid)return alert('Task not found.');const qty=Number(document.getElementById('partsScanQty')?.value||1);if(!qty||qty<=0)return alert('Enter a valid quantity.');try{const d=await apiJSON(`/api/work-orders/${encodeURIComponent(workOrderId)}/tasks/by-uid/${encodeURIComponent(t.uid)}/parts`,{method:'POST',body:JSON.stringify({inventoryPartId:id,partNumber:decodeURIComponent(pn),description:decodeURIComponent(desc),qty,unit:document.getElementById('partsScanUnit')?.value||undefined,method:'barcode_scan'})});if(d?.shopflow){state=d.shopflow;localStorage.setItem('ittr_shopflow_v2',JSON.stringify(state))}if(d?.version!=null)cloudVersions.shopflow=Number(d.version);closePartsScanner();render();openDetail(workOrderId)}catch(e){alert(e.message||'Unable to add scanned part.')}}
+async function confirmScannedPart(id,pn,desc){const {workOrderId,taskIndex}=partsScannerContext,w=state.workorders.find(x=>String(x.id)===String(workOrderId)),t=w?.tasks?.[taskIndex];if(!t?.uid)return alert('Task not found.');const qty=Number(document.getElementById('partsScanQty')?.value||1);if(!qty||qty<=0)return alert('Enter a valid quantity.');try{const d=await apiJSON(`/api/work-orders/${encodeURIComponent(workOrderId)}/tasks/by-uid/${encodeURIComponent(t.uid)}/parts`,{method:'POST',body:JSON.stringify({inventoryPartId:id,partNumber:decodeURIComponent(pn),description:decodeURIComponent(desc),qty,unit:document.getElementById('partsScanUnit')?.value||undefined,method:'barcode_scan'})});if(d?.shopflow)ittrAdoptServerShopflow(d.shopflow,d.version);else if(d?.version!=null)cloudVersions.shopflow=Number(d.version);closePartsScanner();render();openDetail(workOrderId)}catch(e){alert(e.message||'Unable to add scanned part.')}}
 async function startPartsCamera(){stopPartsCamera();const view=document.getElementById('scannerViewport'),video=document.getElementById('partsScannerVideo');if(!navigator.mediaDevices?.getUserMedia)return alert('Camera scanning is not available in this browser. Use a USB/Bluetooth scanner or type the barcode.');try{if('BarcodeDetector' in window){const formats=await BarcodeDetector.getSupportedFormats(),wanted=['code_128','ean_13','ean_8','upc_a','upc_e','code_39','itf','codabar','qr_code'].filter(x=>formats.includes(x)),det=new BarcodeDetector(wanted.length?{formats:wanted}:undefined);partsScannerStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}});const track=partsScannerStream.getVideoTracks()[0];try{const caps=track.getCapabilities?.()||{};const advanced=[];if(caps.focusMode?.includes?.('continuous'))advanced.push({focusMode:'continuous'});if(caps.exposureMode?.includes?.('continuous'))advanced.push({exposureMode:'continuous'});if(advanced.length)await track.applyConstraints({advanced})}catch{}video.srcObject=partsScannerStream;await video.play();view.classList.remove('hidden');let busy=false;partsScannerTimer=setInterval(async()=>{if(busy||video.readyState<2)return;busy=true;try{const found=await det.detect(video),code=String(found?.[0]?.rawValue||'').trim();if(code){const now=Date.now();if(code===partsScannerLastCode&&now-partsScannerLastAt<1200)return;partsScannerLastCode=code;partsScannerLastAt=now;document.getElementById('partsScanInput').value=code;await lookupScannedPart(code)}}catch{}finally{busy=false}},120);return}if(window.Html5Qrcode){view.classList.remove('hidden');video.style.display='none';let mount=document.getElementById('html5PartsReader');if(!mount){mount=document.createElement('div');mount.id='html5PartsReader';view.appendChild(mount)}partsHtml5Scanner=new Html5Qrcode('html5PartsReader');await partsHtml5Scanner.start({facingMode:'environment'},{fps:15,qrbox:{width:320,height:160},aspectRatio:1.777778},async decoded=>{const code=String(decoded||'').trim(),now=Date.now();if(!code||(code===partsScannerLastCode&&now-partsScannerLastAt<1200))return;partsScannerLastCode=code;partsScannerLastAt=now;document.getElementById('partsScanInput').value=code;await lookupScannedPart(code)});return}alert('Live camera scanning is unavailable. Use a USB/Bluetooth scanner or type the barcode.')}catch(e){stopPartsCamera();alert('Unable to start camera: '+(e.message||e))}}
 function stopPartsCamera(){if(partsScannerTimer){clearInterval(partsScannerTimer);partsScannerTimer=null}if(partsScannerStream){partsScannerStream.getTracks().forEach(t=>t.stop());partsScannerStream=null}if(partsHtml5Scanner){const x=partsHtml5Scanner;partsHtml5Scanner=null;Promise.resolve(x.stop()).catch(()=>{}).finally(()=>{try{x.clear()}catch{}})}const v=document.getElementById('partsScannerVideo');if(v){v.srcObject=null;v.style.display=''}const mount=document.getElementById('html5PartsReader');if(mount)mount.remove();document.getElementById('scannerViewport')?.classList.add('hidden')}
 
@@ -5631,7 +5616,7 @@ async function addTaskPart(workOrderId,taskIndex){
   const inv=fullbayPartCache.find(x=>partNumber&&String(x.part_number||'').toLowerCase()===partNumber.toLowerCase())||(!partNumber&&description?fullbayPartCache.find(x=>String(x.description||'').toLowerCase()===description.toLowerCase()):null);
   const unit=inv&&isGallonUom(inv.uom)?(document.getElementById(`partUnit_${workOrderId}_${taskIndex}`)?.value||'gal'):undefined;
   const d=await apiJSON(`/api/work-orders/${encodeURIComponent(workOrderId)}/tasks/by-uid/${encodeURIComponent(t.uid)}/parts`,{method:"POST",body:JSON.stringify({partNumber,description,qty,unit,inventoryPartId:inv?.id||null,method:'manual_work_order'})});
-  if(d?.shopflow){state=d.shopflow;localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state))}
+  if(d?.shopflow){ittrAdoptServerShopflow(d.shopflow,d.version);}
   if(d?.version!=null)cloudVersions.shopflow=Number(d.version);
   render();openDetail(workOrderId);
  }catch(e){alert(e.message||"Unable to add part.")}
@@ -5640,7 +5625,7 @@ async function removeTaskPart(workOrderId,taskUid,partId){
  if(!confirm(tr("Remove part?")))return;
  try{
   const d=await apiJSON(`/api/work-orders/${encodeURIComponent(workOrderId)}/tasks/by-uid/${encodeURIComponent(taskUid)}/parts/${encodeURIComponent(partId)}`,{method:"DELETE"});
-  if(d?.shopflow){state=d.shopflow;localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state))}
+  if(d?.shopflow){ittrAdoptServerShopflow(d.shopflow,d.version);}
   if(d?.version!=null)cloudVersions.shopflow=Number(d.version);
   render();openDetail(workOrderId);
  }catch(e){alert(e.message||"Unable to remove part.")}
@@ -5711,8 +5696,7 @@ async function applyTaskServerAction(workOrderId,taskUid,action,extra={}){
      method:"POST",body:JSON.stringify({action,...extra})
    });
    if(d?.shopflow){
-     state=d.shopflow;
-     localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));
+     ittrAdoptServerShopflow(d.shopflow,d.version);
    }
    if(d?.version!=null)cloudVersions.shopflow=Number(d.version);
    render();
@@ -5954,6 +5938,20 @@ function coreReleaseVersion(v){
  const m=String(v||"").match(/\d+\.\d+\.\d+/);
  return m?m[0]:String(v||"").trim();
 }
+/* v24.67.0: a tab (or installed app) left open across a deploy is told that a new version is ready. It never
+   reloads by itself, so nothing being typed is lost; the Reload button first finishes any pending saves. */
+async function ittrCheckForUpdate(){
+ try{
+  const r=await fetch("/api/build",{cache:"no-store"});if(!r.ok)return false;const d=await r.json();
+  const backend=coreReleaseVersion(d?.backend||"");if(!backend||backend==="unknown"||backend===coreReleaseVersion(FRONTEND_VERSION))return false;
+  let bar=document.getElementById("ittrUpdateBar");
+  if(!bar){bar=document.createElement("div");bar.id="ittrUpdateBar";bar.setAttribute("role","status");bar.innerHTML='<span></span><button type="button">Reload</button>';document.body.appendChild(bar);
+   bar.querySelector("button").onclick=async e=>{e.currentTarget.disabled=true;try{await ittrSync.syncAll();await ittrSync.idle()}catch(_){}location.reload()}}
+  bar.querySelector("span").textContent=currentLanguage==="uk"?`Готова нова версія ShopFlow (${backend}).`:`A new version of ShopFlow (${backend}) is ready.`;bar.hidden=false;return true;
+ }catch(_){return false}
+}
+setInterval(()=>{if(!document.hidden)ittrCheckForUpdate()},5*60*1000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)ittrCheckForUpdate()});
 async function verifyReleaseCompatibility(){
  try{
   const r=await fetch("/api/build",{cache:"no-store"});
@@ -6778,9 +6776,9 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
 <script src="./finance-shared.js?v=24.47.3"></script>
 <script src="./inspection-checklist.js?v=3"></script>
 <script src="./inspection-workflow.js?v=8"></script>
-<script src="./canned-jobs.js?v=24.66.0"></script>
-<script src="./share-links.js?v=24.66.0"></script>
-<script src="./sms.js?v=24.66.0"></script>
+<script src="./canned-jobs.js?v=24.67.0"></script>
+<script src="./share-links.js?v=24.67.0"></script>
+<script src="./sms.js?v=24.67.0"></script>
 <script>
 /* v24.46.2: Start a Truck keeps what the mechanic typed until the work order is created.
    Saved on this phone (localStorage) while typing and when the screen locks; restored when the wizard is opened
