@@ -2122,6 +2122,8 @@ async function showView(view,{push=true,replace=false}={}){
  const moreBtn=document.querySelector(".mobileMoreBtn");if(moreBtn)moreBtn.classList.toggle("active",["board","wo","invoices","bills","purchaseorders","estimates","reports","compliance","approvals","procenter","activityhistory","accounts","completed"].includes(view));
 
  currentView=view;
+ // v24.71.0: the tab title changes together with the page, not after a module's (possibly slow) afterShow.
+ ittrSetTabTitle(view);
  const instance=routeModuleInstances.get(view);
  if(instance&&typeof instance.module.afterShow==="function")await instance.module.afterShow(instance.scope);
 
