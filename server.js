@@ -1987,7 +1987,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.69.0");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.70.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,partsSearchIndexes:partsSearchIndexStatus.state,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
@@ -2177,7 +2177,8 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{
     const currentW=Array.isArray(current.workorders)?current.workorders:[],incomingW=Array.isArray(incoming.workorders)?incoming.workorders:[];
     const incomingById=new Map(incomingW.map(w=>[String(w?.id||''),w]));
     const ownedIds=new Set(currentW.filter(w=>mechanicOwnsWorkOrder(req.user,w)).map(w=>String(w?.id||'')));
-    const protectedKeys=['id','unit','customer','customerId','unitRecordId','vin','dotNumber','year','make','model','plate','mechanic','helpers','priority','parking','unitType','truckHere','date','time','createdAt','createdBy','createdVia'];
+    // v24.70.0: QC, blockers and pick-up belong to the office (Repair Board); a mechanic's save keeps them as they were.
+    const protectedKeys=['id','unit','customer','customerId','unitRecordId','vin','dotNumber','year','make','model','plate','mechanic','helpers','priority','parking','unitType','truckHere','date','time','createdAt','createdBy','createdVia','qc','blockers','releasedAt','releasedBy'];
     const workorders=currentW.map(old=>{
       if(!ownedIds.has(String(old?.id||'')))return old;
       const proposed=incomingById.get(String(old?.id||''));if(!proposed)return old;
@@ -2198,9 +2199,11 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{
     const existingIds=new Set(currentI.map(i=>String(i?.id||'')));
     const issues=currentI.map(old=>{
       if(!ownedIds.has(String(old?.wo||'')))return old;const proposed=incomingIssues.get(String(old?.id||''));if(!proposed)return old;const x=clean(proposed);
-      for(const k of ['id','wo','createdAt','created','mechanic','approval','adminNote','decisionAt','decisionBy','convertedToTask'])x[k]=old[k];return x;
+      for(const k of ['id','wo','createdAt','created','mechanic','approval','adminNote','decisionAt','decisionBy','convertedToTask','officeReviewedAt','officeReviewedBy','sentAt','sentBy'])x[k]=old[k];return x;
     });
-    for(const proposed of incomingI){const id=String(proposed?.id||'');if(existingIds.has(id)||!ownedIds.has(String(proposed?.wo||'')))continue;const x=clean(proposed);x.mechanic=req.user.username;x.approval='Waiting for Customer';x.adminNote='';x.decisionAt='';x.decisionBy='';x.convertedToTask=false;issues.push(x)}
+    // v24.70.0: a finding id from a phone is a plain token (the app uses a timestamp); anything else could break out of the
+    // office page's markup, so it is not stored.
+    for(const proposed of incomingI){const id=String(proposed?.id||'');if(existingIds.has(id)||!ownedIds.has(String(proposed?.wo||''))||!/^[A-Za-z0-9_.-]{1,40}$/.test(id))continue;const x=clean(proposed);x.mechanic=req.user.username;x.approval='Waiting for Customer';x.adminNote='';x.decisionAt='';x.decisionBy='';x.convertedToTask=false;x.officeReviewedAt='';x.officeReviewedBy='';x.sentAt='';x.sentBy='';issues.push(x)}
     nextPayload={...current,workorders,issues};
   }
   const q=await db.query("UPDATE app_state SET payload=$2::jsonb,version=version+1,updated_at=now(),updated_by=$3 WHERE state_key=$1 AND version=$4 RETURNING version,updated_at",[key,JSON.stringify(nextPayload),req.user.username,expectedVersion]);
@@ -3294,6 +3297,9 @@ async function getShopflowPayload(db=requireDb()){
  const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");
  return q.rows[0]?.payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};
 }
+// v24.70.0 (owner's decision): managers may VIEW finding photos (the Findings page is open to every manager); adding
+// photos stays with the owner and the assigned mechanics, and changing/deleting with the uploader or the owner.
+function canViewPhotoWorkOrder(user,w){return user?.role==="manager"||canAccessPhotoWorkOrder(user,w)}
 function canAccessPhotoWorkOrder(user,w){
  if(user?.role==="admin")return true;
  return user?.role==="mechanic"&&assignedMechanicUsernames(w).includes(String(user?.username||"").trim().toLowerCase());
@@ -3303,7 +3309,7 @@ async function photoAccessRow(photoId,user){
  if(!q.rowCount)return {status:404,error:"Photo not found."};
  const row=q.rows[0],sf=await getShopflowPayload(),w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===String(row.work_order_id));
  if(!w && user?.role!=="admin")return {status:403,error:"Photo access denied."};
- if(w&&!canAccessPhotoWorkOrder(user,w))return {status:403,error:"Photo access denied."};
+ if(w&&!canViewPhotoWorkOrder(user,w))return {status:403,error:"Photo access denied."};
  return {row,w};
 }
 
@@ -3367,7 +3373,7 @@ app.delete("/api/photos/:photoId",auth,async(req,res,next)=>{
  }catch(e){next(e)}
 });
 
-registerPhotoRoutes(app,{auth,requireDb,requireR2,signedUrl:signedPhotoUrl,audit,getShopflowPayload,canAccessPhotoWorkOrder,photoAccessRow});
+registerPhotoRoutes(app,{auth,requireDb,requireR2,signedUrl:signedPhotoUrl,audit,getShopflowPayload,canAccessPhotoWorkOrder:canViewPhotoWorkOrder,photoAccessRow});
 
 // v24.58.1: one place decides a finding (manager button or the customer's approval link). The caller passes a pool
 // client; this runs its own transaction. Returns {ok:true,...} or {status,error}.

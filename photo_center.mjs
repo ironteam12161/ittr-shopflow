@@ -1,7 +1,8 @@
 // v24.69.0: finding photos — several per finding, caption, before/after pairing, non-destructive markup, small
 // thumbnails, and an upload that can be retried safely (the phone sends a client id; a retry after a lost answer
 // returns the photo already saved instead of storing it twice). Access rules are unchanged from server.js:
-// the owner, or a mechanic assigned to the work order (canAccessPhotoWorkOrder).
+// viewing: the owner, managers, or a mechanic assigned to the work order (server.js passes canViewPhotoWorkOrder);
+// changing a photo: its uploader or the owner (checked in PATCH below).
 const KINDS = new Set(['', 'before', 'after', 'detail']);
 const COLORS = new Set(['red', 'amber', 'white', 'black', 'blue']);
 const clip = (v, n) => String(v ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);

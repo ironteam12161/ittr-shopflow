@@ -71,6 +71,17 @@ export function registerPurchaseOrderRoutes(app, { auth, managerPermission, requ
     res.json({ items: r.rows.map(p => { const target = num(p.max_qty) > 0 ? num(p.max_qty) : num(p.reorder_at) * 2 || 1, need = Math.max(0, target - num(p.quantity) - num(p.on_order));
       return { inventoryPartId: Number(p.id), partNumber: p.part_number || '', description: p.description || '', onHand: num(p.quantity), reorderAt: num(p.reorder_at), onOrder: num(p.on_order), vendor: p.vendor || '', unitCost: money(p.unit_cost), suggestQty: Math.ceil(need) }; }).filter(p => p.suggestQty > 0) });
   } catch (e) { next(e); } });
+  // v24.70.0: Repair Board — trucks waiting on ordered parts. Office accounts only; the PO number and vendor are shown only
+  // with the Parts & inventory permission, otherwise just that parts are on order and when they are due.
+  app.get('/api/purchase-orders/open-by-work-order', auth, async (req, res, next) => { try {
+    if (!['admin', 'manager'].includes(req.user?.role)) return fail(res, 403, 'Manager access required.');
+    const full = req.user.role === 'admin' || req.user.permissions?.inventory === true;
+    const r = await requireDb().query(`SELECT o.work_order_id,o.po_number,o.vendor,o.status,o.expected_date,
+        (SELECT coalesce(sum(greatest(l.qty_ordered-l.qty_received,0)),0) FROM purchase_order_lines l WHERE l.po_id=o.id) qty_open
+      FROM purchase_orders o WHERE o.status IN ('ordered','partial') AND coalesce(o.work_order_id,'')<>'' ORDER BY o.expected_date NULLS LAST,o.id LIMIT 500`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json({ items: r.rows.filter(x => Number(x.qty_open) > 0).map(x => ({ workOrderId: String(x.work_order_id), status: x.status, expectedDate: x.expected_date, qtyOpen: Number(x.qty_open), ...(full ? { poNumber: x.po_number, vendor: x.vendor } : {}) })) });
+  } catch (e) { next(e); } });
   app.get('/api/purchase-orders/:id', auth, inv, async (req, res, next) => { try { const b = await bundle(requireDb(), req.params.id); if (!b) return fail(res, 404, 'Purchase order not found.'); res.json(b); } catch (e) { next(e); } });
   app.post('/api/purchase-orders', auth, inv, tx(async (db, req, res) => {
     const vendor = str(req.body?.vendor, 160); if (!vendor) return fail(res, 400, 'Choose the vendor.');

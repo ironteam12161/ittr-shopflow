@@ -1,0 +1,125 @@
+/* ITTR ShopFlow v24.70.0 — app shell: work-order page, Repair Board, approval lanes, desktop sidebar, docked AI panel,
+   shared tables. Loaded after the older inline styles; selectors are scoped (body.officeShell, #board, #wo…) so the
+   older screens look the same until they are moved over. Tokens come from design-system.css. */
+
+/* ------------------------------------------------------------ work-order page */
+#wo .wsHead{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:space-between;margin:4px 0 12px}
+#wo .wsTitle{display:flex;gap:10px;align-items:flex-start}
+#wo .wsTitle h1{margin:0;font-size:var(--ds-text-xl)}
+#wo .wsWoNo{font-size:var(--ds-text-md);font-weight:600}
+#wo .wsMeta{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#wo .wsMechs .chip,#wo .wsMechs .badge{margin:0}
+#wo .wsTabs{display:flex;gap:2px;border-bottom:1px solid var(--ds-line);margin-bottom:14px;overflow-x:auto;scrollbar-width:thin}
+#wo .wsTab{background:transparent;color:var(--ds-ink-2);border:0;border-bottom:3px solid transparent;border-radius:0;padding:10px 14px;font-weight:700;white-space:nowrap;min-height:44px}
+#wo .wsTab:hover{background:var(--ds-surface-2)}
+#wo .wsTab.active{color:var(--ds-primary);border-bottom-color:var(--ds-primary)}
+#wo .wsCount{display:inline-block;min-width:20px;padding:1px 6px;border-radius:999px;background:var(--ds-surface-2);border:1px solid var(--ds-line);font-size:11px;color:var(--ds-muted)}
+#wo .wsJobs{padding:16px}
+#wo .wsActions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+#wo .wsFinding{margin-bottom:12px}
+#wo .wsFindingLane{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 6px}
+.wsPhotoGroups{display:grid;gap:12px}
+.wsPhotoGroup{background:var(--ds-surface);border:1px solid var(--ds-line);border-radius:var(--ds-radius);padding:12px}
+.wsPhotoHead{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.taskReport{margin-top:8px}
+
+/* ------------------------------------------------------------ Repair Board + approval lanes (shared column layout) */
+.bdBar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 12px;margin-bottom:10px}
+.bdBar .ds-input{width:auto;flex:1 1 220px;min-height:42px}
+.bdBar select.ds-input{flex:0 1 200px}
+.bdToggle{display:inline-flex;gap:6px;align-items:center;font-weight:700;color:var(--ds-ink-2);white-space:nowrap}
+.bdToggle input{width:18px;height:18px;min-height:0}
+.bdStagePick{display:none;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:8px}
+.bdStagePick button{background:var(--ds-surface);color:var(--ds-ink-2);border:1px solid var(--ds-line-strong);border-radius:999px;padding:6px 12px;min-height:38px;white-space:nowrap;font-weight:700}
+.bdStagePick button.active{background:var(--ds-primary);border-color:var(--ds-primary);color:#fff}
+.bdStagePick button span{opacity:.75;margin-left:4px}
+.bdCols{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(200px,1fr);gap:10px;overflow-x:auto;padding-bottom:10px;align-items:start}
+.bdCol{background:var(--ds-surface-2);border:1px solid var(--ds-line);border-radius:var(--ds-radius);min-height:120px;display:flex;flex-direction:column}
+.bdCol>.bdHead{position:sticky;top:0;background:var(--ds-surface-2);border-radius:var(--ds-radius) var(--ds-radius) 0 0;padding:10px 12px 8px;border-bottom:1px solid var(--ds-line);z-index:1}
+.bdCol>.bdHead b{font-size:var(--ds-text-md)}
+.bdCol>.bdHead .muted{font-size:12px;margin-top:2px}
+.bdNum{float:right;min-width:24px;text-align:center;padding:1px 7px;border-radius:999px;background:var(--ds-surface);border:1px solid var(--ds-line);font-weight:800;font-size:12px}
+.bdList{display:grid;gap:8px;padding:8px}
+.bdEmpty{padding:10px;text-align:center;font-size:13px}
+.bdCard,.lnCard{background:var(--ds-surface);border:1px solid var(--ds-line);border-left:4px solid var(--ds-line-strong);border-radius:var(--ds-radius-sm);padding:10px;display:grid;gap:6px;box-shadow:var(--ds-shadow);font-size:var(--ds-text-sm)}
+.bdCard.blocked{border-left-color:var(--ds-warn)}
+.lnCard.sev-safety-critical{border-left-color:var(--ds-danger)}.lnCard.sev-high{border-left-color:var(--ds-warn)}
+.bdTop,.lnTop{display:flex;justify-content:space-between;gap:6px;align-items:center}
+.bdOpen{background:none;border:0;padding:0;min-height:0;color:var(--ds-ink);display:inline-flex;gap:6px;align-items:baseline;font-size:var(--ds-text-md);text-align:left;cursor:pointer}
+.bdOpen:hover b{text-decoration:underline}
+.bdCust{font-size:12.5px;margin-top:-4px}
+.bdLine{display:flex;gap:6px;align-items:center;color:var(--ds-ink-2)}
+.bdProg{height:6px;border-radius:99px;background:var(--ds-line);overflow:hidden}.bdProg span{display:block;height:100%;background:var(--ds-ok)}
+.bdBlockers{display:flex;flex-wrap:wrap;gap:4px}
+.bdActs{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.bdMore{position:relative}
+.bdMore>summary{list-style:none;cursor:pointer}.bdMore>summary::-webkit-details-marker{display:none}
+.bdMenu{position:absolute;z-index:20;right:0;top:calc(100% + 4px);background:var(--ds-surface);border:1px solid var(--ds-line-strong);border-radius:var(--ds-radius-sm);box-shadow:var(--ds-shadow-lg);padding:4px;display:grid;min-width:200px}
+.bdMenu button{background:none;color:var(--ds-ink);border:0;text-align:left;padding:8px 10px;border-radius:6px;min-height:40px;font-weight:600}
+.bdMenu button:hover{background:var(--ds-surface-2)}
+.lnText{font-weight:700;color:var(--ds-ink)}
+.lnRec,.lnMeta{font-size:12.5px}
+.lnHint{margin:0 0 10px}
+.lnModes{margin-left:auto}
+.lnSeg{display:inline-flex;border:1px solid var(--ds-line-strong);border-radius:var(--ds-radius-sm);overflow:hidden}
+.lnSeg button{background:var(--ds-surface);color:var(--ds-ink-2);border:0;border-radius:0;padding:8px 14px;font-weight:700;min-height:40px}
+.lnSeg button+button{border-left:1px solid var(--ds-line-strong)}
+.lnSeg button[aria-pressed="true"]{background:var(--ds-primary);color:#fff}
+#approvals>.toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+#approvals.lanesMode .notice,#approvals.lanesMode #findingSummary,#approvals.lanesMode .findingControls,#approvals.lanesMode #approvalIssues{display:none}
+#approvals:not(.lanesMode) #findingLanes{display:none}
+@media(max-width:760px){
+  .bdStagePick{display:flex}
+  .bdCols{grid-auto-flow:row;grid-auto-columns:auto;overflow:visible}
+  #board .bdCols:not(.oneStage) .bdCol.isEmpty{display:none}
+  .bdCol>.bdHead{position:static}
+}
+#board .bdHide{display:none}
+
+/* ------------------------------------------------------------ shared tables */
+.ds-table{width:100%;border-collapse:separate;border-spacing:0}
+.ds-table thead th{position:sticky;top:0;background:var(--ds-surface-2);z-index:1;font-size:12px;letter-spacing:.02em;text-transform:none;color:var(--ds-ink-2)}
+.ds-table th.num,.ds-table td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ds-table tbody tr:hover td{background:var(--ds-surface-2)}
+.ds-table tfoot th{border-top:2px solid var(--ds-line-strong)}
+@media(max-width:640px){
+  table.ds-cards,table.ds-cards tbody,table.ds-cards tr,table.ds-cards td{display:block;width:100%}
+  table.ds-cards thead{display:none}
+  table.ds-cards tr{background:var(--ds-surface);border:1px solid var(--ds-line);border-radius:var(--ds-radius-sm);padding:8px 10px;margin:0 0 8px}
+  table.ds-cards td{display:flex;justify-content:space-between;gap:12px;border:0!important;padding:4px 0!important;text-align:right;white-space:normal}
+  table.ds-cards td::before{content:attr(data-ds-label);font-size:11.5px;font-weight:800;color:var(--ds-muted);text-transform:uppercase;letter-spacing:.03em;text-align:left;flex:none}
+  table.ds-cards td[data-ds-label=""]::before{content:none}
+  table.ds-cards tfoot{display:block}
+}
+
+/* ------------------------------------------------------------ desktop sidebar (office accounts, wide screens) */
+@media(min-width:1280px){
+  body.officeShell:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav{position:fixed!important;left:0!important;top:var(--ittr-header-h,64px)!important;bottom:0!important;width:232px!important;max-width:none!important;margin:0!important;padding:10px 10px 24px!important;display:flex!important;flex-direction:column!important;flex-wrap:nowrap!important;gap:2px!important;overflow-y:auto!important;overflow-x:hidden!important;background:var(--ds-nav)!important;border-top:0!important;border-right:1px solid rgba(255,255,255,.08)!important;z-index:9!important;box-sizing:border-box!important}
+  body.officeShell:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav .navGroup{display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:2px!important;padding:8px 0 4px!important;border-left:0!important;margin:0!important}
+  body.officeShell:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav .navGroup+.navGroup{border-top:1px solid rgba(255,255,255,.08)!important;padding-left:0!important}
+  body.officeShell:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav .navGroupEnd{margin-left:0!important;margin-top:auto!important}
+  body.officeShell:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav .navGroupLabel{display:block!important;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8;font-weight:800;padding:4px 10px 4px;margin:0}
+  body.officeShell:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav .navbtn:not(.hiddenRole){display:flex!important;align-items:center!important;gap:10px!important;width:100%!important;justify-content:flex-start!important;text-align:left!important;padding:9px 10px!important;min-height:40px!important;border-radius:8px!important;border-bottom:0!important;color:var(--ds-nav-ink)!important;background:transparent!important;font-size:14px!important;white-space:nowrap!important;box-shadow:none!important}
+  body.officeShell:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav .navbtn:hover{background:rgba(255,255,255,.07)!important}
+  body.officeShell:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav .navbtn.active{background:rgba(255,255,255,.12)!important;color:#fff!important;box-shadow:inset 3px 0 0 var(--ds-accent)!important}
+  body.officeShell:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav .navIco{display:inline-block!important;width:20px;text-align:center;flex:none;opacity:.85;font-size:15px}
+  body.officeShell:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav .notifyBadge,body.officeShell:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav .partsNavBadge{margin-left:auto}
+  body.officeShell:not(.loggedOut):not(.invoiceWorkspaceMode) .navCollapse{display:flex!important;align-items:center;gap:10px;background:transparent!important;color:#94a3b8!important;border:0!important;padding:6px 10px!important;min-height:34px!important;font-size:12px!important;font-weight:700;justify-content:flex-start;width:100%}
+  body.officeShell:not(.loggedOut):not(.invoiceWorkspaceMode) main{margin-left:232px!important;max-width:none!important}
+  body.officeShell.navCollapsed:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav{width:64px!important}
+  body.officeShell.navCollapsed:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav .navTxt,body.officeShell.navCollapsed:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav .navGroupLabel{display:none!important}
+  body.officeShell.navCollapsed:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav .navbtn{justify-content:center!important;padding:9px 0!important;position:relative}
+  body.officeShell.navCollapsed:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav .notifyBadge{position:absolute;top:2px;right:4px}
+  body.officeShell.navCollapsed:not(.loggedOut):not(.invoiceWorkspaceMode) .navCollapse{justify-content:center}
+  body.officeShell.navCollapsed:not(.loggedOut):not(.invoiceWorkspaceMode) .navCollapse .navIco{transform:rotate(180deg)}
+  body.officeShell.navCollapsed:not(.loggedOut):not(.invoiceWorkspaceMode) main{margin-left:64px!important}
+  /* Docked AI panel: it takes a column on the right and the page gets narrower, so nothing is hidden behind it. */
+  body.aiChatOpen:not(.loggedOut):not(.invoiceWorkspaceMode) #shopAiPanel{top:var(--ittr-header-h,64px)!important;right:0!important;bottom:0!important;left:auto!important;width:420px!important;height:auto!important;max-height:none!important;border-radius:0!important;border-left:1px solid var(--ds-line)!important;box-shadow:-8px 0 24px rgba(16,24,40,.08)!important}
+  body.aiChatOpen:not(.loggedOut):not(.invoiceWorkspaceMode) main{margin-right:420px!important}
+  body.aiChatOpen:not(.loggedOut):not(.invoiceWorkspaceMode) #toastRegion{right:436px!important}
+}
+.navCollapse{display:none}
+/* v24.70.0: drag-and-drop on the Repair Board (buttons remain the keyboard/touch way) */
+#board .bdCard[draggable="true"]{cursor:grab}
+#board .bdCard.dragging{opacity:.5}
+#board .bdCol.dropHere{outline:2px dashed var(--ds-primary);outline-offset:-2px;background:var(--ds-primary-soft)}

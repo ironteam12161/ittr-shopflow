@@ -1,7 +1,7 @@
 // v24.69.0: finding photos against a disposable database and an in-memory S3 (mock_s3.mjs) — never real R2.
 // Covers: upload with caption/kind, the thumbnail object, a retried upload with the same clientId (stored once),
 // the work-order photo list, the thumb/full signed links, markup saved next to the untouched original, who may see and
-// change photos (owner, assigned mechanic; not another mechanic; managers keep the existing no-access rule),
+// change photos (view: owner, managers, assigned mechanic; add: owner + assigned mechanic; change: uploader or owner),
 // delete removing both objects, and the customer inspection page not showing deleted photos.
 import sharp from 'sharp';
 import { dbSuiteGuard, startTestServer, ok, eq } from './test_harness.mjs';
@@ -66,7 +66,9 @@ try {
   ok(!('url' in pa), 'list does not sign full-size links');
   const tr = await fetch(pa.thumbUrl); eq(tr.status, 200, 'thumbnail link loads'); eq(Buffer.from(await tr.arrayBuffer()).length, s3.objects.get(thumb).body.length, 'thumbnail bytes served');
   eq((await get('/api/work-orders/501/photos', mech2)).status, 403, 'other mechanic cannot list');
-  eq((await get('/api/work-orders/501/photos', mgr)).status, 403, 'manager cannot list (existing rule kept)');
+  const ml = await get('/api/work-orders/501/photos', mgr);
+  eq(ml.status, 200, 'manager can list photos (owner decision, v24.70.0)'); eq(ml.photos.length, 2, 'manager sees both photos');
+  ok((await get(`/api/photos/${a.photoId}/url`, mgr)).url, 'manager gets a viewing link');
   eq((await get('/api/work-orders/501/photos', owner)).photos.length, 2, 'owner lists');
   const one = await get(`/api/photos/${a.photoId}`, owner); ok(one.url && one.thumbUrl && one.caption, 'single photo gives full + thumb links');
   const tv = await get(`/api/photos/${a.photoId}/url?variant=thumb`, mech1); ok(tv.url.includes('_t.jpg'), 'variant=thumb signs the thumbnail');
@@ -87,6 +89,8 @@ try {
   eq((await srv.request(`/api/photos/${a.photoId}`, { method: 'PATCH', token: mech1, body: { annotations: [{ t: 'bogus' }] }, allowError: true })).status, 400, 'invalid markup refused');
   eq((await srv.request(`/api/photos/${b.photoId}`, { method: 'PATCH', token: mech1, body: { caption: 'mine now' }, allowError: true })).status, 403, 'a mechanic cannot change someone else\'s photo');
   eq((await srv.request(`/api/photos/${a.photoId}`, { method: 'PATCH', token: mech2, body: { caption: 'x' }, allowError: true })).status, 403, 'other mechanic cannot change it');
+  eq((await srv.request(`/api/photos/${a.photoId}`, { method: 'PATCH', token: mgr, body: { caption: 'x' }, allowError: true })).status, 403, 'manager can view but not change a photo');
+  eq((await srv.request(`/api/photos/${a.photoId}`, { method: 'DELETE', token: mgr, allowError: true })).status, 403, 'manager cannot delete a photo');
   eq((await srv.request(`/api/photos/${a.photoId}`, { method: 'PATCH', token: owner, body: { kind: 'sideways' }, allowError: true })).status, 400, 'unknown photo type refused');
   const paired = await srv.request(`/api/photos/${a.photoId}`, { method: 'PATCH', token: owner, body: { pairId: b.photoId, caption: 'Before: cracked drum' } });
   eq(paired.photo.pairId, b.photoId, 'owner pairs before/after'); eq(paired.photo.caption, 'Before: cracked drum', 'owner edits caption');

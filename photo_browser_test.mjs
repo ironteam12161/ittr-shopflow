@@ -35,7 +35,7 @@ async function scenario(name, fn) { STEP = ''; try { await fn(); console.log(`PA
 async function newPage({ width = 1366, height = 860 } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height }, serviceWorkers: 'block' });
   const page = await ctx.newPage(); page.errors = [];
-  page.on('pageerror', e => page.errors.push(e.message)); page.on('dialog', d => d.accept().catch(() => {}));
+  page.on('pageerror', e => page.errors.push(e.message)); page.dialogs = []; page.on('dialog', d => { page.dialogs.push(d.type()); d.accept().catch(() => {}); });
   return { ctx, page };
 }
 async function signIn(page, u, p) {
@@ -50,6 +50,7 @@ const shot = async (page, name) => { const dir = process.env.ITTR_SCREENSHOT_DIR
 try {
   const owner = await srv.login(OWNER.username, OWNER.password);
   await srv.request('/api/admin/users', { method: 'POST', token: owner, body: { username: 'mech1', display: 'Mech One', password: 'Mechanic-Pass-1' } });
+  await srv.request('/api/admin/managers', { method: 'POST', token: owner, body: { username: 'office1', display: 'Office', password: 'Manager-Pass-2026', permissions: { customers: true } } });
   const st = await srv.request('/api/state', { token: owner });
   const sf = st.shopflow.payload;
   sf.workorders = [{ id: 501, unit: 'DEMO-12', customer: 'Demo Fleet', status: 'Open', mechanic: 'mech1', helpers: [], date: '2026-10-16', time: '08:00', truckHere: true, tasks: [{ uid: 't1', t: 'Brake inspection', done: false }] }];
@@ -62,7 +63,9 @@ try {
   let findingId = null;
 
   await scenario('mechanic phone: offline finding with 2 photos → "Saved on this device" → upload fails → reload → Retry → uploaded once', async () => {
-    const { ctx, page } = await newPage({ width: 390, height: 844 }); await page.goto(B); await signIn(page, 'mech1', 'Mechanic-Pass-1');
+    const { ctx, page } = await newPage({ width: 390, height: 844 });
+    // A request held by the test's network interception can stall; the app's upload time limit must free the queue.
+    await ctx.addInitScript(() => { window.ITTR_UPLOAD_TIMEOUT_MS = 5000; }); await page.goto(B); await signIn(page, 'mech1', 'Mechanic-Pass-1');
     await page.click('#mobileBottomNav [data-mobile-view="inspection"]').catch(() => page.evaluate(() => document.querySelector('[data-view="inspection"]').click()));
     await page.click('#inspection .toolbar button'); await until(page, () => document.getElementById('issueModal').classList.contains('open'));
     await page.fill('#issueForm [name="description"]', 'LF brake drum cracked');
@@ -99,13 +102,24 @@ try {
     eq(s3.objects.size, 0, 'nothing stored yet');
     await shot(page, 'after-mechanic-upload-failed');
 
+    // A stalled upload (no answer at all) is given up after the time limit and offered for Retry again.
+    STEP = 'stalled upload';
+    await page.unroute('**/api/findings/*/photo'); await page.route('**/api/findings/*/photo', () => {});
+    await page.evaluate(() => { const e = ittrPhotoQueue.list().find(x => x.status === 'failed'); if (e) ittrPhotoQueue.retry(e.id); }); // the automatic retry may already be under way
+    await until(page, () => ittrPhotoQueue.list().some(e => e.status === 'failed' && /took too long/.test(e.error)), null, 30000);
+    eq(s3.objects.size, 0, 'nothing stored by the stalled upload');
+    await page.unroute('**/api/findings/*/photo'); await page.route('**/api/findings/*/photo', r => r.abort('failed'));
+
     await page.reload(); await until(page, () => typeof cloudReady !== 'undefined' && cloudReady, null, 15000);
     await page.evaluate(() => document.querySelector('[data-view="inspection"]').click());
     await until(page, id => document.querySelectorAll(`.fpGallery[data-fp-finding="${id}"] [data-fp-kind="queue"]`).length === 2, String(findingId), 15000);
 
-    await page.unroute('**/api/findings/*/photo');
-    await page.locator(`.fpGallery[data-fp-finding="${findingId}"] .fpState button:has-text("Retry")`).first().click();
     STEP = 'retry uploads';
+    await page.unroute('**/api/findings/*/photo');
+    // Retry what is still waiting (the app's own automatic retry may already have sent some once the network is back).
+    const retryBtn = page.locator(`.fpGallery[data-fp-finding="${findingId}"] .fpState button:has-text("Retry")`).first();
+    if (await retryBtn.isVisible().catch(() => false)) await retryBtn.click({ timeout: 3000 }).catch(() => {});
+    await page.evaluate(() => ittrPhotoQueue.list().filter(e => e.status === 'failed').forEach(e => ittrPhotoQueue.retry(e.id)));
     await until(page, id => document.querySelectorAll(`.fpGallery[data-fp-finding="${id}"] [data-fp-kind="server"]`).length === 2 && !document.querySelector(`.fpGallery[data-fp-finding="${id}"] [data-fp-kind="queue"]`), String(findingId), 20000)
       .catch(async e => { throw new Error(`${e.message.split('\n')[0]} queue=${JSON.stringify(await page.evaluate(() => ittrPhotoQueue.list().map(x => [x.status, x.error, x.photoId])))} tiles=${await page.evaluate(id => [...document.querySelectorAll(`.fpGallery[data-fp-finding="${id}"] .fpThumb`)].map(t => t.dataset.fpKind + ':' + (t.dataset.fpStatus || '')).join(','), String(findingId))} rows=${(await srv.db.query('SELECT count(*)::int n FROM finding_photos')).rows[0].n}`); });
     eq(s3.objects.size, 4, 'two originals + two thumbnails stored');
@@ -125,7 +139,7 @@ try {
   await scenario('owner viewer: keyboard, zoom, rotate, swipe, Esc + focus, non-destructive markup', async () => {
     const { ctx, page } = await newPage(); await page.goto(B); await signIn(page, OWNER.username, OWNER.password);
     await page.click('header nav .navbtn[data-view="approvals"]');
-    await page.evaluate(() => setFindingView('all'));
+    await page.evaluate(() => { wsFindingsMode('list'); setFindingView('all'); });
     const g = `.fpGallery[data-fp-finding="${findingId}"]`;
     await until(page, sel => document.querySelectorAll(`${sel} [data-fp-kind="server"]:not(.fpLoading)`).length === 2, g, 15000);
     ok(await page.locator(`${g} .fpTag.before`).count() === 1, 'Before tag on the card');
@@ -160,6 +174,31 @@ try {
     const ann = (await srv.db.query('SELECT annotations FROM finding_photos WHERE finding_id=$1 AND jsonb_array_length(annotations)>0', [String(findingId)])).rows;
     eq(ann.length, 1, 'markup stored'); eq(ann[0].annotations[0].t, 'arrow', 'arrow stored');
     ok([...before].every(([k, v]) => Buffer.compare(v, s3.objects.get(k).body) === 0), 'stored photos unchanged by markup');
+
+    // A text label is typed in the viewer itself (no browser pop-up) and is added to the arrow already there.
+    STEP = 'text label';
+    await page.click('.pv [data-a="edit"]'); await page.click('.pv [data-tool="text"]');
+    await page.mouse.click(box.x + box.width * 0.6, box.y + box.height * 0.4);
+    await until(page, () => !document.querySelector('.pv .pvTextBox').hidden);
+    await page.fill('.pv .pvTextBox input', 'Crack here'); await page.keyboard.press('Enter');
+    eq(await page.evaluate(() => ITTRPhotoViewer.state.marks), 2, 'label added next to the arrow');
+    await page.click('.pv [data-a="save"]'); await until(page, () => /original photo is unchanged/.test(document.querySelector('.pv .pvStatus').textContent));
+    const ann2 = (await srv.db.query('SELECT annotations FROM finding_photos WHERE finding_id=$1 AND jsonb_array_length(annotations)>0', [String(findingId)])).rows[0].annotations;
+    ok(ann2.length === 2 && ann2.some(m => m.t === 'text' && m.text === 'Crack here'), 'typed label stored');
+    ok(!page.dialogs.includes('prompt'), 'no browser pop-up used for the label');
+
+    // Details: caption, type and before/after pair are changed in the viewer.
+    STEP = 'details';
+    await page.click('.pv [data-a="details"]'); await until(page, () => !document.querySelector('.pv .pvDetails').hidden);
+    await page.fill('.pv .pvDetails [name="caption"]', 'Cracked drum, LF side');
+    const pairTo = await page.evaluate(() => [...document.querySelectorAll('.pv .pvDetails [name="pairId"] option')].map(o => o.value).find(Boolean));
+    ok(pairTo, 'the other photo is offered as its pair');
+    await page.selectOption('.pv .pvDetails [name="pairId"]', pairTo);
+    const kindShown = await page.inputValue('.pv .pvDetails [name="kind"]');
+    await page.click('.pv [data-a="detsave"]'); await until(page, () => /Details saved/.test(document.querySelector('.pv .pvStatus').textContent));
+    const det = (await srv.db.query("SELECT caption,kind,pair_id FROM finding_photos WHERE finding_id=$1 AND caption='Cracked drum, LF side'", [String(findingId)])).rows[0];
+    ok(det && (det.kind || '') === kindShown && det.pair_id === pairTo, `caption and pair saved, type kept (${JSON.stringify(det)} / shown "${kindShown}")`);
+    ok((await page.textContent('.pv .pvCap')).includes('Cracked drum, LF side'), 'viewer shows the new caption');
     await page.keyboard.press('Escape'); await until(page, () => !document.querySelector('.pv'));
     ok(await page.evaluate(() => document.activeElement?.classList.contains('fpImg')), 'focus back on the photo that opened the viewer');
     await until(page, sel => document.querySelector(`${sel} .fpMarks`), g);
@@ -168,7 +207,7 @@ try {
 
   await scenario('expired links and broken thumbnails recover with Retry; older embedded photo shows; Ukrainian labels', async () => {
     const { ctx, page } = await newPage(); await page.goto(B); await signIn(page, OWNER.username, OWNER.password);
-    await page.click('header nav .navbtn[data-view="approvals"]'); await page.evaluate(() => setFindingView('all'));
+    await page.click('header nav .navbtn[data-view="approvals"]'); await page.evaluate(() => { wsFindingsMode('list'); setFindingView('all'); });
     const g = `.fpGallery[data-fp-finding="${findingId}"]`;
     await until(page, sel => document.querySelectorAll(`${sel} [data-fp-kind="server"]:not(.fpLoading)`).length === 2, g, 15000);
     STEP = 'legacy';
@@ -200,7 +239,7 @@ try {
     await page.selectOption('#languageSelect', 'uk');
     await page.waitForLoadState('load'); await sleep(500);
     await until(page, () => typeof cloudReady !== 'undefined' && cloudReady && currentLanguage === 'uk', null, 15000);
-    await page.evaluate(() => { document.querySelector('header nav .navbtn[data-view="approvals"]').click(); setFindingView('all'); });
+    await page.evaluate(() => { document.querySelector('header nav .navbtn[data-view="approvals"]').click(); wsFindingsMode('list'); setFindingView('all'); });
     await until(page, () => /Додати фото/.test(document.getElementById('approvalIssues').textContent));
     await page.locator(`${g} [data-fp-kind="server"] .fpImg`).first().click();
     await until(page, () => document.querySelector('.pv'));
@@ -208,6 +247,38 @@ try {
     ok((await page.getAttribute('.pv [data-a="close"]', 'aria-label')) === 'Закрити', 'close label in Ukrainian');
     await page.keyboard.press('Escape');
     await shot(page, 'after-ukrainian-viewer-closed');
+
+    // Delete (uploader or owner): the stored photo and its thumbnail go, and the finding record no longer lists it.
+    STEP = 'close while loading';
+    await page.route('**/*_t.jpg*', r => r.continue()); // (thumbnails unaffected)
+    await page.route(u => /\/findings\/.*(?<!_t)\.jpg/.test(String(u)) && !/_t\.jpg/.test(String(u)), async r => { await sleep(1500); await r.continue().catch(() => {}); });
+    await page.locator(`${g} [data-fp-kind="server"] .fpImg`).first().click(); await until(page, () => document.querySelector('.pv'));
+    await page.keyboard.press('Escape'); await sleep(2500);
+    eq(page.errors.length, 0, `closing during a slow load raises no error (${page.errors.join(' | ')})`);
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    STEP = 'delete';
+    const objsBefore = s3.objects.size;
+    await page.locator(`${g} [data-fp-kind="server"] .fpImg`).last().click(); await until(page, () => document.querySelector('.pv .pvLayer')?.style.visibility === 'visible');
+    await page.click('.pv [data-a="details"]'); await page.click('.pv [data-a="delete"]');
+    await until(page, () => !document.querySelector('.pv') || /1 \/ 1|1 \/ 1/.test(document.querySelector('.pv .pvCount')?.textContent || ''));
+    ok(page.dialogs.includes('confirm'), 'delete asks first');
+    await until(page, sel => document.querySelectorAll(`${sel} [data-fp-kind="server"]`).length === 1, g, 15000);
+    eq(s3.objects.size, objsBefore - 2, 'photo and thumbnail removed from storage');
+    await until(page, () => ittrSync.status().pending === 0, null, 15000);
+    eq((await serverShop()).issues.find(i => String(i.id) === String(findingId)).photoIds.length, 1, 'finding record lists one photo');
+    eq(page.errors.length, 0, `no script errors (${page.errors.join(' | ')})`); await ctx.close();
+  });
+
+  await scenario('manager sees finding photos (view only: no markup, details or delete)', async () => {
+    const { ctx, page } = await newPage(); await page.goto(B); await signIn(page, 'office1', 'Manager-Pass-2026');
+    await page.click('header nav .navbtn[data-view="approvals"]'); await page.evaluate(() => { wsFindingsMode('list'); setFindingView('all'); });
+    const g = `.fpGallery[data-fp-finding="${findingId}"]`;
+    await until(page, sel => document.querySelector(`${sel} [data-fp-kind="server"]:not(.fpLoading) img`)?.naturalWidth > 0, g, 15000);
+    ok(!(await page.locator(`${g} + .fpAddBtn, .fpWrap:has(${g}) .fpAddBtn`).count()), 'no Add photos for a manager');
+    await page.locator(`${g} [data-fp-kind="server"] .fpImg`).first().click();
+    await until(page, () => document.querySelector('.pv .pvLayer')?.style.visibility === 'visible', null, 15000);
+    ok(!(await page.locator('.pv [data-a="edit"]').isVisible()) && !(await page.locator('.pv [data-a="details"]').isVisible()), 'no markup or details controls for a manager');
+    await page.keyboard.press('Escape');
     eq(page.errors.length, 0, `no script errors (${page.errors.join(' | ')})`); await ctx.close();
   });
 } catch (e) {

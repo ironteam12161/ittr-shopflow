@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.69.0-PHOTOS-20261016">
+<meta name="ittr-build" content="ITTR-24.70.0-WORKSPACE-20261016">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -28,7 +28,7 @@
  P.removeItem=function(k){rm.call(this,k);if(this===sessionStorage&&keys[k])try{rm.call(localStorage,'ittr_app_'+k)}catch(e){}};
 }catch(e){}})();
 </script>
-<title>ITTR ShopFlow v24.69.0</title>
+<title>ITTR ShopFlow v24.70.0</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -835,7 +835,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.69.0">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.70.0">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -852,12 +852,13 @@ body.invoiceWorkspaceMode .invoiceRateWrap{display:grid!important;grid-template-
 @media(max-width:900px){body.invoiceWorkspaceMode .invoiceGridHeader{display:none!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow{grid-template-columns:1fr 1fr!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceGridItemLabel,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLaborDescription{grid-column:1/-1!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceQtyUnit,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceTaxCell,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLineNet{grid-column:1!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLaborRateField,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceDiscountControl,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceRowActions{grid-column:2!important}}
 </style>
 <link rel="stylesheet" href="./inspection-workflow.css?v=3">
-<script src="./sync-merge.js?v=24.69.0"></script>
-<script src="./sync-queue.js?v=24.69.0"></script>
-<link rel="stylesheet" href="./design-system.css?v=24.69.0">
-<script src="./icons.js?v=24.69.0"></script>
-<script src="./photo-viewer.js?v=24.69.0"></script>
-<script src="./photo-queue.js?v=24.69.0"></script>
+<script src="./sync-merge.js?v=24.70.0"></script>
+<script src="./sync-queue.js?v=24.70.0"></script>
+<link rel="stylesheet" href="./design-system.css?v=24.70.0">
+<link rel="stylesheet" href="./app-shell.css?v=24.70.0">
+<script src="./icons.js?v=24.70.0"></script>
+<script src="./photo-viewer.js?v=24.70.0"></script>
+<script src="./photo-queue.js?v=24.70.0"></script>
 <style id="ittrNavLayoutV2">
 /* v24.39.0 desktop navigation: one full-width tab strip grouped by workflow (Shop · Money · Records · Operations). */
 @media(min-width:761px){
@@ -1007,7 +1008,7 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 </style>
 </head>
 <body class="loggedOut">
-<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.69.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.70.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1046,10 +1047,12 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
   <button class="navbtn" onclick="logout()">Logout</button>
 </div>
   <nav aria-label="Main">
-   <div class="navGroup adminOnly"><button class="navbtn active adminOnly" data-view="dashboard"><span class="navIco" aria-hidden="true">▦</span>Dashboard</button><button class="navbtn adminOnly" data-view="workorders"><span class="navIco" aria-hidden="true">▤</span>Work Orders</button><button class="navbtn adminOnly" data-view="approvals"><span class="navIco" aria-hidden="true">!</span>Findings <span id="approvalNotify" class="notifyBadge" style="display:none">0</span></button></div>
-   <div class="navGroup adminOnly"><span class="navGroupLabel">Money</span><button class="navbtn adminOnly" data-view="estimates"><span class="navIco" aria-hidden="true">✎</span>Estimates</button><button class="navbtn adminOnly" data-view="invoices"><span class="navIco" aria-hidden="true">$</span>Invoices <span id="invoiceNavBadge" class="notifyBadge" style="display:none">0</span></button><button class="navbtn adminOnly" data-view="bills"><span class="navIco" aria-hidden="true">⧉</span>Bills</button><button class="navbtn adminOnly" data-view="purchaseorders"><span class="navIco" aria-hidden="true">⇢</span>Orders</button><button class="navbtn adminOnly" data-view="reports"><span class="navIco" aria-hidden="true">▥</span>Reports</button></div>
-   <div class="navGroup adminOnly"><span class="navGroupLabel">Records</span><button class="navbtn adminOnly" data-view="customers"><span class="navIco" aria-hidden="true">⌕</span>Customers &amp; Vehicles</button><button class="navbtn adminOnly" data-view="parts"><span class="navIco" aria-hidden="true">⚙</span>Parts <span id="partsNavBadge" class="partsNavBadge" style="display:none">0</span></button><button class="navbtn adminOnly" data-view="compliance"><span class="navIco" aria-hidden="true">✓</span>Compliance <span id="complianceNavBadge" class="notifyBadge" style="display:none">0</span></button></div>
-   <div class="navGroup adminOnly navGroupEnd"><button class="navbtn adminOnly" data-view="procenter"><span class="navIco" aria-hidden="true">☰</span>Operations</button></div>
+   <button type="button" class="navCollapse adminOnly" onclick="ittrToggleSidebar()" aria-label="Collapse or expand the menu" title="Collapse or expand the menu" aria-expanded="true"><span class="navIco" aria-hidden="true">«</span><span class="navTxt">Collapse menu</span></button>
+   <div class="navGroup adminOnly"><span class="navGroupLabel">Shop</span><button class="navbtn active adminOnly" data-view="dashboard"><span class="navIco" aria-hidden="true">▦</span><span class="navTxt">Dashboard</span></button><button class="navbtn adminOnly" data-view="board"><span class="navIco" aria-hidden="true">▥</span><span class="navTxt">Repair Board</span></button><button class="navbtn adminOnly" data-view="workorders"><span class="navIco" aria-hidden="true">▤</span><span class="navTxt">Work Orders</span></button><button class="navbtn adminOnly" data-view="approvals"><span class="navIco" aria-hidden="true">!</span><span class="navTxt">Findings</span> <span id="approvalNotify" class="notifyBadge" style="display:none">0</span></button></div>
+   <div class="navGroup adminOnly"><span class="navGroupLabel">Customers &amp; Units</span><button class="navbtn adminOnly" data-view="customers"><span class="navIco" aria-hidden="true">⌕</span><span class="navTxt">Customers &amp; Vehicles</span></button><button class="navbtn adminOnly" data-view="compliance"><span class="navIco" aria-hidden="true">✓</span><span class="navTxt">Compliance</span> <span id="complianceNavBadge" class="notifyBadge" style="display:none">0</span></button></div>
+   <div class="navGroup adminOnly"><span class="navGroupLabel">Parts</span><button class="navbtn adminOnly" data-view="parts"><span class="navIco" aria-hidden="true">⚙</span><span class="navTxt">Parts</span> <span id="partsNavBadge" class="partsNavBadge" style="display:none">0</span></button><button class="navbtn adminOnly" data-view="purchaseorders"><span class="navIco" aria-hidden="true">⇢</span><span class="navTxt">Orders</span></button></div>
+   <div class="navGroup adminOnly"><span class="navGroupLabel">Money</span><button class="navbtn adminOnly" data-view="estimates"><span class="navIco" aria-hidden="true">✎</span><span class="navTxt">Estimates</span></button><button class="navbtn adminOnly" data-view="invoices"><span class="navIco" aria-hidden="true">$</span><span class="navTxt">Invoices</span> <span id="invoiceNavBadge" class="notifyBadge" style="display:none">0</span></button><button class="navbtn adminOnly" data-view="bills"><span class="navIco" aria-hidden="true">⧉</span><span class="navTxt">Bills</span></button><button class="navbtn adminOnly" data-view="reports"><span class="navIco" aria-hidden="true">%</span><span class="navTxt">Reports</span></button></div>
+   <div class="navGroup adminOnly navGroupEnd"><span class="navGroupLabel">Management</span><button class="navbtn adminOnly" data-view="procenter"><span class="navIco" aria-hidden="true">☰</span><span class="navTxt">Operations</span></button></div>
    <button class="navbtn mechanicOnly" data-view="mechanic">My Work Orders</button><button class="navbtn mechanicOnly" data-view="inspection">Findings</button><button class="navbtn mechanicOnly" data-view="mycompleted">Completed</button></nav>
 </header>
 
@@ -1091,6 +1094,8 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 </section>
 
 
+<section id="board" class="hidden" aria-label="Repair Board"></section>
+<section id="wo" class="hidden" aria-label="Work order"></section>
 <section id="workorders" class="hidden">
   <div class="toolbar"><div><h1>Work Orders</h1><div class="muted">Open, scheduled and active repair work in one place.</div></div><div><button class="secondary" onclick="showView('completed')">Completed History</button> <button class="adminOnly" onclick="openWorkOrder()">+ New Work Order</button></div></div>
   <div class="woTools"><input id="woSearch" type="search" placeholder="Search WO #, unit, customer, VIN or job…" oninput="renderAdminTable()" autocomplete="off"><select id="woMechFilter" onchange="renderAdminTable()" aria-label="Mechanic"><option value="">All mechanics</option></select></div>
@@ -1345,7 +1350,8 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
   <div class="modalhead"><h2>Add Inspection Finding</h2><button class="x" onclick="closeModal('issueModal')">✕</button></div>
   <form id="issueForm">
     <div class="row">
-      <div class="field"><label>Work Order / Unit</label><select name="wo" id="issueWO"></select></div>
+      <div class="field"><label>Work Order / Unit</label><select name="wo" id="issueWO" onchange="fillIssueTasks()"></select></div>
+      <div class="field"><label>Job (optional)</label><select name="taskUid" id="issueTask"><option value="">Whole truck / not one job</option></select></div>
       <div class="field"><label>Severity</label><select name="severity"><option>Needs Attention</option><option>High</option><option>Safety Critical</option></select></div>
       <div class="field full"><label>Problem found</label><textarea name="description" required placeholder="Example: RH steer tire has sidewall damage"></textarea><button type="button" class="secondary miniAiButton" onclick="professionalizeIssueField('description')">AI → Professional English</button></div>
       <div class="field full"><label>Recommended repair</label><textarea name="recommendation" placeholder="Replace tire before vehicle leaves shop"></textarea><button type="button" class="secondary miniAiButton" onclick="professionalizeIssueField('recommendation')">AI → Professional English</button></div>
@@ -1595,7 +1601,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.69.0';
+const FRONTEND_VERSION='24.70.0';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudVersions={},cloudRefreshBusy=false;
 /* v24.67.0: pending saves live in public/sync-queue.js (per account, as change sets, removed only once saved). */
@@ -1953,7 +1959,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.69.0";
+const ROUTE_MODULE_VERSION="24.70.0";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -2030,9 +2036,11 @@ async function unmountRouteModule(view){
  if(host){host.replaceChildren();host.classList.remove("routeModuleError","routeModuleLoading");host.setAttribute("aria-busy","false")}
 }
 
-const APP_VIEWS=["dashboard","workorders","estimates","invoices","bills","purchaseorders","reports","compliance","trucksearch","customers","parts","procenter","activityhistory","mechanic","completed","approvals","accounts","inspection","mycompleted"];
+const APP_VIEWS=["dashboard","board","wo","workorders","estimates","invoices","bills","purchaseorders","reports","compliance","trucksearch","customers","parts","procenter","activityhistory","mechanic","completed","approvals","accounts","inspection","mycompleted"];
 let currentView=null;
 let viewHistory=[];
+// v24.70.0: the office work-order page (#wo/<id>/<tab>) — see public/shop-workspace.js.
+var woWs={id:null,tab:"jobs"};
 
 function managerCan(permission){return session?.role!=="manager" || session?.permissions?.[permission]===true}
 function managerViewAllowed(view){
@@ -2041,7 +2049,7 @@ function managerViewAllowed(view){
 }
 function allowedViewForRole(view){
  if(!session)return false;
- const adminViews=["dashboard","workorders","estimates","invoices","bills","purchaseorders","reports","compliance","trucksearch","customers","parts","procenter","activityhistory","completed","approvals","accounts"];
+ const adminViews=["dashboard","board","wo","workorders","estimates","invoices","bills","purchaseorders","reports","compliance","trucksearch","customers","parts","procenter","activityhistory","completed","approvals","accounts"];
  const mechanicViews=["mechanic","inspection","mycompleted"];
  if(session.role==="admin")return adminViews.includes(view);
  if(session.role==="manager")return adminViews.includes(view)&&managerViewAllowed(view);
@@ -2083,9 +2091,9 @@ function updateMobileBackButton(){
  syncModalState();
 }
 
-const ITTR_VIEW_NAMES={dashboard:'Dashboard',workorders:'Work Orders',estimates:'Estimates',invoices:'Invoices',bills:'Bills',purchaseorders:'Orders',reports:'Reports',compliance:'Compliance',trucksearch:'Truck Search',customers:'Customers & Vehicles',parts:'Parts',procenter:'Operations',activityhistory:'Activity Log',mechanic:'My Work Orders',completed:'Completed Work',approvals:'Findings',accounts:'Accounts',inspection:'Findings',mycompleted:'Completed'};
+const ITTR_VIEW_NAMES={dashboard:'Dashboard',board:'Repair Board',wo:'Work Order',workorders:'Work Orders',estimates:'Estimates',invoices:'Invoices',bills:'Bills',purchaseorders:'Orders',reports:'Reports',compliance:'Compliance',trucksearch:'Truck Search',customers:'Customers & Vehicles',parts:'Parts',procenter:'Operations',activityhistory:'Activity Log',mechanic:'My Work Orders',completed:'Completed Work',approvals:'Findings',accounts:'Accounts',inspection:'Findings',mycompleted:'Completed'};
 function ittrSetTabTitle(view){if(document.body.classList.contains('invoiceWorkspaceMode'))return;const b=document.querySelector(`.navbtn[data-view="${view}"]`);const name=(b?.textContent||'').replace(/^[^\p{L}\p{N}]+/u,'').replace(/\s*\d+$/,'').trim()||ITTR_VIEW_NAMES[view]||'';document.title=name?`${name} · ITTR ShopFlow`:'ITTR ShopFlow'}
-function ittrViewFromHash(){const v=decodeURIComponent(String(location.hash||'').replace(/^#\/?/,''));return APP_VIEWS.includes(v)&&allowedViewForRole(v)?v:''}
+function ittrViewFromHash(){const v=decodeURIComponent(String(location.hash||'').replace(/^#\/?/,''));const m=v.match(/^wo\/([^/]+)(?:\/([a-z]+))?$/);if(m&&allowedViewForRole('wo')){woWs.id=m[1];woWs.tab=m[2]||'jobs';return 'wo'}return APP_VIEWS.includes(v)&&v!=='wo'&&allowedViewForRole(v)?v:''}
 async function showView(view,{push=true,replace=false}={}){
  if(!allowedViewForRole(view))view=defaultViewForRole();
  if(!view)return;
@@ -2105,17 +2113,18 @@ async function showView(view,{push=true,replace=false}={}){
  APP_VIEWS.forEach(v=>{const el=document.getElementById(v);if(el)el.classList.toggle("hidden",v!==view)});
  document.querySelectorAll(".navbtn[data-view]").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
  document.querySelectorAll(".mobileNavBtn[data-mobile-view]").forEach(b=>b.classList.toggle("active",b.dataset.mobileView===view));
- const moreBtn=document.querySelector(".mobileMoreBtn");if(moreBtn)moreBtn.classList.toggle("active",["invoices","bills","purchaseorders","estimates","reports","compliance","approvals","procenter","activityhistory","accounts","completed"].includes(view));
+ const moreBtn=document.querySelector(".mobileMoreBtn");if(moreBtn)moreBtn.classList.toggle("active",["board","wo","invoices","bills","purchaseorders","estimates","reports","compliance","approvals","procenter","activityhistory","accounts","completed"].includes(view));
 
  currentView=view;
  const instance=routeModuleInstances.get(view);
  if(instance&&typeof instance.module.afterShow==="function")await instance.module.afterShow(instance.scope);
 
- const state={ittr:true,view};
+ const state={ittr:true,view,...(view==='wo'?{woId:woWs.id,woTab:woWs.tab}:{})};
  // v24.66.0: the page is kept in the address (#invoices), so a reload or a bookmark opens the same page, and the tab shows its name.
- const url=document.body.classList.contains('invoiceWorkspaceMode')?location.href:location.pathname+location.search+'#'+view;
+ const url=document.body.classList.contains('invoiceWorkspaceMode')?location.href:location.pathname+location.search+'#'+(view==='wo'&&woWs.id!=null?`wo/${encodeURIComponent(woWs.id)}/${woWs.tab||'jobs'}`:view);
  try{if(replace)history.replaceState(state,"",url);else if(push)history.pushState(state,"",url)}catch(e){}
  ittrSetTabTitle(view);
+ try{window.ittrWsAfterShow?.(view)}catch(e){console.error('Workspace render failed:',e)}
  window.scrollTo(0,0);updateMobileBackButton();
 
  // Heavy route DOM is removed after navigation. Module-level listeners are aborted first.
@@ -2159,6 +2168,7 @@ function bindNavigation(){
      closeTopOpenModal();
      return;
    }
+   if(e.state?.view==='wo'&&e.state.woId!=null){woWs.id=e.state.woId;woWs.tab=e.state.woTab||'jobs'}
    const requested=e.state?.view||ittrViewFromHash();
    if(requested && allowedViewForRole(requested)){
      if(viewHistory.length)viewHistory.pop();
@@ -2203,6 +2213,7 @@ function applyRole(){
   document.querySelectorAll("[data-mobile-view]").forEach(el=>{const v=el.dataset.mobileView;if(session?.role==="manager"&&v)el.classList.toggle("hiddenRole",!managerViewAllowed(v));});
   document.getElementById("currentUser").textContent=session?(session.display||session.username):"";
   document.getElementById("currentRole").textContent=session?session.role.toUpperCase():"";
+  try{window.ittrSyncShell?.()}catch(_){}
   if(!session) return;
   try{const pq=photoQ();pq&&pq.restore().then(()=>{pq.resumeSignin();try{updateSyncQueueBadge()}catch(_){}})}catch(_){}
   shopAiRestore();
@@ -2801,7 +2812,11 @@ const UI_PLACEHOLDER_TRANSLATIONS={
 };
 
 /* v24.69.0 finding photos, viewer and upload states */
-Object.assign(UI_TRANSLATIONS,{"Take photo":"Зробити фото","Choose photos":"Вибрати фото","Photos":"Фото","Add photos":"Додати фото","Save photos":"Зберегти фото","Cancel":"Скасувати","Add as many photos as you need. Each photo is kept on this phone first and then uploaded — the finding is saved even if the upload has to wait.":"Додайте стільки фото, скільки потрібно. Кожне фото спершу зберігається на цьому телефоні, а потім завантажується — зауваження зберігається, навіть якщо завантаження має зачекати.","Before":"До","After":"Після","Detail":"Деталь","Before repair":"До ремонту","After repair":"Після ремонту","Close-up":"Крупний план","Caption":"Підпис","Caption — what does this photo show?":"Підпис — що показує це фото?","Photo type":"Тип фото","Remove photo":"Видалити фото","Compare before / after":"Порівняти до / після","Tap a photo to zoom in.":"Торкніться фото, щоб збільшити.","Finding photo":"Фото зауваження","Older finding photo":"Старе фото зауваження","Older photo":"Старе фото","No caption":"Без підпису","Open photo":"Відкрити фото","Loading photos…":"Завантаження фото…","Saving on this device…":"Збереження на цьому пристрої…","Saved on this device":"Збережено на цьому пристрої","Not saved on this device — keep the app open":"Не збережено на пристрої — не закривайте застосунок","Uploading…":"Завантаження…","Uploaded":"Завантажено","Upload failed":"Не завантажено","Not accepted":"Не прийнято","Sign in to upload":"Увійдіть, щоб завантажити","Retry":"Повторити","Photo did not load — tap to retry":"Фото не завантажилось — торкніться, щоб повторити","Photos are visible to the owner and the mechanics assigned to this work order.":"Фото бачать власник і механіки, призначені на цей наряд.","Photo storage is not set up yet.":"Сховище фото ще не налаштоване.","Photos could not be loaded.":"Не вдалося завантажити фото.","Photo could not be loaded.":"Не вдалося завантажити фото.","Photo link was not returned by the server.":"Сервер не повернув посилання на фото.","No connection. The photo will upload when the connection is back.":"Немає з’єднання. Фото завантажиться, коли з’єднання відновиться.","Waiting for the work order to finish saving.":"Очікуємо, поки наряд збережеться.","Photo upload failed":"Помилка завантаження фото","Server did not return a photo ID.":"Сервер не повернув ID фото.","Remove this photo from this device? It was not uploaded.":"Видалити це фото з пристрою? Воно не було завантажене.","Photo is larger than 25 MB. Please retake it at normal camera resolution.":"Фото більше 25 МБ. Зробіть його повторно зі звичайною роздільністю камери.","photo ready":"фото готове","photos ready":"фото готові","photo saved on this device — uploading":"фото збережено на цьому пристрої — завантажується","photos saved on this device — uploading":"фото збережено на цьому пристрої — завантажуються","photo could not be stored on this device — keep the app open until it uploads":"фото не вдалося зберегти на пристрої — не закривайте застосунок, доки воно не завантажиться","photos could not be stored on this device — keep the app open until they upload":"фото не вдалося зберегти на пристрої — не закривайте застосунок, доки вони не завантажаться","photo could not be read. Take it again.":"фото не вдалося прочитати. Зробіть його ще раз.","photos could not be read. Take them again.":"фото не вдалося прочитати. Зробіть їх ще раз.","Only the owner and the mechanics assigned to this work order can add photos.":"Додавати фото можуть лише власник і механіки, призначені на цей наряд.","Take or choose at least one photo.":"Зробіть або виберіть хоча б одне фото.","Finding saved.":"Зауваження збережено.","Finding could not be saved.":"Не вдалося зберегти зауваження.","Saving…":"Збереження…","photo not uploaded yet":"фото ще не завантажено","photo":"фото","photos":"фото","Offline — photos will load when the connection is back.":"Немає з’єднання — фото завантажаться, коли з’єднання відновиться.","photos not uploaded yet":"фото ще не завантажено","Photo viewer":"Перегляд фото","Zoom in":"Збільшити","Zoom out":"Зменшити","Fit to screen":"Вмістити в екран","Rotate":"Повернути","Markup":"Позначки","Show or hide markup":"Показати або сховати позначки","Mark up":"Позначити","Previous photo":"Попереднє фото","Next photo":"Наступне фото","Markup tools":"Інструменти позначок","Arrow":"Стрілка","Circle":"Коло","Text":"Текст","Red":"Червоний","Amber":"Жовтий","White":"Білий","Undo":"Скасувати дію","Clear":"Очистити","Save markup":"Зберегти позначки","Saving markup…":"Збереження позначок…","Markup not saved":"Позначки не збережено","Markup saved. The original photo is unchanged.":"Позначки збережено. Оригінальне фото не змінено.","Short label (max 60 characters)":"Короткий підпис (до 60 символів)","Loading full photo…":"Завантаження повного фото…","The photo link expired — getting a new one…":"Посилання на фото застаріло — отримуємо нове…","Photo could not be loaded. The connection may be down or the link has expired.":"Не вдалося завантажити фото. Можливо, немає з’єднання або посилання застаріло.","You do not have access to this photo.":"У вас немає доступу до цього фото."});
+Object.assign(UI_TRANSLATIONS,{"Take photo":"Зробити фото","Choose photos":"Вибрати фото","Photos":"Фото","Add photos":"Додати фото","Save photos":"Зберегти фото","Cancel":"Скасувати","Add as many photos as you need. Each photo is kept on this phone first and then uploaded — the finding is saved even if the upload has to wait.":"Додайте стільки фото, скільки потрібно. Кожне фото спершу зберігається на цьому телефоні, а потім завантажується — зауваження зберігається, навіть якщо завантаження має зачекати.","Before":"До","After":"Після","Detail":"Деталь","Before repair":"До ремонту","After repair":"Після ремонту","Close-up":"Крупний план","Caption":"Підпис","Caption — what does this photo show?":"Підпис — що показує це фото?","Photo type":"Тип фото","Remove photo":"Видалити фото","Compare before / after":"Порівняти до / після","Tap a photo to zoom in.":"Торкніться фото, щоб збільшити.","Finding photo":"Фото зауваження","Older finding photo":"Старе фото зауваження","Older photo":"Старе фото","No caption":"Без підпису","Open photo":"Відкрити фото","Loading photos…":"Завантаження фото…","Saving on this device…":"Збереження на цьому пристрої…","Saved on this device":"Збережено на цьому пристрої","Not saved on this device — keep the app open":"Не збережено на пристрої — не закривайте застосунок","Uploading…":"Завантаження…","Uploaded":"Завантажено","Upload failed":"Не завантажено","Not accepted":"Не прийнято","Sign in to upload":"Увійдіть, щоб завантажити","Retry":"Повторити","Photo did not load — tap to retry":"Фото не завантажилось — торкніться, щоб повторити","Photos are visible to the owner, managers and the mechanics assigned to this work order.":"Фото бачать власник, менеджери та механіки, призначені на цей наряд.","Photo storage is not set up yet.":"Сховище фото ще не налаштоване.","Photos could not be loaded.":"Не вдалося завантажити фото.","Photo could not be loaded.":"Не вдалося завантажити фото.","Photo link was not returned by the server.":"Сервер не повернув посилання на фото.","No connection. The photo will upload when the connection is back.":"Немає з’єднання. Фото завантажиться, коли з’єднання відновиться.","The upload took too long. It will try again.":"Завантаження триває надто довго. Буде ще одна спроба.","Waiting for the work order to finish saving.":"Очікуємо, поки наряд збережеться.","Photo upload failed":"Помилка завантаження фото","Server did not return a photo ID.":"Сервер не повернув ID фото.","Remove this photo from this device? It was not uploaded.":"Видалити це фото з пристрою? Воно не було завантажене.","Photo is larger than 25 MB. Please retake it at normal camera resolution.":"Фото більше 25 МБ. Зробіть його повторно зі звичайною роздільністю камери.","photo ready":"фото готове","photos ready":"фото готові","photo saved on this device — uploading":"фото збережено на цьому пристрої — завантажується","photos saved on this device — uploading":"фото збережено на цьому пристрої — завантажуються","photo could not be stored on this device — keep the app open until it uploads":"фото не вдалося зберегти на пристрої — не закривайте застосунок, доки воно не завантажиться","photos could not be stored on this device — keep the app open until they upload":"фото не вдалося зберегти на пристрої — не закривайте застосунок, доки вони не завантажаться","photo could not be read. Take it again.":"фото не вдалося прочитати. Зробіть його ще раз.","photos could not be read. Take them again.":"фото не вдалося прочитати. Зробіть їх ще раз.","Only the owner and the mechanics assigned to this work order can add photos.":"Додавати фото можуть лише власник і механіки, призначені на цей наряд.","Take or choose at least one photo.":"Зробіть або виберіть хоча б одне фото.","Finding saved.":"Зауваження збережено.","Finding could not be saved.":"Не вдалося зберегти зауваження.","Saving…":"Збереження…","photo not uploaded yet":"фото ще не завантажено","photo":"фото","photos":"фото","Offline — photos will load when the connection is back.":"Немає з’єднання — фото завантажаться, коли з’єднання відновиться.","photos not uploaded yet":"фото ще не завантажено","Photo viewer":"Перегляд фото","Zoom in":"Збільшити","Zoom out":"Зменшити","Fit to screen":"Вмістити в екран","Rotate":"Повернути","Markup":"Позначки","Show or hide markup":"Показати або сховати позначки","Mark up":"Позначити","Previous photo":"Попереднє фото","Next photo":"Наступне фото","Markup tools":"Інструменти позначок","Arrow":"Стрілка","Circle":"Коло","Text":"Текст","Red":"Червоний","Amber":"Жовтий","White":"Білий","Undo":"Скасувати дію","Clear":"Очистити","Save markup":"Зберегти позначки","Saving markup…":"Збереження позначок…","Markup not saved":"Позначки не збережено","Markup saved. The original photo is unchanged.":"Позначки збережено. Оригінальне фото не змінено.","Short label (max 60 characters)":"Короткий підпис (до 60 символів)","Loading full photo…":"Завантаження повного фото…","The photo link expired — getting a new one…":"Посилання на фото застаріло — отримуємо нове…","Photo could not be loaded. The connection may be down or the link has expired.":"Не вдалося завантажити фото. Можливо, немає з’єднання або посилання застаріло.","You do not have access to this photo.":"У вас немає доступу до цього фото."});
+/* v24.70.0 work-order page, Repair Board, approval lanes, sidebar */
+Object.assign(UI_TRANSLATIONS,{"A finding moves left to right: the office reviews it, sends it to the customer, the decision is recorded and an approved repair becomes a job on the work order. Decided items show for 30 days; the full history is under \"List by date\".":"Зауваження рухається зліва направо: офіс його переглядає, надсилає клієнту, рішення фіксується, а схвалений ремонт стає роботою в наряді. Вирішені пункти показуються 30 днів; повна історія — у «Список за датою».","Approval lanes":"Етапи погодження","Approve":"Схвалити","Back to Reported":"Повернути в «Повідомлено»","Back to the Repair Board":"Назад до дошки ремонтів","Billing":"Рахунки","Billing needs the Invoices permission.":"Для рахунків потрібен дозвіл «Рахунки».","Blocked only":"Лише заблоковані","Blockers":"Перешкоди","Customer links are not available.":"Посилання для клієнтів недоступні.","Decline":"Відхилити","Done":"Готово","Every open truck by stage. Stages follow the work order; blockers show what is holding a truck up.":"Усі відкриті траки за етапами. Етап визначається нарядом; перешкоди показують, що затримує трак.","Findings view":"Вигляд зауважень","In-house repair — not billed.":"Власний ремонт — без рахунку.","Job":"Робота","Jobs done":"Виконано робіт","Labor time":"Час роботи","List by date":"Список за датою","Mark reviewed":"Позначити переглянутим","Mark this truck as picked up? It leaves the board.":"Позначити, що трак забрали? Він зникне з дошки.","No findings on this work order.":"У цьому наряді немає зауважень.","No findings with photos on this work order yet.":"У цьому наряді ще немає зауважень із фото.","No inspection on this work order.":"У цьому наряді немає інспекції.","No jobs on this work order.":"У цьому наряді немає робіт.","Not assigned":"Не призначено","Not started":"Не розпочато","Nothing here":"Тут порожньо","Open Estimates":"Відкрити кошториси","Open Invoices":"Відкрити рахунки","Picked up":"Забрали","QC passed":"Контроль пройдено","Recommended":"Рекомендовано","Reopen":"Відкрити знову","Reopen QC":"Повторний контроль","Repair Board":"Дошка ремонтів","Reviewed":"Переглянуто","Search the board":"Пошук на дошці","Search unit, customer, VIN, WO #":"Пошук: юніт, клієнт, VIN, № наряду","Send findings to customer":"Надіслати зауваження клієнту","Send to customer":"Надіслати клієнту","Sent":"Надіслано","Stage":"Етап","State":"Стан","The invoice is made when the work order is completed.":"Рахунок створюється, коли наряд завершено.","This work order is not available. It may have been deleted.":"Цей наряд недоступний. Можливо, його видалено.","Total":"Разом","Totals, tax and payments stay in Invoices; this page only links to them.":"Суми, податки й оплати залишаються в «Рахунках»; ця сторінка лише посилається на них.","Unknown unit":"Невідомий юніт","Which outside shop / what job? (optional)":"Яка стороння майстерня / яка робота? (необов’язково)","Why is this truck on hold?":"Чому трак на паузі?","Work order sections":"Розділи наряду","by":"від","jobs done":"робіт виконано","Expected":"Очікується","Not here yet":"Ще не прибув","Checked In":"Прибув","Here, work not started":"На місці, роботу не розпочато","Diagnosis":"Діагностика","Inspecting / finding problems":"Інспекція / пошук проблем","Approval":"Погодження","Waiting for a decision on findings":"Очікує рішення щодо зауважень","Repair":"Ремонт","Jobs being worked":"Роботи виконуються","Quality Check":"Контроль якості","All jobs done, needs a check":"Усі роботи виконано, потрібна перевірка","Checked — ready to go":"Перевірено — можна забирати","Office Review":"Перегляд офісом","Customer Approval":"Погодження клієнтом","Approved":"Схвалено","Declined":"Відхилено","Job Created":"Робота створена","Waiting on parts":"Очікує запчастини","Waiting on customer":"Очікує клієнта","Waiting on sublet":"Очікує сторонню роботу","On hold":"На паузі","finding sent":"зауваження надіслано","findings sent":"зауважень надіслано","finding waiting":"зауваження очікує","findings waiting":"зауважень очікують","Report a problem on this job":"Повідомити про проблему в цій роботі","Photos for this job":"Фото цієї роботи","Found on job":"Знайдено під час роботи","Whole truck / not one job":"Увесь трак / не одна робота","Job (optional)":"Робота (необов’язково)","Shop":"Майстерня","Customers & Units":"Клієнти та юніти","Parts":"Запчастини","Money":"Гроші","Management":"Керування","Collapse menu":"Згорнути меню","Every truck by stage, with what is holding it up":"Усі траки за етапами та що їх затримує"});
+/* v24.70.0 photo details, board drag and parts orders, invoice parts profit */
+Object.assign(UI_TRANSLATIONS,{"Parts buy":"Закупівля запчастин","Parts profit":"Прибуток на запчастинах","part has no buy price":"запчастина без ціни закупівлі","parts have no buy price":"запчастин без ціни закупівлі","Internal — not on the invoice the customer sees":"Внутрішнє — клієнт цього не бачить у рахунку","Details":"Деталі","Label text":"Текст підпису","Add label":"Додати підпис","Before / after pair":"Пара до / після","Save details":"Зберегти деталі","Delete photo":"Видалити фото","Not paired":"Без пари","Details saved.":"Деталі збережено.","Not saved":"Не збережено","Delete this photo? It is removed for everyone, including the customer page.":"Видалити це фото? Воно зникне для всіх, зокрема на сторінці клієнта.","Deleting…":"Видалення…","Not deleted":"Не видалено","Photo deleted.":"Фото видалено.","due":"до","Parts on order":"Запчастини замовлено","Fleet units are released automatically.":"Техніка автопарку звільняється автоматично.","This move is not available.":"Таке переміщення недоступне.","A truck moves to Diagnosis when the mechanic starts the inspection or reports a finding.":"Трак переходить у «Діагностику», коли механік починає інспекцію або повідомляє про зауваження.","A truck moves to Approval when a finding is waiting for a decision.":"Трак переходить у «Погодження», коли зауваження очікує рішення.","A truck moves to Repair when a mechanic starts a job.":"Трак переходить у «Ремонт», коли механік починає роботу.","A truck moves to Quality Check when every job is done.":"Трак переходить у «Контроль якості», коли всі роботи виконано.","A truck moves to Ready when QC passes or the work order is completed.":"Трак переходить у «Готово», коли контроль пройдено або наряд завершено.","Only a truck that is not here yet can be checked in.":"Прибуття можна відмітити лише для трака, якого ще немає.","Only a customer truck that has not been started can be moved back to Expected.":"Назад у «Очікується» можна повернути лише трак клієнта, роботу з яким не розпочато."});
 let currentLanguage=localStorage.getItem("ittr_language")||"en";
 const untranslatedUIPhrases=new Set();
 
@@ -3092,6 +3107,9 @@ function save(){localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state));q
 // Inspection actions that the server reads ("Add to work order", inspection PDF) call this first, so they never use older marks.
 window.syncNow=async function(){const until=Date.now()+5000;await new Promise(r=>setTimeout(r,260));while(Date.now()<until&&ittrSync.status().syncing)await new Promise(r=>setTimeout(r,120))};
 function esc(s){return String(s??"").replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]))}
+// v24.70.0: an id written into onclick="…" is a number or a plain token; a finding id comes from a phone, so anything
+// else is stripped before it can reach the office page's script.
+function jsArg(v){const t=String(v??"");return /^\d{1,20}$/.test(t)?t:`'${t.replace(/[^A-Za-z0-9_.-]/g,"")}'`}
 // v24.41.1 mileage boxes: show "304,538" while typing (comma, dot or space all work as thousands separators).
 // Code that reads .value, and forms when they submit, always get plain digits ("304538").
 const MILEAGE_INPUTS='input[id*="Mileage"],input[id*="Miles"],input[name="mileage"],input[name="revisitMiles"],input[data-h="mileage"],input[data-miles]';
@@ -4609,7 +4627,10 @@ function render(){
 
    const issueWO=document.getElementById("issueWO");
    if(issueWO){
+     const keepWo=issueWO.value,keepTask=document.getElementById("issueTask")?.value||"";
      issueWO.innerHTML=wo.filter(visibleToCurrentMechanic).map(w=>`<option value="${w.id}">${esc(w.unit)}</option>`).join("");
+     // v24.70.0: a sync while the form is open no longer jumps the form to another truck.
+     if(keepWo&&[...issueWO.options].some(o=>o.value===keepWo))issueWO.value=keepWo;fillIssueTasks(keepTask);
    }
 
    renderMyCompleted();
@@ -4705,7 +4726,7 @@ function findingCanAddPhotos(i){if(session?.role==="admin")return true;if(sessio
 function findingPhotoMarkup(i){
  if(!i)return "";
  const legacy=typeof i.photo==="string"&&i.photo.startsWith("data:image/");
- const add=findingCanAddPhotos(i)?`<button type="button" class="ds-btn ds-btn-secondary ds-btn-sm fpAddBtn" onclick="openPhotoAdd('${esc(String(i.id))}')">${ittrIcon("camera","sm")}<span>${esc(tr("Add photos"))}</span></button>`:"";
+ const add=findingCanAddPhotos(i)?`<button type="button" class="ds-btn ds-btn-secondary ds-btn-sm fpAddBtn" onclick="openPhotoAdd(${esc(jsArg(i.id))})">${ittrIcon("camera","sm")}<span>${esc(tr("Add photos"))}</span></button>`:"";
  return `<div class="fpWrap"><div class="fpGallery" data-fp-finding="${esc(String(i.id))}" data-fp-wo="${esc(String(i.wo??""))}"${legacy?' data-fp-legacy="1"':""}></div>${add}</div>`;
 }
 function fpWoPhotos(woId,force=false){
@@ -4733,18 +4754,21 @@ function fpRenderGallery(el){
  const html=[];
  server.forEach((p,n)=>html.push(`<div class="fpThumb fpLoading" data-fp-kind="server" data-fp-id="${esc(p.id)}"><button type="button" class="fpImg" data-fp-open="s:${esc(p.id)}" aria-label="${esc(tr("Open photo"))} ${n+1}${p.caption?`: ${esc(p.caption)}`:""}"><img alt="${esc(p.caption||tr("Finding photo"))}" decoding="async" loading="lazy"></button>${fpKindTag(p.kind)}${p.annotations?.length?`<span class="fpMarks">${ittrIcon("pencil","sm")} ${p.annotations.length}</span>`:""}<span class="fpCap">${esc(p.caption||p.component||tr("No caption"))}</span></div>`));
  queued.forEach(e=>{
-  const act=e.status==="failed"||e.status==="signin"||e.status==="memory"?`<button type="button" class="ds-btn ds-btn-secondary ds-btn-sm" onclick="fpRetry('${esc(e.id)}')">${ittrIcon("retry","sm")}<span>${esc(tr("Retry"))}</span></button>`:e.status==="refused"?`<button type="button" class="ds-btn ds-btn-danger ds-btn-sm" onclick="fpRemoveQueued('${esc(e.id)}')">${ittrIcon("trash","sm")}<span>${esc(tr("Remove"))}</span></button>`:"";
+  const act=e.status==="failed"||e.status==="signin"||e.status==="memory"?`<button type="button" class="ds-btn ds-btn-secondary ds-btn-sm" onclick="fpRetry(${esc(jsArg(e.id))})">${ittrIcon("retry","sm")}<span>${esc(tr("Retry"))}</span></button>`:e.status==="refused"?`<button type="button" class="ds-btn ds-btn-danger ds-btn-sm" onclick="fpRemoveQueued(${esc(jsArg(e.id))})">${ittrIcon("trash","sm")}<span>${esc(tr("Remove"))}</span></button>`:"";
   html.push(`<div class="fpThumb" data-fp-kind="queue" data-fp-id="${esc(e.id)}" data-fp-status="${esc(e.status)}"><button type="button" class="fpImg" data-fp-open="q:${esc(e.id)}" aria-label="${esc(tr("Open photo"))}"><img alt="${esc(e.caption||tr("Finding photo"))}" decoding="async"></button>${fpKindTag(e.kind)}<span class="fpState">${fpChip(e.status)}${act}</span><span class="fpCap" title="${esc(e.error||"")}">${esc(e.status==="refused"&&e.error?e.error:(e.caption||tr("No caption")))}</span></div>`);
  });
  if(legacy)html.push(`<div class="fpThumb" data-fp-kind="legacy"><button type="button" class="fpImg" data-fp-open="l:" aria-label="${esc(tr("Open photo"))}"><img alt="${esc(tr("Older finding photo"))}" src="${esc(issue.photo)}"></button><span class="fpCap">${esc(tr("Older photo"))}</span></div>`);
  if(cache?.promise&&!server.length&&findingHasPhotoRefs(issue)&&!queued.length)html.push(`<div class="fpThumb fpLoading" aria-busy="true"><span class="fpImg ds-skeleton"></span><span class="fpCap">${esc(tr("Loading photos…"))}</span></div>`);
  if(cache?.error&&!cache.promise&&findingHasPhotoRefs(issue)){
-  const note=!navigator.onLine?tr("Offline — photos will load when the connection is back."):cache.status===403?tr("Photos are visible to the owner and the mechanics assigned to this work order."):cache.status===503?tr("Photo storage is not set up yet."):tr("Photos could not be loaded.");
-  html.push(`<div class="fpNote" role="status">${ittrIcon(cache.status===403?"lock":"alert","sm")} ${esc(note)}${cache.status===403||cache.status===503?"":` <button type="button" class="ds-btn ds-btn-ghost ds-btn-sm" onclick="fpReloadWo('${esc(String(woId))}')">${ittrIcon("retry","sm")}<span>${esc(tr("Retry"))}</span></button>`}</div>`);
+  const note=!navigator.onLine?tr("Offline — photos will load when the connection is back."):cache.status===403?tr("Photos are visible to the owner, managers and the mechanics assigned to this work order."):cache.status===503?tr("Photo storage is not set up yet."):tr("Photos could not be loaded.");
+  html.push(`<div class="fpNote" role="status">${ittrIcon(cache.status===403?"lock":"alert","sm")} ${esc(note)}${cache.status===403||cache.status===503?"":` <button type="button" class="ds-btn ds-btn-ghost ds-btn-sm" onclick="fpReloadWo(${esc(jsArg(woId))})">${ittrIcon("retry","sm")}<span>${esc(tr("Retry"))}</span></button>`}</div>`);
  }
  const kinds=new Set(server.map(p=>p.kind));
- if(kinds.has("before")&&kinds.has("after"))html.push(`<div class="fpNote"><button type="button" class="ds-btn ds-btn-secondary ds-btn-sm" onclick="fpCompare('${esc(String(findingId))}')">${ittrIcon("swap","sm")}<span>${esc(tr("Compare before / after"))}</span></button></div>`);
+ if(kinds.has("before")&&kinds.has("after"))html.push(`<div class="fpNote"><button type="button" class="ds-btn ds-btn-secondary ds-btn-sm" onclick="fpCompare(${esc(jsArg(findingId))})">${ittrIcon("swap","sm")}<span>${esc(tr("Compare before / after"))}</span></button></div>`);
+ // v24.70.0: a redraw (new upload, saved markup, sync) keeps keyboard focus on the same tile.
+ const focusKey=el.contains(document.activeElement)?document.activeElement.closest("[data-fp-open]")?.dataset.fpOpen:null;
  el.innerHTML=html.join("");
+ if(focusKey)el.querySelector(`[data-fp-open="${CSS.escape(focusKey)}"]`)?.focus();
  el.querySelectorAll('[data-fp-kind="server"]').forEach(t=>{const p=server.find(x=>x.id===t.dataset.fpId);if(p)fpLoadThumb(t,p,woId)});
  el.querySelectorAll('[data-fp-kind="queue"]').forEach(t=>{const e=queued.find(x=>x.id===t.dataset.fpId),img=t.querySelector("img"),u=e&&fpLocalUrl(e);if(u)img.src=u;else{img.remove();t.querySelector(".fpImg").insertAdjacentHTML("beforeend",ittrIcon("image","lg"))}});
 }
@@ -4773,7 +4797,8 @@ function fpViewerItems(findingId){
  const issue=(state.issues||[]).find(x=>String(x.id)===String(findingId));if(!issue)return [];
  const w=state.workorders.find(x=>String(x.id)===String(issue.wo)),{server,queued}=fpItemsFor(findingId,issue.wo),unit=w?.unit||issue.unitSnapshot||"";
  const fmt=v=>{const d=new Date(v);return isNaN(d)?"":d.toLocaleString([],{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})};
- const items=server.map(p=>({id:p.id,key:`s:${p.id}`,photo:p,load:({fresh})=>getFindingPhotoUrl(p.id,"full",fresh),caption:p.caption,kind:p.kind,marks:p.annotations||[],editable:session?.role==="admin"||String(p.uploader)===String(session?.username),meta:{unit,component:p.component,mechanic:mechanicDisplay(p.uploader),time:fmt(p.createdAt),finding:issue.description}}));
+ const kindLabel=k=>tr(k==="before"?"Before":k==="after"?"After":k==="detail"?"Detail":"Photo"),pairOptions=server.map((p,n)=>({id:p.id,label:`${kindLabel(p.kind)} ${n+1}${p.caption?` — ${p.caption}`:""}`}));
+ const items=server.map(p=>({id:p.id,key:`s:${p.id}`,photo:p,load:({fresh})=>getFindingPhotoUrl(p.id,"full",fresh),caption:p.caption,kind:p.kind,pairId:p.pairId||"",pairOptions,marks:p.annotations||[],editable:session?.role==="admin"||String(p.uploader)===String(session?.username),deletable:session?.role==="admin"||String(p.uploader)===String(session?.username),meta:{unit,component:p.component,mechanic:mechanicDisplay(p.uploader),time:fmt(p.createdAt),finding:issue.description}}));
  queued.forEach(e=>{const u=fpLocalUrl(e);if(u)items.push({id:e.id,key:`q:${e.id}`,src:u,caption:e.caption,kind:e.kind,marks:[],editable:false,meta:{unit,mechanic:mechanicDisplay(e.user),time:tr(FP_STATE[e.status]?.[2]||"Saved on this device"),finding:issue.description}})});
  if(typeof issue.photo==="string"&&issue.photo.startsWith("data:image/"))items.push({id:"legacy",key:"l:",src:issue.photo,caption:tr("Older photo"),marks:[],editable:false,meta:{unit,mechanic:mechanicDisplay(issue.mechanic),time:issue.created||"",finding:issue.description}});
  return items;
@@ -4783,9 +4808,23 @@ async function fpSaveMarks(item,marks){
  const p=d?.photo;if(p)for(const c of woPhotoCache.values()){const x=c.photos.find(y=>y.id===p.id);if(x)Object.assign(x,{annotations:p.annotations,updatedAt:p.updatedAt,updatedBy:p.updatedBy})}
  fpRefresh({finding:item.photo?.findingId});
 }
+// v24.70.0: caption, photo type and before/after pair are changed in the viewer (uploader or owner; the server checks).
+async function fpSaveDetails(item,next){
+ const d=await apiJSON(`/api/photos/${encodeURIComponent(item.id)}`,{method:"PATCH",body:{caption:next.caption,kind:next.kind,pairId:next.pairId}});
+ const p=d?.photo;if(p)for(const c of woPhotoCache.values()){const x=c.photos.find(y=>y.id===p.id);if(x)Object.assign(x,{caption:p.caption,kind:p.kind,pairId:p.pairId,updatedAt:p.updatedAt,updatedBy:p.updatedBy})}
+ fpRefresh({finding:item.photo?.findingId});
+}
+// Deleting removes the stored photo and its thumbnail (server) and the reference on the finding record.
+async function fpDeletePhoto(item){
+ await apiJSON(`/api/photos/${encodeURIComponent(item.id)}`,{method:"DELETE"});
+ for(const c of woPhotoCache.values())c.photos=c.photos.filter(p=>p.id!==item.id);
+ const issue=(state.issues||[]).find(x=>String(x.id)===String(item.photo?.findingId));
+ if(issue){const ids=(Array.isArray(issue.photoIds)?issue.photoIds:[]).filter(id=>id!==item.id);issue.photoIds=ids;if(issue.photoId===item.id)issue.photoId=ids[0]||"";save()}
+ fpRefresh({finding:item.photo?.findingId});
+}
 function fpOpenViewer(findingId,key,opener){
  const items=fpViewerItems(findingId);if(!items.length||!window.ITTRPhotoViewer)return;
- ITTRPhotoViewer.open({items,index:Math.max(0,items.findIndex(x=>x.key===key)),t:tr,onSaveMarks:fpSaveMarks,opener:()=>(opener?.isConnected?opener:document.querySelector(`.fpGallery[data-fp-finding="${CSS.escape(String(findingId))}"] [data-fp-open="${CSS.escape(key)}"]`))});
+ ITTRPhotoViewer.open({items,index:Math.max(0,items.findIndex(x=>x.key===key)),t:tr,onSaveMarks:fpSaveMarks,onSaveDetails:fpSaveDetails,onDelete:fpDeletePhoto,opener:()=>(opener?.isConnected?opener:document.querySelector(`.fpGallery[data-fp-finding="${CSS.escape(String(findingId))}"] [data-fp-open="${CSS.escape(key)}"]`))});
 }
 document.addEventListener("click",ev=>{
  const b=ev.target.closest?.("[data-fp-open]");if(!b)return;
@@ -4812,8 +4851,13 @@ async function fpCompare(findingId){
 async function uploadQueuedPhoto(e){
  const fd=new FormData();fd.append("photo",e.blob,e.name||"finding-photo.jpg");fd.append("workOrderId",String(e.workOrderId));fd.append("clientId",e.id);
  if(e.caption)fd.append("caption",e.caption);if(e.kind)fd.append("kind",e.kind);if(e.component)fd.append("component",e.component);
- let r;try{r=await fetch(`/api/findings/${encodeURIComponent(e.findingId)}/photo`,{method:"POST",headers:authHeaders(),body:fd})}catch(_){throw Object.assign(new Error(tr("No connection. The photo will upload when the connection is back.")),{status:0})}
- let d={};try{d=await r.json()}catch(_){}
+ // v24.70.0: a stalled upload (a phone on a bad connection) is given up after a time limit, so it goes back to Retry
+ // instead of holding every photo behind it (60 s, plus time for big photos, at most 5 min).
+ const ctl=new AbortController(),limit=Number(window.ITTR_UPLOAD_TIMEOUT_MS)||Math.max(60000,Math.min(300000,Math.round((e.size||0)/1024)*100)),timer=setTimeout(()=>ctl.abort(),limit);
+ let r,d={};
+ try{r=await fetch(`/api/findings/${encodeURIComponent(e.findingId)}/photo`,{method:"POST",headers:authHeaders(),body:fd,signal:ctl.signal});try{d=await r.json()}catch(_){}}
+ catch(_){throw Object.assign(new Error(tr(ctl.signal.aborted?"The upload took too long. It will try again.":"No connection. The photo will upload when the connection is back.")),{status:0})}
+ finally{clearTimeout(timer)}
  // A work order created on this device may still be on its way to the server: wait for it instead of giving up.
  if(r.status===404&&window.ittrSync&&ittrSync.status().pending>0)throw Object.assign(new Error(tr("Waiting for the work order to finish saving.")),{status:503});
  if(!r.ok)throw Object.assign(new Error(d.error||`${tr("Photo upload failed")} (${r.status}).`),{status:r.status});
@@ -4912,6 +4956,7 @@ function issueCard(i){
      <span class="badge b-high">${esc(i.severity)}</span>
    </div>
    <p>${esc(i.description)}</p>
+   ${i.taskSnapshot?`<div class="muted"><b>${esc(tr("Found on job"))}:</b> ${esc(i.taskSnapshot)}</div>`:""}
    ${i.recommendation?`<div class="muted"><b>Recommended:</b> ${esc(i.recommendation)}</div>`:""}
    ${findingPhotoMarkup(i)}
    <div style="margin-top:10px"><b>Customer decision:</b> ${approvalBadge(i)}</div>
@@ -4968,18 +5013,19 @@ function findingRecordCard(i,w){
  const approval=i.approval||"Waiting for Customer",resolved=!findingNeedsAction(i);
  return `<div class="findingRecord ${resolved?"findingResolved":""}">
   <div class="findingRecordTop"><div><div class="muted">${esc(i.severity||"Needs Attention")} · ${esc(findingTimeLabel(i))}${i.mechanic?` · ${esc(mechanicDisplay(i.mechanic))}`:""}</div><div class="findingProblem">${esc(i.description||"No description")}</div></div>${approvalBadge(i)}</div>
+  ${i.taskSnapshot?`<div class="muted"><b>${esc(tr("Found on job"))}:</b> ${esc(i.taskSnapshot)}</div>`:""}
   ${i.recommendation?`<div class="muted"><b>Recommended:</b> ${esc(i.recommendation)}</div>`:""}
   ${findingPhotoMarkup(i)}
   ${i.adminNote?`<div class="outcomeNoteBox"><b>Admin / customer note:</b> ${esc(i.adminNote)}</div>`:""}
   <div class="findingDecisionActions">
-   <button class="success" onclick="setApproval(${i.id},'Proceed')">Proceed</button>
-   <button class="secondary" onclick="setApproval(${i.id},'Waiting for Customer')">Waiting</button>
-   <button class="danger" onclick="setApproval(${i.id},'Do Not Proceed')">Do Not Proceed</button>
+   <button class="success" onclick="setApproval(${jsArg(i.id)},'Proceed')">Proceed</button>
+   <button class="secondary" onclick="setApproval(${jsArg(i.id)},'Waiting for Customer')">Waiting</button>
+   <button class="danger" onclick="setApproval(${jsArg(i.id)},'Do Not Proceed')">Do Not Proceed</button>
    ${approval==="Proceed"?`<span class="badge b-approved">${i.convertedToTask?"Added to Work Order":"Approved"}</span>`:""}
    ${i.convertedToTask?`<span class="badge b-done">Added to Work Order</span>`:""}
   </div>
-  <div class="field" style="margin-top:10px"><label>Admin / Customer note</label><textarea id="findingAdminNote_${i.id}" placeholder="Customer decision, authorization, follow-up...">${esc(i.adminNote||"")}</textarea></div>
-  <button class="secondary" onclick="saveAdminNote(${i.id})">Save Note</button>
+  <div class="field" style="margin-top:10px"><label>Admin / Customer note</label><textarea id="findingAdminNote_${esc(String(i.id))}" placeholder="Customer decision, authorization, follow-up...">${esc(i.adminNote||"")}</textarea></div>
+  <button class="secondary" onclick="saveAdminNote(${jsArg(i.id)})">Save Note</button>
  </div>`;
 }
 function renderFindingsCenter(){
@@ -5026,16 +5072,16 @@ function adminIssueCard(i){
    ${findingPhotoMarkup(i)}
    ${i.adminNote?`<div class="card" style="background:#fafafa;margin-top:10px"><b>Admin note:</b><div>${esc(i.adminNote)}</div></div>`:""}
    <div class="decision">
-     <button class="success" onclick="setApproval(${i.id},'Proceed')">Proceed</button>
-     <button class="secondary" onclick="setApproval(${i.id},'Waiting for Customer')">Waiting for Customer</button>
-     <button class="danger" onclick="setApproval(${i.id},'Do Not Proceed')">Do Not Proceed</button>
+     <button class="success" onclick="setApproval(${jsArg(i.id)},'Proceed')">Proceed</button>
+     <button class="secondary" onclick="setApproval(${jsArg(i.id)},'Waiting for Customer')">Waiting for Customer</button>
+     <button class="danger" onclick="setApproval(${jsArg(i.id)},'Do Not Proceed')">Do Not Proceed</button>
      ${i.approval==="Proceed"?`<span class="badge b-approved">${i.convertedToTask?"Added to Work Order":"Approved"}</span>`:""}
    </div>
    <div class="field" style="margin-top:10px">
      <label>Admin / Customer note</label>
-     <textarea id="legacyAdminNote_${i.id}" placeholder="Example: Customer approved by phone at 2:15 PM">${esc(i.adminNote||"")}</textarea>
+     <textarea id="legacyAdminNote_${esc(String(i.id))}" placeholder="Example: Customer approved by phone at 2:15 PM">${esc(i.adminNote||"")}</textarea>
    </div>
-   <button class="secondary" onclick="saveAdminNote(${i.id})">Save Note</button>
+   <button class="secondary" onclick="saveAdminNote(${jsArg(i.id)})">Save Note</button>
  </div>`;
 }
 async function setApproval(id,value){
@@ -5091,7 +5137,9 @@ function addApprovedFindingToWorkOrder(id){
 }
 
 function openWorkOrder(){if(!requireAdmin())return;refreshMechanicSelects();renderWorkOrderVehicleMatch("new",null);hideUnitSuggestions("new");const f=document.getElementById("woForm");if(f){if(!f.elements.unit.value)woClearForm();if(f.elements.date&&!f.elements.date.value){const t=new Date();f.elements.date.value=`${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,"0")}-${String(t.getDate()).padStart(2,"0")}`}syncUnitTypeFields(f.elements.unitType)}document.getElementById("woModal").classList.add("open");updateMobileBackButton()}
-function openIssue(workOrderId=null){if(!requireMechanic())return;if(!state.workorders.length)return alert(tr("Create a work order first."));const sel=document.getElementById("issueWO");if(workOrderId!=null&&sel)[...sel.options].some(o=>String(o.value)===String(workOrderId))&&(sel.value=String(workOrderId));document.getElementById("issueModal").classList.add("open");updateMobileBackButton()}
+// v24.70.0: a finding can name the job it was found on (taskUid), so the office sees where the problem came from.
+function fillIssueTasks(selected=""){const sel=document.getElementById("issueTask");if(!sel)return;const w=state.workorders.find(x=>String(x.id)===String(document.getElementById("issueWO")?.value));const tasks=(w?.tasks||[]).filter(t=>t&&t.uid);sel.innerHTML=`<option value="">${esc(tr("Whole truck / not one job"))}</option>`+tasks.map(t=>`<option value="${esc(String(t.uid))}">${esc(t.t||"")}</option>`).join("");if(selected&&tasks.some(t=>String(t.uid)===String(selected)))sel.value=String(selected)}
+function openIssue(workOrderId=null,taskUid=""){if(!requireMechanic())return;if(!state.workorders.length)return alert(tr("Create a work order first."));const sel=document.getElementById("issueWO");if(workOrderId!=null&&sel)[...sel.options].some(o=>String(o.value)===String(workOrderId))&&(sel.value=String(workOrderId));fillIssueTasks(taskUid);document.getElementById("issueModal").classList.add("open");updateMobileBackButton()}
 function closeModal(id){
  const modal=document.getElementById(id);
  if(modal) modal.classList.remove("open");
@@ -5184,7 +5232,7 @@ document.getElementById("issueForm").onsubmit=async e=>{
    if(button){button.disabled=true;button.dataset.oldText=button.textContent;button.textContent=tr("Saving…");}
    setFindingPhotoStatus("");
    // v24.69.0: the finding is saved first and never depends on the photo upload; photos follow through the device queue.
-   const now=new Date(),issue={id:findingId,wo:woId,unitSnapshot:linked?.unit||"",customerSnapshot:linked?.customer||"",mechanic:session.username,severity:f.get("severity"),description:f.get("description"),recommendation:f.get("recommendation"),photoId:"",photoIds:[],photo:"",status:"Reported",approval:"Waiting for Customer",adminNote:"",convertedToTask:false,created:now.toLocaleString(),createdAt:now.toISOString(),decisionAt:"",decisionBy:""};
+   const now=new Date(),issue={id:findingId,wo:woId,unitSnapshot:linked?.unit||"",customerSnapshot:linked?.customer||"",mechanic:session.username,severity:f.get("severity"),description:f.get("description"),recommendation:f.get("recommendation"),taskUid:String(f.get("taskUid")||""),taskSnapshot:String(linked.tasks?.find(t=>String(t.uid)===String(f.get("taskUid")||""))?.t||""),photoId:"",photoIds:[],photo:"",status:"Reported",approval:"Waiting for Customer",adminNote:"",convertedToTask:false,created:now.toLocaleString(),createdAt:now.toISOString(),decisionAt:"",decisionBy:""};
    state.issues.unshift(issue);
    save();form.reset();fpPicks.finding=[];fpRenderPicks("finding");setFindingPhotoStatus("");closeModal("issueModal");render();
    if(picks.length){const r=await fpQueuePicks(picks,issue);showToast(`${tr("Finding saved.")} ${fpQueuedMessage(r)}`,r.failed||r.memory?"error":"info",7000)}
@@ -5861,6 +5909,7 @@ function taskTimerRow(w,t,i){
      &nbsp; | &nbsp; <b>Total Labor:</b> ${fmtDuration(taskElapsed(t))}
    </div>
    <div data-task-timeline-wo="${esc(String(w.id))}" data-task-timeline-index="${i}" data-task-timeline-uid="${esc(String(t.uid||""))}"></div>
+   ${isMechanic&&t.uid?`<div class="taskReport"><button type="button" class="ds-btn ds-btn-secondary ds-btn-sm" onclick="closeModal('detailModal');openIssue(${w.id},'${esc(String(t.uid))}')">${typeof ittrIcon==="function"?ittrIcon("camera","sm"):""}<span>${esc(tr("Report a problem on this job"))}</span></button></div>`:""}
    ${t.findingDecision==="Do Not Proceed"?`<div class="outcomeNoteBox"><b>DECLINED — DO NOT PROCEED</b><div class="muted">Decision changed by Admin${t.approvalChangedAt?` · ${fmtDateTime(t.approvalChangedAt)}`:""}</div></div>`:""}
    ${t.findingDecision==="Waiting for Customer"?`<div class="outcomeNoteBox"><b>ON HOLD — Waiting for Customer Approval</b><div class="muted">${t.approvalChangedAt?fmtDateTime(t.approvalChangedAt):""}</div></div>`:""}
    ${t.paused && !["Waiting for Customer","Do Not Proceed"].includes(t.findingDecision||"")?`<div class="outcomeNoteBox"><b>Paused:</b> ${esc(t.pauseReason||"Paused")}${t.pauseNote?` — ${esc(t.pauseNote)}`:""}<div class="muted">${t.pausedAt?fmtDateTime(t.pausedAt):""}</div></div>`:""}
@@ -5968,13 +6017,8 @@ function workOrderNotesBlock(w){
  return out;
 }
 
-function openDetail(id){
- let w=state.workorders.find(x=>x.id===id); if(!w)return; if(session?.role==="mechanic"){
- const ownCompleted=w.status==="Completed" && (w.completedBy===session.username || mechanicAssignedToWorkOrder(w,session.username) || (w.tasks||[]).some(t=>t.outcomeBy===session.username));
- const ownUpcoming=upcomingForCurrentMechanic(w);
- if(!visibleToCurrentMechanic(w) && !ownCompleted && !ownUpcoming) return alert(tr("You do not have access to this work order."));
-}
- document.getElementById("detailTitle").textContent=session?.role==="mechanic"?`Unit ${w.unit}`:`Work Order #${w.id} — ${w.unit}`;
+// v24.70.0: the work-order detail body, shared by the pop-up (mechanics) and the office work-order page.
+function workOrderDetailHtml(w){
  const adminControls=(["admin","manager"].includes(session?.role) && w.status!=="Completed")?`
    <h2 style="margin-top:16px">Admin Controls</h2>
    <div class="field"><label>Parking spot #</label><input id="parkingEdit" value="${esc(w.parking||"")}" placeholder="P-12"></div>
@@ -5995,7 +6039,7 @@ function openDetail(id){
  (session?.role==="mechanic" && w.status==="Completed" && (w.completedBy===session.username || mechanicAssignedToWorkOrder(w,session.username) || (w.tasks||[]).some(t=>t.outcomeBy===session.username))?`
   <div style="margin-top:14px">${(w.completedBy===session.username || w.mechanic===session.username)?`<button class="secondary" onclick="closeModal('detailModal');openReactivate(${w.id})">Reactivate / Add Missed Work</button>`:`<div class="notice">You participated in this work order. Only the primary/completing mechanic can reactivate it.</div>`}</div>`:
  (session?.role==="mechanic"?`<div class="notice" style="margin-top:14px">This work order is not assigned/released to your mechanic account.</div>`:"")));
- document.getElementById("detailBody").innerHTML=`
+ return `
   <div class="muted">${esc(w.customer)} · ${esc(fmtScheduled(w))}${w.parking?` · Parking: ${esc(w.parking)}`:""}</div>${(w.vin||w.make||w.model||w.plate||w.dotNumber)?`<div class="vehicleMatchCard" style="margin-top:8px"><b>${esc([w.year,w.make,w.model].filter(Boolean).join(" ")||`Unit ${w.unit}`)}</b><div class="muted">${esc([w.vin?`VIN ${w.vin}`:"",w.plate?`Plate ${w.plate}`:"",w.dotNumber?`DOT ${w.dotNumber}`:"",w.mileage?`${Number(w.mileage).toLocaleString()} mi`:""].filter(Boolean).join(" · "))}</div></div>`:""}
   <div class="assignmentStrip">${assignmentChips(w)}</div>
   ${(["admin","manager"].includes(session?.role) || (session?.role==="mechanic"&&visibleToCurrentMechanic(w)))&&w.status!=="Completed"?`<div class="helperActions"><button type="button" class="secondary" onclick="openAddHelper(${w.id})">+ Add Helper Mechanic</button>${["admin","manager"].includes(session?.role)?(w.helpers||[]).map(u=>`<button type="button" class="secondary helperRemove" title="Remove this helper from the work order" data-helper="${encodeURIComponent(u)}" onclick="removeHelperMechanic(${w.id},decodeURIComponent(this.dataset.helper))">Remove ${esc(mechanicDisplay(u))}</button>`).join(""):""}</div>`:""}
@@ -6007,10 +6051,24 @@ function openDetail(id){
   ${workOrderNotesBlock(w)}
   ${w.status==="Completed"?`<div style="margin-top:12px"><button class="secondary" onclick="downloadWorkOrderPDF(${w.id})">Download Work Order PDF</button> ${w.unitType==="equipment"?'<span class="muted">In-house repair — not billed.</span>':`<button onclick="createServiceOrderFromWO(${w.id})">Review Service Order / Invoice</button>`}</div>`:""}
   <div class="card mechanicWorkSummary"><h2 style="margin:0">Mechanic Work Summary</h2><div class="muted">Who worked on each job and their recorded labor time.</div><div data-mechanic-work-summary-wo="${esc(String(w.id))}" style="margin-top:8px"><div class="muted">Loading mechanic labor…</div></div></div>
+  ${session?.role==="mechanic"&&typeof window.woPhotosHtml==="function"?window.woPhotosHtml(w,{title:tr("Photos for this job")}):""}
   ${adminControls}
   ${mechanicControls}`;
+}
+function openDetail(id){
+ let w=state.workorders.find(x=>x.id===id); if(!w)return; if(session?.role==="mechanic"){
+ const ownCompleted=w.status==="Completed" && (w.completedBy===session.username || mechanicAssignedToWorkOrder(w,session.username) || (w.tasks||[]).some(t=>t.outcomeBy===session.username));
+ const ownUpcoming=upcomingForCurrentMechanic(w);
+ if(!visibleToCurrentMechanic(w) && !ownCompleted && !ownUpcoming) return alert(tr("You do not have access to this work order."));
+}
+ // v24.70.0: the office opens a full work-order page instead of the pop-up; every action that refreshes the detail
+ // (timers, parts, helpers, parking…) calls openDetail again and so refreshes that page.
+ if(["admin","manager"].includes(session?.role)&&typeof window.openWoWorkspace==="function"&&!window.__ittrForceDetailModal){window.openWoWorkspace(w.id);return}
+ document.getElementById("detailTitle").textContent=session?.role==="mechanic"?`Unit ${w.unit}`:`Work Order #${w.id} — ${w.unit}`;
+ document.getElementById("detailBody").innerHTML=workOrderDetailHtml(w);
  document.getElementById("detailModal").classList.add("open");
  loadWorkOrderTaskSessions(w.id);
+ try{hydrateFindingPhotos()}catch(_){}
 }
 
 
@@ -6417,6 +6475,9 @@ function invoiceFluidBase(row,unit){const p=row.querySelector('.ilPrice'),c=row.
 async function invoiceFluidUnitChanged(id,sel){const row=document.querySelector(`[data-invoice-line="${id}"]`),prev=sel.dataset.prev||'gal',next=sel.value;if(!row||prev===next)return;invoiceFluidBase(row,prev);const f=next==='qt'?0.25:1,p=row.querySelector('.ilPrice'),c=row.querySelector('.ilCost');if(p)p.value=(Math.round(Number(row.dataset.galPrice||0)*f*100)/100).toFixed(2);if(c)c.value=(Math.round(Number(row.dataset.galCost||0)*f*10000)/10000).toString();sel.dataset.prev=next;invoiceLinePreview(id);try{await saveInvoiceLine(id)}catch(e){showToast(e.message,'error')}}
 // Keep the gallon reference in step when the user types a new price or cost on a fluid line.
 function invoiceFluidPriceTyped(id){const row=document.querySelector(`[data-invoice-line="${id}"]`),u=row?.querySelector('.ilUnit')?.value;if(!row||!u)return;const f=u==='qt'?4:1;row.dataset.galPrice=String(Number(row.querySelector('.ilPrice')?.value||0)*f);row.dataset.galCost=String(Number(row.querySelector('.ilCost')?.value||0)*f)}
+// v24.70.0: the same internal parts buy/profit summary the estimate shows (display only; not printed, not on the
+// customer copy; invoice totals are not touched).
+function invoicePartsProfitHtml(lines){const parts=(lines||[]).filter(l=>l.line_type==='part');if(!parts.length)return '';const cost=parts.reduce((a,l)=>a+Number(l.quantity||0)*Number(l.unit_cost||0),0),sell=parts.reduce((a,l)=>a+Number(l.line_total||0),0),profit=sell-cost,missing=parts.filter(l=>!(Number(l.unit_cost)>0)).length;return `<div class="invoicePartsProfit invoiceAppOnly" title="${esc(tr('Internal — not on the invoice the customer sees'))}"><div class="invoiceSummaryRow"><span>${esc(tr('Parts buy'))}</span><b>${invMoney(cost)}</b></div><div class="invoiceSummaryRow"><span>${esc(tr('Parts profit'))}</span><b>${invMoney(profit)}${sell>0?` (${Math.round(profit/sell*100)}%)`:''}</b></div>${missing?`<div class="muted" style="font-size:12px">${missing} ${esc(tr(missing===1?'part has no buy price':'parts have no buy price'))}</div>`:''}</div>`}
 function invoicePartRowHtml(l,locked){const dtype=String(l.discount_type||'fixed'),dvalue=Number(l.discount_value??l.discount??0),part=l.line_type==='part',markup=invoiceMarkupFromCostPrice(l.unit_cost,l.unit_price);const printEmpty=part&&!String(l.part_number||'').trim()&&!String(l.description||'').trim()&&Number(l.unit_price||0)===0;const fm=invoiceLineMeta(l),galAttr=(fm.unit==='gal'||fm.unit==='qt')&&Number(fm.galPrice)>=0&&fm.galPrice!=null?` data-gal-price="${Number(fm.galPrice)}" data-gal-cost="${Number(fm.galCost||0)}"`:'';return `<div class="invoiceServicePartRow${printEmpty?' invoicePrintEmptyLine':''}"${galAttr} data-invoice-line="${l.id}" data-inventory-part-id="${l.inventory_part_id||(l.metadata&&typeof l.metadata==='object'?l.metadata.inventoryPartId:'')||''}"><div class="invoiceGridItemLabel is-part">${part?'Part':invoiceLineTypeLabel(l.line_type)}</div><div class="invoicePartDescription"><div class="invoicePartLookupWrap"><input class="ilPart" value="${esc(l.part_number||'')}" placeholder="${part?'Part # or search':'Type'}" ${part?'oninput="scheduleInvoicePartLookup('+l.id+',this.value)" onfocus="scheduleInvoicePartLookup('+l.id+',this.value)" onblur="closeInvoicePartLookup('+l.id+')"':''} ${part?'': 'style="display:none"'} ${locked?'disabled':''}><input class="ilDesc" value="${esc(l.description||'')}" placeholder="${part?'Description / search inventory':'Charge description'}" ${part?'oninput="scheduleInvoicePartLookup('+l.id+',this.value)" onfocus="scheduleInvoicePartLookup('+l.id+',this.value)" onblur="closeInvoicePartLookup('+l.id+')"':''} ${locked?'disabled':''}><div id="invoicePartSuggest-${l.id}" class="invoicePartSuggest" role="listbox"></div></div></div><div class="invoiceQtyUnit"><input class="ilQty" type="number" min="0" step="0.01" value="${Number(l.quantity||0)}" oninput="invoiceLinePreview(${l.id})" ${locked?'disabled':''}>${invoiceLineFluidUnit(l,locked)||'<span>Qty</span>'}</div><div class="invoiceCostCell"><input class="ilCost" type="number" min="0" step="0.01" value="${Number(l.unit_cost||0)}" placeholder="0.00" oninput="invoicePartCostChanged(${l.id})" ${locked?'disabled':''}></div><div class="invoiceMarkupCell"><input class="ilMarkup" type="number" step="0.1" value="${markup.toFixed(1)}" oninput="invoiceApplyPartMarkup(${l.id})" ${locked?'disabled':''}><span>%</span></div><div class="invoicePriceCell"><input class="ilPrice" type="number" min="0" step="0.01" value="${Number(l.unit_price||0)}" oninput="invoicePartPriceChanged(${l.id})" ${locked?'disabled':''}></div><label class="invoiceTaxCell" title="Taxable"><input class="ilTax" type="checkbox" ${l.taxable?'checked':''} ${locked?'disabled':''}> Taxable</label><div class="invoiceDiscountControl"><select class="ilDiscountType" onchange="invoiceLinePreview(${l.id})" ${locked?'disabled':''}><option value="fixed" ${dtype==='fixed'?'selected':''}>$</option><option value="percent" ${dtype==='percent'?'selected':''}>%</option></select><input class="ilDiscountValue" type="number" min="0" step="0.01" value="${dvalue}" oninput="invoiceLinePreview(${l.id})" ${locked?'disabled':''}></div><div class="invoiceLineNet"><b class="ilAmount">${invMoney(invoiceLineNet(l))}</b></div><div class="invoiceRowActions">${locked?'':`<button class="invoiceRowSave secondary" onclick="saveInvoiceLine(${l.id})">Save</button><button class="invoiceRowDelete secondary" onclick="deleteInvoiceLine(${l.id})" title="Remove line">•••</button>`}</div><input type="hidden" class="ilType" value="${esc(l.line_type)}"><input type="hidden" class="ilJob" value="${esc(invoiceGroupName(l))}"><input type="hidden" class="ilParent" value="${l.parent_line_id||''}"></div>`}
 function invoiceLaborRowHtml(l,locked){const preset=invoiceRatePresetValue(l.unit_price),dtype=String(l.discount_type||'fixed'),dvalue=Number(l.discount_value??l.discount??0);return `<div class="invoiceServiceLaborRow" data-invoice-line="${l.id}"><div class="invoiceGridItemLabel is-labor">Labor</div><div class="invoiceLaborDescription"><input class="ilDesc" value="${esc(l.description||'')}" placeholder="Labor / service performed" ${locked?'disabled':''}></div><div class="invoiceQtyUnit"><input class="ilQty" type="number" min="0" step="0.01" value="${Number(l.quantity||0)}" oninput="invoiceLinePreview(${l.id})" ${locked?'disabled':''}><span>Hrs</span></div><div class="invoiceLaborRateField"><div class="invoiceRateWrap"><select class="ilRatePreset" onchange="invoiceApplyLaborRate(${l.id},this.value)" ${locked?'disabled':''}><option value="115" ${preset==='115'?'selected':''}>New Client — $115/hr</option><option value="110" ${preset==='110'?'selected':''}>Our Client — $110/hr</option><option value="100" ${preset==='100'?'selected':''}>Old Client — $100/hr</option><option value="60" ${preset==='60'?'selected':''}>Owner — $60/hr</option><option value="custom" ${preset==='custom'?'selected':''}>Custom Rate</option></select><input class="ilPrice" type="number" min="0" step="0.01" value="${Number(l.unit_price||0)}" oninput="invoiceLaborRateTyped(${l.id});invoiceLinePreview(${l.id})" ${locked?'disabled':''}></div></div><label class="invoiceTaxCell" title="Taxable"><input class="ilTax" type="checkbox" ${l.taxable?'checked':''} ${locked?'disabled':''}> Taxable</label><div class="invoiceDiscountControl"><select class="ilDiscountType" onchange="invoiceLinePreview(${l.id})" ${locked?'disabled':''}><option value="fixed" ${dtype==='fixed'?'selected':''}>$</option><option value="percent" ${dtype==='percent'?'selected':''}>%</option></select><input class="ilDiscountValue" type="number" min="0" step="0.01" value="${dvalue}" oninput="invoiceLinePreview(${l.id})" ${locked?'disabled':''}></div><div class="invoiceLineNet"><b class="ilAmount">${invMoney(invoiceLineNet(l))}</b></div><div class="invoiceRowActions">${locked?'':`<button class="invoiceRowSave secondary" onclick="saveInvoiceLine(${l.id})">Save</button><button class="invoiceRowDelete secondary" onclick="deleteInvoiceLine(${l.id})" title="Remove labor">•••</button>`}</div><input type="hidden" class="ilType" value="labor"><input type="hidden" class="ilPart" value=""><input type="hidden" class="ilJob" value="${esc(invoiceGroupName(l))}"><input type="hidden" class="ilCost" value="${Number(l.unit_cost||0)}"><input type="hidden" class="ilParent" value=""></div>`}
 function invoiceRenameService(anchorId,value){const card=document.querySelector(`[data-service-anchor="${anchorId}"]`);if(!card)return;card.querySelectorAll('.ilJob').forEach(x=>x.value=String(value||'').trim()||'Service')}
@@ -6456,7 +6517,7 @@ function invoiceCategorizedLinesHtml(lines,locked){
  const placed=new Set(blocks.flatMap(b=>b.parts.map(x=>String(x.id)))),unassigned=lines.filter(x=>x.line_type!=='labor'&&!placed.has(String(x.id)));
  const extraCard=unassigned.length?`<article class="invoiceServiceCard invoiceLaborBlock invoiceUnassignedCard"><header class="invoiceServiceHead invoiceLaborBlockHead"><div class="invoiceServiceIndex">+</div><div class="invoiceLaborBlockLabel"><span>INVOICE</span><b>Other items &amp; fees</b></div><div></div><div></div><div class="invoiceServiceTotal"><b>${invMoney(unassigned.reduce((a,x)=>a+invoiceLineNet(x),0))}</b></div></header><div class="invoiceServiceRows">${unassigned.map(x=>invoicePartRowHtml(x,locked)).join('')}</div></article>`:'';
  if(!labors.length)return `<div class="invoiceServiceEmpty invoiceServiceStart"><b>No labor added yet.</b><span>Add labor to start the invoice. Parts will appear underneath the labor they belong to.</span></div>${extraCard?`<div class="invoiceServiceStack">${extraCard}</div>`:''}`;
- return `<div class="invoicePrintOnly invoicePrintLineHeader"><span>TYPE</span><span>DESCRIPTION</span><span>QTY / HRS</span><span>RATE / PRICE</span><span>AMOUNT</span></div><div class="invoiceGridHeader"><span>Type</span><span>Description</span><span>Qty / Hrs</span><span>Cost</span><span>Markup</span><span>Price / Rate</span><span>Tax</span><span>Discount</span><span>Line Total</span><span>Actions</span></div><div class="invoiceServiceStack">${blocks.map((g,i)=>invoiceServiceCardHtml(g,locked,i)).join('')}${extraCard}</div>`;
+ return `<div class="invoicePrintOnly invoicePrintLineHeader"><span>TYPE</span><span>DESCRIPTION</span><span>QTY / HRS</span><span>RATE / PRICE</span><span>AMOUNT</span></div><div class="invoiceGridHeader"><span>Type</span><span>Description</span><span>Qty / Hrs</span><span>Buy</span><span>Markup</span><span>Sell / Rate</span><span>Tax</span><span>Discount</span><span>Line Total</span><span>Actions</span></div><div class="invoiceServiceStack">${blocks.map((g,i)=>invoiceServiceCardHtml(g,locked,i)).join('')}${extraCard}</div>`;
 }
 function addLaborToLastInvoiceService(){const groups=invoiceServiceGroups(activeInvoice?.lines||[]);if(!groups.length){toggleInvoiceAddMenu();document.getElementById('invoiceNewServiceName')?.focus();return}const g=groups[groups.length-1],anchor=g.lines.find(x=>x.line_type==='labor');addInvoiceLaborToService(String(anchor?.id||''),encodeURIComponent(g.name))}
 function addMiscToLastInvoiceService(){const groups=invoiceServiceGroups(activeInvoice?.lines||[]);if(!groups.length){toggleInvoiceAddMenu();document.getElementById('invoiceNewServiceName')?.focus();return}const g=groups[groups.length-1],anchor=g.lines.find(x=>x.line_type==='labor');addInvoiceLine('fee',g.name,anchor?.id||null,{description:'Misc charge',quantity:1,unitPrice:0,taxable:false})}
@@ -6527,6 +6588,7 @@ function renderInvoiceEditor(){
      <div class="invoiceSummaryRow"><span>Parts Subtotal</span><b id="invPreviewParts">${invMoney(parts.total)}</b></div>
      <div class="invoiceSummaryRow"><span>Other Charges</span><b id="invPreviewOtherCharges">${invMoney(charges.total)}</b></div>
      <div class="invoiceSummaryRow"><span>Additional Fees</span><b id="invPreviewAdditionalFees">${invMoney(additionalFees)}</b></div>
+     ${invoicePartsProfitHtml(lines)}
      <hr>
      <div class="field invoiceAppOnly"><label>Sales Tax %</label><input id="invTaxRate" type="number" min="0" step="0.001" oninput="scheduleInvoiceHeaderAutosave()" onblur="flushInvoiceHeaderAutosave()" value="${Number(i.tax_rate||0)}" ${locked?'disabled':''}></div>
      <div class="invoiceGlobalDiscount invoiceAppOnly"><div class="field"><label>Global Discount</label><select id="invDiscountType" onchange="scheduleInvoiceHeaderAutosave()" ${locked?'disabled':''}><option value="fixed" ${discountType==='fixed'?'selected':''}>$ Fixed</option><option value="percent" ${discountType==='percent'?'selected':''}>% Percent</option></select></div><div class="field"><label>Value</label><input id="invDiscountValue" type="number" min="0" step="0.01" oninput="scheduleInvoiceHeaderAutosave()" onblur="flushInvoiceHeaderAutosave()" value="${discountValue}" ${locked?'disabled':''}></div></div>
@@ -6936,6 +6998,7 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
     <div class="mobileMoreGrab"></div>
     <div class="mobileMoreHead"><h3>More</h3><button class="x" onclick="closeMobileMore()">×</button></div>
     <div class="mobileMoreGrid">
+      <button class="mobileMoreItem" data-mobile-view="board" onclick="mobileMoreGo('board')"><span class="mi">▥</span><b>Repair Board</b><span>Every truck by stage, with what is holding it up</span></button>
       <button class="mobileMoreItem" data-mobile-view="invoices" onclick="mobileMoreGo('invoices')"><span class="mi">$</span><b>Invoices</b><span>Billing, balances & payments</span></button>
       <button class="mobileMoreItem" data-mobile-view="bills" onclick="mobileMoreGo('bills')"><span class="mi">⧉</span><b>Bills</b><span>Purchases, supplies & expenses</span></button>
       <button class="mobileMoreItem" data-mobile-view="purchaseorders" onclick="mobileMoreGo('purchaseorders')"><span class="mi">⇢</span><b>Purchase orders</b><span>Order parts, receive what arrived</span></button>
@@ -6961,9 +7024,10 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
 <script src="./finance-shared.js?v=24.47.3"></script>
 <script src="./inspection-checklist.js?v=3"></script>
 <script src="./inspection-workflow.js?v=8"></script>
-<script src="./canned-jobs.js?v=24.69.0"></script>
-<script src="./share-links.js?v=24.69.0"></script>
-<script src="./sms.js?v=24.69.0"></script>
+<script src="./canned-jobs.js?v=24.70.0"></script>
+<script src="./share-links.js?v=24.70.0"></script>
+<script src="./sms.js?v=24.70.0"></script>
+<script src="./shop-workspace.js?v=24.70.0"></script>
 <script>
 /* v24.46.2: Start a Truck keeps what the mechanic typed until the work order is created.
    Saved on this phone (localStorage) while typing and when the screen locks; restored when the wizard is opened
