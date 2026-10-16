@@ -3297,6 +3297,9 @@ async function getShopflowPayload(db=requireDb()){
  const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");
  return q.rows[0]?.payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};
 }
+// v24.70.0 (owner's decision): managers may VIEW finding photos (the Findings page is open to every manager); adding
+// photos stays with the owner and the assigned mechanics, and changing/deleting with the uploader or the owner.
+function canViewPhotoWorkOrder(user,w){return user?.role==="manager"||canAccessPhotoWorkOrder(user,w)}
 function canAccessPhotoWorkOrder(user,w){
  if(user?.role==="admin")return true;
  return user?.role==="mechanic"&&assignedMechanicUsernames(w).includes(String(user?.username||"").trim().toLowerCase());
@@ -3306,7 +3309,7 @@ async function photoAccessRow(photoId,user){
  if(!q.rowCount)return {status:404,error:"Photo not found."};
  const row=q.rows[0],sf=await getShopflowPayload(),w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===String(row.work_order_id));
  if(!w && user?.role!=="admin")return {status:403,error:"Photo access denied."};
- if(w&&!canAccessPhotoWorkOrder(user,w))return {status:403,error:"Photo access denied."};
+ if(w&&!canViewPhotoWorkOrder(user,w))return {status:403,error:"Photo access denied."};
  return {row,w};
 }
 
@@ -3370,7 +3373,7 @@ app.delete("/api/photos/:photoId",auth,async(req,res,next)=>{
  }catch(e){next(e)}
 });
 
-registerPhotoRoutes(app,{auth,requireDb,requireR2,signedUrl:signedPhotoUrl,audit,getShopflowPayload,canAccessPhotoWorkOrder,photoAccessRow});
+registerPhotoRoutes(app,{auth,requireDb,requireR2,signedUrl:signedPhotoUrl,audit,getShopflowPayload,canAccessPhotoWorkOrder:canViewPhotoWorkOrder,photoAccessRow});
 
 // v24.58.1: one place decides a finding (manager button or the customer's approval link). The caller passes a pool
 // client; this runs its own transaction. Returns {ok:true,...} or {status,error}.

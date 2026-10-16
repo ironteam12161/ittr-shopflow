@@ -50,6 +50,7 @@ const shot = async (page, name) => { const dir = process.env.ITTR_SCREENSHOT_DIR
 try {
   const owner = await srv.login(OWNER.username, OWNER.password);
   await srv.request('/api/admin/users', { method: 'POST', token: owner, body: { username: 'mech1', display: 'Mech One', password: 'Mechanic-Pass-1' } });
+  await srv.request('/api/admin/managers', { method: 'POST', token: owner, body: { username: 'office1', display: 'Office', password: 'Manager-Pass-2026', permissions: { customers: true } } });
   const st = await srv.request('/api/state', { token: owner });
   const sf = st.shopflow.payload;
   sf.workorders = [{ id: 501, unit: 'DEMO-12', customer: 'Demo Fleet', status: 'Open', mechanic: 'mech1', helpers: [], date: '2026-10-16', time: '08:00', truckHere: true, tasks: [{ uid: 't1', t: 'Brake inspection', done: false }] }];
@@ -265,6 +266,19 @@ try {
     eq(s3.objects.size, objsBefore - 2, 'photo and thumbnail removed from storage');
     await until(page, () => ittrSync.status().pending === 0, null, 15000);
     eq((await serverShop()).issues.find(i => String(i.id) === String(findingId)).photoIds.length, 1, 'finding record lists one photo');
+    eq(page.errors.length, 0, `no script errors (${page.errors.join(' | ')})`); await ctx.close();
+  });
+
+  await scenario('manager sees finding photos (view only: no markup, details or delete)', async () => {
+    const { ctx, page } = await newPage(); await page.goto(B); await signIn(page, 'office1', 'Manager-Pass-2026');
+    await page.click('header nav .navbtn[data-view="approvals"]'); await page.evaluate(() => { wsFindingsMode('list'); setFindingView('all'); });
+    const g = `.fpGallery[data-fp-finding="${findingId}"]`;
+    await until(page, sel => document.querySelector(`${sel} [data-fp-kind="server"]:not(.fpLoading) img`)?.naturalWidth > 0, g, 15000);
+    ok(!(await page.locator(`${g} + .fpAddBtn, .fpWrap:has(${g}) .fpAddBtn`).count()), 'no Add photos for a manager');
+    await page.locator(`${g} [data-fp-kind="server"] .fpImg`).first().click();
+    await until(page, () => document.querySelector('.pv .pvLayer')?.style.visibility === 'visible', null, 15000);
+    ok(!(await page.locator('.pv [data-a="edit"]').isVisible()) && !(await page.locator('.pv [data-a="details"]').isVisible()), 'no markup or details controls for a manager');
+    await page.keyboard.press('Escape');
     eq(page.errors.length, 0, `no script errors (${page.errors.join(' | ')})`); await ctx.close();
   });
 } catch (e) {

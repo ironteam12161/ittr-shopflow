@@ -72,8 +72,9 @@ Delivered:
 
 Unchanged on purpose:
 - **Who can see photos.** The owner, plus the mechanics assigned to the work order (`canAccessPhotoWorkOrder`).
-  Managers still cannot open photos. The new screens explain this instead of showing a broken image.
-  Letting managers see photos is a product decision for the owner. One option is to tie it to a manager permission.
+  **Changed in v24.70.0 by the owner's decision:** every manager can now *view* finding photos (thumbnails, full
+  photo, markup), as the Findings page is open to every manager. Adding photos stays with the owner and the assigned
+  mechanics; changing or deleting a photo stays with its uploader or the owner.
 - Older photos stored inside the finding record as a data URL still show, labelled "Older photo".
 
 ## 3. Phase 2 — work-order page and mechanic job screen (v24.70.0)
@@ -180,7 +181,6 @@ Reported → Office Review → Customer Approval → Approved / Declined → Job
 
 ## 7. Known limitations
 
-- Managers cannot see photos (unchanged rule, see above) — a decision for the owner.
 - Invoice and estimate editors share wording and the profit summary but are still two separate editors in code.
 - The sidebar is for owner/manager accounts on screens ≥ 1280px; smaller screens keep the top bar.
 - Drag-and-drop uses the browser's mouse drag; on touch screens the buttons on each card do the same.
