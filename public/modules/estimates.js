@@ -82,7 +82,8 @@ function lineRow(l,locked,isLabor){
   ${locked||l.metadata?.feeCode?'<span></span>':`<button class="del" data-est="del-line" data-id="${l.id}" title="Remove line" aria-label="Remove line">✕</button>`}
  </div>`;
 }
-const ROW_HEAD='<div class="estRow estRowHead"><span>Type</span><span>Description</span><span>Part #</span><span>Qty / hrs</span><span>Buy</span><span>Sell / rate</span><span>Tax</span><span class="amt">Amount</span><span></span></div>';
+// v24.70.0: same column words as the invoice editor (Qty / Hrs · Buy · Sell / Rate · Line Total).
+const ROW_HEAD='<div class="estRow estRowHead"><span>Type</span><span>Description</span><span>Part #</span><span>Qty / Hrs</span><span>Buy</span><span>Sell / Rate</span><span>Tax</span><span class="amt">Line Total</span><span></span></div>';
 function renderEditor(){
  const {estimate:e,lines,invoice}=S.cur,locked=!['draft','sent'].includes(e.status),hdrLocked=['declined','converted'].includes(e.status),dis=hdrLocked?'disabled':'';
  const labors=lines.filter(l=>l.line_type==='labor'),used=new Set();

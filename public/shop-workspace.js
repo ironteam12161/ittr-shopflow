@@ -47,10 +47,23 @@
     if (w.inspection?.startedAt || issuesFor(w).length) return 'diagnosis';
     return 'checkedin';
   }
+  // Open purchase orders per work order (server: /api/purchase-orders/open-by-work-order), refreshed at most every minute.
+  const openPOs = { at: 0, byWo: new Map(), promise: null };
+  function loadOpenPOs(force = false) {
+    if (!office() || openPOs.promise || (!force && Date.now() - openPOs.at < 60000)) return;
+    openPOs.promise = apiJSON('/api/purchase-orders/open-by-work-order').then(d => {
+      const m = new Map(); for (const x of d?.items || []) { const k = String(x.workOrderId); (m.get(k) || m.set(k, []).get(k)).push(x); }
+      openPOs.byWo = m;
+    }).catch(() => {}).finally(() => { openPOs.at = Date.now(); openPOs.promise = null; if (currentView === 'board') renderBoard(); else if (currentView === 'wo') renderWs(); });
+  }
+  window.ittrOpenPOs = openPOs;
   const BLOCKERS = [['parts', 'Waiting on parts'], ['customer', 'Waiting on customer'], ['sublet', 'Waiting on sublet'], ['hold', 'On hold']];
   function woBlockers(w) {
     const b = w?.blockers && typeof w.blockers === 'object' ? w.blockers : {}, out = [];
     for (const [k, label] of BLOCKERS) if (b[k]?.on) out.push({ k, label, by: b[k].by, at: b[k].at, note: b[k].note || '' });
+    // Parts on an open purchase order for this work order hold the truck up even when nobody set the flag.
+    const pos = openPOs.byWo.get(String(w?.id)) || [];
+    if (pos.length && !b.parts?.on) out.push({ k: 'parts', label: 'Waiting on parts', auto: true, at: '', note: pos.map(p => [p.poNumber, p.vendor, p.expectedDate && `${T('due')} ${String(p.expectedDate).slice(0, 10)}`].filter(Boolean).join(' · ') || T('Parts on order')).join('; ') });
     // Findings sent to the customer and not answered hold the truck up even when nobody set the flag.
     const sent = issuesFor(w).filter(i => findingLane(i) === 'customer');
     if (sent.length && !b.customer?.on) out.push({ k: 'customer', label: 'Waiting on customer', auto: true, at: sent.map(i => i.sentAt).sort()[0], note: `${sent.length} ${T(sent.length === 1 ? 'finding sent' : 'findings sent')}` });
@@ -132,6 +145,7 @@
   }
   function renderWs() {
     const box = document.getElementById('wo'); if (!box || currentView !== 'wo') return;
+    loadOpenPOs();
     const w = woById(woWs.id);
     if (!w) { box.innerHTML = `<div class="ds-empty">${E(T('This work order is not available. It may have been deleted.'))} <button type="button" class="ds-btn ds-btn-secondary" onclick="showView('board')">${E(T('Back to the Repair Board'))}</button></div>`; return; }
     const tab = TABS.some(t => t[0] === woWs.tab) ? woWs.tab : 'jobs';
@@ -179,7 +193,7 @@
   function boardCard(x) {
     const w = x.w, tasks = (w.tasks || []).filter(Boolean), done = tasks.filter(taskResolved).length, iss = issuesFor(w), waiting = iss.filter(i => ['reported', 'review', 'customer'].includes(findingLane(i))).length;
     const running = tasks.find(t => t.startedAt && !t.stoppedAt && !t.done);
-    return `<article class="bdCard${x.blockers.length ? ' blocked' : ''}" data-wo="${E(String(w.id))}" aria-label="${E(T('Unit'))} ${E(w.unit || '')}">
+    return `<article class="bdCard${x.blockers.length ? ' blocked' : ''}" draggable="true" data-wo="${E(String(w.id))}" aria-label="${E(T('Unit'))} ${E(w.unit || '')}">
       <div class="bdTop"><button type="button" class="bdOpen" onclick="openWoWorkspace(${Number(w.id)})"><b>${E(w.unit || '—')}</b><span class="muted">#${E(String(w.id))}</span></button>${w.priority && w.priority !== 'Normal' ? `<span class="ds-chip ${/high|urgent/i.test(w.priority) ? 'danger' : 'warn'}">${E(T(w.priority))}</span>` : ''}</div>
       <div class="bdCust muted">${E(w.customer || '')}</div>
       <div class="bdLine">${icon('user')}<span>${E([w.mechanic, ...(w.helpers || [])].filter(Boolean).map(mechanicDisplay).join(', ') || T('Not assigned'))}</span></div>
@@ -191,6 +205,7 @@
   }
   function renderBoard(keepFocus = false) {
     const box = document.getElementById('board'); if (!box || currentView !== 'board') return;
+    loadOpenPOs();
     const all = boardItems(), mechs = [...new Set((state.workorders || []).flatMap(w => [w.mechanic, ...(w.helpers || [])]).filter(Boolean))].sort();
     const q = boardFilter.q.trim().toLowerCase();
     const items = all.filter(x => (!q || [x.w.unit, x.w.customer, x.w.id, x.w.vin].some(v => String(v || '').toLowerCase().includes(q)))
@@ -207,6 +222,24 @@
     if (focus) { const s = document.getElementById('bdSearch'); s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
     try { applyTranslations?.(); } catch (_) {}
   }
+  // Drag-and-drop does what a button would do; a stage that follows from the mechanic's work cannot be faked by dragging,
+  // so those drops explain what moves the truck instead. Every move also has a button (keyboard and touch).
+  const WHY = { diagnosis: 'A truck moves to Diagnosis when the mechanic starts the inspection or reports a finding.', approval: 'A truck moves to Approval when a finding is waiting for a decision.', repair: 'A truck moves to Repair when a mechanic starts a job.', qc: 'A truck moves to Quality Check when every job is done.', ready: 'A truck moves to Ready when QC passes or the work order is completed.', checkedin: 'Only a truck that is not here yet can be checked in.', expected: 'Only a customer truck that has not been started can be moved back to Expected.' };
+  window.wsBoardDrop = (id, to) => {
+    const w = woById(id); if (!w || !office()) return false;
+    const from = woStageOf(w), started = (w.tasks || []).some(t => t.startedAt || t.done || Number(t.elapsedMs || 0) > 0);
+    if (from === to) return false;
+    if (to === 'checkedin' && from === 'expected') { if (w.unitType !== 'customer') { showToast(T('Fleet units are released automatically.'), 'info'); return false; } markTruckHere(Number(w.id)); return true; }
+    if (to === 'expected' && w.unitType === 'customer' && !started && String(w.status) !== 'Completed') { change(() => { w.truckHere = false; }); return true; }
+    if (to === 'ready' && from === 'qc') { wsPassQc(w.id); return true; }
+    if (to === 'qc' && from === 'ready' && w.qc?.passedAt && String(w.status) !== 'Completed') { wsReopenQc(w.id); return true; }
+    showToast(T(WHY[to] || 'This move is not available.'), 'info', 6000); return false;
+  };
+  document.addEventListener('dragstart', e => { const c = e.target.closest?.('#board .bdCard'); if (!c) return; e.dataTransfer.setData('text/plain', c.dataset.wo); e.dataTransfer.effectAllowed = 'move'; c.classList.add('dragging'); });
+  document.addEventListener('dragend', e => { e.target.closest?.('#board .bdCard')?.classList.remove('dragging'); document.querySelectorAll('#board .bdCol.dropHere').forEach(x => x.classList.remove('dropHere')); });
+  document.addEventListener('dragover', e => { const col = e.target.closest?.('#board .bdCol'); if (!col) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move'; document.querySelectorAll('#board .bdCol.dropHere').forEach(x => x !== col && x.classList.remove('dropHere')); col.classList.add('dropHere'); });
+  document.addEventListener('drop', e => { const col = e.target.closest?.('#board .bdCol'); if (!col) return; e.preventDefault(); col.classList.remove('dropHere'); const id = e.dataTransfer.getData('text/plain'); if (id) wsBoardDrop(id, col.dataset.stage); });
+
   document.addEventListener('click', e => { const d = e.target.closest('.bdMore'); document.querySelectorAll('.bdMore[open]').forEach(x => { if (x !== d) x.removeAttribute('open'); }); });
 
   // ------------------------------------------------------------------ Findings approval lanes (in the Findings page)

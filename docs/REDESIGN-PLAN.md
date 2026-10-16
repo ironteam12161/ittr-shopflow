@@ -121,9 +121,13 @@ Unchanged on purpose:
   only". On a phone: a stage picker and the stages that have trucks, stacked.
 - **Blockers** (chips with who/when/why): Waiting on parts, Waiting on customer, Waiting on sublet, On hold (asks why).
   "Waiting on customer" is also shown automatically while findings sent to the customer are unanswered.
-- **Different from the plan:** no drag-and-drop. Because stages are computed from the work order, dragging a card
-  would have to fake the underlying facts; each card instead offers the action that really moves it. Waiting on parts
-  is a flag the office sets; it is not yet read from open purchase orders.
+- **Waiting on parts** is shown automatically while a purchase order linked to the work order is Ordered or Partly
+  received with parts still open (`GET /api/purchase-orders/open-by-work-order`; the PO number and vendor show only
+  with the Parts & inventory permission). The office can also set it by hand.
+- **Drag-and-drop** does what a button would do: Expected → Checked In (truck is here), Checked In → Expected (customer
+  truck not started), Quality Check → Ready (QC passed), Ready → Quality Check (reopen QC). Because the other stages
+  follow from the mechanic's work, dropping a card there explains what moves the truck instead of faking it. Every
+  move also has a button, so keyboard and touch users are not left out.
 - New optional fields: `wo.qc {passedAt, by, notes}`, `wo.blockers {parts|customer|sublet|hold: {on, by, at, note}}`,
   `wo.releasedAt/releasedBy`.
 
@@ -150,10 +154,10 @@ Reported → Office Review → Customer Approval → Approved / Declined → Job
 - **Tables**: list tables in the app get one look — sticky header, numbers right-aligned, and labelled cards on a
   phone. Editors (tables with inputs), print templates, pop-ups and tables that already have their own phone layout
   (work orders, parts) are left alone.
-- **Invoices and estimates**: not merged into one layout in this release. Estimates already show buy price, markup
-  and parts profit the way invoices do (v24.68.0). Merging the two editors touches the invoice code, so it stays a
-  separate change with its own review; no calculation changed here (`invoice_check.mjs` and the invoice integration
-  suites run unchanged).
+- **Invoices and estimates** now use the same column words — Qty / Hrs · Buy · Markup (under Buy on estimates) ·
+  Sell / Rate · Tax · Line Total — and the invoice shows the same internal **Parts buy / Parts profit** summary as the
+  estimate (display only, hidden in print and on the customer copy). They are still two editors in code; no invoice
+  or estimate calculation changed (`invoice_check.mjs` and the invoice integration suites run unchanged).
 
 ## 6. Rollout and rollback
 
@@ -176,13 +180,12 @@ Reported → Office Review → Customer Approval → Approved / Declined → Job
 
 ## 7. Known limitations
 
-- Managers cannot see photos (unchanged rule, see above).
-- A photo's caption and type can be changed through the API (`PATCH /api/photos/:id`), but the viewer has no edit
-  form for them yet. There is no UI for deleting an uploaded photo; the DELETE endpoint already existed before this
-  release.
-- "Compare before / after" uses the explicit pair when one is set, otherwise the first before and the first after
-  photo. Setting a pair through the UI is part of phase 3.
-- Text labels use the browser's prompt box; phase 2 replaces it with an inline field on the phone layout.
-- Board: no drag-and-drop (see section 4); "Waiting on parts" is not yet read from purchase orders.
-- Invoice and estimate editors are not merged into one layout (see section 5).
+- Managers cannot see photos (unchanged rule, see above) — a decision for the owner.
+- Invoice and estimate editors share wording and the profit summary but are still two separate editors in code.
 - The sidebar is for owner/manager accounts on screens ≥ 1280px; smaller screens keep the top bar.
+- Drag-and-drop uses the browser's mouse drag; on touch screens the buttons on each card do the same.
+
+Done since the first draft of this list (v24.70.0): photo caption/type/pair and delete in the viewer (uploader or
+owner), text labels typed in the viewer, board drag-and-drop, "Waiting on parts" from purchase orders, an upload
+time limit (a stalled upload goes back to Retry instead of blocking the photos behind it), and closing the viewer while
+a photo is still loading no longer raises an error.

@@ -61,6 +61,9 @@ try {
   ];
   await srv.request('/api/state/shopflow', { method: 'PUT', token: owner, body: { payload: sf, expectedVersion: st.shopflow.version } });
   const serverShop = async () => (await srv.request('/api/state', { token: owner })).shopflow.payload;
+  // Parts ordered for DEMO-05 on a purchase order: the board shows "Waiting on parts" without anyone setting it.
+  const po = await srv.request('/api/purchase-orders', { method: 'POST', token: owner, body: { vendor: 'Demo Parts Co', workOrderId: '605', expectedDate: '2026-10-21', lines: [{ partNumber: 'FLT-9', description: 'Fuel filter', qty: 2, unitCost: 18 }] } });
+  await srv.request(`/api/purchase-orders/${po.id}/status`, { method: 'POST', token: owner, body: { status: 'ordered' } });
 
   await scenario('desktop sidebar: grouped, role-aware, collapsible and remembered', async () => {
     const { ctx, page } = await newPage(); await page.goto(B); await signIn(page, OWNER.username, OWNER.password);
@@ -78,27 +81,43 @@ try {
     const { ctx: c2, page: p2 } = await newPage(); await p2.goto(B); await signIn(p2, 'office1', 'Manager-Pass-2026');
     ok(!(await p2.locator('header nav .navbtn[data-view="invoices"]').isVisible()), 'manager without Invoices permission does not see Invoices');
     ok(await p2.locator('header nav .navbtn[data-view="board"]').isVisible(), 'manager sees the Repair Board');
+    STEP = 'invoice parts profit';
+    const prof = await page.evaluate(() => { const d = document.createElement('div'); d.innerHTML = invoicePartsProfitHtml([{ line_type: 'part', quantity: 2, unit_cost: 40, line_total: 191 }, { line_type: 'part', quantity: 1, unit_cost: 0, line_total: 10 }, { line_type: 'labor', quantity: 2, unit_cost: 0, line_total: 250 }]); return d.textContent; });
+    ok(prof.includes('Parts buy') && prof.includes('$80.00') && prof.includes('$121.00 (60%)') && prof.includes('1 part has no buy price'), `invoice shows the same parts buy/profit as estimates (${prof})`);
     eq(page.errors.length + p2.errors.length, 0, `no script errors (${[...page.errors, ...p2.errors].join(' | ')})`); await ctx.close(); await c2.close();
   });
 
   await scenario('Repair Board: stages from the work order, QC, blockers, filters', async () => {
-    const { ctx, page } = await newPage(); await page.goto(B); await signIn(page, OWNER.username, OWNER.password);
+    const { ctx, page } = await newPage({ width: 1920, height: 1000 }); await page.goto(B); await signIn(page, OWNER.username, OWNER.password);
     await page.click('header nav .navbtn[data-view="board"]'); await until(page, () => location.hash === '#board' && document.querySelector('#board .bdCard'));
     STEP = 'stages';
     eq(await stageOf(page, 601), 'expected', 'not here yet → Expected'); eq(await stageOf(page, 602), 'approval', 'findings waiting → Approval');
     eq(await stageOf(page, 603), 'repair', 'job running → Repair'); eq(await stageOf(page, 604), 'qc', 'all jobs done → Quality Check'); eq(await stageOf(page, 605), 'checkedin', 'here, nothing started → Checked In');
     await shot(page, 'board');
+    STEP = 'parts on order';
+    await until(page, () => document.querySelector('#board .bdCard[data-wo="605"] .bdBlockers')?.textContent.includes('Waiting on parts'));
+    ok((await page.getAttribute('#board .bdCard[data-wo="605"] .bdBlockers .ds-chip', 'title')).includes(po.poNumber), 'parts chip names the purchase order');
     STEP = 'QC';
     await page.click('#board .bdCard[data-wo="604"] button:has-text("QC passed")'); await until(page, () => window.ittrWoStage(state.workorders.find(w => w.id === 604)) === 'ready');
     eq(await stageOf(page, 604), 'ready', 'QC passed → Ready');
     await until(page, () => ittrSync.status().pending === 0, null, 15000);
     ok((await serverShop()).workorders.find(w => w.id === 604).qc?.passedAt, 'QC saved to the server');
+    STEP = 'drag and drop';
+    ok((await page.evaluate(() => { const c = document.querySelector('#board .bdCols'); return c.scrollWidth <= c.clientWidth + 1; })), 'all seven stages fit on a 1920px screen');
+    await page.dragAndDrop('#board .bdCard[data-wo="604"]', '#board .bdCol[data-stage="qc"]');
+    await until(page, () => window.ittrWoStage(state.workorders.find(w => w.id === 604)) === 'qc');
+    eq(await stageOf(page, 604), 'qc', 'dragging back to Quality Check reopens QC');
+    await page.dragAndDrop('#board .bdCard[data-wo="604"]', '#board .bdCol[data-stage="ready"]');
+    await until(page, () => window.ittrWoStage(state.workorders.find(w => w.id === 604)) === 'ready');
+    await page.dragAndDrop('#board .bdCard[data-wo="603"]', '#board .bdCol[data-stage="qc"]');
+    await until(page, () => [...document.querySelectorAll('.appToast')].some(t => /moves to Quality Check when every job is done/.test(t.textContent)));
+    eq(await stageOf(page, 603), 'repair', 'a stage that follows from the work is not faked by dragging');
     STEP = 'blocker';
     await page.click('#board .bdCard[data-wo="603"] .bdMore summary'); await page.click('#board .bdCard[data-wo="603"] .bdMenu button:has-text("On hold")');
     await until(page, () => document.querySelector('#board .bdCard[data-wo="603"] .bdBlockers')?.textContent.includes('On hold'));
     ok(page.prompts.some(p => /on hold/i.test(p)), 'asks why the truck is on hold');
-    await page.check('#board .bdToggle input'); await until(page, () => document.querySelectorAll('#board .bdCard').length === 1);
-    eq(await page.evaluate(() => document.querySelector('#board .bdCard').dataset.wo), '603', 'Blocked only shows the held truck');
+    await page.check('#board .bdToggle input'); await until(page, () => document.querySelectorAll('#board .bdCard').length === 2);
+    eq(await page.evaluate(() => [...document.querySelectorAll('#board .bdCard')].map(c => c.dataset.wo).sort().join(',')), '603,605', 'Blocked only shows the held truck and the one waiting on ordered parts');
     await page.uncheck('#board .bdToggle input');
     await page.fill('#bdSearch', 'DEMO-05'); await until(page, () => document.querySelectorAll('#board .bdCard').length === 1);
     ok(await page.evaluate(() => document.activeElement?.id === 'bdSearch'), 'typing in search keeps focus');

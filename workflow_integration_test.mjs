@@ -55,7 +55,18 @@ try {
   const s2 = (await get(owner)).payload, t = s2.workorders.find(x => String(x.id) === '701').tasks.find(x => String(x.findingId ?? '') === '9102');
   ok(t, 'approved finding became a job on the work order'); ok(s2.issues.find(x => String(x.id) === '9102').convertedToTask, 'finding marked converted');
   eq(s2.workorders.find(x => String(x.id) === '701').qc?.passedAt, now, 'decision keeps QC');
-  console.log('PASS Repair Board workflow fields: office-only QC/blockers/pick-up/review/sent, job link, decision path');
+  // Open purchase orders per work order (Repair Board "Waiting on parts"): owner sees PO and vendor, a manager without
+  // Parts & inventory only that parts are on order, a mechanic nothing.
+  const po = await srv.request('/api/purchase-orders', { method: 'POST', token: owner, body: { vendor: 'Flow Parts', workOrderId: '701', expectedDate: '2026-10-20', lines: [{ partNumber: 'DRUM-1', description: 'Brake drum', qty: 1, unitCost: 120 }] } });
+  let open = await srv.request('/api/purchase-orders/open-by-work-order', { token: owner });
+  eq(open.items.length, 0, 'a draft PO does not hold the truck up');
+  await srv.request(`/api/purchase-orders/${po.id}/status`, { method: 'POST', token: owner, body: { status: 'ordered' } });
+  open = await srv.request('/api/purchase-orders/open-by-work-order', { token: owner });
+  ok(open.items.length === 1 && open.items[0].workOrderId === '701' && open.items[0].poNumber === po.poNumber && open.items[0].vendor === 'Flow Parts' && open.items[0].qtyOpen === 1, 'ordered PO listed for its work order (owner sees PO and vendor)');
+  const mo = await srv.request('/api/purchase-orders/open-by-work-order', { token: mgr });
+  ok(mo.items.length === 1 && !('poNumber' in mo.items[0]) && !('vendor' in mo.items[0]) && mo.items[0].expectedDate, 'manager without Parts & inventory sees only that parts are on order');
+  eq((await srv.request('/api/purchase-orders/open-by-work-order', { token: mech, allowError: true })).status, 403, 'mechanic cannot list purchase orders');
+  console.log('PASS Repair Board workflow fields: office-only QC/blockers/pick-up/review/sent, job link, decision path, open POs');
 } catch (e) {
   console.error(e); console.error(srv.output().slice(-2500)); process.exitCode = 1;
 } finally { await srv.cleanup(); }

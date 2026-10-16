@@ -1,7 +1,8 @@
 // ITTR ShopFlow full-screen photo viewer (v24.69.0).
 // Whole photo first (fit to screen, nothing cropped), then zoom / pan / rotate, previous / next, keyboard and touch.
 // Markup (arrows, circles, short text) is drawn OVER the photo from saved data; the original image is never changed.
-//   ITTRPhotoViewer.open({ items, index, t, onSaveMarks })
+//   ITTRPhotoViewer.open({ items, index, t, onSaveMarks, onSaveDetails, onDelete })
+//   v24.70.0: Details (caption, type, before/after pair, delete) for the uploader/owner; text labels typed in the viewer.
 //   item: { id, load: async ({fresh}) => url, caption, kind, meta: {unit, component, mechanic, time, finding}, marks: [], editable }
 (function () {
   const COLORS = { red: '#ef4444', amber: '#f59e0b', white: '#ffffff', black: '#111827', blue: '#3b82f6' };
@@ -23,6 +24,12 @@
 .pvLayer{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
 .pvLayer img{display:block;width:100%;height:100%;user-select:none;-webkit-user-drag:none;pointer-events:none}
 .pvLayer svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+.pvTextBox,.pvDetails{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding:8px 0}
+.pvTextBox input,.pvDetails input,.pvDetails select{min-height:42px;border-radius:10px;border:1px solid #4b5563;background:#0b1220;color:#f9fafb;padding:6px 10px;font:500 15px/1.2 var(--ds-font,system-ui);min-width:0}
+.pvTextBox input{flex:1 1 220px}
+.pvDetails label{display:grid;gap:4px;font:700 12px/1.2 var(--ds-font,system-ui);color:#cbd5e1;flex:1 1 180px}
+.pvDetActs{display:flex;gap:6px;flex-wrap:wrap;flex:1 1 100%}
+.pv .pvDanger{border-color:#b42318!important;color:#fecaca!important}
 .pv [hidden]{display:none!important}
 .pvMsg{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:24px;font-size:15px}
 .pvSpin{width:34px;height:34px;border-radius:50%;border:3px solid #374151;border-top-color:#e5e7eb;animation:pvSpin .9s linear infinite}@keyframes pvSpin{to{transform:rotate(360deg)}}
@@ -41,7 +48,7 @@
   const tr = (t, s) => (typeof t === 'function' ? t(s) : s);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  function open({ items, index = 0, t, onSaveMarks, opener } = {}) {
+  function open({ items, index = 0, t, onSaveMarks, onSaveDetails, onDelete, opener } = {}) {
     if (!Array.isArray(items) || !items.length) return;
     close(true); css();
     const root = document.createElement('div'); root.className = 'pv'; root.setAttribute('role', 'dialog'); root.setAttribute('aria-modal', 'true'); root.setAttribute('aria-label', tr(t, 'Photo viewer'));
@@ -53,7 +60,8 @@
   <button type="button" data-a="in" aria-label="${esc(tr(t, 'Zoom in'))}" title="${esc(tr(t, 'Zoom in'))} (+)">${I('zoomIn')}</button></span>
   <button type="button" data-a="rotate" aria-label="${esc(tr(t, 'Rotate'))}" title="${esc(tr(t, 'Rotate'))} (R)">${I('rotate')}</button>
   <button type="button" data-a="marks" aria-pressed="true" title="${esc(tr(t, 'Show or hide markup'))} (M)">${I('eye')}<span>${esc(tr(t, 'Markup'))}</span></button>
-  <button type="button" data-a="edit" class="pvEditBtn" hidden>${I('pencil')}<span>${esc(tr(t, 'Mark up'))}</span></button></span>
+  <button type="button" data-a="edit" class="pvEditBtn" hidden>${I('pencil')}<span>${esc(tr(t, 'Mark up'))}</span></button>
+  <button type="button" data-a="details" class="pvDetailsBtn" aria-expanded="false" hidden>${I('text')}<span>${esc(tr(t, 'Details'))}</span></button></span>
  <button type="button" data-a="close" aria-label="${esc(tr(t, 'Close'))}" title="${esc(tr(t, 'Close'))} (Esc)">${I('close')}<span>${esc(tr(t, 'Close'))}</span></button>
 </div>
 <div class="pvStage"><div class="pvLayer"><img alt=""><svg class="pvSvg" xmlns="http://www.w3.org/2000/svg"></svg></div><div class="pvMsg" hidden></div>
@@ -69,11 +77,19 @@
   <button type="button" data-a="clear">${I('trash')}<span>${esc(tr(t, 'Clear'))}</span></button>
   <button type="button" data-a="cancel">${esc(tr(t, 'Cancel'))}</button>
   <button type="button" data-a="save" style="background:#1d4ed8;border-color:#1d4ed8">${I('check')}<span>${esc(tr(t, 'Save markup'))}</span></button>
- </div><span class="pvStatus" role="status" aria-live="polite"></span></div>`;
+ </div>
+ <div class="pvTextBox" hidden><input type="text" maxlength="60" placeholder="${esc(tr(t, 'Short label (max 60 characters)'))}" aria-label="${esc(tr(t, 'Label text'))}"><button type="button" data-a="textok">${I('check')}<span>${esc(tr(t, 'Add label'))}</span></button><button type="button" data-a="textcancel">${esc(tr(t, 'Cancel'))}</button></div>
+ <form class="pvDetails" hidden>
+  <label>${esc(tr(t, 'Caption'))}<input name="caption" maxlength="300" autocomplete="off"></label>
+  <label>${esc(tr(t, 'Photo type'))}<select name="kind"><option value="">${esc(tr(t, 'Photo'))}</option><option value="before">${esc(tr(t, 'Before repair'))}</option><option value="after">${esc(tr(t, 'After repair'))}</option><option value="detail">${esc(tr(t, 'Close-up'))}</option></select></label>
+  <label class="pvPairWrap">${esc(tr(t, 'Before / after pair'))}<select name="pairId"></select></label>
+  <div class="pvDetActs"><button type="submit" data-a="detsave" style="background:#1d4ed8;border-color:#1d4ed8">${I('check')}<span>${esc(tr(t, 'Save details'))}</span></button><button type="button" data-a="detcancel">${esc(tr(t, 'Cancel'))}</button><button type="button" data-a="delete" class="pvDanger">${I('trash')}<span>${esc(tr(t, 'Delete photo'))}</span></button></div>
+ </form>
+ <span class="pvStatus" role="status" aria-live="polite"></span></div>`;
     document.body.appendChild(root);
     const prevOverflow = document.documentElement.style.overflow; document.documentElement.style.overflow = 'hidden';
     const $ = s => root.querySelector(s), stage = $('.pvStage'), layer = $('.pvLayer'), img = $('img'), svg = $('.pvSvg'), msg = $('.pvMsg');
-    V = { root, items, i: Math.max(0, Math.min(items.length - 1, index)), t, onSaveMarks, opener: opener || document.activeElement, prevOverflow,
+    V = { root, items, i: Math.max(0, Math.min(items.length - 1, index)), t, onSaveMarks, onSaveDetails, onDelete, pendingText: null, opener: opener || document.activeElement, prevOverflow,
       s: 1, fit: 1, x: 0, y: 0, rot: 0, nw: 0, nh: 0, showMarks: true, editing: false, tool: 'arrow', color: 'red', draft: null, marks: [], pointers: new Map(), gen: 0 };
 
     const status = (text, cls = '') => { const el = $('.pvStatus'); el.textContent = text || ''; el.className = 'pvStatus ' + cls; };
@@ -114,6 +130,8 @@
       $('[data-a="prev"]').disabled = V.i === 0; $('[data-a="next"]').disabled = V.i === V.items.length - 1;
       $('[data-a="prev"]').hidden = $('[data-a="next"]').hidden = V.items.length < 2;
       $('.pvEditBtn').hidden = !(it.editable && onSaveMarks);
+      $('.pvDetailsBtn').hidden = !(it.editable && (onSaveDetails || onDelete));
+      if (!$('.pvDetails').hidden) showDetails(false);
       $('[data-a="marks"]').hidden = !((it.marks || []).length);
     }
     async function load(fresh = false, retried = false) {
@@ -121,19 +139,19 @@
       header(); status(''); img.removeAttribute('src'); layer.style.visibility = 'hidden'; svg.innerHTML = '';
       msg.hidden = false; msg.innerHTML = `<div class="pvSpin" aria-hidden="true"></div><div>${esc(tr(t, fresh ? 'The photo link expired — getting a new one…' : 'Loading full photo…'))}</div>`;
       let url;
-      try { url = typeof it.load === 'function' ? await it.load({ fresh }) : it.src; } catch (e) { if (g === V.gen) failed(e?.status === 403 ? tr(t, 'You do not have access to this photo.') : (e?.message || tr(t, 'Photo could not be loaded.'))); return; }
-      if (g !== V.gen) return;
-      img.onload = () => { if (g !== V.gen) return; V.nw = img.naturalWidth; V.nh = img.naturalHeight; msg.hidden = true; layer.style.visibility = 'visible'; V.rot = 0; fitView(); drawMarks(); };
-      img.onerror = () => { if (g !== V.gen) return; if (!retried && typeof it.load === 'function') return load(true, true); failed(tr(t, 'Photo could not be loaded. The connection may be down or the link has expired.')); };
+      try { url = typeof it.load === 'function' ? await it.load({ fresh }) : it.src; } catch (e) { if (V && g === V.gen) failed(e?.status === 403 ? tr(t, 'You do not have access to this photo.') : (e?.message || tr(t, 'Photo could not be loaded.'))); return; }
+      if (!V || g !== V.gen) return;
+      img.onload = () => { if (!V || g !== V.gen) return; V.nw = img.naturalWidth; V.nh = img.naturalHeight; msg.hidden = true; layer.style.visibility = 'visible'; V.rot = 0; fitView(); drawMarks(); };
+      img.onerror = () => { if (!V || g !== V.gen) return; if (!retried && typeof it.load === 'function') return load(true, true); failed(tr(t, 'Photo could not be loaded. The connection may be down or the link has expired.')); };
       img.src = url;
     }
     function failed(text) {
       msg.hidden = false; layer.style.visibility = 'hidden';
       msg.innerHTML = `<div style="color:#fca5a5">${I('alert')}</div><div>${esc(text)}</div><button type="button" data-a="retry">${I('retry')}<span>${esc(tr(t, 'Retry'))}</span></button>`;
     }
-    const go = d => { if (V.editing) return; const n = V.i + d; if (n < 0 || n >= V.items.length) return; V.i = n; load(); };
+    const go = d => { if (V.editing) return; if (!$('.pvDetails').hidden) showDetails(false); const n = V.i + d; if (n < 0 || n >= V.items.length) return; V.i = n; load(); };
     function setEditing(on) {
-      V.editing = on; root.classList.toggle('pvEditing', on); stage.classList.toggle('pvDraw', on);
+      V.editing = on; root.classList.toggle('pvEditing', on); stage.classList.toggle('pvDraw', on); if (!on) cancelText();
       V.marks = on ? JSON.parse(JSON.stringify(V.items[V.i].marks || [])) : []; V.draft = null; status(''); if (on) fitView(); drawMarks();
     }
     function toImage(ev) {
@@ -149,6 +167,35 @@
       try { await onSaveMarks(it, marks); it.marks = marks; setEditing(false); header(); status(tr(t, 'Markup saved. The original photo is unchanged.'), 'ok'); }
       catch (e) { status(`${tr(t, 'Markup not saved')}: ${e?.message || e}`, 'err'); }
       finally { $('[data-a="save"]').disabled = false; }
+    }
+
+    function addText() { const inp = $('.pvTextBox input'), text = inp.value.trim().slice(0, 60); if (text && V.pendingText) { V.marks.push({ t: 'text', x: V.pendingText.x, y: V.pendingText.y, text, c: V.pendingText.c }); drawMarks(); } cancelText(); }
+    function cancelText() { V.pendingText = null; $('.pvTextBox').hidden = true; }
+    function showDetails(on) {
+      const f = $('.pvDetails'), it = V.items[V.i], btn = $('.pvDetailsBtn'); f.hidden = !on; btn.setAttribute('aria-expanded', String(on));
+      if (!on) return;
+      f.caption.value = it.caption || ''; f.kind.value = it.kind || '';
+      const opts = (it.pairOptions || []).filter(o => o.id !== it.id);
+      f.pairId.innerHTML = `<option value="">${esc(tr(t, 'Not paired'))}</option>` + opts.map(o => `<option value="${esc(o.id)}">${esc(o.label)}</option>`).join('');
+      f.pairId.value = it.pairId || ''; f.querySelector('.pvPairWrap').hidden = !opts.length;
+      f.querySelector('[data-a="delete"]').hidden = !(onDelete && it.deletable);
+      f.querySelector('[data-a="detsave"]').hidden = !onSaveDetails;
+      setTimeout(() => f.caption.focus(), 0);
+    }
+    $('.pvDetails').addEventListener('submit', async ev => {
+      ev.preventDefault(); const f = ev.currentTarget, it = V.items[V.i], b = f.querySelector('[data-a="detsave"]');
+      const next = { caption: f.caption.value.trim().slice(0, 300), kind: f.kind.value, pairId: f.pairId.value };
+      b.disabled = true; status(tr(t, 'Saving…'));
+      try { await onSaveDetails(it, next); Object.assign(it, next); showDetails(false); header(); status(tr(t, 'Details saved.'), 'ok'); }
+      catch (e) { status(`${tr(t, 'Not saved')}: ${e?.message || e}`, 'err'); } finally { b.disabled = false; }
+    });
+    async function deletePhoto() {
+      const it = V.items[V.i]; if (!window.confirm(tr(t, 'Delete this photo? It is removed for everyone, including the customer page.'))) return;
+      status(tr(t, 'Deleting…'));
+      try { await onDelete(it); } catch (e) { status(`${tr(t, 'Not deleted')}: ${e?.message || e}`, 'err'); return; }
+      V.items.splice(V.i, 1); showDetails(false);
+      if (!V.items.length) return close();
+      V.i = Math.min(V.i, V.items.length - 1); load(); status(tr(t, 'Photo deleted.'), 'ok');
     }
 
     root.addEventListener('click', ev => {
@@ -167,6 +214,11 @@
       if (a === 'undo') { V.marks.pop(); drawMarks(); return; }
       if (a === 'clear') { V.marks = []; drawMarks(); return; }
       if (a === 'save') return saveMarks();
+      if (a === 'textok') return addText();
+      if (a === 'textcancel') return cancelText();
+      if (a === 'details') return showDetails($('.pvDetails').hidden);
+      if (a === 'detcancel') return showDetails(false);
+      if (a === 'delete') return deletePhoto();
     });
     stage.addEventListener('wheel', ev => { ev.preventDefault(); const r = stage.getBoundingClientRect(); zoomAt(ev.deltaY < 0 ? 1.2 : 1 / 1.2, ev.clientX - r.left, ev.clientY - r.top); }, { passive: false });
     stage.addEventListener('dblclick', ev => { if (V.editing) return; const r = stage.getBoundingClientRect(); if (V.s > V.fit * 1.05) fitView(); else zoomAt(2.5, ev.clientX - r.left, ev.clientY - r.top); });
@@ -177,8 +229,8 @@
       if (V.editing && V.pointers.size === 1 && V.nw) {
         const p = toImage(ev);
         if (V.tool === 'text') {
-          const text = (window.prompt(tr(t, 'Short label (max 60 characters)')) || '').trim().slice(0, 60);
-          if (text) { V.marks.push({ t: 'text', x: p.x, y: p.y, text, c: V.color }); drawMarks(); }
+          V.pendingText = { x: p.x, y: p.y, c: V.color }; const box = $('.pvTextBox'), inp = box.querySelector('input');
+          box.hidden = false; inp.value = ''; setTimeout(() => inp.focus(), 0);
           V.pointers.delete(ev.pointerId); return;
         }
         V.draft = { t: V.tool, x: p.x, y: p.y, x2: p.x, y2: p.y, c: V.color }; return;
@@ -202,8 +254,11 @@
     stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', up);
     V.onKey = ev => {
       if (!V || ev.defaultPrevented) return;
-      if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); if (V.editing) setEditing(false); else close(); return; }
-      if (ev.key === 'Tab') { const f = [...root.querySelectorAll('button:not([disabled]):not([hidden])')].filter(b => b.offsetParent); if (!f.length) return; const i = f.indexOf(document.activeElement); if (ev.shiftKey && i <= 0) { ev.preventDefault(); f[f.length - 1].focus(); } else if (!ev.shiftKey && i === f.length - 1) { ev.preventDefault(); f[0].focus(); } return; }
+      const typing = ev.target?.closest?.('.pv input,.pv select,.pv textarea');
+      if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); if (V.pendingText) cancelText(); else if (!$('.pvDetails').hidden) { showDetails(false); $('.pvDetailsBtn').focus(); } else if (V.editing) setEditing(false); else close(); return; }
+      if (typing && ev.key === 'Enter' && typing.closest('.pvTextBox')) { ev.preventDefault(); addText(); return; }
+      if (ev.key === 'Tab') { const f = [...root.querySelectorAll('button:not([disabled]):not([hidden]),input,select')].filter(b => b.offsetParent); if (!f.length) return; const i = f.indexOf(document.activeElement); if (ev.shiftKey && i <= 0) { ev.preventDefault(); f[f.length - 1].focus(); } else if (!ev.shiftKey && i === f.length - 1) { ev.preventDefault(); f[0].focus(); } return; }
+      if (typing) return; // typing a caption or label: the viewer shortcuts stay out of the way
       if (V.editing) { if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z') { ev.preventDefault(); V.marks.pop(); drawMarks(); } return; }
       const k = ev.key;
       if (k === 'ArrowLeft') { ev.preventDefault(); go(-1); } else if (k === 'ArrowRight') { ev.preventDefault(); go(1); }

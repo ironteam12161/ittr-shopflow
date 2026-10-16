@@ -33,7 +33,7 @@
 .bdStagePick button{background:var(--ds-surface);color:var(--ds-ink-2);border:1px solid var(--ds-line-strong);border-radius:999px;padding:6px 12px;min-height:38px;white-space:nowrap;font-weight:700}
 .bdStagePick button.active{background:var(--ds-primary);border-color:var(--ds-primary);color:#fff}
 .bdStagePick button span{opacity:.75;margin-left:4px}
-.bdCols{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(232px,1fr);gap:10px;overflow-x:auto;padding-bottom:10px;align-items:start}
+.bdCols{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(200px,1fr);gap:10px;overflow-x:auto;padding-bottom:10px;align-items:start}
 .bdCol{background:var(--ds-surface-2);border:1px solid var(--ds-line);border-radius:var(--ds-radius);min-height:120px;display:flex;flex-direction:column}
 .bdCol>.bdHead{position:sticky;top:0;background:var(--ds-surface-2);border-radius:var(--ds-radius) var(--ds-radius) 0 0;padding:10px 12px 8px;border-bottom:1px solid var(--ds-line);z-index:1}
 .bdCol>.bdHead b{font-size:var(--ds-text-md)}
@@ -119,3 +119,7 @@
   body.aiChatOpen:not(.loggedOut):not(.invoiceWorkspaceMode) #toastRegion{right:436px!important}
 }
 .navCollapse{display:none}
+/* v24.70.0: drag-and-drop on the Repair Board (buttons remain the keyboard/touch way) */
+#board .bdCard[draggable="true"]{cursor:grab}
+#board .bdCard.dragging{opacity:.5}
+#board .bdCol.dropHere{outline:2px dashed var(--ds-primary);outline-offset:-2px;background:var(--ds-primary-soft)}
