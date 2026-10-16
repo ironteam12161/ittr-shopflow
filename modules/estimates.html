@@ -26,12 +26,15 @@
 .estJobHead{display:flex;gap:8px;align-items:center;background:var(--est-soft);padding:10px 12px;border-bottom:1px solid var(--est-line)}
 .estJobHead .estNo{background:#c2410c;color:#fff;border-radius:6px;min-width:24px;text-align:center;font-weight:800;font-size:12px;padding:3px 0}
 .estQtyU{display:flex;gap:3px;min-width:0}.estQtyU input{flex:1;min-width:0}.estQtyU select{width:auto;flex:0 0 auto;padding:4px 2px;font-weight:700}.estNoPrice{border-color:#f04438!important;background:#fef3f2!important}.estNoPriceTag{color:#b42318}.estGalHint{display:block;margin:2px 0 0 auto;background:none!important;border:0!important;padding:0!important;min-height:0!important;color:#b54708!important;font-size:11px!important;font-weight:700;text-decoration:underline;cursor:pointer;white-space:nowrap}
-.estRow{display:grid;grid-template-columns:52px minmax(0,1fr) 110px 112px 90px 44px 90px 32px;gap:6px;align-items:center;padding:6px 12px;border-bottom:1px solid #f1f5f9}
+.estRow{display:grid;grid-template-columns:44px minmax(110px,1fr) 96px 100px 80px 82px 40px 82px 26px;gap:6px;align-items:center;padding:6px 12px;border-bottom:1px solid #f1f5f9}
 .estRow:last-child{border-bottom:0}.estRow input{width:100%;padding:7px 8px;border:1px solid #d0d5dd;border-radius:8px;font:inherit;font-size:14px;min-height:36px}
 .estRow .tx{display:flex;align-items:center;gap:3px;font-size:12px;color:var(--est-muted)}.estRow .tx input{width:auto;min-height:auto}
 .estRow .t{font-size:10px;font-weight:800;color:var(--est-muted);text-transform:uppercase}
 .estRow .amt{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
 .estRow .del{background:transparent;color:#b42318;min-height:32px;padding:4px}
+/* v24.68.0: buy price + markup on part lines (staff only), parts profit under the totals */
+.estRow .estBuy{display:flex;flex-direction:column;gap:1px}.estRow .estBuy small{font-size:10.5px;color:var(--est-muted);white-space:nowrap;line-height:1.1}.estRow .tx span{display:none}
+.estProfit{margin-top:10px;padding-top:8px;border-top:1px dashed #d0d5dd;font-size:13px;color:#475467}.estProfit>div{display:flex;justify-content:space-between;gap:8px;margin:2px 0}.estProfit b{color:#067647}
 .estRowHead{font-size:11px;color:var(--est-muted);font-weight:700;background:#fff;text-transform:uppercase;letter-spacing:.03em;padding-top:0;padding-bottom:0}
 .estJobFoot{display:flex;gap:8px;padding:8px 12px;flex-wrap:wrap}.estJobFoot button{min-height:34px;padding:6px 10px;font-size:13px}
 .estPartDrop{position:relative}.estPartDrop .estLookupDrop{min-width:320px;z-index:30}

@@ -61,7 +61,12 @@ async function openEstimate(id){
 }
 async function reload(){if(S.cur)await openEstimate(S.cur.estimate.id)}
 
+// v24.68.0: part lines show the buy price (with the markup under it) next to the sell price, like the invoice (staff only; the
+// customer PDF and approval page show only the sell price).
+const mk=(cost,price)=>{cost=Number(cost||0);price=Number(price||0);return cost>0?(((price-cost)/cost)*100).toFixed(1):''};
+const mkText=(cost,price)=>{const m=mk(cost,price);return m===''?'no buy price':`${Number(m)>=0?'+':''}${Math.round(Number(m))}% markup`};
 function lineRow(l,locked,isLabor){
+ const isPart=l.line_type==='part';
  const dis=locked||l.metadata?.feeCode?'disabled':'',fu=['gal','qt'].includes(l.metadata?.unit)?l.metadata.unit:l.part_in_gallons?'gal':'';
  // v24.59.0: a part with no sell price is flagged so it is not quoted at $0 by mistake.
  const noPrice=l.line_type==='part'&&!locked&&Number(l.unit_price)<=0;
@@ -70,13 +75,14 @@ function lineRow(l,locked,isLabor){
   <input class="desc" data-f="description" value="${h(l.description)}" ${dis} aria-label="Description" placeholder="${isLabor?'Labor description':'Description'}">
   ${isLabor?'<span></span>':`<input data-f="partNumber" value="${h(l.part_number||'')}" ${dis} aria-label="Part number" placeholder="Part #">`}
   ${fu?`<span class="estQtyU"><input data-f="quantity" type="number" step="0.25" min="0" value="${Number(l.quantity)}" ${dis} aria-label="Quantity"><select data-f="unit" ${dis} aria-label="Gallons or quarts" title="Gallons or quarts (price converts: per quart = per gallon ÷ 4)"><option value="gal" ${fu==='gal'?'selected':''}>gal</option><option value="qt" ${fu==='qt'?'selected':''}>qt</option></select></span>`:`<input data-f="quantity" type="number" step="${isLabor?'0.1':'0.01'}" min="0" value="${Number(l.quantity)}" ${dis} aria-label="${isLabor?'Hours':'Quantity'}">`}
+  ${isPart?`<span class="estBuy"><input data-f="unitCost" type="number" step="0.01" min="0" value="${Number(l.unit_cost||0)}" ${dis} aria-label="${fu?`Buy price per ${fu}`:'Buy price each'}" title="Buy price (our cost)${fu?` per ${fu==='qt'?'quart':'gallon'}`:''} — not shown to the customer"><small data-mk-out>${mkText(l.unit_cost,l.unit_price)}</small></span>`:'<span></span>'}
   <input data-f="unitPrice" type="number" step="0.01" min="0" value="${Number(l.unit_price)}" ${dis} class="${noPrice?'estNoPrice':''}" aria-label="${isLabor?'Rate per hour':fu?`Price per ${fu}`:'Price each'}" title="${noPrice?'This part has no sell price — type one here, and set it on the part in Parts.':fu?`Price per ${fu==='qt'?'quart':'gallon'}`:''}">
   <label class="tx" title="Taxable"><input data-f="taxable" type="checkbox" ${l.taxable?'checked':''} ${dis}><span>Tax</span></label>
   <span class="amt">${usd(l.line_total)}${l.part_fluid_not_gallons&&!locked?`<button type="button" class="estGalHint" onclick="window.openFluidsTool?.()" title="This fluid is not counted in gallons yet. Switch it in Parts → Fluids in gallons, then pick gal or qt here.">🛢 count in gallons</button>`:''}</span>
   ${locked||l.metadata?.feeCode?'<span></span>':`<button class="del" data-est="del-line" data-id="${l.id}" title="Remove line" aria-label="Remove line">✕</button>`}
  </div>`;
 }
-const ROW_HEAD='<div class="estRow estRowHead"><span>Type</span><span>Description</span><span>Part #</span><span>Qty / hrs</span><span>Price / rate</span><span>Tax</span><span class="amt">Amount</span><span></span></div>';
+const ROW_HEAD='<div class="estRow estRowHead"><span>Type</span><span>Description</span><span>Part #</span><span>Qty / hrs</span><span>Buy</span><span>Sell / rate</span><span>Tax</span><span class="amt">Amount</span><span></span></div>';
 function renderEditor(){
  const {estimate:e,lines,invoice}=S.cur,locked=!['draft','sent'].includes(e.status),hdrLocked=['declined','converted'].includes(e.status),dis=hdrLocked?'disabled':'';
  const labors=lines.filter(l=>l.line_type==='labor'),used=new Set();
@@ -113,7 +119,7 @@ function renderEditor(){
   ${locked?'':`<div class="estAddJob"><input id="estNewJob" placeholder="New job, e.g. Replace front brakes" aria-label="New job description"><input id="estNewJobHours" type="number" step="0.1" min="0" value="1" style="max-width:90px" aria-label="Hours"><button data-est="add-job">+ Add job</button><button type="button" class="secondary" data-est="canned" title="Add a saved job package (labor + parts)">+ Canned job</button></div>`}
  </div>
  <aside class="estSide">
-  <div class="estTotals"><div><span>Subtotal</span><b>${usd(Number(e.subtotal)+Number(e.discount||0))}</b></div>${Number(e.discount)?`<div><span>Discount</span><span>−${usd(e.discount)}</span></div>`:''}<div><span>Tax (${Number(e.tax_rate||0)}%)</span><span>${usd(e.tax)}</span></div><div class="grand"><span>Total</span><span>${usd(e.total)}</span></div></div>
+  <div class="estTotals"><div><span>Subtotal</span><b>${usd(Number(e.subtotal)+Number(e.discount||0))}</b></div>${Number(e.discount)?`<div><span>Discount</span><span>−${usd(e.discount)}</span></div>`:''}<div><span>Tax (${Number(e.tax_rate||0)}%)</span><span>${usd(e.tax)}</span></div><div class="grand"><span>Total</span><span>${usd(e.total)}</span></div>${partsProfit(lines)}</div>
   ${locked?'':`<button class="secondary" data-est="tire-fees">Tire fees (user + disposal)</button>`}
   <div class="field"><label>Tax rate %</label><input data-h="taxRate" type="number" step="0.001" min="0" value="${Number(e.tax_rate||0)}" ${dis}></div>
   <div class="field"><label>Shop supplies $</label><input data-h="shopSupplies" type="number" step="0.01" min="0" value="${Number(e.shop_supplies||0)}" ${dis}></div>
@@ -123,6 +129,12 @@ function renderEditor(){
   ${e.decision_note?`<div class="muted">Decision note: ${h(e.decision_note)}</div>`:''}
  </aside></div>`);
 }
+// Internal only: what the parts cost us and what they earn (the customer never sees this).
+function partsProfit(lines){
+ const parts=(lines||[]).filter(l=>l.line_type==='part');if(!parts.length)return '';
+ const cost=parts.reduce((a,l)=>a+Number(l.quantity||0)*Number(l.unit_cost||0),0),sell=parts.reduce((a,l)=>a+Number(l.line_total||0),0),profit=sell-cost,missing=parts.filter(l=>!(Number(l.unit_cost)>0)).length;
+ return `<div class="estProfit" title="Internal — not on the estimate the customer sees"><div><span>Parts buy</span><span>${usd(cost)}</span></div><div><span>Parts profit</span><b>${usd(profit)}${sell>0?` (${Math.round(profit/sell*100)}%)`:''}</b></div>${missing?`<div class="muted">${missing} part${missing===1?' has':'s have'} no buy price</div>`:''}</div>`;
+}
 async function saveHeader(input){
  if(!S.cur)return;const key=input.dataset.h;let val=input.type==='checkbox'?input.checked:input.value;
  try{await api(`/api/estimates/${S.cur.estimate.id}`,{method:'PUT',body:{[key]:val}});await reload()}catch(e){toast(e.message,'error')}
@@ -131,7 +143,7 @@ async function saveLine(row){
  if(!S.cur)return;const id=row.dataset.line,l=S.cur.lines.find(x=>String(x.id)===String(id));if(!l)return;
  const v=f=>row.querySelector(`[data-f="${f}"]`);
  const body={lineType:l.line_type,description:v('description')?.value??l.description,partNumber:v('partNumber')?.value??l.part_number,quantity:v('quantity')?.value??l.quantity,unitPrice:v('unitPrice')?.value??l.unit_price,unit:v('unit')?.value||undefined,
-  taxable:v('taxable')?v('taxable').checked:!!l.taxable,unitCost:l.unit_cost,inventoryPartId:l.inventory_part_id,parentLineId:l.parent_line_id,discount:l.discount};
+  taxable:v('taxable')?v('taxable').checked:!!l.taxable,unitCost:v('unitCost')?.value??l.unit_cost,inventoryPartId:l.inventory_part_id,parentLineId:l.parent_line_id,discount:l.discount};
  try{await api(`/api/estimates/${S.cur.estimate.id}/lines/${id}`,{method:'PUT',body});await reload()}catch(e){toast(e.message,'error')}
 }
 async function addLine(body){try{await api(`/api/estimates/${S.cur.estimate.id}/lines`,{method:'POST',body});await reload()}catch(e){toast(e.message,'error')}}
@@ -224,8 +236,14 @@ function onChange(ev){
  if(t.dataset.h)return saveHeader(t);
  const row=t.closest('.estRow[data-line]');if(row&&t.dataset.f)return saveLine(row);
 }
+// The markup under the buy price follows what is typed in Buy or Sell.
+function costInput(t){
+ const row=t.closest('.estRow[data-line]');if(!row)return;const q=f=>row.querySelector(f),cost=q('[data-f="unitCost"]'),out=q('[data-mk-out]'),price=q('[data-f="unitPrice"]');if(!cost||!out||!price)return;
+ out.textContent=mkText(cost.value,price.value);
+}
 function onInput(ev){
  const t=ev.target;
+ if(t.dataset.f==='unitCost'||t.dataset.f==='unitPrice'){costInput(t);return}
  if(t.id==='estSearch'){clearTimeout(S.searchTimer);S.searchTimer=setTimeout(()=>{S.q=t.value.trim();loadList()},250);return}
  if(t.dataset.estInput==='lookup'){clearTimeout(S.lookupTimer);S.lookupTimer=setTimeout(()=>lookup(t.value),220);return}
  if(t.dataset.estInput==='part'){clearTimeout(S.partTimer);S.partTimer=setTimeout(()=>partSearch(t),220)}
