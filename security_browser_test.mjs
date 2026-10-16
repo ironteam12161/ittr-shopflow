@@ -196,6 +196,9 @@ try {
     await until(o.page, () => /Inspecting/.test(document.getElementById('mechanicLiveStatus')?.innerText || '') && /INSP-801|Truck inspection/.test(document.getElementById('mechanicLiveStatus')?.innerText || ''), null, 12000);
     const secs = (Date.now() - t0) / 1000; console.log(`  owner saw "Inspecting" after ${secs.toFixed(1)} s`);
     ok(await o.page.evaluate(() => state.workorders.find(x => String(x.id) === '802')?.notes === 'OWNER-WAITING-EDIT'), 'owner\'s waiting change kept on screen');
+    // v24.71.1: closing the checklist (× / phone Back) must not make the unfinished inspection disappear from the owner.
+    await m.page.evaluate(() => closeInspectionWorkflow());
+    await until(o.page, () => /Inspection open/.test(document.getElementById('mechanicLiveStatus')?.innerText || '') && /INSP-801/.test(document.getElementById('mechanicLiveStatus')?.innerText || ''), null, 12000);
     ok(await o.page.evaluate(() => ittrSync.hasPending('shopflow')), 'owner\'s change still queued to be sent');
     await o.page.unroute('**/api/state/shopflow');
     await o.page.evaluate(() => ittrSync.syncAll());
