@@ -63,7 +63,7 @@ async function previewDuplicateMerge(groupIndex){
    Merge into it: <b>${esc(dup?.customer_name||duplicateId)}</b><br>
    Will relink: ${dc.units||0} units · ${dc.history||0} history records · ${dc.invoices||0} invoices · ${dc.service_orders||0} service orders.
    <div style="margin-top:8px"><input id="dupConfirm${groupIndex}" placeholder="Type MERGE" style="max-width:150px">
-   <button class="danger" onclick="commitDuplicateMerge(${groupIndex},${masterId},${duplicateId})">Merge Customer</button></div></div>`;
+   <button class="danger" onclick="commitDuplicateMerge(${groupIndex},${jsArg(masterId)},${jsArg(duplicateId)})">Merge Customer</button></div></div>`;
  }catch(e){box.innerHTML=`<div class="error"><b>Merge preview could not load.</b><br>${esc(e.message||'Merge preview failed.')}</div>`}
 }
 async function commitDuplicateMerge(groupIndex,masterId,duplicateId){

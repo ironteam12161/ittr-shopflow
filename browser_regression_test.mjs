@@ -158,7 +158,8 @@ try {
   await scenario('AI: logout → another account signs in — no late answer, no old chat', async () => {
     const { ctx, page } = await chatPage();
     await page.fill('#shopAiInput', 'SLOW owner question'); await page.click('#shopAiSend'); await sleep(200);
-    await page.evaluate(() => logout()); await signIn(page, 'office1', 'Manager-Pass-2026');
+    // v24.71.0: sign-out reloads the page (nothing of the old account stays in memory).
+    await Promise.all([page.waitForEvent('load'), page.evaluate(() => { logout(); })]); await signIn(page, 'office1', 'Manager-Pass-2026');
     await page.evaluate(() => toggleShopAI(true)); await sleep(1800);
     const txt = await chatText(page), st = await stored(page);
     ok(!/STALE-ANSWER|owner question/.test(txt), 'office1 does not see the owner\'s chat or its late answer');

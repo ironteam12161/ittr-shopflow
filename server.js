@@ -103,18 +103,24 @@ const aiProvider=String(process.env.AI_PROVIDER||"auto").trim().toLowerCase();
 const openRouterModel=String(process.env.OPENROUTER_MODEL||"google/gemini-2.5-flash-lite").trim()||"google/gemini-2.5-flash-lite";
 const openRouterInvoiceModel=String(process.env.OPENROUTER_INVOICE_MODEL||"google/gemini-2.5-flash-lite").trim()||"google/gemini-2.5-flash-lite";
 const openRouterInvoiceFallbackModel=String(process.env.OPENROUTER_INVOICE_FALLBACK_MODEL||"google/gemini-2.5-flash").trim()||"google/gemini-2.5-flash";
+// v24.71.0: ITTR_DB_SSL_VERIFY=1 (optionally with PGSSLROOTCERT=<CA file>) turns on certificate verification for an
+// external database. Default unchanged (encrypted but unverified), because the production connection was not inspected.
+function ittrDbSslVerified(){if(process.env.ITTR_DB_SSL_VERIFY!=="1")return null;const o={rejectUnauthorized:true};try{if(process.env.PGSSLROOTCERT)o.ca=fs.readFileSync(process.env.PGSSLROOTCERT,"utf8")}catch(e){console.error("[database] PGSSLROOTCERT could not be read:",e?.message)}return o}
 function ittrDbSsl(url){
  try{
   const u=new URL(url),mode=(u.searchParams.get("sslmode")||process.env.PGSSLMODE||"").toLowerCase();
   if(mode==="disable")return false;
-  if(mode)return {rejectUnauthorized:false};
+  if(mode)return ittrDbSslVerified()||{rejectUnauthorized:false};
   const host=u.hostname.toLowerCase();
   // Railway's private network (*.railway.internal) and local databases do not speak SSL.
   if(host.endsWith(".railway.internal")||host==="localhost"||host==="127.0.0.1"||host==="::1")return false;
  }catch(_){}
- return isProd?{rejectUnauthorized:false}:false;
+ return isProd?(ittrDbSslVerified()||{rejectUnauthorized:false}):false;
 }
 const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATABASE_URL,ssl:ittrDbSsl(process.env.DATABASE_URL)}):null;
+// v24.71.0: a dropped database connection (restart, network blip) is reported, not fatal: without this listener an
+// idle pooled connection's error crashed the whole app. Readiness (/api/health) answers 503 until the database is back.
+pool?.on("error",e=>console.error("[database] idle connection error:",e?.message||e));
 // v24.42.0: every AI call is metered (feature, user, tokens, cost) and stops at the owner's monthly budget.
 const aiMeter=createAIMeter({pool});
 const client=aiMeter.meterAIClient(rawOpenAIClient,"openai");
@@ -159,6 +165,7 @@ const signedPhotoUrl=key=>getSignedUrl(requireR2(),new GetObjectCommand({Bucket:
 
 
 app.set("trust proxy",1);
+const cspHost=req=>String(req.headers.host||"").replace(/[^A-Za-z0-9.:-]/g,"").slice(0,255);
 app.use(helmet({
  contentSecurityPolicy:{directives:{
   defaultSrc:["'self'"],
@@ -172,7 +179,9 @@ app.use(helmet({
   styleSrc:["'self'","'unsafe-inline'"],
   imgSrc:["'self'","data:","blob:","https:",...(process.env.NODE_ENV==="test"&&/^http:\/\//.test(String(process.env.R2_ENDPOINT||""))?[new URL(process.env.R2_ENDPOINT).origin]:[])],
   fontSrc:["'self'","data:"],
-  connectSrc:["'self'","https:","wss:"],
+  // v24.71.0: the app only talks to its own origin (API + live socket). Same-host ws/wss are listed explicitly
+  // because older Safari does not treat 'self' as covering WebSocket schemes. No cross-origin fetch exists.
+  connectSrc:["'self'",req=>{const h=cspHost(req);return h?`wss://${h}`:"'self'"},req=>{const h=cspHost(req);return h?`ws://${h}`:"'self'"}],
   workerSrc:["'self'","blob:"],
   mediaSrc:["'self'","blob:","https:"]
  }},
@@ -825,21 +834,71 @@ async function auth(req,res,next){
    req.user=q.rows[0]; req.sessionToken=token; next();
  }catch(e){next(e)}
 }
-const liveWss=new WebSocketServer({server:httpServer,path:"/ws/shop-status"});
-const liveClients=new Set();
-function broadcastShopStatus(type,payload={}){const msg=JSON.stringify({type,at:new Date().toISOString(),...payload});for(const ws of liveClients){if(ws.readyState===WebSocket.OPEN)try{ws.send(msg)}catch(_){}}}
-// v24.58.1: the sign-in token arrives in the first message ({type:"auth",token}), not in the web address, where
-// proxies and server logs could record it. The ?token= form still works for app copies loaded before this version.
-async function liveSocketUser(token){if(!token)return null;const q=await requireDb().query(`SELECT u.username,u.display_name,u.role FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now() AND u.active=true`,[hashToken(token)]);return q.rows[0]||null}
-function admitLiveSocket(ws,user){ws.ittrUser=user;ws.isAlive=true;ws.on("pong",()=>{ws.isAlive=true});liveClients.add(ws);ws.send(JSON.stringify({type:"connected",at:new Date().toISOString()}));ws.on("close",()=>liveClients.delete(ws))}
+// v24.71.0: each live socket is bound to the sign-in session that opened it. The session is re-checked every 15 seconds
+// and right after any sign-out, password, account or permission change, so a socket never outlives its session,
+// an expired session, a disabled/deleted account or a password reset. Messages are filtered by role: a mechanic gets
+// only "something changed, refresh" (then reads their own scoped data over HTTP), never customer or text details.
+const LIVE_MAX_PAYLOAD=4096,LIVE_MAX_PER_USER=Number(process.env.ITTR_LIVE_MAX_PER_USER||12),LIVE_MAX_TOTAL=Number(process.env.ITTR_LIVE_MAX_TOTAL||600),LIVE_MAX_PENDING=Number(process.env.ITTR_LIVE_MAX_PENDING||200);
+const liveWss=new WebSocketServer({server:httpServer,path:"/ws/shop-status",maxPayload:LIVE_MAX_PAYLOAD});
+const liveClients=new Set();let livePending=0;
+const LIVE_REFRESH_TYPES=new Set(["shopflow_changed","task_changed","work_order_created"]);
+const LIVE_OFFICE_TYPES=new Set(["customer_decision","sms_received"]);
+function liveMessageFor(u,type,base,full){
+ if(!u)return null;
+ if(u.role==="admin"||u.role==="manager")return full;
+ if(u.role==="mechanic"&&LIVE_REFRESH_TYPES.has(type))return base;
+ return null;
+}
+function broadcastShopStatus(type,payload={}){
+ const at=new Date().toISOString(),full=JSON.stringify({type,at,...payload}),base=JSON.stringify({type,at});
+ for(const ws of liveClients){if(ws.readyState!==WebSocket.OPEN)continue;const msg=liveMessageFor(ws.ittrUser,type,base,full);if(msg)try{ws.send(msg)}catch(_){}}
+}
+// The sign-in token arrives in the first message ({type:"auth",token}), not in the web address, where proxies and
+// server logs could record it. The old ?token= form (app copies before v24.58.1) is off unless ITTR_LEGACY_WS_TOKEN=1.
+const LIVE_SESSION_SQL=`SELECT s.id session_id,s.expires_at,u.id user_id,u.username,u.display_name,u.role,u.permissions FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.expires_at>now() AND u.active=true`;
+async function liveSocketUser(token){if(!token)return null;const q=await requireDb().query(`${LIVE_SESSION_SQL} AND s.token_hash=$1`,[hashToken(token)]);return q.rows[0]||null}
+function closeLiveSocket(ws,reason){liveClients.delete(ws);clearTimeout(ws.ittrExpiry);try{ws.close(4001,reason)}catch(_){}setTimeout(()=>{try{ws.terminate()}catch(_){}},2000).unref?.()}
+function admitLiveSocket(ws,user){
+ if(liveClients.size>=LIVE_MAX_TOTAL){try{ws.close(1013,"Server busy")}catch(_){}return}
+ let mine=0;for(const c of liveClients)if(String(c.ittrUser?.user_id)===String(user.user_id))mine++;
+ if(mine>=LIVE_MAX_PER_USER){try{ws.close(1008,"Too many live connections")}catch(_){}return}
+ ws.ittrUser=user;ws.isAlive=true;ws.on("pong",()=>{ws.isAlive=true});liveClients.add(ws);
+ const left=new Date(user.expires_at).getTime()-Date.now();if(Number.isFinite(left))ws.ittrExpiry=setTimeout(()=>closeLiveSocket(ws,"Session expired"),Math.max(0,Math.min(left,2147483000)));
+ ws.on("message",()=>{});// the client sends nothing after auth; any later frame is ignored (size-limited by maxPayload)
+ ws.send(JSON.stringify({type:"connected",at:new Date().toISOString()}));ws.on("close",()=>{liveClients.delete(ws);clearTimeout(ws.ittrExpiry)})
+}
+let liveRevalidating=null,liveRevalidateAgain=false;
+async function revalidateLiveSockets(){
+ if(liveRevalidating){liveRevalidateAgain=true;return liveRevalidating}
+ liveRevalidating=(async()=>{do{liveRevalidateAgain=false;
+  const socks=[...liveClients].filter(ws=>ws.ittrUser?.session_id!=null);if(!socks.length||!pool)continue;
+  try{
+   const ids=[...new Set(socks.map(ws=>String(ws.ittrUser.session_id)))];
+   const rows=(await requireDb().query(`${LIVE_SESSION_SQL} AND s.id::text=ANY($1::text[])`,[ids])).rows;
+   const live=new Map(rows.map(r=>[String(r.session_id),r]));
+   for(const ws of socks){const r=live.get(String(ws.ittrUser.session_id));if(!r){closeLiveSocket(ws,"Session ended");continue}ws.ittrUser=r}
+  }catch(e){console.warn("[live socket] session re-check failed:",e?.message)}
+ }while(liveRevalidateAgain)})().finally(()=>{liveRevalidating=null});
+ return liveRevalidating;
+}
+const liveRevalidateTimer=setInterval(()=>{revalidateLiveSockets()},Math.max(1000,Number(process.env.ITTR_LIVE_RECHECK_MS||15000)));liveRevalidateTimer.unref?.();
+// Any successful change to sign-in, sessions, two-step login, passwords, accounts or permissions re-checks the open
+// sockets at once (covers sign-out, "sign out other devices", password resets, account delete/disable, MFA reset).
+app.use((req,res,next)=>{if(req.method!=="GET"&&/^\/api\/(auth|admin\/(users|managers|employees)|employees)(\/|$)/.test(req.path))res.on("finish",()=>{if(res.statusCode<400)revalidateLiveSockets()});next()});
 liveWss.on("connection",async(ws,req)=>{try{
  const legacy=String(new URL(req.url,"http://localhost").searchParams.get("token")||"").trim();
- if(legacy){const u=await liveSocketUser(legacy);if(!u){ws.close(1008,"Session expired");return}admitLiveSocket(ws,u);return}
- const timer=setTimeout(()=>{try{ws.close(1008,"Authentication required")}catch(_){}},10000);
- ws.once("message",async data=>{clearTimeout(timer);try{const m=JSON.parse(String(data).slice(0,2000));const u=m?.type==="auth"?await liveSocketUser(String(m.token||"").trim()):null;if(!u){ws.close(1008,"Session expired");return}admitLiveSocket(ws,u)}catch(_){try{ws.close(1008,"Authentication required")}catch(__){}}});
- ws.on("close",()=>clearTimeout(timer));
+ if(legacy){
+  if(process.env.ITTR_LEGACY_WS_TOKEN!=="1"){ws.close(1008,"Update the app: sign-in token in the address is no longer accepted");return}
+  console.warn("[live socket] deprecated ?token= connection accepted (ITTR_LEGACY_WS_TOKEN=1)");
+  const u=await liveSocketUser(legacy);if(!u){ws.close(1008,"Session expired");return}admitLiveSocket(ws,u);return}
+ if(livePending>=LIVE_MAX_PENDING){ws.close(1013,"Server busy");return}
+ livePending++;let pending=true;const done=()=>{if(pending){pending=false;livePending--}};
+ const timer=setTimeout(()=>{done();try{ws.close(1008,"Authentication required")}catch(_){}},10000);
+ ws.once("message",async data=>{clearTimeout(timer);try{const m=JSON.parse(String(data).slice(0,2000));const u=m?.type==="auth"?await liveSocketUser(String(m.token||"").trim()):null;done();if(!u){ws.close(1008,"Session expired");return}if(ws.readyState===WebSocket.OPEN)admitLiveSocket(ws,u)}catch(_){done();try{ws.close(1008,"Authentication required")}catch(__){}}});
+ ws.on("close",()=>{clearTimeout(timer);done()});
+ ws.on("error",()=>{});
 }catch(e){console.error("[live socket]",e?.message);try{ws.close(1011,"Server error")}catch(_){}}});
-const liveHeartbeat=setInterval(()=>{for(const ws of liveClients){if(ws.isAlive===false){liveClients.delete(ws);try{ws.terminate()}catch(_){}continue}ws.isAlive=false;try{ws.ping()}catch(_){}}},25000);liveHeartbeat.unref?.();
+const liveHeartbeat=setInterval(()=>{for(const ws of liveClients){if(ws.isAlive===false){liveClients.delete(ws);clearTimeout(ws.ittrExpiry);try{ws.terminate()}catch(_){}continue}ws.isAlive=false;try{ws.ping()}catch(_){}}},25000);liveHeartbeat.unref?.();
 
 // v24.67.0: trigram indexes for fast parts search (LIKE '%…%' on part #, description, brand, vendor, shelf).
 // Root cause of the old "operator class gin_trgm_ops does not exist" warning: the pg_trgm extension lives in ONE
@@ -1733,25 +1792,32 @@ app.get("/api/customer-units/:id/profile",auth,managerPermission("customers"),as
 
 app.get("/api/customer-units/suggest",auth,async(req,res,next)=>{try{
  try{await syncCustomerUnitDirectory()}catch(e){console.error("Unit suggest sync warning:",e?.message)}const q=String(req.query.q||"").trim();if(q.length<1)return res.json({items:[]});const like=`%${q}%`,db=requireDb();
- const r=await db.query(`SELECT u.*,c.customer_name AS canonical_customer,c.phone AS customer_phone,c.email AS customer_email,c.dot_number FROM customer_units u LEFT JOIN fullbay_import_customers c ON c.id::text=u.customer_id::text WHERE u.unit_number ILIKE $1 OR coalesce(u.vin,'') ILIKE $1 OR coalesce(u.plate,'') ILIKE $1 OR coalesce(c.dot_number,'') ILIKE $1 OR coalesce(c.customer_name,u.customer_name,'') ILIKE $1 ORDER BY CASE WHEN lower(u.unit_number)=lower($2) THEN 0 WHEN lower(u.unit_number) LIKE lower($3) THEN 1 ELSE 2 END,u.unit_number LIMIT 20`,[like,q,`${q}%`]);res.json({items:r.rows.map(x=>({...x,customer_name:x.canonical_customer||x.customer_name}))});
+ // v24.71.0: explicit columns (no live GPS/driver from Samsara), and customer contact only for the owner and managers
+ // who work with customers (Customers) or send estimates/invoices (Invoices). Mechanics get unit and customer name.
+ const contact=canSeeCustomerContact(req);
+ const r=await db.query(`SELECT u.id,u.customer_id,u.customer_name,u.unit_number,u.vin,u.year,u.make,u.model,u.plate,u.mileage,u.engine,u.transmission,u.source,u.unit_status,c.customer_name AS canonical_customer,${contact?"c.phone AS customer_phone,c.email AS customer_email,":""}c.dot_number FROM customer_units u LEFT JOIN fullbay_import_customers c ON c.id::text=u.customer_id::text WHERE u.unit_number ILIKE $1 OR coalesce(u.vin,'') ILIKE $1 OR coalesce(u.plate,'') ILIKE $1 OR coalesce(c.dot_number,'') ILIKE $1 OR coalesce(c.customer_name,u.customer_name,'') ILIKE $1 ORDER BY CASE WHEN lower(u.unit_number)=lower($2) THEN 0 WHEN lower(u.unit_number) LIKE lower($3) THEN 1 ELSE 2 END,u.unit_number LIMIT 20`,[like,q,`${q}%`]);res.json({items:r.rows.map(x=>({...x,customer_name:x.canonical_customer||x.customer_name}))});
 }catch(e){next(e)}});
 
 
 // v24.1 unified shop search: customer + vehicle + ITTR/Fullbay service history.
+// v24.71.0: each result category follows the same permission as its own page: customers and Fullbay service history
+// need Customers, invoices (and Fullbay invoice numbers) need Invoices. Work orders, inspections, units and parts are
+// shop-floor data every manager works with; unit notes need Customers.
 app.get("/api/smart-search",auth,adminOnly,async(req,res,next)=>{try{
- const q=String(req.query.q||"").trim();if(q.length<2)return res.json({customers:[],units:[],workorders:[]});
+ const q=String(req.query.q||"").trim();if(q.length<2)return res.json({customers:[],units:[],workorders:[],parts:[],invoices:[]});
  const limit=Math.max(1,Math.min(50,Number(req.query.limit||20))),like=`%${q}%`,db=requireDb();
- const customers=(await db.query(`SELECT id,customer_name,contact_name,phone,email,dot_number,address,city,state,postal_code,active FROM fullbay_import_customers WHERE deleted_at IS NULL AND (customer_name ILIKE $1 OR coalesce(contact_name,'') ILIKE $1 OR coalesce(phone,'') ILIKE $1 OR coalesce(email,'') ILIKE $1 OR coalesce(dot_number,'') ILIKE $1 OR coalesce(address,'') ILIKE $1 OR coalesce(city,'') ILIKE $1) ORDER BY active DESC NULLS LAST,customer_name LIMIT $2`,[like,limit])).rows;
- const units=(await db.query(`SELECT u.id,u.customer_id::text AS customer_id,coalesce(c.customer_name,u.customer_name) AS customer_name,u.unit_number,u.vin,u.year,u.make,u.model,u.plate,u.mileage,u.engine,u.transmission,u.notes FROM customer_units u LEFT JOIN fullbay_import_customers c ON c.id::text=u.customer_id::text WHERE u.unit_number ILIKE $1 OR coalesce(u.vin,'') ILIKE $1 OR coalesce(u.plate,'') ILIKE $1 OR coalesce(u.make,'') ILIKE $1 OR coalesce(u.model,'') ILIKE $1 OR coalesce(u.engine,'') ILIKE $1 OR coalesce(u.notes,'') ILIKE $1 OR coalesce(c.customer_name,u.customer_name,'') ILIKE $1 ORDER BY u.unit_number LIMIT $2`,[like,limit])).rows;
+ const seeCustomers=can(req,"customers"),seeInvoices=can(req,"invoices");
+ const customers=!seeCustomers?[]:(await db.query(`SELECT id,customer_name,contact_name,phone,email,dot_number,address,city,state,postal_code,active FROM fullbay_import_customers WHERE deleted_at IS NULL AND (customer_name ILIKE $1 OR coalesce(contact_name,'') ILIKE $1 OR coalesce(phone,'') ILIKE $1 OR coalesce(email,'') ILIKE $1 OR coalesce(dot_number,'') ILIKE $1 OR coalesce(address,'') ILIKE $1 OR coalesce(city,'') ILIKE $1) ORDER BY active DESC NULLS LAST,customer_name LIMIT $2`,[like,limit])).rows;
+ const units=(await db.query(`SELECT u.id,u.customer_id::text AS customer_id,coalesce(c.customer_name,u.customer_name) AS customer_name,u.unit_number,u.vin,u.year,u.make,u.model,u.plate,u.mileage,u.engine,u.transmission${seeCustomers?",u.notes":""} FROM customer_units u LEFT JOIN fullbay_import_customers c ON c.id::text=u.customer_id::text WHERE u.unit_number ILIKE $1 OR coalesce(u.vin,'') ILIKE $1 OR coalesce(u.plate,'') ILIKE $1 OR coalesce(u.make,'') ILIKE $1 OR coalesce(u.model,'') ILIKE $1 OR coalesce(u.engine,'') ILIKE $1 OR ${seeCustomers?"coalesce(u.notes,'') ILIKE $1 OR":""} coalesce(c.customer_name,u.customer_name,'') ILIKE $1 ORDER BY u.unit_number LIMIT $2`,[like,limit])).rows;
  let workorders=[];try{const core=await getCoreState(),needle=q.toLowerCase();workorders=(Array.isArray(core.shopflow?.workorders)?core.shopflow.workorders:[]).filter(w=>{if(!w||typeof w!=="object")return false;const tasks=(Array.isArray(w.tasks)?w.tasks:[]).map(t=>[t?.t,t?.outcomeNote,t?.completionNote].filter(Boolean).join(" ")).join(" "),hay=[w.id,w.unit,w.customer,w.status,w.notes,w.completionNotes,w.futureNotes,w.parking,tasks].filter(v=>v!=null).join(" ").toLowerCase();return hay.includes(needle)}).sort((a,b)=>Number(b.id||0)-Number(a.id||0)).slice(0,limit).map(w=>({source:"ittr",id:w.id,unit:w.unit,customer:w.customer,status:w.status,date:w.date,time:w.time,completedAt:w.completedAt,summary:(w.tasks||[]).map(t=>t?.t).filter(Boolean).slice(0,3).join(", ")||w.notes||w.completionNotes||w.futureNotes||""}))}catch(e){console.error("Smart search work-order warning:",e?.message)}
- try{const sr=await db.query(`SELECT customer_id::text AS customer_id,customer_name,service_order,invoice_number,unit_number,max(action_completed_at) completed_at,count(*)::int job_count,(array_agg(nullif(complaint,'') ORDER BY action_completed_at NULLS LAST,action_number) FILTER (WHERE coalesce(complaint,'')<>''))[1] first_complaint,(array_agg(nullif(actual_correction,'') ORDER BY action_completed_at NULLS LAST,action_number) FILTER (WHERE coalesce(actual_correction,'')<>''))[1] first_correction FROM fullbay_service_history WHERE customer_name ILIKE $1 OR coalesce(unit_number,'') ILIKE $1 OR coalesce(vin,'') ILIKE $1 OR coalesce(service_order,'') ILIKE $1 OR coalesce(invoice_number,'') ILIKE $1 OR coalesce(complaint,'') ILIKE $1 OR coalesce(actual_correction,'') ILIKE $1 OR coalesce(component,'') ILIKE $1 OR coalesce(system,'') ILIKE $1 GROUP BY customer_id,customer_name,service_order,invoice_number,unit_number ORDER BY max(action_completed_at) DESC NULLS LAST LIMIT $2`,[like,limit]);for(const x of sr.rows){const first=x.first_complaint||x.first_correction||"Service record";workorders.push({source:"fullbay",id:x.service_order,invoice:x.invoice_number,unit:x.unit_number,customer:x.customer_name,customer_id:x.customer_id,status:"Fullbay History",completedAt:x.completed_at,jobCount:Number(x.job_count||0),summary:`${first}${Number(x.job_count||0)>1?` + ${Number(x.job_count)-1} more job${Number(x.job_count)-1===1?"":"s"}`:""}`})}}catch(e){console.error("Smart search Fullbay history warning:",e?.message)}
+ if(seeCustomers)try{const sr=await db.query(`SELECT customer_id::text AS customer_id,customer_name,service_order,invoice_number,unit_number,max(action_completed_at) completed_at,count(*)::int job_count,(array_agg(nullif(complaint,'') ORDER BY action_completed_at NULLS LAST,action_number) FILTER (WHERE coalesce(complaint,'')<>''))[1] first_complaint,(array_agg(nullif(actual_correction,'') ORDER BY action_completed_at NULLS LAST,action_number) FILTER (WHERE coalesce(actual_correction,'')<>''))[1] first_correction FROM fullbay_service_history WHERE customer_name ILIKE $1 OR coalesce(unit_number,'') ILIKE $1 OR coalesce(vin,'') ILIKE $1 OR coalesce(service_order,'') ILIKE $1 ${seeInvoices?"OR coalesce(invoice_number,'') ILIKE $1":""} OR coalesce(complaint,'') ILIKE $1 OR coalesce(actual_correction,'') ILIKE $1 OR coalesce(component,'') ILIKE $1 OR coalesce(system,'') ILIKE $1 GROUP BY customer_id,customer_name,service_order,invoice_number,unit_number ORDER BY max(action_completed_at) DESC NULLS LAST LIMIT $2`,[like,limit]);for(const x of sr.rows){const first=x.first_complaint||x.first_correction||"Service record";workorders.push({source:"fullbay",id:x.service_order,invoice:seeInvoices?x.invoice_number:undefined,unit:x.unit_number,customer:x.customer_name,customer_id:x.customer_id,status:"Fullbay History",completedAt:x.completed_at,jobCount:Number(x.job_count||0),summary:`${first}${Number(x.job_count||0)>1?` + ${Number(x.job_count)-1} more job${Number(x.job_count)-1===1?"":"s"}`:""}`})}}catch(e){console.error("Smart search Fullbay history warning:",e?.message)}
  try{const xr=await db.query(`SELECT work_order_id,unit_number_snapshot,vin_snapshot,customer_name_snapshot,inspection_type,inspection_subtype,status,mechanic_username,completed_at,summary,findings FROM mechanic_inspections WHERE unit_number_snapshot ILIKE $1 OR coalesce(vin_snapshot,'') ILIKE $1 OR coalesce(customer_name_snapshot,'') ILIKE $1 OR work_order_id ILIKE $1 OR coalesce(mechanic_username,'') ILIKE $1 OR findings::text ILIKE $1 ORDER BY coalesce(completed_at,updated_at) DESC LIMIT $2`,[like,limit]);const liveWo=liveWorkOrderIdSet(await getCoreState());for(const x of xr.rows.filter(r=>!r.work_order_id||liveWo.has(String(r.work_order_id)))){const s=x.summary||{},label=[x.inspection_type,x.inspection_subtype].filter(Boolean).join(" / ");workorders.push({source:"inspection",id:x.work_order_id,workOrderId:x.work_order_id,unit:x.unit_number_snapshot,vin:x.vin_snapshot,customer:x.customer_name_snapshot,status:x.status,completedAt:x.completed_at,mechanic:x.mechanic_username,summary:`${label||"Inspection"}: ${Number(s.repair||0)} repair, ${Number(s.attention||0)} attention`,findings:x.findings||[]})}}catch(e){console.error("Smart search inspection warning:",e?.message)}
  workorders.sort((a,b)=>new Date(b.completedAt||b.date||0)-new Date(a.completedAt||a.date||0));
  // v24.34.0: the main search also finds parts (with live stock) and, for managers, invoices.
  let parts=[],invoices=[];const qs=String(req.query.q||"").trim();
  if(qs.length>=2){const terms=qs.toLowerCase().split(/\s+/).map(t=>t.replace(/[%_\\]/g,"")).filter(t=>t.length>=2).slice(0,5);
   if(terms.length){try{parts=(await requireDb().query(`SELECT id,part_number,description,quantity,allocated,location FROM fullbay_import_parts WHERE ${terms.map((_,i)=>`lower(coalesce(part_number,'')||' '||coalesce(description,'')||' '||coalesce(manufacturer,'')||' '||coalesce(internal_barcode,'')) LIKE $${i+1}`).join(" AND ")} ORDER BY (lower(part_number)=lower($${terms.length+1})) DESC,coalesce(quantity,0) DESC LIMIT 6`,[...terms.map(t=>`%${t}%`),qs])).rows}catch(e){console.error("Smart search parts warning:",e?.message)}
-   if(["admin","manager"].includes(req.user?.role)){try{invoices=(await requireDb().query(`SELECT id,invoice_number,customer_name,unit_number,status,invoice_date,total,balance_due FROM customer_invoices WHERE status<>'void' AND ${terms.map((_,i)=>`lower(coalesce(invoice_number,'')||' '||coalesce(customer_name,'')||' '||coalesce(unit_number,'')||' '||coalesce(po_number,'')) LIKE $${i+1}`).join(" AND ")} ORDER BY invoice_date DESC NULLS LAST,id DESC LIMIT 5`,terms.map(t=>`%${t}%`))).rows}catch(e){console.error("Smart search invoice warning:",e?.message)}}}}
+   if(seeInvoices){try{invoices=(await requireDb().query(`SELECT id,invoice_number,customer_name,unit_number,status,invoice_date,total,balance_due FROM customer_invoices WHERE status<>'void' AND ${terms.map((_,i)=>`lower(coalesce(invoice_number,'')||' '||coalesce(customer_name,'')||' '||coalesce(unit_number,'')||' '||coalesce(po_number,'')) LIKE $${i+1}`).join(" AND ")} ORDER BY invoice_date DESC NULLS LAST,id DESC LIMIT 5`,terms.map(t=>`%${t}%`))).rows}catch(e){console.error("Smart search invoice warning:",e?.message)}}}}
  res.json({customers,units,workorders:workorders.slice(0,limit),parts,invoices,q});
 }catch(e){next(e)}});
 
@@ -1987,9 +2053,31 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.70.0");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.71.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,partsSearchIndexes:partsSearchIndexStatus.state,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
+// v24.71.0: liveness and readiness are separate. /api/health/live only says the process answers (never restart the
+// app because the database or an optional service such as AI is down). /api/health (= /api/health/ready, Railway's
+// deploy check) answers 503 unless the database answers and the shop schema is in place, so a deploy whose database
+// is unreachable is not given traffic. AI, photo storage and parts-index state are reported but never fail it.
+app.get("/api/health/live",(req,res)=>{res.set("Cache-Control","no-store");res.json({ok:true,live:true,version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:""})});
+async function readinessCheck(){
+ if(!pool)return {db:false,schema:false,error:"DATABASE_URL is not set"};
+ const check=(async()=>{
+  const t=await pool.query("SELECT to_regclass('app_state') IS NOT NULL AS app_state,to_regclass('auth_sessions') IS NOT NULL AS sessions,to_regclass('auth_users') IS NOT NULL AS users");
+  const r=t.rows[0]||{};let schema=Boolean(r.app_state&&r.sessions&&r.users);
+  if(schema)schema=(await pool.query("SELECT count(*)::int n FROM app_state WHERE state_key='shopflow'")).rows[0].n>0;
+  return {db:true,schema,error:schema?"":"shop schema missing"};
+ })();
+ return Promise.race([check,new Promise((_,rej)=>setTimeout(()=>rej(new Error("database did not answer within 5 seconds")),5000).unref?.())]);
+}
+async function healthHandler(req,res){
+ let st;try{st=await readinessCheck()}catch(e){st={db:false,schema:false,error:String(e?.message||"database unavailable").slice(0,200)}}
+ const ready=st.db&&st.schema;
+ res.set("Cache-Control","no-store");
+ res.status(ready?200:503).json({ok:ready,ready,db:st.db,schema:st.schema,...(ready?{}:{error:st.error}),partsSearchIndexes:partsSearchIndexStatus.state,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured});
+}
+app.get("/api/health",healthHandler);
+app.get("/api/health/ready",healthHandler);
 
 // v24.58.1: sign-in checks, in order: account lock → password → 2-step code (when turned on).
 // - An unknown username costs the same bcrypt time as a known one, so response time doesn't reveal real usernames.
@@ -2065,10 +2153,10 @@ app.get("/api/state",auth,async(req,res,next)=>{try{
  if(req.user?.role==='mechanic'){
   const q=await db.query("SELECT state_key,payload,version,updated_at FROM app_state WHERE state_key='shopflow'");
   const r=q.rows[0];if(!r)return res.json({});
-  const {workorders,issues,sf}=mechanicShopView(req.user,r.payload);
+
   const ur=(await db.query("SELECT payload,version,updated_at FROM app_state WHERE state_key='users'")).rows[0],me=ur?.payload?.[req.user.username];
   const self=me&&typeof me==="object"?{[req.user.username]:{role:me.role||"mechanic",display:me.display||req.user.display_name||req.user.username,currentActivity:me.currentActivity||{code:"",note:"",startedAt:""},activityHistory:Array.isArray(me.activityHistory)?me.activityHistory.slice(0,50):[]}}:{};
-  return res.json({shopflow:{payload:{...sf,workorders,issues},version:Number(r.version),updatedAt:r.updated_at},users:{payload:self,version:Number(ur?.version||0),updatedAt:ur?.updated_at||null}});
+  return res.json({shopflow:{payload:shopflowForUser(req.user,r.payload),version:Number(r.version),updatedAt:r.updated_at},users:{payload:self,version:Number(ur?.version||0),updatedAt:ur?.updated_at||null}});
  }
  const q=await db.query("SELECT state_key,payload,version,updated_at FROM app_state ORDER BY state_key");const d={};for(const r of q.rows)d[r.state_key]={payload:r.payload,version:Number(r.version),updatedAt:r.updated_at};
  // v24.37.1: every active mechanic login appears on the dashboard, even if the account was created
@@ -2076,13 +2164,19 @@ app.get("/api/state",auth,async(req,res,next)=>{try{
  if(d.users){const users=d.users.payload&&typeof d.users.payload==='object'?{...d.users.payload}:{};const mq=await db.query("SELECT username,display_name FROM auth_users WHERE role='mechanic' AND active=true");for(const m of mq.rows)if(!users[m.username])users[m.username]={role:'mechanic',display:m.display_name||m.username,activityHistory:[],currentActivity:{code:'',note:'',startedAt:''}};d.users={...d.users,payload:users}}
  res.json(d);
 }catch(e){next(e)}});
-// The part of the shop record a mechanic may see: their own work orders and those work orders' findings.
-function mechanicShopView(user,payload){
+// The part of the shop record an account may see. v24.71.0: this is the one serializer for every response that
+// carries the shop record (GET /api/state, history versions, and every mutation a mechanic can reach). A mechanic gets
+// only their own work orders (primary or helper), those work orders' findings, and the work-order counter; any other
+// top-level key stays on the server (a mechanic's save keeps it — see the PUT merge).
+const MECHANIC_SHOPFLOW_KEYS=["lastWorkOrderId"];
+function shopflowForUser(user,payload){
  const sf=(payload&&typeof payload==='object')?payload:{workorders:[],issues:[]};
+ if(user?.role!=="mechanic")return sf;
  const workorders=(Array.isArray(sf.workorders)?sf.workorders:[]).filter(w=>mechanicOwnsWorkOrder(user,w));
  const ids=new Set(workorders.map(w=>String(w?.id||'')));
  const issues=(Array.isArray(sf.issues)?sf.issues:[]).filter(i=>ids.has(String(i?.wo||'')));
- return {sf,workorders,issues};
+ const out={workorders,issues};for(const k of MECHANIC_SHOPFLOW_KEYS)if(k in sf)out[k]=sf[k];
+ return out;
 }
 // v24.67.0: one earlier version of a shared record (kept by the app_state_history trigger), seen exactly as GET
 // /api/state shows it to this account. A phone that queued an edit before v24.67.0 only kept its whole edited copy,
@@ -2096,7 +2190,7 @@ app.get("/api/state/:key/version/:version",auth,async(req,res,next)=>{try{
  const cur=(await db.query("SELECT payload,version FROM app_state WHERE state_key=$1",[key])).rows[0];
  let payload=cur&&Number(cur.version)===version?cur.payload:(await db.query("SELECT payload FROM app_state_history WHERE state_key=$1 AND version=$2 ORDER BY id DESC LIMIT 1",[key,version])).rows[0]?.payload;
  if(payload===undefined||payload===null)return res.status(404).json({error:"That version is no longer kept.",code:"STATE_VERSION_UNAVAILABLE"});
- if(role==='mechanic'){const v=mechanicShopView(req.user,payload);payload={...v.sf,workorders:v.workorders,issues:v.issues}}
+ if(role==='mechanic')payload=shopflowForUser(req.user,payload);
  res.json({key,version,payload});
 }catch(e){next(e)}});
 // ITTR v24.27.0 state integrity hardening
@@ -2149,7 +2243,7 @@ app.post("/api/mechanic/activity",auth,async(req,res,next)=>{
   if(action==="start")await autoClockInSafe(req.user,"activity");
   if(leftInsp)broadcastShopStatus("shopflow_changed",{by:username});
   broadcastShopStatus("task_changed",{by:username,activity:true});
-  res.json({ok:true,user:{currentActivity:u.currentActivity,activityHistory:u.activityHistory.slice(0,50)},version:Number(q.rows[0]?.version||0),pausedTasks:switched.paused||0,shopflow:switched.shopflow||null,shopflowVersion:switched.version??null});
+  res.json({ok:true,user:{currentActivity:u.currentActivity,activityHistory:u.activityHistory.slice(0,50)},version:Number(q.rows[0]?.version||0),pausedTasks:switched.paused||0,shopflow:switched.shopflow?shopflowForUser(req.user,switched.shopflow):null,shopflowVersion:switched.version??null});
  }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
 });
 app.put("/api/state/:key",auth,async(req,res,next)=>{
@@ -2295,7 +2389,7 @@ app.post("/api/mechanic/focus-inspection",auth,async(req,res,next)=>{
   await db.query("COMMIT");
   if(r.left)broadcastShopStatus("shopflow_changed",{by:req.user.username,version:r.version});
   if(r.paused||r.activity){await audit(req.user.username,"mechanic_switched_to_inspection",{workOrderId:String(req.body?.workOrderId||""),pausedTasks:r.paused,endedActivity:r.activity});broadcastShopStatus("task_changed",{by:req.user.username,activity:r.activity})}
-  res.json({ok:true,...r});
+  res.json({ok:true,...r,shopflow:r.shopflow?shopflowForUser(req.user,r.shopflow):null});
  }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
 });
 async function autoClockInSafe(user,source){if(user?.role!=="mechanic")return;try{const s=await autoClockIn(requireDb(),user.username,source);if(s)await audit(user.username,"clock_in",{shiftId:s.id,auto:source})}catch(e){console.warn("[time clock] auto clock-in failed",e?.message)}}
@@ -2315,6 +2409,9 @@ async function closeOpenTaskSession(db,workOrderId,taskUid,mechanic,endReason,pa
 
 
 
+const CUSTOMER_CONTACT_FIELDS=["customer_phone","customer_email","phone","email","address","city","state","postal_code","zip","country"];
+function stripCustomerContact(row){if(!row||typeof row!=="object")return row;const o={...row};for(const k of CUSTOMER_CONTACT_FIELDS)delete o[k];return o}
+function canSeeCustomerContact(req){return can(req,"customers")||can(req,"invoices")}
 function selfStartLookupAllowed(req){
  return req.user?.role==="mechanic"||req.user?.role==="admin"||req.user?.role==="manager";
 }
@@ -2407,11 +2504,15 @@ app.get("/api/work-orders/self-start/lookup",auth,async(req,res)=>{
      }catch(e){warnings.push(e?.message||"NHTSA VIN lookup was unavailable.")}
    }
 
+   // v24.71.0: a mechanic starts a job from the unit, VIN and customer name; the shop's stored phone, email and
+   // address for that customer are office data and are not sent to a mechanic's phone.
+   const lean=req.user?.role==="mechanic";
    res.json({
      ok:true,
      query:{dotNumber,vin,unit},
-     matches,
-     carrier,
+     matches:lean?matches.map(stripCustomerContact):matches,
+     // Public FMCSA carrier details stay (a new customer is created from them); a stored customer's do not.
+     carrier:lean&&carrier?.existingCustomerId?stripCustomerContact(carrier):carrier,
      vehicle,
      sources:{carrier:carrierSource,vehicle:vehicleSource},
      fmcsaConfigured:Boolean(FMCSA_WEBKEY),
@@ -2608,13 +2709,15 @@ app.post("/api/work-orders/self-start",auth,async(req,res,next)=>{
   lastCustomerUnitDirectorySync=0;
   await audit(req.user.username,"mechanic_work_order_self_created",{workOrderId:id,unit:w.unit,vin:w.vin,dotNumber:w.dotNumber,jobs:jobs.length,customerId:w.customerId,unitRecordId:w.unitRecordId,customerCreated:Boolean(customerResolved.created),unitCreated:Boolean(unitResolved.created),carrierSource:String(b.carrierSource||""),vehicleSource:String(b.vehicleSource||"")});
   broadcastShopStatus("work_order_created",{workOrderId:id,by:req.user.username,version:Number(u.rows[0].version)});
-  res.status(201).json({ok:true,workOrder:w,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at,customer:{id:customerRow.id,name:customerRow.customer_name,created:Boolean(customerResolved.created)},unit:{id:unitRow.id,unitNumber:unitRow.unit_number,created:Boolean(unitResolved.created)}});
+  res.status(201).json({ok:true,workOrder:w,shopflow:shopflowForUser(req.user,sf),version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at,customer:{id:customerRow.id,name:customerRow.customer_name,created:Boolean(customerResolved.created)},unit:{id:unitRow.id,unitNumber:unitRow.unit_number,created:Boolean(unitResolved.created)}});
  }catch(e){
   try{await db.query("ROLLBACK")}catch(_){}
   if(e?.status)return res.status(e.status).json({error:e.message,code:e.code||"SELF_START"});
   next(e)
  }finally{db.release()}
 });
+// v24.71.0: helper, part and job-timer changes now tell the other devices (the owner's dashboard) at once over the
+// live socket; before, only the 4-second poll of a visible tab picked them up.
 app.post("/api/work-orders/:id/helpers",auth,async(req,res,next)=>{
  const db=await requireDb().connect();
  try{
@@ -2638,7 +2741,7 @@ app.post("/api/work-orders/:id/helpers",auth,async(req,res,next)=>{
   w.history.push({type:"helper_added",at:new Date().toISOString(),by:req.user.username,byDisplay:req.user.display_name||req.user.username,helper:target,helperDisplay:uq.rows[0].display_name||target});
   const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
   await db.query("COMMIT");await audit(req.user.username,"work_order_helper_added",{workOrderId,helper:target});
-  res.json({ok:true,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
+  broadcastShopStatus("shopflow_changed",{by:req.user.username,workOrderId:String(req.params.id),version:Number(u.rows[0].version)});res.json({ok:true,shopflow:shopflowForUser(req.user,sf),version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
  }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
 });
 app.delete("/api/work-orders/:id/helpers/:username",auth,async(req,res,next)=>{
@@ -2657,7 +2760,7 @@ app.delete("/api/work-orders/:id/helpers/:username",auth,async(req,res,next)=>{
   w.helpers=(Array.isArray(w.helpers)?w.helpers:[]).filter(x=>String(x).toLowerCase()!==target);
   w.history=Array.isArray(w.history)?w.history:[];w.history.push({type:"helper_removed",at:new Date().toISOString(),by:req.user.username,byDisplay:req.user.display_name||req.user.username,helper:target});
   const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
-  await db.query("COMMIT");await audit(req.user.username,"work_order_helper_removed",{workOrderId,helper:target});res.json({ok:true,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
+  await db.query("COMMIT");await audit(req.user.username,"work_order_helper_removed",{workOrderId,helper:target});broadcastShopStatus("shopflow_changed",{by:req.user.username,workOrderId:String(req.params.id),version:Number(u.rows[0].version)});res.json({ok:true,shopflow:shopflowForUser(req.user,sf),version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
  }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
 });
 
@@ -2706,7 +2809,7 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/parts",auth,async(req,res,n
   t.parts.push(part);w.history=Array.isArray(w.history)?w.history:[];w.history.push({type:"part_added",at:part.addedAt,by:req.user.username,task:t.t,partNumber:finalPartNumber,description:finalDescription,qty,stockMode:part.stockMode});
   const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
   await db.query("COMMIT");await audit(req.user.username,"task_part_reserved",{workOrderId,taskUid:uid,partId:part.id,inventoryPartId,qty,stockWarning:stockWarning||undefined});
-  res.json({ok:true,stockWarning:stockWarning||undefined,part,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
+  broadcastShopStatus("shopflow_changed",{by:req.user.username,workOrderId:String(req.params.id),version:Number(u.rows[0].version)});res.json({ok:true,stockWarning:stockWarning||undefined,part,shopflow:shopflowForUser(req.user,sf),version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
  }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
 });
 // ITTR_INVENTORY_RESERVE_FINALIZE_V1_WO_REMOVE
@@ -2745,7 +2848,7 @@ app.delete("/api/work-orders/:id/tasks/by-uid/:taskUid/parts/:partId",auth,async
   t.parts=t.parts.filter(x=>String(x?.id||"")!==partId);
   const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
   await db.query("COMMIT");await audit(req.user.username,"task_part_removed",{workOrderId,taskUid:uid,partId,stockMode:p.stockMode||"legacy"});
-  res.json({ok:true,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
+  broadcastShopStatus("shopflow_changed",{by:req.user.username,workOrderId:String(req.params.id),version:Number(u.rows[0].version)});res.json({ok:true,shopflow:shopflowForUser(req.user,sf),version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
  }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
 });
 // v24.47.3: inspection answers are saved on their own (no whole-shop version check), so a mechanic tapping OK / Change
@@ -2910,7 +3013,7 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/action",auth,async(req,res,
    if(endedActivity)broadcastShopStatus("task_changed",{by:req.user.username,activity:true});
    await audit(req.user.username,"task_action",{workOrderId,taskUid:uid,taskName:String(task.t||""),action,pauseReason:req.body?.reason||""});
    if(action==="start"||action==="resume")await autoClockInSafe(req.user,"task");
-   res.json({ok:true,shopflow:sf,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at,taskUid:uid,endedActivity});
+   broadcastShopStatus("shopflow_changed",{by:req.user.username,workOrderId:String(req.params.id),version:Number(u.rows[0].version)});res.json({ok:true,shopflow:shopflowForUser(req.user,sf),version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at,taskUid:uid,endedActivity});
  }catch(e){
    try{await db.query("ROLLBACK")}catch(_){}
    next(e);
@@ -3552,12 +3655,6 @@ async function englishFindingNote(note){
  }catch(e){console.warn("Finding note translation failed:",e?.message);return src}
 }
 function canManageInspectionRepairs(user,w){return ["admin","manager"].includes(user?.role)||mechanicOwnsWorkOrder(user,w)}
-function shopflowForUser(user,sf){
- if(user?.role!=="mechanic")return sf;
- const workorders=(Array.isArray(sf.workorders)?sf.workorders:[]).filter(w=>mechanicOwnsWorkOrder(user,w));
- const ids=new Set(workorders.map(w=>String(w?.id||"")));
- return {...sf,workorders,issues:(Array.isArray(sf.issues)?sf.issues:[]).filter(i=>ids.has(String(i?.wo||"")))};
-}
 
 app.post("/api/work-orders/:id/inspection/items/:itemId/add-to-work-order",auth,async(req,res,next)=>{
  const db=await requireDb().connect();
@@ -3936,7 +4033,8 @@ app.post('/api/service-orders/from-work-order/:woId',auth,adminOnly,async(req,re
   if(!unit&&w.unit)unit=(await db.query(`SELECT u.* FROM customer_units u LEFT JOIN fullbay_import_customers c ON c.id=u.customer_id WHERE lower(u.unit_number)=lower($1::text) AND (($2::bigint IS NOT NULL AND u.customer_id=$2::bigint) OR ($3<>'' AND lower(trim(coalesce(c.customer_name,u.customer_name,'')))=lower(trim($3)))) ORDER BY u.updated_at DESC LIMIT 1`,[String(w.unit),woLinks.customerId,String(w.customer||'')])).rows[0]||null;const n=await nextServiceOrderNumber(db);const ins=await db.query(`INSERT INTO service_orders(service_order_number,work_order_id,customer_id,customer_name,unit_id,unit_number,vin,mileage,po_number,created_by) VALUES($1,$2,$3::bigint,$4,$5::bigint,$6,$7,$8::numeric,$9,$10) RETURNING id`,[n,woId,woLinks.customerId||unit?.customer_id||null,w.customer||unit?.customer_name||'',unit?.id||woLinks.unitRecordId||null,w.unit||unit?.unit_number||'',w.vin||unit?.vin||'',Number(w.mileage||unit?.mileage||0)||null,w.poNumber||'',req.user.username]);await db.query('COMMIT');res.json({ok:true,id:ins.rows[0].id})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
 app.get('/api/service-orders/:id',auth,adminOnly,async(req,res,next)=>{try{const db=requireDb(),so=(await db.query('SELECT * FROM service_orders WHERE id=$1::bigint',[req.params.id])).rows[0];if(!so)return res.status(404).json({error:'Service order not found.'});const w=await completedWo(db,so.work_order_id);if(!w)return res.status(404).json({error:'Source work order not found.'});const raw=(await db.query(`SELECT task_uid,task_name,mechanic_username,sum(extract(epoch from (ended_at-started_at))/3600.0) original_hours FROM task_time_sessions WHERE work_order_id=$1::text AND ended_at IS NOT NULL GROUP BY task_uid,task_name,mechanic_username ORDER BY task_name,mechanic_username`,[so.work_order_id])).rows;const il=await inspectionLabor(db,so.work_order_id,w);if(il){raw.push({task_uid:il.row.task_uid,task_name:il.row.task_name,mechanic_username:il.row.mechanic_username,original_hours:il.row.hours});if(il.added)w.tasks=[...(Array.isArray(w.tasks)?w.tasks:[]),il.task]}const adj=(await db.query(`SELECT DISTINCT ON (task_uid,mechanic_username) task_uid,mechanic_username,adjusted_hours,original_hours,reason,adjusted_by,created_at FROM task_time_adjustments WHERE work_order_id=$1::text ORDER BY task_uid,mechanic_username,created_at DESC,id DESC`,[so.work_order_id])).rows;const am=new Map(adj.map(a=>[`${a.task_uid}::${a.mechanic_username}`,a]));const sessions=raw.map(r=>({...r,original_hours:Number(r.original_hours||0),adjusted_hours:Number(am.get(`${r.task_uid}::${r.mechanic_username}`)?.adjusted_hours??r.original_hours),adjustment:am.get(`${r.task_uid}::${r.mechanic_username}`)||null}));const seen=new Set(raw.map(r=>`${r.task_uid}::${r.mechanic_username}`));for(const a of adj){const k=`${a.task_uid}::${a.mechanic_username}`;if(seen.has(k))continue;sessions.push({task_uid:a.task_uid,task_name:'',mechanic_username:a.mechanic_username,original_hours:0,adjusted_hours:Number(a.adjusted_hours||0),adjustment:a})}res.json({serviceOrder:so,workOrder:w,sessions})}catch(e){next(e)}});
 app.post('/api/service-orders/:id/time-adjustment',auth,adminOnly,async(req,res,next)=>{try{const db=requireDb(),so=(await db.query('SELECT * FROM service_orders WHERE id=$1::bigint',[req.params.id])).rows[0];if(!so||so.status!=='review')return res.status(409).json({error:'Service order is locked or missing.'});const b=req.body||{},hours=Number(b.adjustedHours),reason=String(b.reason||'').trim();if(!Number.isFinite(hours)||hours<0)return res.status(400).json({error:'Adjusted hours must be zero or greater.'});if(hours>200)return res.status(400).json({error:'Adjusted hours look too high (over 200).'});if(!String(b.taskUid||'').trim()||!String(b.mechanic||'').trim())return res.status(400).json({error:'Choose the job and mechanic.'});const reasonText=reason||'Adjusted by '+req.user.username;const orig=(await db.query(`SELECT coalesce(sum(extract(epoch from (ended_at-started_at))/3600.0),0) h FROM task_time_sessions WHERE work_order_id=$1::text AND task_uid=$2::text AND mechanic_username=$3::text AND ended_at IS NOT NULL`,[so.work_order_id,String(b.taskUid||''),String(b.mechanic||'')])).rows[0]?.h||0;let origH=Number(orig);if(!origH){const il=await inspectionLabor(db,so.work_order_id,await completedWo(db,so.work_order_id));if(il&&il.row.task_uid===String(b.taskUid||'')&&il.row.mechanic_username===String(b.mechanic||'').trim().toLowerCase())origH=il.row.hours}await db.query(`INSERT INTO task_time_adjustments(work_order_id,task_uid,mechanic_username,adjusted_hours,original_hours,reason,adjusted_by) VALUES($1,$2,$3,$4::numeric,$5::numeric,$6,$7)`,[so.work_order_id,String(b.taskUid||''),String(b.mechanic||'').trim().toLowerCase(),hours,origH,reasonText,req.user.username]);await audit(req.user.username,'labor_time_adjusted',{workOrderId:so.work_order_id,taskUid:b.taskUid,mechanic:b.mechanic,originalHours:origH,adjustedHours:hours,reason:reasonText});res.json({ok:true})}catch(e){next(e)}});
-app.post('/api/service-orders/:id/to-invoice',auth,adminOnly,async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const so=(await db.query('SELECT * FROM service_orders WHERE id=$1::bigint FOR UPDATE',[req.params.id])).rows[0];if(!so){await db.query('ROLLBACK');return res.status(404).json({error:'Service order not found.'})}const existing=(await db.query("SELECT id FROM customer_invoices WHERE service_order_id=$1::bigint AND status<>'void'",[so.id])).rows[0];if(existing){await db.query('ROLLBACK');return res.json({ok:true,id:existing.id,existing:true})}const w=await completedWo(db,so.work_order_id);if(!w){await db.query('ROLLBACK');return res.status(404).json({error:'Source work order missing.'})}let cust=so.customer_id?(await db.query('SELECT * FROM fullbay_import_customers WHERE id=$1::bigint',[so.customer_id])).rows[0]:null;const num=await nextInvoiceNumber(db),rate=invoiceMoney(cust?.default_labor_rate||req.body?.laborRate||0),terms=String(cust?.credit_terms||'Due on Receipt'),days=/30/.test(terms)?30:/15/.test(terms)?15:/45/.test(terms)?45:0;const ins=await db.query(`INSERT INTO customer_invoices(invoice_number,work_order_id,service_order_id,customer_id,customer_name,unit_id,unit_number,vin,mileage,po_number,invoice_date,due_date,terms,tax_rate,created_by) VALUES($1,$2,$3::bigint,$4::bigint,$5,$6::bigint,$7,$8,$9::numeric,$10,CURRENT_DATE,CURRENT_DATE+$11::int,$12,$13::numeric,$14) RETURNING id`,[num,so.work_order_id,so.id,so.customer_id,so.customer_name,so.unit_id,so.unit_number,so.vin,so.mileage,so.po_number,days,terms,Number(req.body?.taxRate||0),req.user.username]);const iid=ins.rows[0].id;const adj=(await db.query(`SELECT DISTINCT ON (task_uid,mechanic_username) task_uid,mechanic_username,adjusted_hours FROM task_time_adjustments WHERE work_order_id=$1::text ORDER BY task_uid,mechanic_username,created_at DESC,id DESC`,[so.work_order_id])).rows,am=new Map(adj.map(a=>[`${a.task_uid}::${a.mechanic_username}`,Number(a.adjusted_hours||0)]));const raw=(await db.query(`SELECT task_uid,mechanic_username,sum(extract(epoch from (ended_at-started_at))/3600.0) h FROM task_time_sessions WHERE work_order_id=$1::text AND ended_at IS NOT NULL GROUP BY task_uid,mechanic_username`,[so.work_order_id])).rows;{const il=await inspectionLabor(db,so.work_order_id,w);if(il){raw.push({task_uid:il.row.task_uid,mechanic_username:il.row.mechanic_username,h:il.row.hours});if(il.added)w.tasks=[...(Array.isArray(w.tasks)?w.tasks:[]),il.task]}}const hm=new Map();for(const r of raw){const h=am.has(`${r.task_uid}::${r.mechanic_username}`)?am.get(`${r.task_uid}::${r.mechanic_username}`):Number(r.h||0);hm.set(String(r.task_uid),(hm.get(String(r.task_uid))||0)+h)}{const seenRaw=new Set(raw.map(r=>`${r.task_uid}::${r.mechanic_username}`));for(const a of adj){const k=`${a.task_uid}::${a.mechanic_username}`;if(seenRaw.has(k))continue;hm.set(String(a.task_uid),(hm.get(String(a.task_uid))||0)+Number(a.adjusted_hours||0))}}let order=0;for(const t of (Array.isArray(w.tasks)?w.tasks:[])){const job=invoiceEnglishText(t.t||'Repair'),hours=Math.round((hm.get(String(t.uid||''))||0)*100)/100;const laborIns=await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,quantity,unit_price,unit_cost,taxable,line_total,parent_line_id) VALUES($1,$2,$3,$4,'labor',$5,$6::numeric,$7::numeric,0,false,$6::numeric*$7::numeric,NULL) RETURNING id`,[iid,++order,String(t.uid||''),job,job,hours,rate]);const laborId=laborIns.rows[0].id;for(const part of (Array.isArray(t.parts)?t.parts:[])){/* v24.32.0: keep the inventory link, same as sync-work-order, so finalize/void/delete move stock */const invPartId=part.inventoryPartId&&/^\d+$/.test(String(part.inventoryPartId))?Number(part.inventoryPartId):null;await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,part_number,quantity,unit_price,unit_cost,taxable,line_total,parent_line_id,inventory_part_id,metadata) VALUES($1,$2,$3,$4,'part',$5,$6,$7::numeric,$8::numeric,$9::numeric,$10::boolean,$7::numeric*$8::numeric,$11::bigint,$12::bigint,$13::jsonb)`,[iid,++order,String(t.uid||''),job,invoiceEnglishText(String(part.description||part.partNumber||'Part')),String(part.partNumber||''),Number(part.qty||1),unitPriceFor(part.unitPrice,woPartSpu(part)),unitCostFor(part.unitCost,woPartSpu(part)),part.sellTaxable!==false,laborId,invPartId,JSON.stringify({fromServiceOrder:so.id,workOrderId:String(so.work_order_id),inventoryPartId:invPartId,sourcePartId:part.id||null,stockMode:part.stockMode||'legacy',...woPartUnitMeta(part)})])}}await recalcInvoice(db,iid);await db.query("UPDATE service_orders SET status='invoiced',updated_at=now() WHERE id=$1::bigint",[so.id]);await db.query('COMMIT');res.json({ok:true,id:iid})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
+// v24.71.0: turning a service order into a customer invoice needs the same Invoices permission as POST /api/invoices.
+app.post('/api/service-orders/:id/to-invoice',auth,managerPermission("invoices"),async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');const so=(await db.query('SELECT * FROM service_orders WHERE id=$1::bigint FOR UPDATE',[req.params.id])).rows[0];if(!so){await db.query('ROLLBACK');return res.status(404).json({error:'Service order not found.'})}const existing=(await db.query("SELECT id FROM customer_invoices WHERE service_order_id=$1::bigint AND status<>'void'",[so.id])).rows[0];if(existing){await db.query('ROLLBACK');return res.json({ok:true,id:existing.id,existing:true})}const w=await completedWo(db,so.work_order_id);if(!w){await db.query('ROLLBACK');return res.status(404).json({error:'Source work order missing.'})}let cust=so.customer_id?(await db.query('SELECT * FROM fullbay_import_customers WHERE id=$1::bigint',[so.customer_id])).rows[0]:null;const num=await nextInvoiceNumber(db),rate=invoiceMoney(cust?.default_labor_rate||req.body?.laborRate||0),terms=String(cust?.credit_terms||'Due on Receipt'),days=/30/.test(terms)?30:/15/.test(terms)?15:/45/.test(terms)?45:0;const ins=await db.query(`INSERT INTO customer_invoices(invoice_number,work_order_id,service_order_id,customer_id,customer_name,unit_id,unit_number,vin,mileage,po_number,invoice_date,due_date,terms,tax_rate,created_by) VALUES($1,$2,$3::bigint,$4::bigint,$5,$6::bigint,$7,$8,$9::numeric,$10,CURRENT_DATE,CURRENT_DATE+$11::int,$12,$13::numeric,$14) RETURNING id`,[num,so.work_order_id,so.id,so.customer_id,so.customer_name,so.unit_id,so.unit_number,so.vin,so.mileage,so.po_number,days,terms,Number(req.body?.taxRate||0),req.user.username]);const iid=ins.rows[0].id;const adj=(await db.query(`SELECT DISTINCT ON (task_uid,mechanic_username) task_uid,mechanic_username,adjusted_hours FROM task_time_adjustments WHERE work_order_id=$1::text ORDER BY task_uid,mechanic_username,created_at DESC,id DESC`,[so.work_order_id])).rows,am=new Map(adj.map(a=>[`${a.task_uid}::${a.mechanic_username}`,Number(a.adjusted_hours||0)]));const raw=(await db.query(`SELECT task_uid,mechanic_username,sum(extract(epoch from (ended_at-started_at))/3600.0) h FROM task_time_sessions WHERE work_order_id=$1::text AND ended_at IS NOT NULL GROUP BY task_uid,mechanic_username`,[so.work_order_id])).rows;{const il=await inspectionLabor(db,so.work_order_id,w);if(il){raw.push({task_uid:il.row.task_uid,mechanic_username:il.row.mechanic_username,h:il.row.hours});if(il.added)w.tasks=[...(Array.isArray(w.tasks)?w.tasks:[]),il.task]}}const hm=new Map();for(const r of raw){const h=am.has(`${r.task_uid}::${r.mechanic_username}`)?am.get(`${r.task_uid}::${r.mechanic_username}`):Number(r.h||0);hm.set(String(r.task_uid),(hm.get(String(r.task_uid))||0)+h)}{const seenRaw=new Set(raw.map(r=>`${r.task_uid}::${r.mechanic_username}`));for(const a of adj){const k=`${a.task_uid}::${a.mechanic_username}`;if(seenRaw.has(k))continue;hm.set(String(a.task_uid),(hm.get(String(a.task_uid))||0)+Number(a.adjusted_hours||0))}}let order=0;for(const t of (Array.isArray(w.tasks)?w.tasks:[])){const job=invoiceEnglishText(t.t||'Repair'),hours=Math.round((hm.get(String(t.uid||''))||0)*100)/100;const laborIns=await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,quantity,unit_price,unit_cost,taxable,line_total,parent_line_id) VALUES($1,$2,$3,$4,'labor',$5,$6::numeric,$7::numeric,0,false,$6::numeric*$7::numeric,NULL) RETURNING id`,[iid,++order,String(t.uid||''),job,job,hours,rate]);const laborId=laborIns.rows[0].id;for(const part of (Array.isArray(t.parts)?t.parts:[])){/* v24.32.0: keep the inventory link, same as sync-work-order, so finalize/void/delete move stock */const invPartId=part.inventoryPartId&&/^\d+$/.test(String(part.inventoryPartId))?Number(part.inventoryPartId):null;await db.query(`INSERT INTO customer_invoice_lines(invoice_id,sort_order,job_uid,job_name,line_type,description,part_number,quantity,unit_price,unit_cost,taxable,line_total,parent_line_id,inventory_part_id,metadata) VALUES($1,$2,$3,$4,'part',$5,$6,$7::numeric,$8::numeric,$9::numeric,$10::boolean,$7::numeric*$8::numeric,$11::bigint,$12::bigint,$13::jsonb)`,[iid,++order,String(t.uid||''),job,invoiceEnglishText(String(part.description||part.partNumber||'Part')),String(part.partNumber||''),Number(part.qty||1),unitPriceFor(part.unitPrice,woPartSpu(part)),unitCostFor(part.unitCost,woPartSpu(part)),part.sellTaxable!==false,laborId,invPartId,JSON.stringify({fromServiceOrder:so.id,workOrderId:String(so.work_order_id),inventoryPartId:invPartId,sourcePartId:part.id||null,stockMode:part.stockMode||'legacy',...woPartUnitMeta(part)})])}}await recalcInvoice(db,iid);await db.query("UPDATE service_orders SET status='invoiced',updated_at=now() WHERE id=$1::bigint",[so.id]);await db.query('COMMIT');res.json({ok:true,id:iid})}catch(e){try{await db.query('ROLLBACK')}catch{}next(e)}finally{db.release()}});
 
 // ---- v24.6 Professional Customer Invoicing ----
 // ITTR_INVENTORY_POSTING_HELPERS_V1
@@ -4936,7 +5034,8 @@ app.get("/api/admin/server-audit",auth,managerPermission("reports"),async(req,re
 // v24.37.0 estimates, tire fees, accountant reports and Gmail finance inbox
 registerFinanceRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit,recalcInvoice,nextInvoiceNumber,PDFDocument,renderCustomerDocumentPdf,shopProfile,logoPath:path.join(__dirname,"public","assets","iron-team-logo.png"),dateText:v=>{if(!v)return '';try{return invoiceDateText(v)}catch(_){return String(v).slice(0,10)}}});
 registerProductivityRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit});
-registerTimeClockRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit,stopMechanicWork,onChange:by=>broadcastShopStatus("task_changed",{by,timeclock:true})});
+// v24.71.0: the time-clock routes return what stopMechanicWork did, never the whole shop record it changed.
+registerTimeClockRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit,stopMechanicWork:async(...a)=>{const {shopflow,...rest}=(await stopMechanicWork(...a))||{};return rest},onChange:by=>broadcastShopStatus("task_changed",{by,timeclock:true})});
 registerLaborTimeRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit});
 // v24.42.0 AI usage + budget, vendor bills by vendor, and invoice check
 registerAICenterRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit,aiMeter,upload,textAI,resolveVendor,reportRange,fetchGmailAttachment,inspectionLabor,

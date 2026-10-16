@@ -160,6 +160,20 @@
       },
       // An edit happened: queue it now (survives a reload) and save shortly.
       changed(key, ms) { persist(key); status(); if (o.online()) schedule(key, ms); },
+      // v24.71.0: a newer server copy arrived while a change of this device is still waiting (offline, retrying):
+      // take the server copy and put the waiting change back on top, instead of showing an old copy until it is
+      // sent. Not while a save is being sent or about to be (that answer decides). Returns true when applied.
+      rebase(key, payload, version) {
+        if (flights[key] || debounce[key] || !bases[key]) return false;
+        const live0 = live(key), changes = M.diffState(bases[key].obj, live0);
+        setBase(key, payload, version);
+        if (!changes.length) { o.setLive(key, payload, { reason: 'remote' }); writeItem(key, null); status(); return true; }
+        const out = M.applyChanges(payload, changes);
+        o.setLive(key, out.payload, { reason: 'rebased' });
+        reportConflicts(key, out.lost, out.conflicts);
+        persist(key); status();
+        return true;
+      },
       sync(key) {
         if (flights[key]) { again[key] = true; return flights[key]; }
         if (debounce[key]) { timers.clear(debounce[key]); debounce[key] = null; }

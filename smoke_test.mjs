@@ -27,13 +27,16 @@ async function waitJson(pathname){
 }
 
 try{
- const health=await waitJson('/api/health');
- if(!health?.ok)throw new Error(`Health endpoint returned unexpected payload: ${JSON.stringify(health)}`);
+ // v24.71.0: this smoke test runs with no database on purpose. Liveness answers; readiness must say "not ready" (503).
+ const health=await waitJson('/api/health/live');
+ if(!health?.ok||!health?.live)throw new Error(`Liveness endpoint returned unexpected payload: ${JSON.stringify(health)}`);
+ const rr=await fetch(`http://127.0.0.1:${port}/api/health`,{cache:'no-store'}),ready=await rr.json().catch(()=>({}));
+ if(rr.status!==503||ready.ok!==false||ready.db!==false)throw new Error(`Readiness without a database must be 503/db:false, got ${rr.status} ${JSON.stringify(ready)}`);
  const build=await waitJson('/api/build');
  if(String(build?.backend)!==String(pkg.version)||String(build?.frontendExpected)!==String(pkg.version)){
   throw new Error(`Build identity mismatch. package=${pkg.version} response=${JSON.stringify(build)}`);
  }
- console.log(`PASS startup smoke test: v${pkg.version} /api/health + /api/build`);
+ console.log(`PASS startup smoke test: v${pkg.version} /api/health/live + /api/health (503 without a database) + /api/build`);
 }finally{
  if(!exited){child.kill('SIGTERM');await sleep(150);if(!exited)child.kill('SIGKILL')}
 }
