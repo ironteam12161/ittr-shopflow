@@ -16,6 +16,7 @@ import sharp from "sharp";
 import PDFKitDocument from "pdfkit";
 import {invoiceEnglishText,invoiceDateText} from "./invoice_customer_text.mjs";
 import {runShopAssistant,createAssistantTools,assistantRole,assistantCan} from "./shop_assistant.mjs";
+import {registerPhotoRoutes,ensurePhotoSchema,photoMeta} from "./photo_center.mjs";
 import {createSamsaraLookup} from "./samsara_assistant.mjs";
 import {renderCustomerDocumentPdf,shopProfile} from "./invoice_pdf.mjs";
 import {extractPdfPages,slicePdf,manualSearchTerms} from "./manual_library.mjs";
@@ -139,16 +140,22 @@ async function normalizeFindingImage(buffer){
   e.code="PHOTO_PROCESSING";e.cause=err;throw e;
  }
 }
-async function putFindingPhoto({buffer,findingId,workOrderId,uploader,originalName="photo.jpg",db=requireDb()}){
+// v24.69.0: every photo also gets a small thumbnail (lists and finding cards never download the full photo), and
+// may carry a caption, before/after kind, component and the phone's client id (a retried upload is not stored twice).
+async function putFindingPhoto({buffer,findingId,workOrderId,uploader,originalName="photo.jpg",db=requireDb(),caption="",kind="",component="",clientId=""}){
  const normalized=await normalizeFindingImage(buffer);
  const photoId=crypto.randomUUID();
  const d=new Date();
- const key=`findings/${safeObjectPart(workOrderId)}/${d.getUTCFullYear()}/${String(d.getUTCMonth()+1).padStart(2,"0")}/${photoId}.jpg`;
- await requireR2().send(new PutObjectCommand({Bucket:r2Bucket,Key:key,Body:normalized.buffer,ContentType:normalized.mime,CacheControl:"private, max-age=3600",Metadata:{finding_id:safeObjectPart(findingId),work_order_id:safeObjectPart(workOrderId),uploader:safeObjectPart(uploader)}}));
- await db.query(`INSERT INTO finding_photos(id,finding_id,work_order_id,uploader_username,r2_key,content_type,size_bytes,width,height,original_name)
-   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,[photoId,String(findingId),String(workOrderId),String(uploader||""),key,normalized.mime,normalized.bytes,normalized.width,normalized.height,String(originalName||"photo.jpg").slice(0,255)]);
- return {photoId,width:normalized.width,height:normalized.height,size:normalized.bytes};
+ const base=`findings/${safeObjectPart(workOrderId)}/${d.getUTCFullYear()}/${String(d.getUTCMonth()+1).padStart(2,"0")}/${photoId}`,key=`${base}.jpg`,meta={finding_id:safeObjectPart(findingId),work_order_id:safeObjectPart(workOrderId),uploader:safeObjectPart(uploader)};
+ await requireR2().send(new PutObjectCommand({Bucket:r2Bucket,Key:key,Body:normalized.buffer,ContentType:normalized.mime,CacheControl:"private, max-age=3600",Metadata:meta}));
+ let thumb=null;
+ try{const t=await sharp(normalized.buffer).resize({width:480,height:480,fit:"inside",withoutEnlargement:true}).jpeg({quality:72,mozjpeg:true}).toBuffer({resolveWithObject:true});thumb={key:`${base}_t.jpg`,width:Number(t.info?.width||0),height:Number(t.info?.height||0)};await requireR2().send(new PutObjectCommand({Bucket:r2Bucket,Key:thumb.key,Body:t.data,ContentType:"image/jpeg",CacheControl:"private, max-age=3600",Metadata:meta}))}catch(e){console.warn("Finding photo thumbnail skipped:",e?.message);thumb=null}
+ const k=["before","after","detail"].includes(String(kind||""))?String(kind):null;
+ const r=(await db.query(`INSERT INTO finding_photos(id,finding_id,work_order_id,uploader_username,r2_key,content_type,size_bytes,width,height,original_name,caption,kind,component,client_id,thumb_key,thumb_width,thumb_height)
+   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,[photoId,String(findingId),String(workOrderId),String(uploader||""),key,normalized.mime,normalized.bytes,normalized.width,normalized.height,String(originalName||"photo.jpg").slice(0,255),String(caption||"").trim().slice(0,300)||null,k,String(component||"").trim().slice(0,80)||null,String(clientId||"").trim().slice(0,80)||null,thumb?.key||null,thumb?.width||null,thumb?.height||null])).rows[0];
+ return {photoId,width:normalized.width,height:normalized.height,size:normalized.bytes,photo:photoMeta(r)};
 }
+const signedPhotoUrl=key=>getSignedUrl(requireR2(),new GetObjectCommand({Bucket:r2Bucket,Key:key}),{expiresIn:600});
 
 
 app.set("trust proxy",1);
@@ -163,7 +170,7 @@ app.use(helmet({
   scriptSrc:["'self'","'unsafe-inline'","blob:"],
   scriptSrcAttr:["'unsafe-inline'"],
   styleSrc:["'self'","'unsafe-inline'"],
-  imgSrc:["'self'","data:","blob:","https:"],
+  imgSrc:["'self'","data:","blob:","https:",...(process.env.NODE_ENV==="test"&&/^http:\/\//.test(String(process.env.R2_ENDPOINT||""))?[new URL(process.env.R2_ENDPOINT).origin]:[])],
   fontSrc:["'self'","data:"],
   connectSrc:["'self'","https:","wss:"],
   workerSrc:["'self'","blob:"],
@@ -1980,7 +1987,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.68.0");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.69.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,partsSearchIndexes:partsSearchIndexStatus.state,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
@@ -3324,7 +3331,11 @@ app.post("/api/findings/:findingId/photo",auth,photoUpload.single("photo"),async
    const w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===workOrderId);
    if(!w)return res.status(404).json({error:"Work order not found. Refresh the app and try again."});
    if(!canAccessPhotoWorkOrder(req.user,w))return res.status(403).json({error:"You do not have access to upload a photo to this work order."});
-   const saved=await putFindingPhoto({buffer:req.file.buffer,findingId,workOrderId,uploader:req.user.username,originalName:req.file.originalname});
+   const clientId=String(req.body?.clientId||"").trim().slice(0,80);
+   if(clientId){const dup=(await requireDb().query("SELECT * FROM finding_photos WHERE finding_id=$1 AND client_id=$2 AND deleted_at IS NULL",[findingId,clientId])).rows[0];if(dup)return res.json({ok:true,duplicate:true,photoId:dup.id,width:Number(dup.width||0),height:Number(dup.height||0),size:Number(dup.size_bytes||0),photo:photoMeta(dup)})}
+   let saved;
+   try{saved=await putFindingPhoto({buffer:req.file.buffer,findingId,workOrderId,uploader:req.user.username,originalName:req.file.originalname,caption:req.body?.caption,kind:req.body?.kind,component:req.body?.component,clientId})}
+   catch(e){if(e?.code==="23505"&&clientId){const dup=(await requireDb().query("SELECT * FROM finding_photos WHERE finding_id=$1 AND client_id=$2",[findingId,clientId])).rows[0];if(dup)return res.json({ok:true,duplicate:true,photoId:dup.id,photo:photoMeta(dup)})}throw e}
    await audit(req.user.username,"finding_photo_uploaded",{findingId,workOrderId,photoId:saved.photoId,size:saved.size,width:saved.width,height:saved.height});
    res.json({ok:true,...saved});
  }catch(e){next(e)}
@@ -3335,7 +3346,8 @@ app.get("/api/photos/:photoId/url",auth,async(req,res,next)=>{
    requireR2();
    const access=await photoAccessRow(req.params.photoId,req.user);
    if(access.error)return res.status(access.status).json({error:access.error});
-   const url=await getSignedUrl(requireR2(),new GetObjectCommand({Bucket:r2Bucket,Key:access.row.r2_key}),{expiresIn:600});
+   const key=req.query.variant==="thumb"&&access.row.thumb_key?access.row.thumb_key:access.row.r2_key;
+   const url=await getSignedUrl(requireR2(),new GetObjectCommand({Bucket:r2Bucket,Key:key}),{expiresIn:600});
    res.setHeader("Cache-Control","private, max-age=240");
    res.json({url,expiresIn:600});
  }catch(e){next(e)}
@@ -3348,11 +3360,14 @@ app.delete("/api/photos/:photoId",auth,async(req,res,next)=>{
    if(access.error)return res.status(access.status).json({error:access.error});
    if(req.user.role!=="admin"&&String(access.row.uploader_username)!==String(req.user.username))return res.status(403).json({error:"Only the uploader or an admin can remove this photo."});
    await requireR2().send(new DeleteObjectCommand({Bucket:r2Bucket,Key:access.row.r2_key}));
+   if(access.row.thumb_key)try{await requireR2().send(new DeleteObjectCommand({Bucket:r2Bucket,Key:access.row.thumb_key}))}catch(_){}
    await requireDb().query("UPDATE finding_photos SET deleted_at=now() WHERE id=$1",[String(req.params.photoId)]);
    await audit(req.user.username,"finding_photo_deleted",{photoId:String(req.params.photoId),findingId:access.row.finding_id,workOrderId:access.row.work_order_id});
    res.json({ok:true});
  }catch(e){next(e)}
 });
+
+registerPhotoRoutes(app,{auth,requireDb,requireR2,signedUrl:signedPhotoUrl,audit,getShopflowPayload,canAccessPhotoWorkOrder,photoAccessRow});
 
 // v24.58.1: one place decides a finding (manager button or the customer's approval link). The caller passes a pool
 // client; this runs its own transaction. Returns {ok:true,...} or {status,error}.
@@ -4931,7 +4946,7 @@ registerBillRoutes(app,{auth,managerPermission,ownerOnly,requireDb,audit,resolve
 const publicLimiter=rateLimit({windowMs:60*1000,max:60,standardHeaders:true,legacyHeaders:false,message:{error:"Too many requests. Please wait a minute and try again."}});
 async function readShopflowState(db){const r=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");const p=r.rows[0]?.payload;return p&&typeof p==="object"?p:{workorders:[],issues:[]}}
 async function findingPhotoUrls(db,findingIds){const out={};if(!findingIds.length||!r2Configured)return out;
- const rows=(await db.query("SELECT finding_id,r2_key FROM finding_photos WHERE finding_id = ANY($1::text[]) ORDER BY created_at",[findingIds]).catch(()=>({rows:[]}))).rows;
+ const rows=(await db.query("SELECT finding_id,r2_key FROM finding_photos WHERE finding_id = ANY($1::text[]) AND deleted_at IS NULL ORDER BY created_at",[findingIds]).catch(()=>({rows:[]}))).rows;
  for(const r of rows.slice(0,60)){try{(out[r.finding_id]||(out[r.finding_id]=[])).push(await getSignedUrl(requireR2(),new GetObjectCommand({Bucket:r2Bucket,Key:r.r2_key}),{expiresIn:3600}))}catch(_){}}return out}
 const customerLinkDeps={auth,adminOnly,managerPermission,requireDb,audit,publicLimiter,shopProfile,readShopflow:readShopflowState,applyFindingDecision,
  englishText:t=>englishFindingNote(t),findingPhotoUrls,inspectionItemsFor,broadcastShopStatus,publicFile:f=>path.join(__dirname,"public",f),sendEmail:sendShopEmail};
@@ -5038,6 +5053,7 @@ initDb()
   .then(()=>pool&&migrateManagerPermissionsDefaultDeny(pool))
   .then(()=>pool&&ensureCustomerPaymentSchema(pool))
   .then(()=>pool&&ensureFluidSchema(pool))
+  .then(()=>pool&&ensurePhotoSchema(pool))
   // v24.41.1: odometer readings typed with a dot as thousands separator ("304.538") were saved as 304.538 miles. Repair once.
   .then(async()=>{if(!pool)return;for(const t of ["customer_invoices","customer_estimates"]){try{const r=await pool.query(`UPDATE ${t} SET mileage=mileage*1000 WHERE mileage IS NOT NULL AND mileage<>trunc(mileage) AND scale(mileage)=3 AND mileage<100000`);if(r.rowCount)console.log(`Repaired ${r.rowCount} ${t} mileage value(s) typed with a dot.`)}catch(e){console.warn("mileage repair",t,e?.message)}}})
   .then(()=>{if(process.env.NODE_ENV!=='test')startTimeClockScheduler({pool,stopMechanicWork,onChange:()=>broadcastShopStatus("task_changed",{timeclock:true})})})

@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.68.0-ESTCOST-20261016">
+<meta name="ittr-build" content="ITTR-24.69.0-PHOTOS-20261016">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -28,7 +28,7 @@
  P.removeItem=function(k){rm.call(this,k);if(this===sessionStorage&&keys[k])try{rm.call(localStorage,'ittr_app_'+k)}catch(e){}};
 }catch(e){}})();
 </script>
-<title>ITTR ShopFlow v24.68.0</title>
+<title>ITTR ShopFlow v24.69.0</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -828,14 +828,14 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 
 /* ===== v24.16.0 PRO SYSTEM AUDIT + DYNAMIC MODULE LOADING ===== */
 #shopAiFab{position:fixed!important;right:20px!important;bottom:22px!important;z-index:660!important;display:flex!important;align-items:center;gap:8px;background:#0f172a!important;color:#fff;border:1px solid #24324a!important;font-weight:850;border-radius:999px!important;padding:12px 16px!important;box-shadow:0 14px 36px rgba(15,23,42,.28)!important;visibility:visible!important;opacity:1!important}
-#sync-queue-badge{display:none;align-items:center;gap:7px;padding:6px 9px;border-radius:999px;background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;font-size:12px;font-weight:800;white-space:nowrap}#sync-queue-badge.is-visible{display:inline-flex}#sync-queue-badge.is-offline{background:#fef2f2;color:#b42318;border-color:#fecaca}#sync-queue-badge .syncDot{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px rgba(180,83,9,.1)}
+#sync-queue-badge{display:none;align-items:center;gap:7px;padding:6px 9px;border-radius:999px;background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;font-size:12px;font-weight:800;white-space:nowrap}#sync-queue-badge.is-visible{display:inline-flex}@media(max-width:560px){#sync-queue-badge.is-visible{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top,0px) + var(--ittr-header-h,60px) + 6px);z-index:70;max-width:calc(100vw - 32px);box-shadow:0 4px 14px rgba(16,24,40,.18)}#syncQueueText{overflow:hidden;text-overflow:ellipsis}}#sync-queue-badge.is-offline{background:#fef2f2;color:#b42318;border-color:#fecaca}#sync-queue-badge .syncDot{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px rgba(180,83,9,.1)}
 .receiveVerifyShell{display:grid;grid-template-columns:minmax(320px,.9fr) minmax(520px,1.4fr);gap:14px;align-items:start}.receiveDocumentPane{position:sticky;top:8px;height:min(74dvh,820px);background:#111827;border-radius:16px;overflow:hidden;border:1px solid #263244}.receiveDocumentPane iframe,.receiveDocumentPane img{width:100%;height:100%;border:0;object-fit:contain;background:#111827}.receiveDocumentFallback{height:100%;display:grid;place-items:center;color:#e5e7eb;padding:20px;text-align:center}.receiveDataPane{min-width:0}.receiveValidationError{outline:2px solid #f04438!important;background:#fff5f4!important}.receiveValidationWarn{outline:2px solid #f79009!important;background:#fffcf5!important}.aiVoiceLanguage{min-height:34px!important;height:34px;padding:4px 8px!important;font-size:12px!important;border-radius:8px;border:1px solid #cbd5e1;background:#fff;color:#334155}@media(max-width:900px){.receiveVerifyShell{grid-template-columns:1fr}.receiveDocumentPane{position:relative;top:auto;height:46dvh;min-height:320px}}
 #shopAiPanel{position:fixed!important;right:18px!important;bottom:82px!important;width:min(760px,calc(100vw - 36px))!important;height:min(780px,calc(100vh - 104px))!important;background:#fff!important;border:1px solid #d7dee8!important;border-radius:20px!important;box-shadow:0 28px 90px rgba(15,23,42,.28)!important;overflow:hidden!important;z-index:651!important;display:grid;grid-template-rows:auto auto 1fr auto}
 #shopAiPanel.hidden{display:none!important}.aiCopilotHead{padding:15px 16px;background:linear-gradient(135deg,#0f172a,#1e3a5f);color:#fff;display:flex;justify-content:space-between;gap:12px;align-items:center}.aiCopilotBrand{display:flex;align-items:center;gap:11px}.aiCopilotIcon{width:38px;height:38px;border-radius:12px;background:#fff;color:#0f172a;display:grid;place-items:center;font-weight:950}.aiCopilotHead .muted{color:#cbd5e1}.aiCopilotHead .x{background:rgba(255,255,255,.12);color:#fff}.aiContextBar{padding:10px 14px;border-bottom:1px solid #e5e7eb;background:#f8fafc;display:flex;gap:8px;align-items:end;flex-wrap:wrap}.aiContextBar .field{margin:0;flex:1;min-width:180px}.aiContextBar label{font-size:10px;text-transform:uppercase;letter-spacing:.05em}.aiContextBar input{height:38px}.aiQuick{display:flex;gap:6px;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid #edf0f3}.aiQuick button{padding:7px 10px;font-size:11px;background:#fff;color:#334155;border:1px solid #cbd5e1}.aiQuick button:hover{background:#eff6ff;border-color:#93c5fd}.aiChatBody{overflow:auto;padding:15px;background:linear-gradient(#f8fafc,#f1f5f9)}.aiWelcome{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:14px;box-shadow:0 2px 8px rgba(15,23,42,.04)}.aiWelcomeGrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}.aiWelcomeCard{border:1px solid #e2e8f0;border-radius:12px;padding:10px;background:#fbfdff;font-size:12px}.aiMsg{max-width:88%;margin:10px 0;border-radius:16px;padding:11px 13px;box-shadow:0 1px 3px rgba(15,23,42,.06);font-size:13px;line-height:1.45}.aiMsg.user{margin-left:auto;background:#155eef;color:#fff;border-bottom-right-radius:5px}.aiMsg.assistant{margin-right:auto;background:#fff;border:1px solid #dfe6ee;border-bottom-left-radius:5px}.aiMsgHead{font-size:11px;font-weight:850;margin-bottom:5px;opacity:.85}.aiSources{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px;padding-top:8px;border-top:1px solid #edf0f3}.aiSourceChip{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:750;border-radius:999px;padding:5px 8px;background:#eef4ff;color:#344054;border:1px solid #d7e3ff}.aiSourceChip.manual{background:#ecfdf3;border-color:#abefc6;color:#067647;cursor:pointer}.aiComposer{padding:12px 14px;border-top:1px solid #dfe5ec;background:#fff}.aiComposerBox{display:grid;grid-template-columns:auto auto 1fr auto;gap:8px;align-items:end;border:1px solid #cfd8e3;border-radius:14px;padding:7px;background:#fff}.aiComposerBox:focus-within{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.10)}.aiComposer textarea{border:0!important;outline:0!important;box-shadow:none!important;resize:none;min-height:42px;max-height:110px;padding:9px 6px}.aiComposerIcon{width:40px;height:40px;padding:0;border-radius:10px}.aiComposerMeta{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-top:6px;font-size:10px;color:#667085}.aiThinking{display:flex;gap:5px;align-items:center;padding:8px 2px;color:#667085}.aiDot{width:6px;height:6px;border-radius:50%;background:#64748b;animation:aiPulse 1s infinite alternate}.aiDot:nth-child(2){animation-delay:.2s}.aiDot:nth-child(3){animation-delay:.4s}@keyframes aiPulse{to{opacity:.25;transform:translateY(-2px)}}
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.68.0">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.69.0">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -852,8 +852,12 @@ body.invoiceWorkspaceMode .invoiceRateWrap{display:grid!important;grid-template-
 @media(max-width:900px){body.invoiceWorkspaceMode .invoiceGridHeader{display:none!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow{grid-template-columns:1fr 1fr!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceGridItemLabel,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLaborDescription{grid-column:1/-1!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceQtyUnit,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceTaxCell,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLineNet{grid-column:1!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLaborRateField,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceDiscountControl,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceRowActions{grid-column:2!important}}
 </style>
 <link rel="stylesheet" href="./inspection-workflow.css?v=3">
-<script src="./sync-merge.js?v=24.68.0"></script>
-<script src="./sync-queue.js?v=24.68.0"></script>
+<script src="./sync-merge.js?v=24.69.0"></script>
+<script src="./sync-queue.js?v=24.69.0"></script>
+<link rel="stylesheet" href="./design-system.css?v=24.69.0">
+<script src="./icons.js?v=24.69.0"></script>
+<script src="./photo-viewer.js?v=24.69.0"></script>
+<script src="./photo-queue.js?v=24.69.0"></script>
 <style id="ittrNavLayoutV2">
 /* v24.39.0 desktop navigation: one full-width tab strip grouped by workflow (Shop · Money · Records · Operations). */
 @media(min-width:761px){
@@ -1003,7 +1007,7 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 </style>
 </head>
 <body class="loggedOut">
-<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.68.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.69.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1329,6 +1333,13 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
   </form>
 </div></div>
 
+<div id="photoAddModal" class="modal"><div class="modalbox" style="max-width:640px"><div class="modalhead"><h2>Add photos</h2><button class="x" type="button" onclick="closeModal('photoAddModal')" aria-label="Close">✕</button></div>
+  <div id="photoAddContext" class="muted" style="margin-bottom:8px"></div>
+  <div class="fpPickButtons"><label class="ds-btn ds-btn-secondary" for="photoAddCamera"><svg class="ds-icon" aria-hidden="true"><use href="#i-camera"/></svg><span>Take photo</span></label><input id="photoAddCamera" type="file" accept="image/*" capture="environment" hidden onchange="fpPickFiles('add',this)">
+  <label class="ds-btn ds-btn-secondary" for="photoAddInput"><svg class="ds-icon" aria-hidden="true"><use href="#i-image"/></svg><span>Choose photos</span></label><input id="photoAddInput" type="file" accept="image/*" multiple hidden onchange="fpPickFiles('add',this)"></div>
+  <div id="photoAddPicker" class="fpPicker" style="margin:10px 0"></div>
+  <div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" class="secondary" onclick="closeModal('photoAddModal')">Cancel</button><button type="button" id="photoAddSave" onclick="fpSaveAddPhotos()">Save photos</button></div>
+</div></div>
 <div id="issueModal" class="modal">
 <div class="modalbox">
   <div class="modalhead"><h2>Add Inspection Finding</h2><button class="x" onclick="closeModal('issueModal')">✕</button></div>
@@ -1338,7 +1349,11 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
       <div class="field"><label>Severity</label><select name="severity"><option>Needs Attention</option><option>High</option><option>Safety Critical</option></select></div>
       <div class="field full"><label>Problem found</label><textarea name="description" required placeholder="Example: RH steer tire has sidewall damage"></textarea><button type="button" class="secondary miniAiButton" onclick="professionalizeIssueField('description')">AI → Professional English</button></div>
       <div class="field full"><label>Recommended repair</label><textarea name="recommendation" placeholder="Replace tire before vehicle leaves shop"></textarea><button type="button" class="secondary miniAiButton" onclick="professionalizeIssueField('recommendation')">AI → Professional English</button></div>
-      <div class="field full"><label>Photo</label><input id="findingPhotoInput" name="photo" type="file" accept="image/*" capture="environment"><div class="muted">Take a photo or choose one from the phone. Large phone photos are compressed automatically before upload.</div><div id="findingPhotoStatus" class="muted" style="margin-top:6px"></div></div>
+      <div class="field full"><label>Photos</label>
+        <div class="fpPickButtons"><label class="ds-btn ds-btn-secondary" for="findingPhotoCamera"><svg class="ds-icon" aria-hidden="true"><use href="#i-camera"/></svg><span>Take photo</span></label><input id="findingPhotoCamera" type="file" accept="image/*" capture="environment" hidden onchange="fpPickFiles('finding',this)">
+        <label class="ds-btn ds-btn-secondary" for="findingPhotoInput"><svg class="ds-icon" aria-hidden="true"><use href="#i-image"/></svg><span>Choose photos</span></label><input id="findingPhotoInput" type="file" accept="image/*" multiple hidden onchange="fpPickFiles('finding',this)"></div>
+        <div id="findingPhotoPicker" class="fpPicker" style="margin-top:8px"></div>
+        <div class="muted">Add as many photos as you need. Each photo is kept on this phone first and then uploaded — the finding is saved even if the upload has to wait.</div><div id="findingPhotoStatus" class="muted" style="margin-top:6px" role="status" aria-live="polite"></div></div>
     </div>
     <button type="submit">Save Finding</button>
   </form>
@@ -1580,7 +1595,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.68.0';
+const FRONTEND_VERSION='24.69.0';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudVersions={},cloudRefreshBusy=false;
 /* v24.67.0: pending saves live in public/sync-queue.js (per account, as change sets, removed only once saved). */
@@ -1619,7 +1634,9 @@ async function previewInventoryRepair(){const box=document.getElementById('inven
 async function applyInventoryRepair(){if(!confirm('Apply these stock corrections? Every change is written to the part history.'))return;try{const d=await apiJSON('/api/inventory/repair/apply',{method:'POST',body:'{}'});alert(`Done. ${d.returned} return(s) to stock, ${d.released} reservation(s) released.`);previewInventoryRepair()}catch(e){alert(e.message||'Repair failed.')}}
 async function resetInventoryToZero(){const c=prompt('This sets the on-hand quantity of EVERY part to 0.\nUse it right before a full physical count.\n\nType RESET to confirm:');if(c==null)return;if(String(c).trim().toUpperCase()!=='RESET')return alert('Not reset — you did not type RESET.');try{const d=await apiJSON('/api/parts/inventory/reset-to-zero',{method:'POST',body:JSON.stringify({confirm:'RESET'})});alert(`Done. ${d.partsReset} part(s) set to 0. Start your count now.`);try{if(typeof refreshInventoryCount==='function')await refreshInventoryCount()}catch(_){}try{if(typeof render==='function')render()}catch(_){}}catch(e){alert(e.message||'Reset failed.')}}
 async function apiJSON(url,options={}){const normalizedBody=options.body&&typeof options.body==="object"&&!(options.body instanceof FormData)&&!(options.body instanceof Blob)?JSON.stringify(options.body):options.body;const opts={...options,body:normalizedBody,headers:authHeaders({"Content-Type":"application/json",...(options.headers||{})})};const r=await fetch(url,opts);let d={};try{d=await r.json()}catch(_){}if(r.status===401&&!url.includes("/api/auth/login")){ittrEndSession();cloudToken="";sessionStorage.removeItem("ittr_cloud_token");session=null;sessionStorage.removeItem("ittr_session");showLogin();throw Object.assign(new Error(d.error||"Session expired."),{status:401,code:d.code||""})}if(!r.ok)throw Object.assign(new Error(d.error||`Server error ${r.status}`),{status:r.status,code:d.code||""});if(d&&d.stockWarning){try{typeof showToast==="function"?showToast(d.stockWarning):alert(d.stockWarning)}catch(_){}}return d}
-function updateSyncQueueBadge(){const badge=document.getElementById("sync-queue-badge"),text=document.getElementById("syncQueueText");if(!badge||!text||!window.ittrSync)return;const st=ittrSync.status(),pending=st.pending,offline=!navigator.onLine,err=st.error;badge.classList.toggle("is-visible",pending>0||offline||!!err);badge.classList.toggle("is-offline",offline||!!err);badge.title=err?.message||"";text.textContent=offline?`Offline (${pending} Pending)`:err?.kind==="signed-out"?`Not saved (${pending}) — sign in`:err?.kind==="storage"?(pending?`Syncing (${pending})… not kept on this device`:`Synced · device storage full`):err?`Not saved yet (${pending}) — retrying`:pending?`Syncing (${pending})…`:`Synced`}
+function updateSyncQueueBadge(){const badge=document.getElementById("sync-queue-badge"),text=document.getElementById("syncQueueText");if(!badge||!text||!window.ittrSync)return;const st=ittrSync.status(),pending=st.pending,offline=!navigator.onLine,err=st.error;const ph=window.ittrPhotoQueue?ittrPhotoQueue.pendingCount():0;badge.classList.toggle("is-visible",pending>0||ph>0||offline||!!err);badge.classList.toggle("is-offline",offline||!!err);badge.title=err?.message||"";text.textContent=offline?`Offline (${pending} Pending)`:err?.kind==="signed-out"?`Not saved (${pending}) — sign in`:err?.kind==="storage"?(pending?`Syncing (${pending})… not kept on this device`:`Synced · device storage full`):err?`Not saved yet (${pending}) — retrying`:pending?`Syncing (${pending})…`:`Synced`;if(ph){const full=`${ph} ${tr(ph===1?"photo not uploaded yet":"photos not uploaded yet")}`;text.textContent+=` · ${ph} ${tr(ph===1?"photo":"photos")}`;badge.title=[badge.title,full].filter(Boolean).join(" · ")}}
+// v24.69.0: on phones the sync badge floats just under the header instead of widening it (no sideways scroll).
+(()=>{const h=document.querySelector("header");if(!h||!window.ResizeObserver)return;new ResizeObserver(()=>document.documentElement.style.setProperty("--ittr-header-h",`${Math.round(h.getBoundingClientRect().height)}px`)).observe(h)})();
 function queueCloudState(key,payload){if(session?.role==="mechanic"&&key!=="shopflow")return;ittrSync.changed(key)}
 async function flushPersistentSyncQueue(){if(!cloudReady||!cloudToken||!navigator.onLine)return;await ittrSync.syncAll()}
 async function refreshCloudStateSilently(){if(!cloudReady||!cloudToken||cloudRefreshBusy)return;cloudRefreshBusy=true;try{const d=await apiJSON("/api/state");let changed=false;const apply=(key,fn)=>{const remote=d[key];if(!remote||ittrSync.hasPending(key))return;const rv=Number(remote.version||0),lv=Number(cloudVersions[key]||0);if(rv>lv){fn(remote.payload);cloudVersions[key]=rv;ittrSync.setBase(key,remote.payload,rv);changed=true}};apply("users",payload=>{USERS=payload||{};localStorage.setItem("ittr_users_v1",JSON.stringify(USERS))});apply("shopflow",payload=>{state=payload||{workorders:[],issues:[]};try{window.reapplyInspectionEdits?.()}catch(_){}localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state))});apply("pro",payload=>{PRO=Object.assign({vehicles:[],maintenance:[],audit:[],notifications:[],delays:[]},payload||{});for(const k of ['vehicles','maintenance','audit','notifications','delays'])if(!Array.isArray(PRO[k]))PRO[k]=[];localStorage.setItem(PRO_KEY,JSON.stringify(PRO))});if(changed)render()}catch(e){}finally{cloudRefreshBusy=false}}
@@ -1936,7 +1953,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.68.0";
+const ROUTE_MODULE_VERSION="24.69.0";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -2187,6 +2204,7 @@ function applyRole(){
   document.getElementById("currentUser").textContent=session?(session.display||session.username):"";
   document.getElementById("currentRole").textContent=session?session.role.toUpperCase():"";
   if(!session) return;
+  try{const pq=photoQ();pq&&pq.restore().then(()=>{pq.resumeSignin();try{updateSyncQueueBadge()}catch(_){}})}catch(_){}
   shopAiRestore();
   const firstView=ittrViewFromHash()||(isAdmin?"dashboard":"mechanic");
   viewHistory=[]; currentView=null; showView(firstView,{push:false,replace:true});
@@ -2297,7 +2315,7 @@ async function signOutOtherDevices(){if(!confirm(tr("Sign out on all your other 
  try{const d=await apiJSON("/api/auth/sessions/revoke-others",{method:"POST",body:"{}"});showToast(`${d.signedOut} ${tr("other device(s) signed out.")}`,"success");openAccountSecurity()}catch(err){alert(err.message)}}
 /* v24.67.0: the signed-in account is ending (logout, expired session, another account signing in): pending saves
    stop (they stay queued for that account) and the AI chat is closed so nothing from it reaches the next account. */
-function ittrEndSession(){try{ittrSync.reset()}catch(_){}try{shopAiEndSession()}catch(_){}cloudReady=false}
+function ittrEndSession(){try{ittrSync.reset()}catch(_){}try{window.ittrPhotoQueue?.signedOut()}catch(_){}try{shopAiEndSession()}catch(_){}cloudReady=false}
 async function logout(){stopLiveStatusSocket();try{clearShopAI();toggleShopAI(false)}catch(_){}ittrEndSession();
   try{if(cloudToken)await apiJSON("/api/auth/logout",{method:"POST",body:"{}"})}catch(_){ }
   cloudToken="";cloudReady=false;session=null;currentView=null;viewHistory=[];
@@ -2782,6 +2800,8 @@ const UI_PLACEHOLDER_TRANSLATIONS={
  "Why was this not completed? What needs to be done next time?":"Чому роботу не виконано? Що потрібно зробити наступного разу?"
 };
 
+/* v24.69.0 finding photos, viewer and upload states */
+Object.assign(UI_TRANSLATIONS,{"Take photo":"Зробити фото","Choose photos":"Вибрати фото","Photos":"Фото","Add photos":"Додати фото","Save photos":"Зберегти фото","Cancel":"Скасувати","Add as many photos as you need. Each photo is kept on this phone first and then uploaded — the finding is saved even if the upload has to wait.":"Додайте стільки фото, скільки потрібно. Кожне фото спершу зберігається на цьому телефоні, а потім завантажується — зауваження зберігається, навіть якщо завантаження має зачекати.","Before":"До","After":"Після","Detail":"Деталь","Before repair":"До ремонту","After repair":"Після ремонту","Close-up":"Крупний план","Caption":"Підпис","Caption — what does this photo show?":"Підпис — що показує це фото?","Photo type":"Тип фото","Remove photo":"Видалити фото","Compare before / after":"Порівняти до / після","Tap a photo to zoom in.":"Торкніться фото, щоб збільшити.","Finding photo":"Фото зауваження","Older finding photo":"Старе фото зауваження","Older photo":"Старе фото","No caption":"Без підпису","Open photo":"Відкрити фото","Loading photos…":"Завантаження фото…","Saving on this device…":"Збереження на цьому пристрої…","Saved on this device":"Збережено на цьому пристрої","Not saved on this device — keep the app open":"Не збережено на пристрої — не закривайте застосунок","Uploading…":"Завантаження…","Uploaded":"Завантажено","Upload failed":"Не завантажено","Not accepted":"Не прийнято","Sign in to upload":"Увійдіть, щоб завантажити","Retry":"Повторити","Photo did not load — tap to retry":"Фото не завантажилось — торкніться, щоб повторити","Photos are visible to the owner and the mechanics assigned to this work order.":"Фото бачать власник і механіки, призначені на цей наряд.","Photo storage is not set up yet.":"Сховище фото ще не налаштоване.","Photos could not be loaded.":"Не вдалося завантажити фото.","Photo could not be loaded.":"Не вдалося завантажити фото.","Photo link was not returned by the server.":"Сервер не повернув посилання на фото.","No connection. The photo will upload when the connection is back.":"Немає з’єднання. Фото завантажиться, коли з’єднання відновиться.","Waiting for the work order to finish saving.":"Очікуємо, поки наряд збережеться.","Photo upload failed":"Помилка завантаження фото","Server did not return a photo ID.":"Сервер не повернув ID фото.","Remove this photo from this device? It was not uploaded.":"Видалити це фото з пристрою? Воно не було завантажене.","Photo is larger than 25 MB. Please retake it at normal camera resolution.":"Фото більше 25 МБ. Зробіть його повторно зі звичайною роздільністю камери.","photo ready":"фото готове","photos ready":"фото готові","photo saved on this device — uploading":"фото збережено на цьому пристрої — завантажується","photos saved on this device — uploading":"фото збережено на цьому пристрої — завантажуються","photo could not be stored on this device — keep the app open until it uploads":"фото не вдалося зберегти на пристрої — не закривайте застосунок, доки воно не завантажиться","photos could not be stored on this device — keep the app open until they upload":"фото не вдалося зберегти на пристрої — не закривайте застосунок, доки вони не завантажаться","photo could not be read. Take it again.":"фото не вдалося прочитати. Зробіть його ще раз.","photos could not be read. Take them again.":"фото не вдалося прочитати. Зробіть їх ще раз.","Only the owner and the mechanics assigned to this work order can add photos.":"Додавати фото можуть лише власник і механіки, призначені на цей наряд.","Take or choose at least one photo.":"Зробіть або виберіть хоча б одне фото.","Finding saved.":"Зауваження збережено.","Finding could not be saved.":"Не вдалося зберегти зауваження.","Saving…":"Збереження…","photo not uploaded yet":"фото ще не завантажено","photo":"фото","photos":"фото","Offline — photos will load when the connection is back.":"Немає з’єднання — фото завантажаться, коли з’єднання відновиться.","photos not uploaded yet":"фото ще не завантажено","Photo viewer":"Перегляд фото","Zoom in":"Збільшити","Zoom out":"Зменшити","Fit to screen":"Вмістити в екран","Rotate":"Повернути","Markup":"Позначки","Show or hide markup":"Показати або сховати позначки","Mark up":"Позначити","Previous photo":"Попереднє фото","Next photo":"Наступне фото","Markup tools":"Інструменти позначок","Arrow":"Стрілка","Circle":"Коло","Text":"Текст","Red":"Червоний","Amber":"Жовтий","White":"Білий","Undo":"Скасувати дію","Clear":"Очистити","Save markup":"Зберегти позначки","Saving markup…":"Збереження позначок…","Markup not saved":"Позначки не збережено","Markup saved. The original photo is unchanged.":"Позначки збережено. Оригінальне фото не змінено.","Short label (max 60 characters)":"Короткий підпис (до 60 символів)","Loading full photo…":"Завантаження повного фото…","The photo link expired — getting a new one…":"Посилання на фото застаріло — отримуємо нове…","Photo could not be loaded. The connection may be down or the link has expired.":"Не вдалося завантажити фото. Можливо, немає з’єднання або посилання застаріло.","You do not have access to this photo.":"У вас немає доступу до цього фото."});
 let currentLanguage=localStorage.getItem("ittr_language")||"en";
 const untranslatedUIPhrases=new Set();
 
@@ -4659,35 +4679,209 @@ function mechanicUpcomingCard(w){
 
 // MECHANIC UI RULE: never display internal work-order numbers; identify work by Unit Number only.
 function mechanicCard(w){return `<div class="card jobcard"><div class="jobtop"><div><b>Unit ${esc(w.unit)}</b><div class="muted">${esc(w.customer)}${w.parking?` · Parking ${esc(w.parking)}`:""} · ${esc(fmtScheduled(w))}</div></div>${statusBadge(w.status)}</div><div style="margin-top:10px">${w.tasks.map(t=>`<div class="muted">${t.done?"✓":(t.startedAt&&!t.stoppedAt?"▶":"○")} ${esc(t.t)}${t.done?` · ${fmtDuration(taskElapsed(t))}`:""}</div>`).join("")}</div><div style="margin-top:10px"><button onclick="openDetail(${w.id})">Open Job</button></div></div>`}
-const findingPhotoUrlCache=new Map();
-function findingPhotoMarkup(i){
- const photoId=String(i?.photoId||"").trim();
- if(photoId)return `<img class="photo photoLoading" data-finding-photo-id="${esc(photoId)}" alt="Finding photo" loading="lazy"><div class="photoError" data-photo-error-for="${esc(photoId)}" style="display:none"></div>`;
- if(typeof i?.photo==="string"&&i.photo.startsWith("data:image/"))return `<img class="photo" src="${i.photo}" alt="Legacy finding photo" loading="lazy">`;
- return "";
+// v24.69.0 finding photos: a gallery of small thumbnails (never cropped), the full-screen viewer (public/photo-viewer.js),
+// several photos per finding with caption + before/after, and a durable upload queue (public/photo-queue.js). The finding
+// is saved first; its photos are kept on this device and uploaded after, so a failed upload never loses the finding.
+const findingPhotoUrlCache=new Map();   // `${photoId}|${variant}` -> {url,expiresAt}
+const woPhotoCache=new Map();           // work order id -> {at,photos,error,status,promise}
+const fpObjectUrls=new Map();           // queue entry id -> blob: URL for the local preview
+const fpPicks={finding:[],add:[]};      // photos chosen in a form, not saved yet
+let fpAddTarget=null;
+function photoQ(){
+ if(!window.ittrPhotoQueue&&window.ITTRPhotoQueueFactory)window.ittrPhotoQueue=ITTRPhotoQueueFactory.create({user:()=>session?.username||"",upload:uploadQueuedPhoto,onChange:onPhotoQueueChange});
+ return window.ittrPhotoQueue||null;
 }
-async function getFindingPhotoUrl(photoId){
- const cached=findingPhotoUrlCache.get(photoId),now=Date.now();
- if(cached&&cached.expiresAt>now)return cached.url;
- const d=await apiJSON(`/api/photos/${encodeURIComponent(photoId)}/url`);
+async function getFindingPhotoUrl(photoId,variant="full",fresh=false){
+ const k=`${photoId}|${variant}`,cached=findingPhotoUrlCache.get(k),now=Date.now();
+ if(!fresh&&cached&&cached.expiresAt>now)return cached.url;
+ const d=await apiJSON(`/api/photos/${encodeURIComponent(photoId)}/url${variant==="thumb"?"?variant=thumb":""}`);
  const url=String(d?.url||"");
- if(!url)throw new Error("Photo URL was not returned by the server.");
- findingPhotoUrlCache.set(photoId,{url,expiresAt:now+Math.max(60,Number(d.expiresIn||600)-120)*1000});
+ if(!url)throw new Error(tr("Photo link was not returned by the server."));
+ findingPhotoUrlCache.set(k,{url,expiresAt:now+Math.max(60,Number(d.expiresIn||600)-120)*1000});
  return url;
 }
-function hydrateFindingPhotos(){
- document.querySelectorAll("img[data-finding-photo-id]").forEach(img=>{
-   if(img.dataset.loading==="1"||img.dataset.loaded==="1")return;
-   const photoId=img.dataset.findingPhotoId;if(!photoId)return;
-   img.dataset.loading="1";
-   getFindingPhotoUrl(photoId).then(url=>{
-     if(!img.isConnected)return;
-     img.src=url;img.dataset.loaded="1";img.dataset.loading="0";img.classList.remove("photoLoading");
-   }).catch(e=>{
-     img.dataset.loading="0";img.classList.remove("photoLoading");img.style.display="none";
-     const er=document.querySelector(`[data-photo-error-for="${CSS.escape(photoId)}"]`);if(er){er.textContent=e.message||"Photo unavailable";er.style.display="block";}
-   });
+function findingHasPhotoRefs(i){return !!(String(i?.photoId||"").trim()||(Array.isArray(i?.photoIds)&&i.photoIds.length)||photoQ()?.list(i?.id).length)}
+function findingCanAddPhotos(i){if(session?.role==="admin")return true;if(session?.role!=="mechanic")return false;const w=state.workorders.find(x=>String(x.id)===String(i?.wo));return !!w}
+function findingPhotoMarkup(i){
+ if(!i)return "";
+ const legacy=typeof i.photo==="string"&&i.photo.startsWith("data:image/");
+ const add=findingCanAddPhotos(i)?`<button type="button" class="ds-btn ds-btn-secondary ds-btn-sm fpAddBtn" onclick="openPhotoAdd('${esc(String(i.id))}')">${ittrIcon("camera","sm")}<span>${esc(tr("Add photos"))}</span></button>`:"";
+ return `<div class="fpWrap"><div class="fpGallery" data-fp-finding="${esc(String(i.id))}" data-fp-wo="${esc(String(i.wo??""))}"${legacy?' data-fp-legacy="1"':""}></div>${add}</div>`;
+}
+function fpWoPhotos(woId,force=false){
+ const k=String(woId),c=woPhotoCache.get(k);
+ if(!force&&c&&(c.promise||Date.now()-c.at<8*60*1000))return c;
+ const entry={at:Date.now(),photos:c?.photos||[],error:"",status:0,promise:null};
+ entry.promise=apiJSON(`/api/work-orders/${encodeURIComponent(k)}/photos`).then(d=>{entry.photos=Array.isArray(d?.photos)?d.photos:[];entry.error="";entry.status=0}).catch(e=>{entry.error=e?.message||"failed";entry.status=Number(e?.status||0)}).finally(()=>{entry.promise=null;entry.at=Date.now();fpRefresh({wo:k})});
+ woPhotoCache.set(k,entry);
+ return entry;
+}
+function fpItemsFor(findingId,woId){
+ const c=woPhotoCache.get(String(woId)),server=(c?.photos||[]).filter(p=>String(p.findingId)===String(findingId));
+ const ids=new Set(server.map(p=>p.id)),queued=(photoQ()?.list(findingId)||[]).filter(e=>!(e.status==="uploaded"&&ids.has(e.photoId)));
+ return {server,queued,cache:c};
+}
+const FP_STATE={saving:["info","device","Saving on this device…"],local:["info","device","Saved on this device"],memory:["warn","alert","Not saved on this device — keep the app open"],uploading:["info","upload","Uploading…"],uploaded:["ok","check","Uploaded"],failed:["danger","cloudOff","Upload failed"],refused:["danger","alert","Not accepted"],signin:["warn","lock","Sign in to upload"]};
+function fpChip(status){const s=FP_STATE[status]||FP_STATE.local;return `<span class="ds-chip ${s[0]}">${ittrIcon(s[1],"sm")}${esc(tr(s[2]))}</span>`}
+function fpKindTag(kind){return kind?`<span class="fpTag ${esc(kind)}">${esc(tr(kind==="before"?"Before":kind==="after"?"After":"Detail"))}</span>`:""}
+function fpRenderGallery(el){
+ const findingId=el.dataset.fpFinding,woId=el.dataset.fpWo,issue=(state.issues||[]).find(x=>String(x.id)===String(findingId));
+ if(!issue){el.innerHTML="";return}
+ const wantServer=findingHasPhotoRefs(issue)||woPhotoCache.has(String(woId));
+ if(wantServer&&woId)fpWoPhotos(woId);
+ const {server,queued,cache}=fpItemsFor(findingId,woId),legacy=el.dataset.fpLegacy==="1";
+ const html=[];
+ server.forEach((p,n)=>html.push(`<div class="fpThumb fpLoading" data-fp-kind="server" data-fp-id="${esc(p.id)}"><button type="button" class="fpImg" data-fp-open="s:${esc(p.id)}" aria-label="${esc(tr("Open photo"))} ${n+1}${p.caption?`: ${esc(p.caption)}`:""}"><img alt="${esc(p.caption||tr("Finding photo"))}" decoding="async" loading="lazy"></button>${fpKindTag(p.kind)}${p.annotations?.length?`<span class="fpMarks">${ittrIcon("pencil","sm")} ${p.annotations.length}</span>`:""}<span class="fpCap">${esc(p.caption||p.component||tr("No caption"))}</span></div>`));
+ queued.forEach(e=>{
+  const act=e.status==="failed"||e.status==="signin"||e.status==="memory"?`<button type="button" class="ds-btn ds-btn-secondary ds-btn-sm" onclick="fpRetry('${esc(e.id)}')">${ittrIcon("retry","sm")}<span>${esc(tr("Retry"))}</span></button>`:e.status==="refused"?`<button type="button" class="ds-btn ds-btn-danger ds-btn-sm" onclick="fpRemoveQueued('${esc(e.id)}')">${ittrIcon("trash","sm")}<span>${esc(tr("Remove"))}</span></button>`:"";
+  html.push(`<div class="fpThumb" data-fp-kind="queue" data-fp-id="${esc(e.id)}" data-fp-status="${esc(e.status)}"><button type="button" class="fpImg" data-fp-open="q:${esc(e.id)}" aria-label="${esc(tr("Open photo"))}"><img alt="${esc(e.caption||tr("Finding photo"))}" decoding="async"></button>${fpKindTag(e.kind)}<span class="fpState">${fpChip(e.status)}${act}</span><span class="fpCap" title="${esc(e.error||"")}">${esc(e.status==="refused"&&e.error?e.error:(e.caption||tr("No caption")))}</span></div>`);
  });
+ if(legacy)html.push(`<div class="fpThumb" data-fp-kind="legacy"><button type="button" class="fpImg" data-fp-open="l:" aria-label="${esc(tr("Open photo"))}"><img alt="${esc(tr("Older finding photo"))}" src="${esc(issue.photo)}"></button><span class="fpCap">${esc(tr("Older photo"))}</span></div>`);
+ if(cache?.promise&&!server.length&&findingHasPhotoRefs(issue)&&!queued.length)html.push(`<div class="fpThumb fpLoading" aria-busy="true"><span class="fpImg ds-skeleton"></span><span class="fpCap">${esc(tr("Loading photos…"))}</span></div>`);
+ if(cache?.error&&!cache.promise&&findingHasPhotoRefs(issue)){
+  const note=!navigator.onLine?tr("Offline — photos will load when the connection is back."):cache.status===403?tr("Photos are visible to the owner and the mechanics assigned to this work order."):cache.status===503?tr("Photo storage is not set up yet."):tr("Photos could not be loaded.");
+  html.push(`<div class="fpNote" role="status">${ittrIcon(cache.status===403?"lock":"alert","sm")} ${esc(note)}${cache.status===403||cache.status===503?"":` <button type="button" class="ds-btn ds-btn-ghost ds-btn-sm" onclick="fpReloadWo('${esc(String(woId))}')">${ittrIcon("retry","sm")}<span>${esc(tr("Retry"))}</span></button>`}</div>`);
+ }
+ const kinds=new Set(server.map(p=>p.kind));
+ if(kinds.has("before")&&kinds.has("after"))html.push(`<div class="fpNote"><button type="button" class="ds-btn ds-btn-secondary ds-btn-sm" onclick="fpCompare('${esc(String(findingId))}')">${ittrIcon("swap","sm")}<span>${esc(tr("Compare before / after"))}</span></button></div>`);
+ el.innerHTML=html.join("");
+ el.querySelectorAll('[data-fp-kind="server"]').forEach(t=>{const p=server.find(x=>x.id===t.dataset.fpId);if(p)fpLoadThumb(t,p,woId)});
+ el.querySelectorAll('[data-fp-kind="queue"]').forEach(t=>{const e=queued.find(x=>x.id===t.dataset.fpId),img=t.querySelector("img"),u=e&&fpLocalUrl(e);if(u)img.src=u;else{img.remove();t.querySelector(".fpImg").insertAdjacentHTML("beforeend",ittrIcon("image","lg"))}});
+}
+function fpLoadThumb(t,p,woId){
+ const img=t.querySelector("img");
+ img.onload=()=>t.classList.remove("fpLoading");
+ img.onerror=async()=>{
+  // Signed links last 10 minutes. On the first failure get fresh links for the work order, then show a retry.
+  if(!t.dataset.retried){t.dataset.retried="1";try{const u=await getFindingPhotoUrl(p.id,"thumb",true);if(t.isConnected){img.src=u;return}}catch(_){} }
+  t.classList.remove("fpLoading");t.classList.add("fpBroken");
+  const b=t.querySelector(".fpImg");b.dataset.fpOpen=`r:${p.id}`;b.innerHTML=`<span class="fpBrokenMsg">${ittrIcon("retry")}<span>${esc(tr("Photo did not load — tap to retry"))}</span></span>`;
+ };
+ img.src=p.thumbUrl||"";
+}
+function fpLocalUrl(e){if(fpObjectUrls.has(e.id))return fpObjectUrls.get(e.id);if(!e.blob)return "";const u=URL.createObjectURL(e.blob);fpObjectUrls.set(e.id,u);return u}
+function fpReloadWo(woId){fpWoPhotos(woId,true);fpRefresh({wo:String(woId)})}
+let fpRefreshPending=null;
+function fpRefresh(scope={}){
+ fpRefreshPending=fpRefreshPending||{all:false,findings:new Set(),wos:new Set()};
+ if(scope.finding!=null)fpRefreshPending.findings.add(String(scope.finding));else if(scope.wo!=null)fpRefreshPending.wos.add(String(scope.wo));else fpRefreshPending.all=true;
+ requestAnimationFrame(()=>{const p=fpRefreshPending;if(!p)return;fpRefreshPending=null;document.querySelectorAll(".fpGallery[data-fp-finding]").forEach(el=>{if(p.all||p.findings.has(el.dataset.fpFinding)||p.wos.has(el.dataset.fpWo))fpRenderGallery(el)})});
+}
+window.addEventListener("online",()=>{for(const [wo,c] of woPhotoCache)if(c.error&&!c.promise)fpWoPhotos(wo,true)});
+function hydrateFindingPhotos(){document.querySelectorAll(".fpGallery[data-fp-finding]").forEach(fpRenderGallery)}
+function fpViewerItems(findingId){
+ const issue=(state.issues||[]).find(x=>String(x.id)===String(findingId));if(!issue)return [];
+ const w=state.workorders.find(x=>String(x.id)===String(issue.wo)),{server,queued}=fpItemsFor(findingId,issue.wo),unit=w?.unit||issue.unitSnapshot||"";
+ const fmt=v=>{const d=new Date(v);return isNaN(d)?"":d.toLocaleString([],{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})};
+ const items=server.map(p=>({id:p.id,key:`s:${p.id}`,photo:p,load:({fresh})=>getFindingPhotoUrl(p.id,"full",fresh),caption:p.caption,kind:p.kind,marks:p.annotations||[],editable:session?.role==="admin"||String(p.uploader)===String(session?.username),meta:{unit,component:p.component,mechanic:mechanicDisplay(p.uploader),time:fmt(p.createdAt),finding:issue.description}}));
+ queued.forEach(e=>{const u=fpLocalUrl(e);if(u)items.push({id:e.id,key:`q:${e.id}`,src:u,caption:e.caption,kind:e.kind,marks:[],editable:false,meta:{unit,mechanic:mechanicDisplay(e.user),time:tr(FP_STATE[e.status]?.[2]||"Saved on this device"),finding:issue.description}})});
+ if(typeof issue.photo==="string"&&issue.photo.startsWith("data:image/"))items.push({id:"legacy",key:"l:",src:issue.photo,caption:tr("Older photo"),marks:[],editable:false,meta:{unit,mechanic:mechanicDisplay(issue.mechanic),time:issue.created||"",finding:issue.description}});
+ return items;
+}
+async function fpSaveMarks(item,marks){
+ const d=await apiJSON(`/api/photos/${encodeURIComponent(item.id)}`,{method:"PATCH",body:{annotations:marks}});
+ const p=d?.photo;if(p)for(const c of woPhotoCache.values()){const x=c.photos.find(y=>y.id===p.id);if(x)Object.assign(x,{annotations:p.annotations,updatedAt:p.updatedAt,updatedBy:p.updatedBy})}
+ fpRefresh({finding:item.photo?.findingId});
+}
+function fpOpenViewer(findingId,key,opener){
+ const items=fpViewerItems(findingId);if(!items.length||!window.ITTRPhotoViewer)return;
+ ITTRPhotoViewer.open({items,index:Math.max(0,items.findIndex(x=>x.key===key)),t:tr,onSaveMarks:fpSaveMarks,opener:()=>(opener?.isConnected?opener:document.querySelector(`.fpGallery[data-fp-finding="${CSS.escape(String(findingId))}"] [data-fp-open="${CSS.escape(key)}"]`))});
+}
+document.addEventListener("click",ev=>{
+ const b=ev.target.closest?.("[data-fp-open]");if(!b)return;
+ const g=b.closest(".fpGallery");if(!g)return;ev.preventDefault();
+ const key=b.dataset.fpOpen;
+ if(key.startsWith("r:")){const t=b.closest(".fpThumb");t.classList.remove("fpBroken");t.classList.add("fpLoading");delete t.dataset.retried;fpReloadWo(g.dataset.fpWo);return}
+ fpOpenViewer(g.dataset.fpFinding,key,b);
+});
+async function fpCompare(findingId){
+ const items=fpViewerItems(findingId),before=items.filter(x=>x.kind==="before"),after=items.filter(x=>x.kind==="after");if(!before.length||!after.length)return;
+ const a=before.find(x=>x.photo?.pairId&&after.some(y=>y.id===x.photo.pairId))||before[0],b=after.find(y=>y.id===a.photo?.pairId)||after.find(y=>y.photo?.pairId===a.id)||after[0];
+ document.getElementById("fpCompareModal")?.remove();
+ const m=document.createElement("div");m.id="fpCompareModal";m.className="modal open";m.setAttribute("role","dialog");m.setAttribute("aria-modal","true");m.setAttribute("aria-label",tr("Compare before / after"));
+ const fig=(x,label,cls)=>`<figure class="fpCmpFig"><figcaption><span class="fpTag ${cls}" style="position:static">${esc(tr(label))}</span> ${esc(x.caption||"")}</figcaption><button type="button" class="fpCmpImg" data-key="${esc(x.key)}" aria-label="${esc(tr("Open photo"))}"><span class="ds-skeleton" style="position:absolute;inset:0"></span><img alt="${esc(x.caption||tr(label))}"></button></figure>`;
+ m.innerHTML=`<div class="modalbox" style="max-width:1100px"><div class="modalhead"><h2>${esc(tr("Compare before / after"))}</h2><button class="x" type="button" data-close aria-label="${esc(tr("Close"))}">${ittrIcon("close")}</button></div><div class="fpCmpGrid">${fig(a,"Before","before")}${fig(b,"After","after")}</div><div class="muted" style="margin-top:8px">${esc(tr("Tap a photo to zoom in."))}</div></div>`;
+ document.body.appendChild(m);
+ const close=()=>{m.remove();document.removeEventListener("keydown",onKey,true)},onKey=e=>{if(e.key==="Escape"&&!document.querySelector(".pv")){e.stopPropagation();close()}};
+ document.addEventListener("keydown",onKey,true);
+ m.addEventListener("click",e=>{if(e.target===m||e.target.closest("[data-close]"))return close();const k=e.target.closest(".fpCmpImg")?.dataset.key;if(k)fpOpenViewer(findingId,k,e.target.closest(".fpCmpImg"))});
+ m.querySelector("[data-close]").focus();
+ for(const [x,el] of [[a,m.querySelectorAll(".fpCmpImg img")[0]],[b,m.querySelectorAll(".fpCmpImg img")[1]]]){try{el.onload=()=>el.previousElementSibling?.remove();el.src=x.src||await x.load({fresh:false})}catch(e){el.replaceWith(Object.assign(document.createElement("span"),{className:"fpBrokenMsg",textContent:tr("Photo could not be loaded.")}))}}
+}
+// ---- upload queue wiring
+async function uploadQueuedPhoto(e){
+ const fd=new FormData();fd.append("photo",e.blob,e.name||"finding-photo.jpg");fd.append("workOrderId",String(e.workOrderId));fd.append("clientId",e.id);
+ if(e.caption)fd.append("caption",e.caption);if(e.kind)fd.append("kind",e.kind);if(e.component)fd.append("component",e.component);
+ let r;try{r=await fetch(`/api/findings/${encodeURIComponent(e.findingId)}/photo`,{method:"POST",headers:authHeaders(),body:fd})}catch(_){throw Object.assign(new Error(tr("No connection. The photo will upload when the connection is back.")),{status:0})}
+ let d={};try{d=await r.json()}catch(_){}
+ // A work order created on this device may still be on its way to the server: wait for it instead of giving up.
+ if(r.status===404&&window.ittrSync&&ittrSync.status().pending>0)throw Object.assign(new Error(tr("Waiting for the work order to finish saving.")),{status:503});
+ if(!r.ok)throw Object.assign(new Error(d.error||`${tr("Photo upload failed")} (${r.status}).`),{status:r.status});
+ if(!d.photoId)throw Object.assign(new Error(tr("Server did not return a photo ID.")),{status:500});
+ return d;
+}
+function onPhotoQueueChange(e){
+ if(e.status==="uploaded"&&e.photoId){
+  const issue=(state.issues||[]).find(x=>String(x.id)===String(e.findingId));
+  if(issue){const ids=Array.isArray(issue.photoIds)?issue.photoIds:[];let changed=false;if(!ids.includes(e.photoId)){issue.photoIds=[...ids,e.photoId];changed=true}if(!issue.photoId){issue.photoId=e.photoId;changed=true}if(changed)save()}
+  const c=woPhotoCache.get(String(e.workOrderId));if(c&&e.photo&&!c.photos.some(p=>p.id===e.photo.id))fpWoPhotos(e.workOrderId,true);else if(!c)fpWoPhotos(e.workOrderId,true);
+ }
+ if(e.status==="uploaded"||e.status==="removed"){const u=fpObjectUrls.get(e.id);if(u&&e.status==="removed"){URL.revokeObjectURL(u);fpObjectUrls.delete(e.id)}}
+ fpRefresh({finding:e.findingId});
+ try{updateSyncQueueBadge()}catch(_){}
+}
+function fpRetry(id){photoQ()?.retry(id)}
+async function fpRemoveQueued(id){if(!confirm(tr("Remove this photo from this device? It was not uploaded.")))return;await photoQ()?.remove(id)}
+// ---- choosing photos in a form
+function fpPickFiles(kind,input){
+ const files=[...(input?.files||[])];input.value="";
+ const list=fpPicks[kind],big=[];
+ for(const file of files){if(!file.size)continue;if(file.size>25*1024*1024){big.push(file.name||"photo");continue}if(list.length>=20)break;list.push({key:`${Date.now().toString(36)}${Math.random().toString(36).slice(2,7)}`,file,url:URL.createObjectURL(file),caption:"",kind:""})}
+ fpRenderPicks(kind);
+ const st=kind==="finding"?"findingPhotoStatus":null;
+ if(big.length)(st?setFindingPhotoStatus(`${tr("Photo is larger than 25 MB. Please retake it at normal camera resolution.")} (${big.join(", ")})`,true):alert(tr("Photo is larger than 25 MB. Please retake it at normal camera resolution.")));
+ else if(st)setFindingPhotoStatus(list.length?`${list.length} ${tr(list.length===1?"photo ready":"photos ready")}`:"");
+}
+function fpRenderPicks(kind){
+ const box=document.getElementById(kind==="finding"?"findingPhotoPicker":"photoAddPicker");if(!box)return;
+ const opt=(v,l,cur)=>`<option value="${v}"${cur===v?" selected":""}>${esc(tr(l))}</option>`;
+ box.innerHTML=fpPicks[kind].map((p,n)=>`<div class="fpPickRow" data-key="${p.key}"><img src="${esc(p.url)}" alt="${esc(tr("Photo"))} ${n+1}"><input class="ds-input" maxlength="300" placeholder="${esc(tr("Caption — what does this photo show?"))}" aria-label="${esc(tr("Caption"))} ${n+1}" value="${esc(p.caption)}" oninput="fpPickSet('${kind}','${p.key}','caption',this.value)"><select class="ds-input" aria-label="${esc(tr("Photo type"))} ${n+1}" onchange="fpPickSet('${kind}','${p.key}','kind',this.value)">${opt("","Photo",p.kind)}${opt("before","Before repair",p.kind)}${opt("after","After repair",p.kind)}${opt("detail","Close-up",p.kind)}</select><button type="button" class="ds-btn ds-btn-ghost ds-btn-icon" aria-label="${esc(tr("Remove photo"))} ${n+1}" onclick="fpPickRemove('${kind}','${p.key}')">${ittrIcon("trash")}</button></div>`).join("");
+}
+function fpPickSet(kind,key,field,value){const p=fpPicks[kind].find(x=>x.key===key);if(p)p[field]=value}
+function fpPickRemove(kind,key){const i=fpPicks[kind].findIndex(x=>x.key===key);if(i<0)return;URL.revokeObjectURL(fpPicks[kind][i].url);fpPicks[kind].splice(i,1);fpRenderPicks(kind);if(kind==="finding")setFindingPhotoStatus(fpPicks.finding.length?`${fpPicks.finding.length} ${tr(fpPicks.finding.length===1?"photo ready":"photos ready")}`:"")}
+function fpClearPicks(kind){fpPicks[kind].forEach(p=>URL.revokeObjectURL(p.url));fpPicks[kind]=[];fpRenderPicks(kind)}
+// Prepare each photo and put it in the device queue. Returns how many were kept on this device / only in memory.
+async function fpQueuePicks(picks,issue){
+ const q=photoQ(),out={local:0,memory:0,failed:0};if(!q){out.failed=picks.length;return out}
+ const w=state.workorders.find(x=>String(x.id)===String(issue.wo));
+ for(const p of picks){
+  try{const blob=await browserCompressFindingPhoto(p.file);const e=await q.add({findingId:issue.id,workOrderId:issue.wo,blob,name:blob.name||"finding-photo.jpg",caption:p.caption,kind:p.kind,meta:{unit:w?.unit||issue.unitSnapshot||""}});out[e.durable?"local":"memory"]++}
+  catch(err){console.error("Photo could not be queued:",err);out.failed++}
+  finally{URL.revokeObjectURL(p.url)}
+ }
+ fpRefresh({finding:issue.id});
+ return out;
+}
+function fpQueuedMessage(r){
+ const parts=[];
+ if(r.local)parts.push(`${r.local} ${tr(r.local===1?"photo saved on this device — uploading":"photos saved on this device — uploading")}`);
+ if(r.memory)parts.push(`${r.memory} ${tr(r.memory===1?"photo could not be stored on this device — keep the app open until it uploads":"photos could not be stored on this device — keep the app open until they upload")}`);
+ if(r.failed)parts.push(`${r.failed} ${tr(r.failed===1?"photo could not be read. Take it again.":"photos could not be read. Take them again.")}`);
+ return parts.join(". ");
+}
+function openPhotoAdd(findingId){
+ const issue=(state.issues||[]).find(x=>String(x.id)===String(findingId));if(!issue)return;
+ if(!findingCanAddPhotos(issue))return alert(tr("Only the owner and the mechanics assigned to this work order can add photos."));
+ const w=state.workorders.find(x=>String(x.id)===String(issue.wo));
+ fpAddTarget={findingId:issue.id};fpClearPicks("add");
+ document.getElementById("photoAddContext").textContent=[w?.unit||issue.unitSnapshot?`${tr("Unit")} ${w?.unit||issue.unitSnapshot}`:"",issue.description].filter(Boolean).join(" · ");
+ document.getElementById("photoAddModal").classList.add("open");
+}
+async function fpSaveAddPhotos(){
+ const issue=(state.issues||[]).find(x=>String(x.id)===String(fpAddTarget?.findingId));if(!issue)return closeModal("photoAddModal");
+ if(!fpPicks.add.length)return alert(tr("Take or choose at least one photo."));
+ const picks=fpPicks.add;fpPicks.add=[];fpRenderPicks("add");closeModal("photoAddModal");
+ const r=await fpQueuePicks(picks,issue);showToast(fpQueuedMessage(r),r.failed||r.memory?"error":"info",7000);
 }
 function setFindingPhotoStatus(text,isError=false){
  const el=document.getElementById("findingPhotoStatus");if(!el)return;el.textContent=text||"";el.style.color=isError?"#b42318":"";
@@ -4708,18 +4902,6 @@ async function browserCompressFindingPhoto(file){
    console.warn("Browser photo compression fallback:",e);
    return file;
  }
-}
-async function uploadFindingPhoto(file,workOrderId,findingId){
- const prepared=await browserCompressFindingPhoto(file);
- setFindingPhotoStatus(`Uploading photo${prepared?.size?` (${Math.max(1,Math.round(prepared.size/1024))} KB)`:""}…`);
- const fd=new FormData();fd.append("photo",prepared,prepared.name||"finding-photo.jpg");fd.append("workOrderId",String(workOrderId));
- const r=await fetch(`/api/findings/${encodeURIComponent(findingId)}/photo`,{method:"POST",headers:authHeaders(),body:fd});
- let d={};try{d=await r.json()}catch(_){}
- if(r.status===401){cloudToken="";sessionStorage.removeItem("ittr_cloud_token");throw new Error("Session expired. Log in again.");}
- if(!r.ok)throw new Error(d.error||`Photo upload failed (${r.status}).`);
- if(!d.photoId)throw new Error("Server did not return a photo ID.");
- setFindingPhotoStatus("Photo uploaded successfully.");
- return d.photoId;
 }
 
 function issueCard(i){
@@ -4823,7 +5005,9 @@ function renderFindingsCenter(){
   return `<div class="findingDateSection"><div class="findingDateHeader"><div class="findingDateTitle">${esc(findingDateLabel(dk))}</div><span class="badge">${items.length} finding${items.length===1?"":"s"}</span></div>
    ${Object.values(units).sort((a,b)=>a.unit.localeCompare(b.unit,undefined,{numeric:true})).map(g=>{const k=`${dk}::${g.unit}::${g.customer}`,collapsed=collapsedFindingUnits.has(k),pending=g.items.filter(findingNeedsAction).length;return `<div class="findingUnitGroup"><div class="findingUnitHeader" data-finding-group="${encodeURIComponent(k)}" onclick="toggleFindingUnit(decodeURIComponent(this.dataset.findingGroup))"><div><div class="findingUnitName">${esc(g.unit)}</div><div class="findingUnitMeta">${esc(g.customer||"No customer")} · ${g.items.length} finding${g.items.length===1?"":"s"}</div></div><div>${pending?`<span class="badge b-wait">${pending} action required</span>`:'<span class="badge b-done">Resolved</span>'} ${collapsed?"▸":"▾"}</div></div><div class="findingUnitBody ${collapsed?"collapsed":""}">${g.items.map(i=>findingRecordCard(i,state.workorders.find(x=>x.id==i.wo))).join("")}</div></div>`}).join("")}</div>`;
  }).join("");
+ hydrateFindingPhotos();
 }
+
 function approvalBadge(i){
  const a=i.approval||"Waiting for Customer";
  if(a==="Proceed") return '<span class="badge b-approved">Proceed</span>';
@@ -4993,21 +5177,22 @@ document.getElementById("issueForm").onsubmit=async e=>{
  e.preventDefault(); if(!requireMechanic())return;
  const form=e.target,button=form.querySelector('button[type="submit"]');
  if(button?.disabled)return;
- const f=new FormData(form),file=f.get("photo"),woId=Number(f.get("wo")),linked=state.workorders.find(w=>w.id===woId);
+ const f=new FormData(form),woId=Number(f.get("wo")),linked=state.workorders.find(w=>w.id===woId);
  if(!linked)return alert(tr("This work order is no longer available. Refresh and try again."));
- const findingId=Date.now();
- let photoId="";
+ const findingId=Date.now(),picks=fpPicks.finding.slice();
  try{
-   if(button){button.disabled=true;button.dataset.oldText=button.textContent;button.textContent="Saving…";}
+   if(button){button.disabled=true;button.dataset.oldText=button.textContent;button.textContent=tr("Saving…");}
    setFindingPhotoStatus("");
-   if(file&&file.size)photoId=await uploadFindingPhoto(file,woId,findingId);
-   const now=new Date();
-   state.issues.unshift({id:findingId,wo:woId,unitSnapshot:linked?.unit||"",customerSnapshot:linked?.customer||"",mechanic:session.username,severity:f.get("severity"),description:f.get("description"),recommendation:f.get("recommendation"),photoId,photo:"",status:"Reported",approval:"Waiting for Customer",adminNote:"",convertedToTask:false,created:now.toLocaleString(),createdAt:now.toISOString(),decisionAt:"",decisionBy:""});
-   save();form.reset();setFindingPhotoStatus("");closeModal("issueModal");render();
+   // v24.69.0: the finding is saved first and never depends on the photo upload; photos follow through the device queue.
+   const now=new Date(),issue={id:findingId,wo:woId,unitSnapshot:linked?.unit||"",customerSnapshot:linked?.customer||"",mechanic:session.username,severity:f.get("severity"),description:f.get("description"),recommendation:f.get("recommendation"),photoId:"",photoIds:[],photo:"",status:"Reported",approval:"Waiting for Customer",adminNote:"",convertedToTask:false,created:now.toLocaleString(),createdAt:now.toISOString(),decisionAt:"",decisionBy:""};
+   state.issues.unshift(issue);
+   save();form.reset();fpPicks.finding=[];fpRenderPicks("finding");setFindingPhotoStatus("");closeModal("issueModal");render();
+   if(picks.length){const r=await fpQueuePicks(picks,issue);showToast(`${tr("Finding saved.")} ${fpQueuedMessage(r)}`,r.failed||r.memory?"error":"info",7000)}
+   else showToast(tr("Finding saved."),"info");
  }catch(err){
-   console.error("Finding save/photo upload failed:",err);setFindingPhotoStatus(err.message||"Photo upload failed.",true);alert(err.message||"Finding could not be saved.");
+   console.error("Finding save failed:",err);setFindingPhotoStatus(err.message||tr("Finding could not be saved."),true);alert(err.message||tr("Finding could not be saved."));
  }finally{
-   if(button){button.disabled=false;button.textContent=button.dataset.oldText||"Save Finding";delete button.dataset.oldText;}
+   if(button){button.disabled=false;button.textContent=button.dataset.oldText||tr("Save Finding");delete button.dataset.oldText;}
  }
 };
 
@@ -6776,9 +6961,9 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
 <script src="./finance-shared.js?v=24.47.3"></script>
 <script src="./inspection-checklist.js?v=3"></script>
 <script src="./inspection-workflow.js?v=8"></script>
-<script src="./canned-jobs.js?v=24.68.0"></script>
-<script src="./share-links.js?v=24.68.0"></script>
-<script src="./sms.js?v=24.68.0"></script>
+<script src="./canned-jobs.js?v=24.69.0"></script>
+<script src="./share-links.js?v=24.69.0"></script>
+<script src="./sms.js?v=24.69.0"></script>
 <script>
 /* v24.46.2: Start a Truck keeps what the mechanic typed until the work order is created.
    Saved on this phone (localStorage) while typing and when the screen locks; restored when the wizard is opened
