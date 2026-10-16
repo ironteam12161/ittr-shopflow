@@ -15,11 +15,16 @@ const likeTerms = q => String(q || '').toLowerCase().split(/[\s,;/]+/).map(x => 
 export function assistantRole(user) {
   const role = String(user?.role || '');
   const manager = role === 'admin' || role === 'manager';
+  // v24.66.0: the same manager permissions as the pages (a manager without "Customers" cannot look customers up here either).
+  const can = key => role === 'admin' || (role === 'manager' && user?.permissions?.[key] === true);
   return {
-    role, manager, username: lc(user?.username),
-    financial: role === 'admin' || (role === 'manager' && user?.permissions?.financials !== false),
+    role, manager, username: lc(user?.username), can,
+    financial: can('financials'),
   };
 }
+// Manager-only tools and the permission each needs (same as the matching page).
+const TOOL_PERMISSION = { search_customers: 'customers', invoices: 'invoices', vendor_bills: 'invoices', cores_owed: 'inventory' };
+const toolAllowed = (name, who) => !TOOL_PERMISSION[name] || !!who.can?.(TOOL_PERMISSION[name]);
 
 function woMechanics(w) { return [w?.mechanic, ...(Array.isArray(w?.helpers) ? w.helpers : [])].map(lc).filter(Boolean); }
 function woVisible(w, who) { return who.manager || woMechanics(w).includes(who.username); }
@@ -55,7 +60,7 @@ export function createAssistantTools({ db, who, getShopflow, searchManuals, read
   let sfCache = null;
   const sf = async () => (sfCache ||= (await getShopflow()) || {});
   const allWo = async () => (Array.isArray((await sf()).workorders) ? (await sf()).workorders : []).filter(w => w && typeof w === 'object');
-  const denied = { error: 'This information is only available to managers.' };
+  const denied = { error: 'This account does not have access to this information. Ask the owner for access.' };
 
   return {
     async shop_status() {
@@ -67,7 +72,7 @@ export function createAssistantTools({ db, who, getShopflow, searchManuals, read
       const out = { openWorkOrders: open.length, byStatus, mechanicsWorkingNow: working, waiting: open.filter(w => /wait|hold|parts/i.test(String(w.status))).map(w => ({ workOrder: w.id, unit: w.unit, status: w.status })).slice(0, 15) };
       const low = await db.query("SELECT count(*)::int n FROM fullbay_import_parts WHERE coalesce(reorder_point,0)>0 AND coalesce(quantity,0)-coalesce(allocated,0)<=reorder_point");
       out.lowStockParts = low.rows[0]?.n || 0;
-      if (who.manager) { try { const c = await db.query("SELECT coalesce(sum(open_quantity),0) q FROM part_core_obligations WHERE status NOT IN ('closed','credited')"); out.coresOwed = num(c.rows[0]?.q); } catch (_) {} }
+      if (toolAllowed('cores_owed', who)) { try { const c = await db.query("SELECT coalesce(sum(open_quantity),0) q FROM part_core_obligations WHERE status NOT IN ('closed','credited')"); out.coresOwed = num(c.rows[0]?.q); } catch (_) {} }
       return out;
     },
 
@@ -149,7 +154,7 @@ export function createAssistantTools({ db, who, getShopflow, searchManuals, read
     },
 
     async search_customers({ query }) {
-      if (!who.manager) return denied;
+      if (!toolAllowed('search_customers', who)) return denied;
       const terms = likeTerms(query); if (!terms.length) return { error: 'Give a name, phone, email or DOT.' };
       const r = await db.query(`SELECT c.id,c.customer_name,c.phone,c.email,c.dot_number,c.city,c.state,c.contact_name,(SELECT count(*)::int FROM customer_units u WHERE u.customer_id::text=c.id::text) trucks FROM fullbay_import_customers c
         WHERE c.deleted_at IS NULL AND ${terms.map((_, i) => `lower(coalesce(c.customer_name,'')||' '||coalesce(c.phone,'')||' '||coalesce(c.email,'')||' '||coalesce(c.dot_number,'')||' '||coalesce(c.contact_name,'')) LIKE $${i + 1}`).join(' AND ')} ORDER BY c.customer_name LIMIT 8`, terms.map(t => `%${t}%`));
@@ -157,7 +162,7 @@ export function createAssistantTools({ db, who, getShopflow, searchManuals, read
     },
 
     async invoices({ query = '', unpaid_only = false }) {
-      if (!who.financial) return denied;
+      if (!toolAllowed('invoices', who)) return denied;
       const terms = likeTerms(query);
       const r = await db.query(`SELECT invoice_number,customer_name,unit_number,status,invoice_date,due_date,total,balance_due FROM customer_invoices
         WHERE status<>'void' ${unpaid_only ? "AND coalesce(balance_due,0)>0 AND status<>'draft'" : ''} ${terms.length ? `AND ${terms.map((_, i) => `lower(coalesce(invoice_number,'')||' '||coalesce(customer_name,'')||' '||coalesce(unit_number,'')) LIKE $${i + 1}`).join(' AND ')}` : ''}
@@ -167,7 +172,7 @@ export function createAssistantTools({ db, who, getShopflow, searchManuals, read
     },
 
     async vendor_bills({ vendor = '', days = 90, unpaid_only = false }) {
-      if (!who.financial) return denied;
+      if (!toolAllowed('vendor_bills', who)) return denied;
       const d = Math.min(1095, Math.max(1, num(days) || 90)), v = String(vendor || '').trim().toLowerCase();
       const where = `coalesce(status,'')<>'void' AND ($1='' OR lower(coalesce(vendor,'')) LIKE '%'||$1||'%') ${unpaid_only ? 'AND paid_at IS NULL' : `AND coalesce(invoice_date,received_at::date,created_at::date)>=CURRENT_DATE-$2::int`}`;
       const params = unpaid_only ? [v] : [v, d];
@@ -179,7 +184,7 @@ export function createAssistantTools({ db, who, getShopflow, searchManuals, read
     },
 
     async cores_owed({ query = '' }) {
-      if (!who.manager) return denied;
+      if (!toolAllowed('cores_owed', who)) return denied;
       const terms = likeTerms(query);
       const r = await db.query(`SELECT c.vendor_name_snapshot vendor,p.part_number,p.description,c.open_quantity,c.unit_core_charge,c.due_date,c.purchase_reference FROM part_core_obligations c JOIN fullbay_import_parts p ON p.id=c.part_id
         WHERE c.status NOT IN ('closed','credited') AND c.open_quantity>0 ${terms.length ? `AND ${terms.map((_, i) => `lower(coalesce(c.vendor_name_snapshot,'')||' '||coalesce(p.part_number,'')||' '||coalesce(p.description,'')) LIKE $${i + 1}`).join(' AND ')}` : ''} ORDER BY c.due_date NULLS LAST LIMIT 20`, terms.map(t => `%${t}%`));
@@ -218,7 +223,7 @@ HOW TO WORK:
 - TORQUE / SPECS / PROCEDURES / WIRING: call manual_search (English terms; pass unit_id when a truck is known), then manual_read on the best 1–4 pages. Give the exact value with units and cite it as: Manual title, page N. Never give a torque or spec from memory; if no manual page has it, say the shop library does not have it yet and name the OEM source to check (e.g. Detroit DDCSP, Cummins QuickServe, PACCAR/Freightliner service site, Eaton, Meritor, Bendix).
 - Safety-critical values (wheel nuts, brakes, steering, suspension, fifth wheel): always quote exactly as written in the manual, including sequences and re-torque notes.
 - You cannot change records. If the user asks you to add a part, create or close a work order, tell them exactly where to do it in ShopFlow.
-- ${who.manager ? 'This user is a manager: customers, invoices, prices, vendor bills and cores are allowed.' : 'This user is a mechanic: do not reveal prices, invoice totals or customer contact details; if asked, say a manager can see that.'}
+- ${who.manager ? `This user is a ${who.role === 'admin' ? 'owner' : 'manager'}. Allowed: ${['customers', 'invoices', 'inventory', 'financials'].filter(k => who.can(k)).join(', ') || 'work orders and parts only'}. If a lookup says the account has no access, tell the user to ask the owner.` : 'This user is a mechanic: do not reveal prices, invoice totals or customer contact details; if asked, say a manager can see that.'}
 STYLE: Short, practical, mechanic-friendly. Lead with the answer. Use short bullets for lists. Mention work order, invoice or service-order numbers and dates so the user can find the record. No filler.`;
 }
 
@@ -231,7 +236,7 @@ export async function runShopAssistant({ question, history = [], who, tools, cha
     if (role && content) messages.push({ role, content });
   }
   messages.push({ role: 'user', content: extraContext ? `${question}\n\n(${extraContext})` : question });
-  const toolDefs = ASSISTANT_TOOLS.filter(t => who.manager || !/^MANAGERS ONLY/.test(t.description)).map(t => ({ type: 'function', function: t }));
+  const toolDefs = ASSISTANT_TOOLS.filter(t => (who.manager || !/^MANAGERS ONLY/.test(t.description)) && toolAllowed(t.name, who)).map(t => ({ type: 'function', function: t }));
   const usage = { prompt: 0, completion: 0, rounds: 0 }, used = [];
   for (let round = 0; round <= MAX_ROUNDS; round++) {
     const res = await chat(messages, round === MAX_ROUNDS ? undefined : toolDefs);

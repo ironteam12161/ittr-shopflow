@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- ITTR ShopFlow tab icon: the anvil and flame from the Iron Team logo, simplified so it reads at 16px. -->
+  <defs>
+    <linearGradient id="steel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f3f4f6"/>
+      <stop offset="1" stop-color="#9ca3af"/>
+    </linearGradient>
+    <linearGradient id="fire" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#dc2626"/>
+      <stop offset="1" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#111827"/>
+  <path d="M32 4C37 10 40 13 39.5 17.5C39 21 35.8 23 32 23C28.2 23 25 21 24.5 17.5C24 14 27 11 32 4Z" fill="url(#fire)"/>
+  <path d="M32 12C34 15 35.5 16.5 35 18.8C34.6 20.4 33.4 21 32 21C30.6 21 29.4 20.4 29 18.8C28.6 17 30 15 32 12Z" fill="#fde68a"/>
+  <path d="M5 24H59V32H49Q43 33 42 38V41H49L53 50H11L15 41H22V38Q21 33 15 32Q9 31 5 24Z" fill="url(#steel)"/>
+  <rect x="11" y="54" width="42" height="4" rx="2" fill="#dc2626"/>
+</svg>
