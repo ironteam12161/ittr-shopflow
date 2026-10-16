@@ -10,6 +10,7 @@ import { analyzeVendors, checkInvoiceMath, normInvoiceNo, splitDiscountLines } f
 import { checkInvoice, parseWordingAnswer } from './invoice_check.mjs';
 import { descTokens, packSize, stockFactor, scoreDescription, gallonsFactor } from './part_matching.mjs';
 import { looksLikeFluid, gallonsPerStockUnit, stockPerUnit } from './fluids.mjs';
+import {dbSuiteGuard} from './test_harness.mjs';
 
 // ---------------------------------------------------------------- pure rules
 assert.equal(featureForPath('/api/translate'), 'translate');
@@ -100,10 +101,7 @@ assert.equal(stockPerUnit('qt', 'gal'), 0.25); assert.equal(stockPerUnit('qt', '
 }
 console.log('PASS AI center rules: usage cost + budget, vendor analysis (price up, cheaper elsewhere, duplicates, overdue, cores), bill math, invoice check, wording guard');
 
-if (process.env.ITTR_INVENTORY_TEST_DB !== '1' || !process.env.DATABASE_URL) {
-  console.log('SKIP AI center DB integration: ITTR_INVENTORY_TEST_DB/DATABASE_URL not set');
-  process.exit(0);
-}
+dbSuiteGuard('AI center DB integration'); // v24.67.0: any disposable-DB flag; a required suite that cannot run fails (test_harness.mjs)
 
 // ---------------------------------------------------------------- fake OpenRouter
 const COST = 0.004, calls = [];

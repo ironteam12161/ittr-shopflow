@@ -28,8 +28,13 @@ jobs:
           --health-timeout=5s
           --health-retries=10
     env:
+      # Disposable CI database (the service container above) — never a production database.
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ittr_test
       ITTR_LANGUAGE_TEST_DB: '1'
+      # A database or browser suite that cannot run here FAILS the release check instead of printing SKIP.
+      ITTR_REQUIRE_DB_SUITES: '1'
+      ITTR_REQUIRE_BROWSER_SUITE: '1'
+      ITTR_SUITE_REPORT: /tmp/ittr-suites.tsv
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -45,5 +50,19 @@ jobs:
           fi
       - name: Block high or critical production dependency vulnerabilities
         run: npm audit --omit=dev --audit-level=high
+      - name: Install Chromium for the browser regression suite
+        run: npx playwright install --with-deps chromium
       - name: Run ITTR production checks
         run: npm run check
+      - name: Report which suites ran
+        if: always()
+        run: |
+          echo "### ITTR test suites" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$ITTR_SUITE_REPORT" ]; then
+            echo '| Result | Suite | Detail |' >> "$GITHUB_STEP_SUMMARY"; echo '|---|---|---|' >> "$GITHUB_STEP_SUMMARY"
+            awk -F'\t' '{print "| "$1" | "$2" | "$3" |"}' "$ITTR_SUITE_REPORT" >> "$GITHUB_STEP_SUMMARY"
+            cat "$ITTR_SUITE_REPORT"
+            if grep -qE '^(SKIPPED|FAILED)' "$ITTR_SUITE_REPORT"; then echo "A required suite was skipped or failed."; exit 1; fi
+          else
+            echo "No suite report was written." >> "$GITHUB_STEP_SUMMARY"; exit 1
+          fi

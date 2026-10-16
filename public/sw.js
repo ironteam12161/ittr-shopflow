@@ -1,6 +1,6 @@
-// ITTR ShopFlow v24.66.0 production PWA service worker
-const CACHE='ittr-shopflow-v24.66.0';
-const SHELL=['/','/index.html','/manifest.webmanifest','/invoice-workspace.css','/modules/invoices.html','/modules/invoices.js','/modules/parts.html','/modules/parts.js','/modules/procenter.html','/modules/procenter.js','/modules/customers.html','/modules/customers.js','/modules/trucksearch.html','/modules/trucksearch.js','/modules/estimates.html','/modules/estimates.js','/modules/reports.html','/modules/reports.js','/modules/compliance.html','/modules/compliance.js','/modules/bills.html','/modules/bills.js','/modules/purchaseorders.html','/modules/purchaseorders.js','/finance-shared.js','/canned-jobs.js','/share-links.js','/sms.js','/inspection-workflow.css','/inspection-workflow.js','/inspection-checklist.js','/assets/iron-team-logo.png','/favicon.svg','/favicon.ico','/sync-merge.js'];
+// ITTR ShopFlow v24.67.0 production PWA service worker
+const CACHE='ittr-shopflow-v24.67.0';
+const SHELL=['/','/index.html','/manifest.webmanifest','/invoice-workspace.css','/modules/invoices.html','/modules/invoices.js','/modules/parts.html','/modules/parts.js','/modules/procenter.html','/modules/procenter.js','/modules/customers.html','/modules/customers.js','/modules/trucksearch.html','/modules/trucksearch.js','/modules/estimates.html','/modules/estimates.js','/modules/reports.html','/modules/reports.js','/modules/compliance.html','/modules/compliance.js','/modules/bills.html','/modules/bills.js','/modules/purchaseorders.html','/modules/purchaseorders.js','/finance-shared.js','/canned-jobs.js','/share-links.js','/sms.js','/inspection-workflow.css','/inspection-workflow.js','/inspection-checklist.js','/assets/iron-team-logo.png','/favicon.svg','/favicon.ico','/sync-merge.js','/sync-queue.js'];
 
 self.addEventListener('install',event=>event.waitUntil(
   caches.open(CACHE).then(c=>c.addAll(SHELL)).then(()=>self.skipWaiting())
@@ -27,7 +27,7 @@ self.addEventListener('fetch',event=>{
   const u=new URL(r.url);
   if(u.origin!==location.origin||u.pathname.startsWith('/api/'))return;
 
-  const critical=r.mode==='navigate'||u.pathname==='/'||u.pathname==='/index.html'||u.pathname.startsWith('/modules/')||u.pathname==='/invoice-workspace.css'||u.pathname==='/inspection-workflow.css'||u.pathname==='/inspection-workflow.js'||u.pathname==='/inspection-checklist.js'||u.pathname==='/finance-shared.js'||u.pathname==='/canned-jobs.js'||u.pathname==='/share-links.js'||u.pathname==='/sms.js'||u.pathname==='/sync-merge.js'||u.pathname==='/manifest.webmanifest';
+  const critical=r.mode==='navigate'||u.pathname==='/'||u.pathname==='/index.html'||u.pathname.startsWith('/modules/')||u.pathname==='/invoice-workspace.css'||u.pathname==='/inspection-workflow.css'||u.pathname==='/inspection-workflow.js'||u.pathname==='/inspection-checklist.js'||u.pathname==='/finance-shared.js'||u.pathname==='/canned-jobs.js'||u.pathname==='/share-links.js'||u.pathname==='/sms.js'||u.pathname==='/sync-merge.js'||u.pathname==='/sync-queue.js'||u.pathname==='/manifest.webmanifest';
   if(critical){
     const cacheKey=r.mode==='navigate'?'/index.html':r;
     event.respondWith(networkFirst(r,cacheKey));

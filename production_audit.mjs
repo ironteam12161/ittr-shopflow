@@ -34,10 +34,12 @@ check('service worker version current',sw.includes(`v${pkg.version}`)&&sw.includ
 check('root/public service worker synchronized',sw&&sw===swRoot);
 check('service worker uses network-first critical app code',sw.includes("u.pathname.startsWith('/modules/')")&&sw.includes("fetch(request,{cache:'no-store'})"));
 check('service worker and modules served no-store',server.includes('filePath.endsWith("sw.js")')&&server.includes('filePath.endsWith("manifest.webmanifest")')&&server.includes('filePath.endsWith("invoice-workspace.css")'));
-check('legacy unsafe sync queue is quarantined',root.includes('function quarantineUnsafeLegacySyncQueue(){')&&root.includes('ittr_sync_queue_quarantine_v1'));
+const syncQ=read('public/sync-queue.js');
+// v24.67.0: the pending-save queue lives in public/sync-queue.js (per account, change sets, removed only once saved).
+check('legacy unsafe sync queue is quarantined',syncQ.includes("LEGACY_KEY = 'ittr_sync_queue_v2'")&&syncQ.includes("archive('legacy', { key, item: it }, '_unowned')")&&root.includes('legacyOwner:restored'));
 check('startup no longer creates unsafe pre-login cloud save',!root.includes('\nsave();\n\nlet adminFilter="all";'));
-check('sync badge reconciles stale in-memory pending keys',root.includes('function reconcileCloudPendingGhosts(){')&&root.includes('function updateSyncQueueBadge(){reconcileCloudPendingGhosts();'));
-check('quarantine clears stale in-memory pending keys',root.includes('for(const key of Object.keys(unsafe)){cloudPending.delete(key)'));
+check('sync badge reconciles stale in-memory pending keys',root.includes('const st=ittrSync.status(),pending=st.pending')&&syncQ.includes('const q = readQ(), keys = new Set([...Object.keys(q), ...Object.keys(flights).filter(k => flights[k])])'));
+check('quarantine clears stale in-memory pending keys',syncQ.includes("o.storage.removeItem(LEGACY_KEY)")&&!root.includes('cloudPending'));
 
 check('state writes require current server version',server.includes('STATE_VERSION_REQUIRED')&&server.includes('STATE_VERSION_CONFLICT'));
 check('mechanic whole-state replacement blocked',server.includes('Mechanics cannot replace shared administrative state.'));
@@ -45,8 +47,8 @@ check('legacy local import is owner-only',server.includes('app.post("/api/state/
 check('paid and void invoices stay locked',server.includes('Paid or void invoices are locked and cannot be reopened.'));
 check('duplicate payment retry guard present',server.includes('DUPLICATE_PAYMENT')&&server.includes("interval '15 seconds'"));
 check('mechanic timer guard scans all work orders',server.includes("Array.isArray(sf.workorders)?sf.workorders:[]")&&server.includes('Pause or complete your current task before starting another one.'));
-check('offline queue stores base server version',root.includes('baseVersion:Number(cloudVersions[key]||0)'));
-check('offline replay uses queued base version',root.includes('item?.baseVersion'));
+check('offline queue stores base server version',syncQ.includes('baseVersion: b.version, changes'));
+check('offline replay uses queued base version',syncQ.includes('b.version === item.baseVersion')&&syncQ.includes('M.applyChanges(remote.payload, item.changes)'));
 check('manager cannot trigger legacy browser import',root.includes('remoteEmpty && localHasData && session?.role==="admin"'));
 
 // v24.28.x security phase 2
@@ -59,7 +61,7 @@ check('mechanic state reads are role-scoped',server.includes('role-scoped state 
 check('mechanic cannot cloud-save users',root.includes('if(session?.role!=="mechanic")queueCloudState("users",USERS)'));
 check('mechanic cannot cloud-save pro state',root.includes('if(session?.role!=="mechanic")queueCloudState("pro",PRO)'));
 check('generic mechanic queue blocks administrative state',root.includes('session?.role==="mechanic"&&key!=="shopflow"'));
-check('mechanic stale administrative queue is discarded',root.includes('removePersistedState(key);cloudPending.delete(key);continue'));
+check('mechanic stale administrative queue is discarded',root.includes('allowKey:key=>session?.role==="mechanic"?key==="shopflow"')&&syncQ.includes("(o.allowKey && !o.allowKey(key))) { archive('unusable', { key, item }); writeItem(key, null); continue; }"));
 check('Fullbay customer directory management-only',server.includes('app.get("/api/fullbay/customers",auth,managerPermission("customers")'));
 check('Fullbay customer profile management-only',server.includes('app.get("/api/fullbay/customers/:id",auth,managerPermission("customers")'));
 check('full backup owner-only',server.includes('app.get("/api/admin/backup",auth,ownerOnly'));
@@ -105,7 +107,7 @@ check('invoice email is an editable draft with the PDF attached',server.includes
 check('invoice Print uses the saved PDF, not the editing screen',root.includes('function printInvoicePdf(')&&!root.includes('<button class="secondary" onclick="window.print()">Print</button>'));
 check('workshop manuals are indexed page by page and read only the needed pages',fs.existsSync('manual_library.mjs')&&server.includes('workshop_manual_pages')&&server.includes('async function readManualPages(')&&fs.readFileSync('shop_assistant.mjs','utf8').includes("name: 'manual_read'"));
 check('manual uploads accept large PDFs and verify the PDF signature',server.includes('limits:{fileSize:250*1024*1024}')&&server.includes("head.toString()!=='%PDF-'"));
-check('Workshop AI v2 uses role-safe lookups with conversation memory',fs.existsSync('shop_assistant.mjs')&&server.includes('runShopAssistant(')&&root.includes('history:shopAiHistory.slice(-8)')&&fs.readFileSync('shop_assistant.mjs','utf8').includes("!/^MANAGERS ONLY/.test(t.description)"));
+check('Workshop AI v2 uses role-safe lookups with conversation memory',fs.existsSync('shop_assistant.mjs')&&server.includes('runShopAssistant(')&&root.includes('history:c.history.slice(-8)')&&fs.readFileSync('shop_assistant.mjs','utf8').includes("!/^MANAGERS ONLY/.test(t.description)"));
 check('keyword shortcuts no longer hijack real questions',server.includes("const shortCmd=m.length<=40")&&!server.includes("/\\b(check|audit|diagnos|bug|lag|slow|error)/.test(m)"));
 check('main search finds parts and invoices',server.includes('Smart search parts warning')&&root.includes('<div class="smartResultType">Part</div>'));
 check('cores screen has a button on the Parts page',read('public/modules/parts.html').includes('onclick="openCoreReport()"'));
@@ -216,7 +218,7 @@ check('Email: shop Google account sends invoices/estimates/reminders (send-only 
 check('Inspection / job timer end the mechanic activity on the server; mechanic card matches owner board',pub.includes('async function endMechanicActivityForWork(')&&!pub.includes('closeCurrentMechanicActivity(au,session.username);try{saveUsers(au)}')&&read('public/inspection-workflow.js').includes('window.focusMechanicOnInspection(id)')&&pub.includes('inspection-workflow.js?v=8'));
 check('One thing at a time: inspection/activity pause the job timer, job ends the activity, most recent wins on both screens',server.includes('app.post("/api/mechanic/focus-inspection"')&&server.includes('"Switched to activity"')&&server.includes('async function endMechanicActivity(')&&pub.includes('function mechanicFocusKind(')&&read('public/inspection-workflow.js').includes('focusMechanicOnInspection'));
 check('Workshop AI can answer live Samsara questions (location, miles, fuel, engine hours, codes) for mechanics too',read('samsara_assistant.mjs').includes('export function createSamsaraLookup(')&&read('shop_assistant.mjs').includes("name: 'samsara_vehicle', description: 'LIVE Samsara")&&server.includes('samsaraVehicle:createSamsaraLookup({paged:samsaraPaged'));
-check('Inspection answers save on their own endpoint (no cloud-sync conflicts), survive background refresh; conflicts recover',server.includes('app.post("/api/work-orders/:id/inspection"')&&read('public/inspection-workflow.js').includes('window.reapplyInspectionEdits=')&&pub.includes('window.reapplyInspectionEdits?.()')&&pub.includes('function handleCloudSyncError('));
+check('Inspection answers save on their own endpoint (no cloud-sync conflicts), survive background refresh; conflicts recover',server.includes('app.post("/api/work-orders/:id/inspection"')&&read('public/inspection-workflow.js').includes('window.reapplyInspectionEdits=')&&pub.includes('window.reapplyInspectionEdits?.()')&&pub.includes('onConflicts:(key,list)=>showToast(')&&pub.includes('<script src="./sync-queue.js?v='));
 check('Reports AI usage tab',rep.includes('function renderAiUsage(')&&server.includes('registerAICenterRoutes(app,'));}
 const failed=results.filter(x=>!x.ok);
 for(const r of results)console.log(`${r.ok?'PASS':'FAIL'}  ${r.name}${r.detail?'  '+r.detail:''}`);

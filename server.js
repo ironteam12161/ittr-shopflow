@@ -15,7 +15,7 @@ import pg from "pg";
 import sharp from "sharp";
 import PDFKitDocument from "pdfkit";
 import {invoiceEnglishText,invoiceDateText} from "./invoice_customer_text.mjs";
-import {runShopAssistant,createAssistantTools,assistantRole} from "./shop_assistant.mjs";
+import {runShopAssistant,createAssistantTools,assistantRole,assistantCan} from "./shop_assistant.mjs";
 import {createSamsaraLookup} from "./samsara_assistant.mjs";
 import {renderCustomerDocumentPdf,shopProfile} from "./invoice_pdf.mjs";
 import {extractPdfPages,slicePdf,manualSearchTerms} from "./manual_library.mjs";
@@ -834,18 +834,47 @@ liveWss.on("connection",async(ws,req)=>{try{
 }catch(e){console.error("[live socket]",e?.message);try{ws.close(1011,"Server error")}catch(_){}}});
 const liveHeartbeat=setInterval(()=>{for(const ws of liveClients){if(ws.isAlive===false){liveClients.delete(ws);try{ws.terminate()}catch(_){}continue}ws.isAlive=false;try{ws.ping()}catch(_){}}},25000);liveHeartbeat.unref?.();
 
+// v24.67.0: trigram indexes for fast parts search (LIKE '%…%' on part #, description, brand, vendor, shelf).
+// Root cause of the old "operator class gin_trgm_ops does not exist" warning: the pg_trgm extension lives in ONE
+// schema (normally public). When the app's search_path does not include that schema (each CI suite uses its own
+// schema; some hosted databases set a custom search_path), CREATE EXTENSION IF NOT EXISTS is a no-op and the
+// unqualified operator class cannot be found, so the indexes were never built. In a fresh CI database the first
+// suite even installed the extension inside its own throw-away schema. Now: install the extension in public when
+// missing, qualify the operator class with the extension's real schema, build CONCURRENTLY (no write lock on the
+// parts table), rebuild an index left INVALID by an interrupted build, and report the result. Missing indexes only
+// make parts search slower: that is reported as "degraded", never a startup failure.
+const PARTS_TRGM_INDEXES=[["idx_fullbay_parts_number_trgm","part_number"],["idx_fullbay_parts_description_trgm","description"],["idx_fullbay_parts_manufacturer_trgm","manufacturer"],["idx_fullbay_parts_vendor_trgm","vendor"],["idx_fullbay_parts_location_trgm","location"]];
+let partsSearchIndexStatus={state:"pending"};
+const qident=x=>`"${String(x).replace(/"/g,'""')}"`;
 async function ensurePartsSearchPerformance(){
- if(!pool)return;
+ if(!pool){partsSearchIndexStatus={state:"skipped"};return partsSearchIndexStatus}
+ const st={state:"ready",extensionSchema:null,created:[],existing:[],rebuilt:[],failed:[]};
  try{
-  await pool.query("CREATE EXTENSION IF NOT EXISTS pg_trgm");
-  await pool.query("CREATE INDEX IF NOT EXISTS idx_fullbay_parts_number_trgm ON fullbay_import_parts USING gin (part_number gin_trgm_ops)");
-  await pool.query("CREATE INDEX IF NOT EXISTS idx_fullbay_parts_description_trgm ON fullbay_import_parts USING gin (description gin_trgm_ops)");
-  await pool.query("CREATE INDEX IF NOT EXISTS idx_fullbay_parts_manufacturer_trgm ON fullbay_import_parts USING gin (manufacturer gin_trgm_ops)");
-  await pool.query("CREATE INDEX IF NOT EXISTS idx_fullbay_parts_vendor_trgm ON fullbay_import_parts USING gin (vendor gin_trgm_ops)");
-  await pool.query("CREATE INDEX IF NOT EXISTS idx_fullbay_parts_location_trgm ON fullbay_import_parts USING gin (location gin_trgm_ops)");
- }catch(e){
-  console.warn("Parts search optimization warning:",e?.message||e);
- }
+  const extSchema=async()=>(await pool.query("SELECT n.nspname s FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace WHERE e.extname='pg_trgm'")).rows[0]?.s||null;
+  let ext=await extSchema();
+  if(!ext){
+   const hasPublic=(await pool.query("SELECT 1 FROM pg_namespace WHERE nspname='public'")).rowCount>0;
+   try{await pool.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm${hasPublic?" SCHEMA public":""}`)}catch(e){throw Object.assign(new Error(`pg_trgm extension could not be installed (${e.message}). A database owner can run: CREATE EXTENSION pg_trgm SCHEMA public;`),{code:e.code})}
+   ext=await extSchema();
+  }
+  if(!ext)throw new Error("pg_trgm extension is not available on this database server.");
+  st.extensionSchema=ext;
+  for(const [name,col] of PARTS_TRGM_INDEXES){
+   try{
+    const cur=(await pool.query("SELECT i.indisvalid v FROM pg_class c JOIN pg_index i ON i.indexrelid=c.oid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relname=$1 AND n.nspname=current_schema()",[name])).rows[0];
+    if(cur?.v){st.existing.push(name);continue}
+    if(cur&&!cur.v){await pool.query(`DROP INDEX CONCURRENTLY IF EXISTS ${qident(name)}`);st.rebuilt.push(name)}
+    await pool.query(`CREATE INDEX CONCURRENTLY IF NOT EXISTS ${qident(name)} ON fullbay_import_parts USING gin (${qident(col)} ${qident(ext)}.gin_trgm_ops)`);
+    const ok=(await pool.query("SELECT i.indisvalid v FROM pg_class c JOIN pg_index i ON i.indexrelid=c.oid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relname=$1 AND n.nspname=current_schema()",[name])).rows[0]?.v===true;
+    if(ok){if(!st.rebuilt.includes(name))st.created.push(name)}else st.failed.push({index:name,error:"index is not valid after build"});
+   }catch(e){st.failed.push({index:name,error:e.message})}
+  }
+  if(st.failed.length)st.state="degraded";
+ }catch(e){st.state="degraded";st.error=e.message}
+ partsSearchIndexStatus=st;
+ if(st.state==="ready")console.log(`[parts search] trigram indexes ready (${st.existing.length} existing, ${st.created.length} created${st.rebuilt.length?`, ${st.rebuilt.length} rebuilt`:""}; extension in schema ${st.extensionSchema}).`);
+ else console.error(`[parts search] DEGRADED — parts search still works but is slower on large inventories: ${st.error||st.failed.map(f=>`${f.index}: ${f.error}`).join("; ")}`);
+ return st;
 }
 
 function adminOnly(req,res,next){if(!["admin","manager"].includes(req.user?.role))return res.status(403).json({error:"Manager access required."});next()}
@@ -1951,9 +1980,9 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.66.0");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.67.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
-app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
+app.get("/api/health",async(req,res)=>{let db=false;try{if(pool){await pool.query("SELECT 1");db=true}}catch{}res.json({ok:true,db,partsSearchIndexes:partsSearchIndexStatus.state,aiConfigured:Boolean(openRouterClient||client),aiProvider:openRouterClient?"openrouter":client?"openai":"none",version:typeof ITTR_APP_VERSION!=="undefined"?ITTR_APP_VERSION:"24.28.4",photoStorageConfigured:r2Configured})});
 
 // v24.58.1: sign-in checks, in order: account lock → password → 2-step code (when turned on).
 // - An unknown username costs the same bcrypt time as a known one, so response time doesn't reveal real usernames.
@@ -2029,10 +2058,7 @@ app.get("/api/state",auth,async(req,res,next)=>{try{
  if(req.user?.role==='mechanic'){
   const q=await db.query("SELECT state_key,payload,version,updated_at FROM app_state WHERE state_key='shopflow'");
   const r=q.rows[0];if(!r)return res.json({});
-  const sf=(r.payload&&typeof r.payload==='object')?r.payload:{workorders:[],issues:[]};
-  const workorders=(Array.isArray(sf.workorders)?sf.workorders:[]).filter(w=>mechanicOwnsWorkOrder(req.user,w));
-  const ids=new Set(workorders.map(w=>String(w?.id||'')));
-  const issues=(Array.isArray(sf.issues)?sf.issues:[]).filter(i=>ids.has(String(i?.wo||'')));
+  const {workorders,issues,sf}=mechanicShopView(req.user,r.payload);
   const ur=(await db.query("SELECT payload,version,updated_at FROM app_state WHERE state_key='users'")).rows[0],me=ur?.payload?.[req.user.username];
   const self=me&&typeof me==="object"?{[req.user.username]:{role:me.role||"mechanic",display:me.display||req.user.display_name||req.user.username,currentActivity:me.currentActivity||{code:"",note:"",startedAt:""},activityHistory:Array.isArray(me.activityHistory)?me.activityHistory.slice(0,50):[]}}:{};
   return res.json({shopflow:{payload:{...sf,workorders,issues},version:Number(r.version),updatedAt:r.updated_at},users:{payload:self,version:Number(ur?.version||0),updatedAt:ur?.updated_at||null}});
@@ -2042,6 +2068,29 @@ app.get("/api/state",auth,async(req,res,next)=>{try{
  // without an entry in the shared users record (imports, direct DB, other devices).
  if(d.users){const users=d.users.payload&&typeof d.users.payload==='object'?{...d.users.payload}:{};const mq=await db.query("SELECT username,display_name FROM auth_users WHERE role='mechanic' AND active=true");for(const m of mq.rows)if(!users[m.username])users[m.username]={role:'mechanic',display:m.display_name||m.username,activityHistory:[],currentActivity:{code:'',note:'',startedAt:''}};d.users={...d.users,payload:users}}
  res.json(d);
+}catch(e){next(e)}});
+// The part of the shop record a mechanic may see: their own work orders and those work orders' findings.
+function mechanicShopView(user,payload){
+ const sf=(payload&&typeof payload==='object')?payload:{workorders:[],issues:[]};
+ const workorders=(Array.isArray(sf.workorders)?sf.workorders:[]).filter(w=>mechanicOwnsWorkOrder(user,w));
+ const ids=new Set(workorders.map(w=>String(w?.id||'')));
+ const issues=(Array.isArray(sf.issues)?sf.issues:[]).filter(i=>ids.has(String(i?.wo||'')));
+ return {sf,workorders,issues};
+}
+// v24.67.0: one earlier version of a shared record (kept by the app_state_history trigger), seen exactly as GET
+// /api/state shows it to this account. A phone that queued an edit before v24.67.0 only kept its whole edited copy,
+// so the copy it started from is needed to work out what was actually changed before merging it.
+app.get("/api/state/:key/version/:version",auth,async(req,res,next)=>{try{
+ const key=String(req.params.key),version=Number(req.params.version);
+ if(!["users","shopflow","pro"].includes(key)||!Number.isInteger(version)||version<=0)return res.status(400).json({error:"Unknown record or version."});
+ const role=req.user?.role;
+ if((role==='mechanic'&&key!=='shopflow')||(key==='users'&&role!=='admin')||(key==='pro'&&!['admin','manager'].includes(role)))return res.status(403).json({error:"Not allowed for this account."});
+ const db=requireDb();
+ const cur=(await db.query("SELECT payload,version FROM app_state WHERE state_key=$1",[key])).rows[0];
+ let payload=cur&&Number(cur.version)===version?cur.payload:(await db.query("SELECT payload FROM app_state_history WHERE state_key=$1 AND version=$2 ORDER BY id DESC LIMIT 1",[key,version])).rows[0]?.payload;
+ if(payload===undefined||payload===null)return res.status(404).json({error:"That version is no longer kept.",code:"STATE_VERSION_UNAVAILABLE"});
+ if(role==='mechanic'){const v=mechanicShopView(req.user,payload);payload={...v.sf,workorders:v.workorders,issues:v.issues}}
+ res.json({key,version,payload});
 }catch(e){next(e)}});
 // ITTR v24.27.0 state integrity hardening
 // v24.37.1: delete a work order on the server so a stale copy on another device can't block or undo it.
@@ -4813,20 +4862,22 @@ app.post("/api/ai/shop-chat",auth,async(req,res)=>{try{
   }
  }catch(e){console.warn('[Workshop AI v2] falling back:',e?.status||'',e?.message)}}}
  const db=requireDb(),explicit=String(req.body?.unit||'').trim();
+ // v24.67.0: the fallback path follows the same data policy as the Workshop AI lookups (shop_assistant.mjs).
+ const whoClassic=assistantRole(req.user),seeInvoices=assistantCan(whoClassic,'invoices'),seeMoney=assistantCan(whoClassic,'money');
  const unitMatch=explicit?[null,explicit]:(question.match(/\b([A-HJ-NPR-Z0-9]{17})\b/i)||question.match(/(?:unit|truck|тра[кк]|машин|тягач|номер)\s*#?\s*([A-Za-z0-9-]{2,20})/i)||question.match(/\b(\d{2,8})\b/));
  let unit=null,history=[],invoices=[],workorders=[],manuals=[];
  if(unitMatch){const token=unitMatch[1];const uq=await db.query(`SELECT * FROM customer_units WHERE lower(coalesce(unit_number,''))=lower($1) OR lower(coalesce(vin,''))=lower($1) ORDER BY updated_at DESC LIMIT 1`,[token]);unit=uq.rows[0]||null;}
  if(unit){
   const hr=await db.query(`SELECT service_order,invoice_number,actual_correction,complaint,action_completed_at,hours,unit_miles,component,system,tech FROM fullbay_service_history WHERE lower(coalesce(unit_number,''))=lower($1) OR lower(coalesce(vin,''))=lower($2) ORDER BY action_completed_at DESC NULLS LAST LIMIT 180`,[unit.unit_number||'',unit.vin||'']);
-  history=hr.rows;
-  const ir=await db.query(`SELECT i.id,i.invoice_number,i.invoice_date,i.mileage,i.status,i.updated_at,l.line_type,l.job_name,l.description,l.part_number,l.quantity FROM customer_invoices i LEFT JOIN customer_invoice_lines l ON l.invoice_id=i.id WHERE i.unit_id=$1 OR lower(coalesce(i.unit_number,''))=lower($2) OR lower(coalesce(i.vin,''))=lower($3) ORDER BY i.invoice_date DESC,i.updated_at DESC,l.sort_order,l.id LIMIT 220`,[unit.id,unit.unit_number||'',unit.vin||'']);
+  history=seeInvoices?hr.rows:hr.rows.map(({invoice_number,...h})=>h);
+  const ir=!seeInvoices?{rows:[]}:await db.query(`SELECT i.id,i.invoice_number,i.invoice_date,i.mileage,i.status,i.updated_at,l.line_type,l.job_name,l.description,l.part_number,l.quantity FROM customer_invoices i LEFT JOIN customer_invoice_lines l ON l.invoice_id=i.id WHERE i.unit_id=$1 OR lower(coalesce(i.unit_number,''))=lower($2) OR lower(coalesce(i.vin,''))=lower($3) ORDER BY i.invoice_date DESC,i.updated_at DESC,l.sort_order,l.id LIMIT 220`,[unit.id,unit.unit_number||'',unit.vin||'']);
   invoices=ir.rows;
   manuals=await findWorkshopManuals(db,unit,question);
   const st=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");
   const sf=st.rows[0]?.payload||{};
-  workorders=(Array.isArray(sf.workorders)?sf.workorders:[]).filter(w=>String(w.unit||'').toLowerCase()===String(unit.unit_number||'').toLowerCase()||String(w.vin||'').toLowerCase()===String(unit.vin||'').toLowerCase()).slice(-60).map(w=>({id:w.id,unit:w.unit,status:w.status,date:w.date,completedAt:w.completedAt,mileage:w.mileage,tasks:(w.tasks||[]).map(t=>({name:t.t,outcome:t.taskOutcome||'',note:t.outcomeNote||'',elapsedMs:t.elapsedMs||0}))}));
+  workorders=(Array.isArray(sf.workorders)?sf.workorders:[]).filter(w=>req.user.role!=='mechanic'||mechanicOwnsWorkOrder(req.user,w)).filter(w=>String(w.unit||'').toLowerCase()===String(unit.unit_number||'').toLowerCase()||String(w.vin||'').toLowerCase()===String(unit.vin||'').toLowerCase()).slice(-60).map(w=>({id:w.id,unit:w.unit,status:w.status,date:w.date,completedAt:w.completedAt,mileage:w.mileage,tasks:(w.tasks||[]).map(t=>({name:t.t,outcome:t.taskOutcome||'',note:t.outcomeNote||'',elapsedMs:t.elapsedMs||0}))}));
  }
- const financialAllowed=req.user.role==='admin'||(req.user.role==='manager'&&req.user.permissions?.financials===true);
+ const financialAllowed=seeMoney;
  const recentIttrServices=compactInvoiceHistory(invoices);
  const pmInvoiceMatches=recentIttrServices.filter(x=>pmServiceIntent((x.lines||[]).map(l=>`${l.description} ${l.partNumber||''}`).join(' ')));
  const pmWorkorderMatches=workorders.filter(w=>pmServiceIntent((w.tasks||[]).map(t=>`${t.name||''} ${t.outcome||''} ${t.note||''}`).join(' ')));
@@ -4992,7 +5043,8 @@ initDb()
   .then(()=>{if(process.env.NODE_ENV!=='test')startTimeClockScheduler({pool,stopMechanicWork,onChange:()=>broadcastShopStatus("task_changed",{timeclock:true})})})
   .then(()=>{if(process.env.NODE_ENV!=='test')startFleetScheduler({pool,samsaraPaged,samsaraConfigured:samsaraTokenPresent})})
   .then(()=>reconcileReservedInventoryAllocations())
-  .then(()=>ensurePartsSearchPerformance())
+  // v24.67.0: built in the background (CONCURRENTLY) so a large parts table never delays startup.
+  .then(()=>{ensurePartsSearchPerformance().catch(e=>console.error("[parts search]",e?.message))})
   .then(()=>migrateLegacyFindingPhotosAtStartup())
   .then(()=>repairTaskUidsAtStartup())
   .then(()=>normalizeCollaborationAtStartup())

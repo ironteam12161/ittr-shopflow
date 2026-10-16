@@ -3,8 +3,9 @@ import net from 'node:net';
 import pg from 'pg';
 import http from 'node:http';
 import {totpCode,totpStep} from './security_mfa.mjs';
+import {dbSuiteGuard} from './test_harness.mjs';
 
-if(process.env.ITTR_LANGUAGE_TEST_DB!=='1'&&process.env.ITTR_OPERATIONS_TEST_DB!=='1'){console.log('SKIP account security integration test: disposable DB flag is not enabled');process.exit(0)}
+dbSuiteGuard('account security integration test'); // v24.67.0: any disposable-DB flag; a required suite that cannot run fails (test_harness.mjs)
 const url=String(process.env.DATABASE_URL||'');if(!url)throw new Error('DATABASE_URL is required');
 const {Pool}=pg,schema=`ittr_acctsec_${process.pid}_${Date.now()}`.replace(/[^a-z0-9_]/g,''),bootstrap=new Pool({connectionString:url,ssl:false});
 await bootstrap.query(`CREATE SCHEMA ${schema}`);await bootstrap.end();
