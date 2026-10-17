@@ -150,6 +150,19 @@ try {
     await ctx.close();
   });
 
+  // v24.75.1: CI on main once failed S5 because a state refresh already on its way landed while logout() awaited the
+  // server sign-out and wrote the shop copy back. Reproduced deterministically: a refresh lands mid-sign-out.
+  await scenario('S5 a refresh arriving during sign-out does not put the shop copy back', async () => {
+    const { ctx, page } = await newPage(); await page.goto(B); await signIn(page, OWNER.username, OWNER.password);
+    // The server sign-out is slowed so the refresh that was already on its way answers first (the order CI hit).
+    await page.route('**/api/auth/logout', async route => { await sleep(600); await route.continue(); });
+    await Promise.all([page.waitForEvent('load', { timeout: 15000 }), page.evaluate(() => { cloudVersions = {}; cloudRefreshBusy = false; refreshCloudStateSilently(); const p = logout(); ittrSetLive('shopflow', { workorders: [{ id: 999, unit: 'LATE-REFRESH' }], issues: [] }); return p; })]);
+    await page.waitForSelector('#loginUser', { state: 'visible' });
+    const left = await page.evaluate(() => ['ittr_shopflow_v2', 'ittr_users_v1', 'ittr_pro_v20'].filter(k => localStorage.getItem(k)));
+    eq(left.length, 0, `no cache written back by a late refresh (${left})`);
+    await ctx.close();
+  });
+
   await scenario('S5 session expiry (revoked elsewhere) clears the copies too', async () => {
     const { ctx, page } = await newPage(); await page.goto(B); await signIn(page, OWNER.username, OWNER.password);
     const tok = await page.evaluate(() => sessionStorage.getItem('ittr_cloud_token'));

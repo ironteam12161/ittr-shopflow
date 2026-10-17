@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.75.0-MECHANIC-VIEW-20261017">
+<meta name="ittr-build" content="ITTR-24.75.1-SIGNOUT-RACE-20261017">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -28,7 +28,7 @@
  P.removeItem=function(k){rm.call(this,k);if(this===sessionStorage&&keys[k])try{rm.call(localStorage,'ittr_app_'+k)}catch(e){}};
 }catch(e){}})();
 </script>
-<title>ITTR ShopFlow v24.75.0</title>
+<title>ITTR ShopFlow v24.75.1</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -835,7 +835,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.75.0">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.75.1">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -852,13 +852,13 @@ body.invoiceWorkspaceMode .invoiceRateWrap{display:grid!important;grid-template-
 @media(max-width:900px){body.invoiceWorkspaceMode .invoiceGridHeader{display:none!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow{grid-template-columns:1fr 1fr!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceGridItemLabel,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLaborDescription{grid-column:1/-1!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceQtyUnit,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceTaxCell,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLineNet{grid-column:1!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLaborRateField,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceDiscountControl,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceRowActions{grid-column:2!important}}
 </style>
 <link rel="stylesheet" href="./inspection-workflow.css?v=3">
-<script src="./sync-merge.js?v=24.75.0"></script>
-<script src="./sync-queue.js?v=24.75.0"></script>
-<link rel="stylesheet" href="./design-system.css?v=24.75.0">
-<link rel="stylesheet" href="./app-shell.css?v=24.75.0">
-<script src="./icons.js?v=24.75.0"></script>
-<script src="./photo-viewer.js?v=24.75.0"></script>
-<script src="./photo-queue.js?v=24.75.0"></script>
+<script src="./sync-merge.js?v=24.75.1"></script>
+<script src="./sync-queue.js?v=24.75.1"></script>
+<link rel="stylesheet" href="./design-system.css?v=24.75.1">
+<link rel="stylesheet" href="./app-shell.css?v=24.75.1">
+<script src="./icons.js?v=24.75.1"></script>
+<script src="./photo-viewer.js?v=24.75.1"></script>
+<script src="./photo-queue.js?v=24.75.1"></script>
 <style id="ittrNavLayoutV2">
 /* v24.39.0 desktop navigation: one full-width tab strip grouped by workflow (Shop · Money · Records · Operations). */
 @media(min-width:761px){
@@ -1008,7 +1008,7 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 </style>
 </head>
 <body class="loggedOut">
-<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.75.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.75.1 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1611,12 +1611,14 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.75.0';
+const FRONTEND_VERSION='24.75.1';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudVersions={},cloudRefreshBusy=false;
 /* v24.67.0: pending saves live in public/sync-queue.js (per account, as change sets, removed only once saved). */
 const ITTR_LIVE={users:()=>USERS,shopflow:()=>state,pro:()=>PRO};
 function ittrSetLive(key,obj){
+ // v24.75.1: a refresh that was already on its way when sign-out began must not put the shop copy back on this device.
+ if(window.__ittrSigningOut)return;
  if(key==="shopflow"){state=obj&&typeof obj==="object"?obj:{workorders:[],issues:[]};try{window.reapplyInspectionEdits?.()}catch(_){}try{localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state))}catch(_){}}
  else if(key==="users"){USERS=obj||{};try{localStorage.setItem("ittr_users_v1",JSON.stringify(USERS))}catch(_){}}
  else if(key==="pro"){PRO=Object.assign({vehicles:[],maintenance:[],audit:[],notifications:[],delays:[]},obj||{});for(const k of ['vehicles','maintenance','audit','notifications','delays'])if(!Array.isArray(PRO[k]))PRO[k]=[];try{localStorage.setItem(PRO_KEY,JSON.stringify(PRO))}catch(_){}}
@@ -1669,7 +1671,7 @@ async function flushPersistentSyncQueue(){if(!cloudReady||!cloudToken||!navigato
 let cloudRefreshAgain=false;
 function ittrNoteShopflowVersion(v){const n=Number(v);if(!Number.isFinite(n)||n<=0)return;const cur=Number(cloudVersions.shopflow||0);if(n===cur+1)cloudVersions.shopflow=n;else if(n>cur)setTimeout(()=>{try{refreshCloudStateSilently()}catch(_){}},0)}
 window.ittrNoteShopflowVersion=ittrNoteShopflowVersion;
-async function refreshCloudStateSilently(){if(!cloudReady||!cloudToken)return;if(cloudRefreshBusy){cloudRefreshAgain=true;return}cloudRefreshBusy=true;cloudRefreshAgain=false;try{const d=await apiJSON("/api/state");let changed=false;const apply=(key,fn)=>{const remote=d[key];if(!remote)return;const rv=Number(remote.version||0),lv=Number(cloudVersions[key]||0);if(rv<=lv)return;if(ittrSync.hasPending(key)){if(ittrSync.rebase?.(key,remote.payload,rv)){cloudVersions[key]=rv;changed=true}return}fn(remote.payload);cloudVersions[key]=rv;ittrSync.setBase(key,remote.payload,rv);changed=true};apply("users",payload=>{USERS=payload||{};localStorage.setItem("ittr_users_v1",JSON.stringify(USERS))});apply("shopflow",payload=>{state=payload||{workorders:[],issues:[]};try{window.reapplyInspectionEdits?.()}catch(_){}localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state))});apply("pro",payload=>{PRO=Object.assign({vehicles:[],maintenance:[],audit:[],notifications:[],delays:[]},payload||{});for(const k of ['vehicles','maintenance','audit','notifications','delays'])if(!Array.isArray(PRO[k]))PRO[k]=[];localStorage.setItem(PRO_KEY,JSON.stringify(PRO))});if(changed)render()}catch(e){}finally{cloudRefreshBusy=false;if(cloudRefreshAgain){cloudRefreshAgain=false;setTimeout(()=>{try{refreshCloudStateSilently()}catch(_){}},50)}}}
+async function refreshCloudStateSilently(){if(!cloudReady||!cloudToken)return;if(cloudRefreshBusy){cloudRefreshAgain=true;return}cloudRefreshBusy=true;cloudRefreshAgain=false;try{const d=await apiJSON("/api/state");if(window.__ittrSigningOut||!cloudReady||!cloudToken)return;let changed=false;const apply=(key,fn)=>{const remote=d[key];if(!remote)return;const rv=Number(remote.version||0),lv=Number(cloudVersions[key]||0);if(rv<=lv)return;if(ittrSync.hasPending(key)){if(ittrSync.rebase?.(key,remote.payload,rv)){cloudVersions[key]=rv;changed=true}return}fn(remote.payload);cloudVersions[key]=rv;ittrSync.setBase(key,remote.payload,rv);changed=true};apply("users",payload=>{USERS=payload||{};localStorage.setItem("ittr_users_v1",JSON.stringify(USERS))});apply("shopflow",payload=>{state=payload||{workorders:[],issues:[]};try{window.reapplyInspectionEdits?.()}catch(_){}localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state))});apply("pro",payload=>{PRO=Object.assign({vehicles:[],maintenance:[],audit:[],notifications:[],delays:[]},payload||{});for(const k of ['vehicles','maintenance','audit','notifications','delays'])if(!Array.isArray(PRO[k]))PRO[k]=[];localStorage.setItem(PRO_KEY,JSON.stringify(PRO))});if(changed)render()}catch(e){}finally{cloudRefreshBusy=false;if(cloudRefreshAgain){cloudRefreshAgain=false;setTimeout(()=>{try{refreshCloudStateSilently()}catch(_){}},50)}}}
 function showToast(message,type="info",timeout=5000){const region=document.getElementById("toastRegion");if(!region){console[type==="error"?"error":"log"](message);return}const toast=document.createElement("div");toast.className=`appToast ${type}`;toast.setAttribute("role",type==="error"?"alert":"status");toast.textContent=String(message||"Something went wrong.");region.appendChild(toast);const remove=()=>toast.remove();toast.onclick=remove;setTimeout(remove,timeout)}
 function showSyncError(msg){showToast(`Cloud sync: ${msg}`,"warning",7000)}
 function saveUsers(){localStorage.setItem("ittr_users_v1",JSON.stringify(USERS));if(session?.role!=="mechanic")queueCloudState("users",USERS)}
@@ -1984,7 +1986,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.75.0";
+const ROUTE_MODULE_VERSION="24.75.1";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -2292,6 +2294,7 @@ function showLoginCodeStep(d){const f=document.getElementById("loginCodeField"),
 document.getElementById("loginSendEmail")?.addEventListener("click",async()=>{const u=document.getElementById("loginUser").value.trim(),p=document.getElementById("loginPass").value,err=document.getElementById("loginError");
  try{document.getElementById("loginCode").value="";const d=await loginRequest(u,p,{sendEmail:true});if(d.mfaRequired)showLoginCodeStep(d)}catch(x){err.textContent=x.message}});
 document.getElementById("loginForm").onsubmit=async e=>{
+ window.__ittrSigningOut=false;
   e.preventDefault();
   const u=document.getElementById("loginUser").value.trim();
   const p=document.getElementById("loginPass").value;
@@ -2306,7 +2309,7 @@ document.getElementById("loginForm").onsubmit=async e=>{
     document.getElementById("loginPass").value="";
     if(d.recoveryLeft!=null)setTimeout(()=>showToast(`${tr("Recovery code used.")} ${d.recoveryLeft} ${tr("left. Make new ones in 🔒 Password.")}`,"warning",9000),800);
     if(d.user?.mfaRecommended&&!d.user?.mfa)setTimeout(()=>showToast(tr("Protect your account: turn on 2-step login in 🔒 Password."),"warning",9000),1500);
-    ittrEndSession();cloudToken=d.token;sessionStorage.setItem("ittr_cloud_token",cloudToken);
+    ittrEndSession();window.__ittrSigningOut=false;cloudToken=d.token;sessionStorage.setItem("ittr_cloud_token",cloudToken);
     session={username:d.user.username,role:d.user.role,display:d.user.display,language:d.user.language||localStorage.getItem("ittr_language")||"en"};
     currentLanguage=session.language;localStorage.setItem("ittr_language",currentLanguage);
     sessionStorage.setItem("ittr_session",JSON.stringify(session));
@@ -2395,7 +2398,7 @@ function ittrClearReadCaches(){
  try{if(typeof aiTranslationCache==="object"&&aiTranslationCache)for(const k of Object.keys(aiTranslationCache))delete aiTranslationCache[k]}catch(_){}
  try{for(const id of ["detailBody","dashboard","workorders","completed","approvals","mycompleted","activityhistory","mechanic","board","wo"]){const el=document.getElementById(id);if(el&&id==="detailBody")el.innerHTML=""}document.querySelectorAll(".modal.open").forEach(m=>m.classList.remove("open"))}catch(_){}
 }
-function ittrEndSession(){try{ittrSync.reset()}catch(_){}try{window.ittrPhotoQueue?.signedOut()}catch(_){}try{shopAiEndSession()}catch(_){}cloudReady=false;ittrClearReadCaches()}
+function ittrEndSession(){window.__ittrSigningOut=true;try{ittrSync.reset()}catch(_){}try{window.ittrPhotoQueue?.signedOut()}catch(_){}try{shopAiEndSession()}catch(_){}cloudReady=false;ittrClearReadCaches()}
 async function logout(){
   // Send what is still queued before signing out; anything left stays on this device for this account only.
   try{if(navigator.onLine&&cloudToken&&ittrSync.status().pending)await Promise.race([ittrSync.syncAll(),new Promise(r=>setTimeout(r,4000))])}catch(_){}
@@ -2407,7 +2410,8 @@ async function logout(){
   document.getElementById("loginUser").value="";document.getElementById("loginPass").value="";document.getElementById("loginScreen").style.display="flex";document.body.classList.add("loggedOut");document.title="ITTR ShopFlow";
   // v24.71.0: reload so nothing of the signed-out account stays in this page's memory or screens (the stored copies
   // are already removed). Offline, the page stays as it is: a reload could not load the app without a connection.
-  if(navigator.onLine&&!window.ITTR_NO_LOGOUT_RELOAD)setTimeout(()=>{try{location.replace(location.pathname)}catch(_){}},0);
+  ittrClearReadCaches();
+  if(navigator.onLine&&!window.ITTR_NO_LOGOUT_RELOAD)setTimeout(()=>{try{ittrClearReadCaches();location.replace(location.pathname)}catch(_){}},0);
 }
 function requireAdmin(){
   if(!["admin","manager"].includes(session?.role)){alert(tr("Manager access required."));return false}
@@ -7181,10 +7185,10 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
 <script src="./finance-shared.js?v=24.47.3"></script>
 <script src="./inspection-checklist.js?v=3"></script>
 <script src="./inspection-workflow.js?v=8"></script>
-<script src="./canned-jobs.js?v=24.75.0"></script>
-<script src="./share-links.js?v=24.75.0"></script>
-<script src="./sms.js?v=24.75.0"></script>
-<script src="./shop-workspace.js?v=24.75.0"></script>
+<script src="./canned-jobs.js?v=24.75.1"></script>
+<script src="./share-links.js?v=24.75.1"></script>
+<script src="./sms.js?v=24.75.1"></script>
+<script src="./shop-workspace.js?v=24.75.1"></script>
 <script>
 /* v24.46.2: Start a Truck keeps what the mechanic typed until the work order is created.
    Saved on this phone (localStorage) while typing and when the screen locks; restored when the wizard is opened
