@@ -38,7 +38,7 @@ const syncQ=read('public/sync-queue.js');
 // v24.67.0: the pending-save queue lives in public/sync-queue.js (per account, change sets, removed only once saved).
 check('legacy unsafe sync queue is quarantined',syncQ.includes("LEGACY_KEY = 'ittr_sync_queue_v2'")&&syncQ.includes("archive('legacy', { key, item: it }, '_unowned')")&&root.includes('legacyOwner:restored'));
 check('startup no longer creates unsafe pre-login cloud save',!root.includes('\nsave();\n\nlet adminFilter="all";'));
-check('sync badge reconciles stale in-memory pending keys',root.includes('const st=ittrSync.status(),pending=st.pending')&&syncQ.includes('const q = readQ(), keys = new Set([...Object.keys(q), ...Object.keys(flights).filter(k => flights[k])])'));
+check('sync badge reconciles stale in-memory pending keys',root.includes('const st=ittrSync.status(),pending=st.pending')&&syncQ.includes('const keys = new Set([...pendingKeys(), ...Object.keys(flights).filter(k => flights[k])])'));
 check('quarantine clears stale in-memory pending keys',syncQ.includes("o.storage.removeItem(LEGACY_KEY)")&&!root.includes('cloudPending'));
 
 check('state writes require current server version',server.includes('STATE_VERSION_REQUIRED')&&server.includes('STATE_VERSION_CONFLICT'));
@@ -61,7 +61,7 @@ check('mechanic state reads are role-scoped',server.includes('role-scoped state 
 check('mechanic cannot cloud-save users',root.includes('if(session?.role!=="mechanic")queueCloudState("users",USERS)'));
 check('mechanic cannot cloud-save pro state',root.includes('if(session?.role!=="mechanic")queueCloudState("pro",PRO)'));
 check('generic mechanic queue blocks administrative state',root.includes('session?.role==="mechanic"&&key!=="shopflow"'));
-check('mechanic stale administrative queue is discarded',root.includes('allowKey:key=>session?.role==="mechanic"?key==="shopflow"')&&syncQ.includes("(o.allowKey && !o.allowKey(key))) { archive('unusable', { key, item }); writeItem(key, null); continue; }"));
+check('mechanic stale administrative queue is discarded',root.includes('allowKey:key=>session?.role==="mechanic"?key==="shopflow"')&&syncQ.includes("(o.allowKey && !o.allowKey(key))) { archive('unusable', { key, item }); const q = readQ(); delete q[ek]; writeQ(q); continue; }"));
 check('Fullbay customer directory management-only',server.includes('app.get("/api/fullbay/customers",auth,managerPermission("customers")'));
 check('Fullbay customer profile management-only',server.includes('app.get("/api/fullbay/customers/:id",auth,managerPermission("customers")'));
 check('full backup owner-only',server.includes('app.get("/api/admin/backup",auth,ownerOnly'));
