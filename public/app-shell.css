@@ -45,7 +45,7 @@
 .bdCard.blocked{border-left-color:var(--ds-warn)}
 .lnCard.sev-safety-critical{border-left-color:var(--ds-danger)}.lnCard.sev-high{border-left-color:var(--ds-warn)}
 .bdTop,.lnTop{display:flex;justify-content:space-between;gap:6px;align-items:center}
-.bdOpen{background:none;border:0;padding:0;min-height:0;color:var(--ds-ink);display:inline-flex;gap:6px;align-items:baseline;font-size:var(--ds-text-md);text-align:left;cursor:pointer}
+.bdOpen{background:none;border:0;padding:4px 0;min-height:44px;color:var(--ds-ink);display:inline-flex;gap:6px;align-items:baseline;font-size:var(--ds-text-md);text-align:left;cursor:pointer}
 .bdOpen:hover b{text-decoration:underline}
 .bdCust{font-size:12.5px;margin-top:-4px}
 .bdLine{display:flex;gap:6px;align-items:center;color:var(--ds-ink-2)}
@@ -127,3 +127,42 @@
 /* v24.73.0: "updated on another device" note for office screens (shown instead of reloading while someone types) */
 .ittrStaleNote{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom));z-index:60;display:flex;align-items:center;gap:8px;max-width:calc(100vw - 32px);padding:8px 10px 8px 14px;border-radius:10px;background:var(--ds-surface,#fff);color:var(--ds-text,#111);border:1px solid var(--ds-border,#d0d5dd);box-shadow:0 6px 24px rgba(0,0,0,.18);font-size:14px}
 .ittrStaleNote button{min-height:36px}
+
+/* v24.74.0 (UI audit U1): the floating AI button never covers a dialog's or workflow's controls (inspection Next,
+   part inputs, invoice editing) or a field while the phone keyboard is open. AI stays reachable from the header. */
+body.modalOpen #shopAiFab,body.invoiceWorkspaceMode #shopAiFab{display:none!important}
+@media (max-width:760px){body:has(input:focus,textarea:focus,select:focus) #shopAiFab{display:none!important}}
+/* U2: long names, emails and VINs wrap instead of widening the customer screens on a phone. */
+#customers,#trucksearch,.smartDirectoryHero,.smartGroupItem{min-width:0;overflow-wrap:anywhere}
+
+/* U4: invoices on a phone are cards with a clear order — invoice # and status, customer and unit, dates with the
+   balance emphasised, then total/paid, then Open — instead of the generic label-beside-value table transform. */
+@media(max-width:640px){
+  table.ds-cards tr.invRow,table tr.invRow{display:grid!important;grid-template-columns:1fr auto;gap:4px 12px;align-items:start}
+  #invoiceTable tr.invRow{margin:0 0 8px;padding:10px 12px;border:1px solid var(--ds-line);border-radius:var(--ds-radius-sm);background:var(--ds-surface)}
+  table tr.invRow td{display:block!important;padding:2px 0!important;text-align:left;border:0!important;min-width:0;overflow-wrap:anywhere}
+  table tr.invRow td::before{content:none!important}
+  table:has(#invoiceTable),#invoiceTable{display:block}
+  table:has(#invoiceTable) thead{display:none}
+  tr.invRow .invC-num{grid-column:1;grid-row:1;font-size:16px}
+  tr.invRow .invC-status{grid-column:2;grid-row:1;justify-self:end}
+  tr.invRow .invC-cust{grid-column:1/-1;grid-row:2}
+  tr.invRow .invC-date{grid-column:1;grid-row:3;font-size:13px}
+  tr.invRow .invC-bal{grid-column:2;grid-row:3;text-align:right;font-size:18px}
+  tr.invRow .invC-bal::before{content:attr(data-l)!important;display:block;font-size:11px;font-weight:800;color:var(--ds-muted);text-transform:uppercase}
+  tr.invRow .invC-total,tr.invRow .invC-paid{grid-column:1/-1;font-size:13px;color:var(--ds-ink-2)}
+  tr.invRow .invC-total{grid-row:4}
+  tr.invRow .invC-paid{grid-row:5}
+  tr.invRow .invC-total::before,tr.invRow .invC-paid::before{content:attr(data-l) " "!important;font-weight:700}
+  tr.invRow .invC-act{grid-column:1/-1;grid-row:6}
+  #invoiceTable tr.invRow td.invC-act button{width:100%;min-height:44px!important}
+}
+
+/* U5: on a phone the Parts page starts with Search, Scan and New Part; occasional tools sit under "More tools". */
+.partsMoreBtn{display:none}
+.partsToolsMore{display:contents}
+@media(max-width:760px){
+  .partsMoreBtn{display:inline-flex}
+  .partsToolsMore{display:none}
+  .partsTools.open .partsToolsMore{display:flex;flex-wrap:wrap;gap:6px;width:100%}
+}
