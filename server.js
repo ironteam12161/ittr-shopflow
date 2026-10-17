@@ -2104,7 +2104,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.74.0");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.75.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 // v24.71.0: liveness and readiness are separate. /api/health/live only says the process answers (never restart the
 // app because the database or an optional service such as AI is down). /api/health (= /api/health/ready, Railway's
@@ -2207,6 +2207,11 @@ app.get("/api/state",auth,async(req,res,next)=>{try{
 
   const ur=(await db.query("SELECT payload,version,updated_at FROM app_state WHERE state_key='users'")).rows[0],me=ur?.payload?.[req.user.username];
   const self=me&&typeof me==="object"?{[req.user.username]:{role:me.role||"mechanic",display:me.display||req.user.display_name||req.user.username,currentActivity:me.currentActivity||{code:"",note:"",startedAt:""},activityHistory:Array.isArray(me.activityHistory)?me.activityHistory.slice(0,50):[]}}:{};
+  // v24.75.0: a minimal directory of the other ACTIVE mechanics (username, name, role only) so work-order cards show who
+  // is assigned and the helper picker has names. No contact details, activity, permissions or account settings.
+  const crew=(await db.query("SELECT username,display_name FROM auth_users WHERE role='mechanic' AND active=true ORDER BY username LIMIT 200")).rows;
+  if(!self[req.user.username])self[req.user.username]={role:"mechanic",display:req.user.display_name||req.user.username,currentActivity:{code:"",note:"",startedAt:""},activityHistory:[]};
+  for(const m of crew)if(!self[m.username])self[m.username]={role:"mechanic",display:m.display_name||m.username,directoryOnly:true};
   return res.json({shopflow:{payload:shopflowForUser(req.user,r.payload),version:Number(r.version),updatedAt:r.updated_at},users:{payload:self,version:Number(ur?.version||0),updatedAt:ur?.updated_at||null}});
  }
  const q=await db.query("SELECT state_key,payload,version,updated_at FROM app_state ORDER BY state_key");const d={};for(const r of q.rows)d[r.state_key]={payload:r.payload,version:Number(r.version),updatedAt:r.updated_at};
@@ -2219,11 +2224,24 @@ app.get("/api/state",auth,async(req,res,next)=>{try{
 // carries the shop record (GET /api/state, history versions, and every mutation a mechanic can reach). A mechanic gets
 // only their own work orders (primary or helper), those work orders' findings, and the work-order counter; any other
 // top-level key stays on the server (a mechanic's save keeps it — see the PUT merge).
+// v24.75.0: every active mechanic SEES all of the shop's work orders (assigned or not) and their findings, so the crew can
+// see what is in the bay, coming up and done. What a mechanic may CHANGE is unchanged: mechanicOwnsWorkOrder (primary or
+// helper) still guards every action route and the whole-shop save. Part buy costs and any invoice/contact fields are left out
+// of a mechanic's copy (they come back from the server on save; see TASK_SERVER_KEYS / MECHANIC_HIDDEN_WO_KEYS in the merge).
 const MECHANIC_SHOPFLOW_KEYS=["lastWorkOrderId"];
+const MECHANIC_HIDDEN_WO_KEYS=["invoice","invoiceId","invoiceNumber","invoiceStatus","invoiceTotal","totalAmount","amount","laborRate","estimateTotal","customerEmail","customerPhone","email","phone","billingNote"];
+const MECHANIC_HIDDEN_PART_KEYS=["unitCost","cost","lastCost","averageCost","margin"]; // buy cost only, as in parts search (MECHANIC_HIDDEN_PART_FIELDS)
+function mechanicCanViewWorkOrder(user,w){return !!w&&(user?.role==="admin"||user?.role==="mechanic")}
+function mechanicWorkOrderView(w){
+ if(!w||typeof w!=="object")return w;
+ const o={...w};for(const k of MECHANIC_HIDDEN_WO_KEYS)delete o[k];
+ if(Array.isArray(o.tasks))o.tasks=o.tasks.map(t=>{if(!t||typeof t!=="object"||!Array.isArray(t.parts))return t;return {...t,parts:t.parts.map(p=>{if(!p||typeof p!=="object")return p;const x={...p};for(const k of MECHANIC_HIDDEN_PART_KEYS)delete x[k];return x})}});
+ return o;
+}
 function shopflowForUser(user,payload){
  const sf=(payload&&typeof payload==='object')?payload:{workorders:[],issues:[]};
  if(user?.role!=="mechanic")return sf;
- const workorders=(Array.isArray(sf.workorders)?sf.workorders:[]).filter(w=>mechanicOwnsWorkOrder(user,w));
+ const workorders=(Array.isArray(sf.workorders)?sf.workorders:[]).filter(w=>mechanicCanViewWorkOrder(user,w)).map(mechanicWorkOrderView);
  const ids=new Set(workorders.map(w=>String(w?.id||'')));
  const issues=(Array.isArray(sf.issues)?sf.issues:[]).filter(i=>ids.has(String(i?.wo||'')));
  const out={workorders,issues};for(const k of MECHANIC_SHOPFLOW_KEYS)if(k in sf)out[k]=sf[k];
@@ -2335,10 +2353,16 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{
     const kept=[];
     const TASK_SERVER_KEYS=["uid","parts","startedAt","stoppedAt","elapsedMs","runningBy","sessions","pausedAt","pauseReason","timeAdjustments"];
     const workorders=currentW.map(old=>{
-      if(!ownedIds.has(String(old?.id||'')))return old;
+      if(!ownedIds.has(String(old?.id||''))){
+       // v24.75.0: mechanics now see every work order; a change to one they are not assigned to is not saved and is reported.
+       const proposed=incomingById.get(String(old?.id||''));
+       if(proposed&&woPrint(proposed)!==woPrint(old))notApplied.push({workOrderId:String(old.id),reason:"not_assigned"});
+       return old;
+      }
       const proposed=incomingById.get(String(old?.id||''));if(!proposed)return old;
       if(LOCKED_WO.has(String(old?.status||""))){if(woPrint(proposed)!==woPrint(old))notApplied.push({workOrderId:String(old.id),reason:"completed"});return old}
       const merged=clean(proposed);for(const k of protectedKeys)merged[k]=old[k];
+      for(const k of MECHANIC_HIDDEN_WO_KEYS){if(k in old)merged[k]=old[k];else delete merged[k]}
       // v24.47.5: a whole-shop save from a phone holding an older copy never puts a finished inspection back to
       // "In Progress" (the mechanic then showed as inspecting all day) and never drops answers already saved.
       if(old?.inspection&&typeof old.inspection==="object"){
@@ -2368,7 +2392,7 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{
     const incomingIssues=new Map(incomingI.map(i=>[String(i?.id||''),i]));
     const existingIds=new Set(currentI.map(i=>String(i?.id||'')));
     const issues=currentI.map(old=>{
-      if(!ownedIds.has(String(old?.wo||'')))return old;const proposed=incomingIssues.get(String(old?.id||''));if(!proposed)return old;const x=clean(proposed);
+      if(!ownedIds.has(String(old?.wo||''))){const p=incomingIssues.get(String(old?.id||''));if(p&&JSON.stringify([p.description,p.recommendation,p.severity])!==JSON.stringify([old.description,old.recommendation,old.severity]))notApplied.push({workOrderId:String(old.wo),findingId:String(old.id),reason:"not_assigned"});return old}const proposed=incomingIssues.get(String(old?.id||''));if(!proposed)return old;const x=clean(proposed);
       for(const k of ['id','wo','createdAt','created','mechanic','approval','adminNote','decisionAt','decisionBy','convertedToTask','officeReviewedAt','officeReviewedBy','sentAt','sentBy'])x[k]=old[k];return x;
     });
     // v24.70.0: a finding id from a phone is a plain token (the app uses a timestamp); anything else could break out of the
@@ -2796,6 +2820,39 @@ app.post("/api/work-orders/self-start",auth,async(req,res,next)=>{
 });
 // v24.71.0: helper, part and job-timer changes now tell the other devices (the owner's dashboard) at once over the
 // live socket; before, only the 4-second poll of a visible tab picked them up.
+// v24.75.0: "Reactivate / Add Missed Work" on a completed work order. Before, the phone did this through the whole-shop
+// save, which (since v24.72.0) never changes a completed work order for a mechanic, so the reopen was silently refused.
+// Who may reopen is unchanged: the mechanic who completed it or its primary mechanic (and the owner/managers). A reason
+// and at least one missed job are required; the reopen is recorded in the work-order history and the audit log.
+app.post("/api/work-orders/:id/reactivate",auth,async(req,res,next)=>{
+ const db=await requireDb().connect();
+ try{
+  const workOrderId=String(req.params.id),reason=String(req.body?.reason||"").replace(/[<>]/g,"").trim().slice(0,1000);
+  const added=(Array.isArray(req.body?.tasks)?req.body.tasks:[]).map(t=>String(t||"").replace(/[<>]/g,"").trim().slice(0,300)).filter(Boolean).slice(0,30);
+  if(!reason||!added.length){return res.status(400).json({error:"Give a reason and at least one missed job."})}
+  await db.query("BEGIN");
+  const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
+  if(!q.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Shop data not found."})}
+  const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
+  const w=sf.workorders.find(x=>String(x?.id)===workOrderId);if(!w){await db.query("ROLLBACK");return res.status(404).json({error:"Work order not found."})}
+  if(String(w.status)!=="Completed"){await db.query("ROLLBACK");return res.status(409).json({error:"Only a completed work order can be reactivated."})}
+  const me=String(req.user.username||"").toLowerCase(),office=["admin","manager"].includes(req.user.role);
+  if(!office&&!(req.user.role==="mechanic"&&[w.completedBy,w.mechanic].some(x=>String(x||"").toLowerCase()===me))){await db.query("ROLLBACK");return res.status(403).json({error:"You can only reactivate your own completed work."})}
+  const now=new Date().toISOString();
+  w.tasks=Array.isArray(w.tasks)?w.tasks:[];
+  for(const t of added)w.tasks.push({uid:`wo-${workOrderId}-reopen-${crypto.randomBytes(5).toString("hex")}`,t,done:false,startedAt:"",stoppedAt:"",runningBy:"",elapsedMs:0,completedAt:"",taskOutcome:"",outcomeNote:"",outcomeAt:"",outcomeBy:"",paused:false,pausedAt:"",pauseReason:"",pauseNote:"",source:"reactivation"});
+  if(req.user.role==="mechanic")w.mechanic=req.user.username;
+  Object.assign(w,{status:"In Progress",outcomeWorkflowVersion:1,completedAt:"",completedBy:"",isReactivated:true,reactivatedBy:req.user.username,reactivatedAt:now,reactivationCount:Number(w.reactivationCount||0)+1});
+  if(w.unitType==="customer")w.truckHere=true;if(w.unitType==="fleet"||w.unitType==="equipment")w.fleetAuto=true;
+  w.history=Array.isArray(w.history)?w.history:[];
+  w.history.push({type:"reactivated",at:now,by:req.user.username,byDisplay:req.user.display_name||req.user.username,reason,addedTasks:added});
+  const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
+  await db.query("COMMIT");
+  await audit(req.user.username,"work_order_reactivated",{workOrderId,reason,addedTasks:added.length});
+  broadcastShopStatus("shopflow_changed",{by:req.user.username,version:Number(u.rows[0].version)});
+  res.json({ok:true,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at,shopflow:shopflowForUser(req.user,sf)});
+ }catch(e){try{await db.query("ROLLBACK")}catch(_){};next(e)}finally{try{db.release()}catch(_){}}
+});
 app.post("/api/work-orders/:id/helpers",auth,async(req,res,next)=>{
  const db=await requireDb().connect();
  try{
@@ -2887,7 +2944,7 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/parts",auth,async(req,res,n
   t.parts.push(part);w.history=Array.isArray(w.history)?w.history:[];w.history.push({type:"part_added",at:part.addedAt,by:req.user.username,task:t.t,partNumber:finalPartNumber,description:finalDescription,qty,stockMode:part.stockMode});
   const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
   await db.query("COMMIT");await audit(req.user.username,"task_part_reserved",{workOrderId,taskUid:uid,partId:part.id,inventoryPartId,qty,stockWarning:stockWarning||undefined});
-  broadcastShopStatus("shopflow_changed",{by:req.user.username,workOrderId:String(req.params.id),version:Number(u.rows[0].version)});res.json({ok:true,stockWarning:stockWarning||undefined,part,shopflow:shopflowForUser(req.user,sf),version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
+  broadcastShopStatus("shopflow_changed",{by:req.user.username,workOrderId:String(req.params.id),version:Number(u.rows[0].version)});res.json({ok:true,stockWarning:stockWarning||undefined,part:req.user?.role==="mechanic"?mechanicWorkOrderView({tasks:[{parts:[part]}]}).tasks[0].parts[0]:part,shopflow:shopflowForUser(req.user,sf),version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
  }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
 });
 // ITTR_INVENTORY_RESERVE_FINALIZE_V1_WO_REMOVE
@@ -3107,7 +3164,7 @@ app.get("/api/work-orders/:id/pdf",auth,async(req,res,next)=>{try{
  const pro=states.pro&&typeof states.pro==="object"?states.pro:{vehicles:[]};
  const w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===workOrderId);
  if(!w)return res.status(404).json({error:"Work order not found."});
- if(!["admin","manager"].includes(req.user?.role)&&!mechanicOwnsWorkOrder(req.user,w))return res.status(403).json({error:"You do not have access to this work order."});
+ if(!["admin","manager"].includes(req.user?.role)&&!mechanicCanViewWorkOrder(req.user,w))return res.status(403).json({error:"You do not have access to this work order."});
  if(String(w.status)!=="Completed")return res.status(409).json({error:"Work order PDF is available after the work order is completed."});
  const profileVehicle=(Array.isArray(pro.vehicles)?pro.vehicles:[]).find(v=>String(v?.unit||"").toLowerCase()===String(w.unit||"").toLowerCase())||{}; const vehicle={year:w.year||profileVehicle.year,make:w.make||profileVehicle.make,model:w.model||profileVehicle.model,vin:w.vin||profileVehicle.vin,plate:w.plate||profileVehicle.plate,mileage:w.mileage||profileVehicle.mileage,engine:w.engine||profileVehicle.engine,transmission:w.transmission||profileVehicle.transmission,customer:w.customer||profileVehicle.customer};
  const sessions=(await db.query(`SELECT task_uid,task_name,mechanic_username,started_at,ended_at,end_reason,pause_reason,pause_note FROM task_time_sessions WHERE work_order_id=$1 ORDER BY started_at,id`,[workOrderId])).rows||[];
@@ -3185,7 +3242,7 @@ app.get("/api/work-orders/:id/task-sessions",auth,async(req,res,next)=>{try{
   const sf=stateQ.rows[0].payload&&typeof stateQ.rows[0].payload==="object"?stateQ.rows[0].payload:{workorders:[]};
   const w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===workOrderId);
   if(!w)return res.status(404).json({error:"Work order not found."});
-  if(!mechanicOwnsWorkOrder(req.user,w) && !["admin","manager"].includes(req.user?.role))
+  if(!mechanicCanViewWorkOrder(req.user,w) && !["admin","manager"].includes(req.user?.role))
     return res.status(403).json({error:"You do not have access to this work order."});
 
   const tasks=Array.isArray(w.tasks)?w.tasks:[];
@@ -3480,7 +3537,7 @@ async function getShopflowPayload(db=requireDb()){
 }
 // v24.70.0 (owner's decision): managers may VIEW finding photos (the Findings page is open to every manager); adding
 // photos stays with the owner and the assigned mechanics, and changing/deleting with the uploader or the owner.
-function canViewPhotoWorkOrder(user,w){return user?.role==="manager"||canAccessPhotoWorkOrder(user,w)}
+function canViewPhotoWorkOrder(user,w){return user?.role==="manager"||mechanicCanViewWorkOrder(user,w)}
 function canAccessPhotoWorkOrder(user,w){
  if(user?.role==="admin")return true;
  return user?.role==="mechanic"&&assignedMechanicUsernames(w).includes(String(user?.username||"").trim().toLowerCase());
@@ -3786,7 +3843,7 @@ app.get("/api/work-orders/:id/inspection/pdf",auth,async(req,res,next)=>{try{
  const pro=states.pro&&typeof states.pro==="object"?states.pro:{vehicles:[]};
  const w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===workOrderId);
  if(!w)return res.status(404).json({error:"Work order not found."});
- if(!canManageInspectionRepairs(req.user,w))return res.status(403).json({error:"You do not have access to this work order."});
+ if(!["admin","manager"].includes(req.user?.role)&&!mechanicCanViewWorkOrder(req.user,w))return res.status(403).json({error:"You do not have access to this work order."});
  const insp=w.inspection||{};
  if(!insp.required||!insp.type)return res.status(409).json({error:"This work order has no inspection."});
  if(!inspectionChecklist())return res.status(503).json({error:"Inspection checklist is still loading. Try again in a moment."});
@@ -5078,7 +5135,7 @@ app.post("/api/ai/shop-chat",auth,async(req,res)=>{try{
   manuals=await findWorkshopManuals(db,unit,question);
   const st=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");
   const sf=st.rows[0]?.payload||{};
-  workorders=(Array.isArray(sf.workorders)?sf.workorders:[]).filter(w=>req.user.role!=='mechanic'||mechanicOwnsWorkOrder(req.user,w)).filter(w=>String(w.unit||'').toLowerCase()===String(unit.unit_number||'').toLowerCase()||String(w.vin||'').toLowerCase()===String(unit.vin||'').toLowerCase()).slice(-60).map(w=>({id:w.id,unit:w.unit,status:w.status,date:w.date,completedAt:w.completedAt,mileage:w.mileage,tasks:(w.tasks||[]).map(t=>({name:t.t,outcome:t.taskOutcome||'',note:t.outcomeNote||'',elapsedMs:t.elapsedMs||0}))}));
+  workorders=(Array.isArray(sf.workorders)?sf.workorders:[]).filter(w=>req.user.role!=='mechanic'||mechanicCanViewWorkOrder(req.user,w)).filter(w=>String(w.unit||'').toLowerCase()===String(unit.unit_number||'').toLowerCase()||String(w.vin||'').toLowerCase()===String(unit.vin||'').toLowerCase()).slice(-60).map(w=>({id:w.id,unit:w.unit,status:w.status,date:w.date,completedAt:w.completedAt,mileage:w.mileage,tasks:(w.tasks||[]).map(t=>({name:t.t,outcome:t.taskOutcome||'',note:t.outcomeNote||'',elapsedMs:t.elapsedMs||0}))}));
  }
  const financialAllowed=seeMoney;
  const recentIttrServices=compactInvoiceHistory(invoices);

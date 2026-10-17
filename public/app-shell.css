@@ -166,3 +166,12 @@ body.modalOpen #shopAiFab,body.invoiceWorkspaceMode #shopAiFab{display:none!impo
   .partsToolsMore{display:none}
   .partsTools.open .partsToolsMore{display:flex;flex-wrap:wrap;gap:6px;width:100%}
 }
+
+/* v24.75.0: mechanic "All shop work / My assigned work" bar and the who-is-on-it line on mechanic cards. */
+.mechViewBar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0 12px}
+.mechViewBar button{min-height:44px;border-radius:999px;padding:0 16px;background:var(--card,#fff);color:inherit;border:1.5px solid var(--line,#d0d5dd);font-weight:700}
+.mechViewBar button[aria-pressed="true"]{background:var(--accent,#c2410c);border-color:var(--accent,#c2410c);color:#fff}
+.mechViewBar input[type=search]{flex:1 1 220px;min-width:0;min-height:44px}
+.mechWoMeta{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;margin-top:8px;font-size:13px}
+.mechWoMeta .mechWoNo{font-weight:800}
+.mechViewCount{font-size:14px;font-weight:600}

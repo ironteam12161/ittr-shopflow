@@ -287,7 +287,9 @@ try{
  assert(act.user.currentActivity.code==='parts','activity saved for mechanic');
  const adminView=await request('/api/state');assert(adminView.users.payload[mechUser]?.currentActivity?.code==='parts','admin sees mechanic activity');
  const mechView=await request('/api/state',{tok:mechToken});const keys=Object.keys(mechView.users?.payload||{});
- assert(keys.length===1&&keys[0]===mechUser&&mechView.users.payload[mechUser].currentActivity.note==='NAPA run','mechanic reads only their own activity');
+ // v24.75.0: other active mechanics appear only as a name directory (no activity, history or account details).
+ const others=keys.filter(k=>k!==mechUser).map(k=>mechView.users.payload[k]);
+ assert(mechView.users.payload[mechUser].currentActivity.note==='NAPA run'&&others.every(o=>Object.keys(o).sort().join()==='directoryOnly,display,role'),'mechanic reads only their own activity');
  await request('/api/mechanic/activity',{method:'POST',tok:mechToken,body:{action:'stop'}});
  const after=(await request('/api/state')).users.payload[mechUser];assert(!after.currentActivity.code&&after.activityHistory[0].endedAt,'stop closes the activity in history');
  await db.query("INSERT INTO auth_users(username,display_name,password_hash,role) VALUES('ghostmech','Ghost Mechanic','x','mechanic') ON CONFLICT(username) DO NOTHING");

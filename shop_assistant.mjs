@@ -1,8 +1,8 @@
 // ITTR Workshop AI v2 — the model looks up exactly what each question needs (read-only lookups),
 // instead of receiving a large data dump. Cheaper per question and able to answer about parts,
 // stock, cores, work orders, invoices, customers, mechanics and truck history.
-// Every lookup respects the user's role: mechanics never see prices/invoices or other mechanics'
-// work orders; only admins/managers see customers, invoices and cores.
+// Every lookup respects the user's role: mechanics never see prices/invoices; only admins/managers see customers,
+// invoices and cores. v24.75.0: like the app, mechanics may look up every shop work order (read only).
 
 const MAX_ROUNDS = 5;
 const MAX_TOOL_CHARS = 7000;
@@ -49,7 +49,7 @@ export function assistantToolOffered(name, who) {
 }
 
 function woMechanics(w) { return [w?.mechanic, ...(Array.isArray(w?.helpers) ? w.helpers : [])].map(lc).filter(Boolean); }
-function woVisible(w, who) { return who.manager || woMechanics(w).includes(who.username); }
+function woVisible(w, who) { return !!w && (who.manager || who.role === 'mechanic'); }
 function woSummary(w, who) {
   const tasks = (Array.isArray(w?.tasks) ? w.tasks : []).filter(t => !t?.cancelled);
   return {
@@ -152,7 +152,7 @@ export function createAssistantTools({ db, who, getShopflow, searchManuals, read
 
     async work_order_details({ id }) {
       const w = (await allWo()).find(x => String(x.id) === String(id).replace(/^#/, ''));
-      if (!w || !woVisible(w, who)) return { error: `Work order ${id} not found${who.manager ? '' : ' among your work orders'}.` };
+      if (!w || !woVisible(w, who)) return { error: `Work order ${id} not found.` };
       const res = w.inspection?.results || {};
       return { ...woSummary(w, who), notes: clip(w.notes, 400), completionNotes: clip(w.completionNotes, 400), futureRepairs: clip(w.futureNotes, 300), mileage: w.mileage || null,
         jobDetails: (w.tasks || []).filter(t => !t?.cancelled).map(t => ({ job: clip(t.t, 160), outcome: t.taskOutcome || '', outcomeNote: clip(t.outcomeNote, 200), addedBy: t.addedBy || '', minutes: Math.round(num(t.elapsedMs) / 60000) })),
