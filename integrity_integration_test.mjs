@@ -6,7 +6,11 @@
 // F3  a purchase-order receipt that repeats a line is refused and puts nothing on the shelf.
 // F4  startup never merges same-name customers; the owner's reviewed merge moves every reference in one transaction.
 // D2  CSV uploads are capped per request before the body is read.
+// SYNC (Oct 17 sync review) office screens get a data_changed signal for their area, only with that permission;
+//     receiving parts on a work order's PO announces parts_arrived to the office, never to mechanics.
 import http from 'node:http';
+import { createRequire } from 'node:module';
+const { WebSocket } = createRequire(import.meta.url)('ws');
 import { dbSuiteGuard, reportSuite, startTestServer, ok, eq } from './test_harness.mjs';
 const NAME = 'integrity integration';
 dbSuiteGuard(NAME);
@@ -118,6 +122,30 @@ try {
     eq((await srv.db.query('SELECT count(*)::int n FROM customer_links WHERE customer_id=$1', [b.id])).rows[0].n, 0, 'nothing left pointing at the removed customer');
     ok((await srv.db.query("SELECT details FROM server_audit WHERE action='customer_merged' ORDER BY id DESC LIMIT 1")).rows[0].details.duplicateRecord.dot_number === '222', 'removed record kept in the audit log');
     ok(link.url || link.token, 'link existed');
+  });
+
+  // ---------- SYNC ----------
+  await scenario('SYNC area signals reach only permitted office accounts; parts arrival announced', async () => {
+    const open = tok => new Promise((resolve, reject) => { const ws = new WebSocket(srv.base().replace('http', 'ws') + '/ws/shop-status'); const msgs = []; ws.on('message', d => { try { msgs.push(JSON.parse(String(d))); } catch (_) {} }); ws.on('error', reject); ws.on('open', () => ws.send(JSON.stringify({ type: 'auth', token: tok }))); const t0 = Date.now(); (function w() { if (msgs.some(m => m.type === 'connected')) return resolve({ ws, msgs }); if (Date.now() - t0 > 5000) return reject(new Error('socket not admitted')); setTimeout(w, 30); })(); });
+    const tOwner = await srv.login(OWNER.username, OWNER.password), tBoth = await srv.login('mgrboth', 'Manager-Pass-2026'), tCust = await srv.login('mgrcust', 'Manager-Pass-2026'), tInv = await srv.login('mgrinv', 'Manager-Pass-2026'), tMech = await srv.login('mechb', 'Mechanic-Pass-1');
+    const [so, sb, sc, si, sm] = await Promise.all([tOwner, tBoth, tCust, tInv, tMech].map(open));
+    await R('/api/invoices', { method: 'POST', token: tOwner, body: { customerId: cust.id, customerName: 'Money Fleet', unitNumber: 'M-1' } });
+    await new Promise(r => setTimeout(r, 900));
+    const got = (s, d) => s.msgs.some(m => m.type === 'data_changed' && m.domain === d);
+    ok(got(so, 'invoices') && got(sb, 'invoices'), 'owner and manager with Invoices are told invoices changed');
+    ok(!got(sc, 'invoices') && !got(si, 'invoices') && !got(sm, 'invoices'), 'Customers-only, Inventory-only and mechanic accounts are not');
+    ok(!JSON.stringify(sb.msgs).includes('Money Fleet'), 'the signal carries no record data');
+    // Parts received on a PO linked to a work order.
+    const part = await R('/api/parts', { method: 'POST', token: tOwner, body: { partNumber: 'ARR-1', description: 'Arrival test', quantity: 0, cost: 5, price: 10 } });
+    const po = await R('/api/purchase-orders', { method: 'POST', token: tInv, body: { vendor: 'Arrive Co', workOrderId: '902', lines: [{ inventoryPartId: Number(part.item.id), partNumber: 'ARR-1', description: 'Arrival test', qty: 1, unitCost: 5 }] } });
+    await R(`/api/purchase-orders/${po.id}/status`, { method: 'POST', token: tInv, body: { status: 'ordered' } });
+    const b = await R(`/api/purchase-orders/${po.id}`, { token: tInv }); const lineId = (b.lines || b.po?.lines || [])[0].id;
+    await R(`/api/purchase-orders/${po.id}/receive`, { method: 'POST', token: tInv, body: { lines: [{ id: lineId, qty: 1 }] } });
+    await new Promise(r => setTimeout(r, 900));
+    const arr = so.msgs.find(m => m.type === 'parts_arrived');
+    ok(arr && arr.workOrderId === '902' && arr.unit === 'OPEN-902' && arr.complete === true, `owner told parts arrived (${JSON.stringify(arr)})`);
+    ok(got(si, 'inventory'), 'inventory screens told stock changed'); ok(!sm.msgs.some(m => m.type === 'parts_arrived'), 'mechanic gets no PO details');
+    for (const x of [so, sb, sc, si, sm]) x.ws.close();
   });
 
   // ---------- D2 ----------

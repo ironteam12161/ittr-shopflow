@@ -23,8 +23,14 @@
     // Storage full or blocked (private mode): the save still goes to the server; the status says the copy on this
     // device could not be kept, so a reload before it is saved would lose it.
     const writeQ = (q, u = user()) => { if (!u) return; try { if (Object.keys(q).length) o.storage.setItem(qKey(u), JSON.stringify(q)); else o.storage.removeItem(qKey(u)); if (errors._storage) delete errors._storage; } catch (e) { errors._storage = { kind: 'storage', message: 'This device could not keep a copy of the unsaved change (storage full or blocked).' }; } };
-    const readItem = key => readQ()[key] || null;
-    const writeItem = (key, item) => { const q = readQ(); if (item) q[key] = item; else delete q[key]; writeQ(q); };
+    // v24.73.0: each tab keeps its own entry (<record>@<tab>), so two tabs of the same account editing offline no longer
+    // overwrite each other's recovery copy. Entries left by a closed tab (and pre-v24.73 entries keyed by record only)
+    // are replayed on the next sign-in/reload by restore().
+    const entryKey = key => `${key}@${tab}`;
+    const stateKeyOf = (ek, item) => String(item?.key || String(ek).split('@')[0]);
+    const readItem = key => readQ()[entryKey(key)] || null;
+    const writeItem = (key, item) => { const q = readQ(); if (item) q[entryKey(key)] = item; else delete q[entryKey(key)]; writeQ(q); };
+    const pendingKeys = () => { const q = readQ(); return [...new Set(Object.entries(q).map(([ek, it]) => stateKeyOf(ek, it)))]; };
     const live = key => o.getLive(key);
     const status = () => { try { o.onStatus?.(api.status()); } catch (_) {} };
     const stale = (g, u) => g !== gen || u !== user();
@@ -82,7 +88,7 @@
         if (!fast) o.setLive(key, JSON.parse(bases[key].json), { reason: 'merged' });
         const cur = readItem(key);
         if (cur && cur.rev === item.rev) writeItem(key, null);
-        else if (cur && cur.tab === tab) persist(key);
+        else if (cur) persist(key);
         // A newer item written by another tab of this account stays: it is replayed on its own.
       } else {
         const during = M.diffState(JSON.parse(sentLiveJson), now);
@@ -152,9 +158,9 @@
       base: key => bases[key] ? { version: bases[key].version, json: bases[key].json } : null,
       item: key => readItem(key),
       queue: () => readQ(),
-      hasPending: key => !!readItem(key) || !!flights[key] || !!debounce[key],
+      hasPending: key => !!readItem(key) || pendingKeys().includes(key) || !!flights[key] || !!debounce[key],
       status() {
-        const q = readQ(), keys = new Set([...Object.keys(q), ...Object.keys(flights).filter(k => flights[k])]);
+        const keys = new Set([...pendingKeys(), ...Object.keys(flights).filter(k => flights[k])]);
         const errs = Object.values(errors);
         return { pending: keys.size, syncing: Object.values(flights).some(Boolean), offline: !o.online(), error: errs.find(x => x.kind !== 'offline') || null, keys: [...keys] };
       },
@@ -186,7 +192,7 @@
         status();
         return flights[key];
       },
-      async syncAll() { for (const k of Object.keys(readQ())) await api.sync(k); },
+      async syncAll() { for (const k of pendingKeys()) await api.sync(k); },
       async idle() { while (Object.values(flights).some(Boolean) || Object.values(debounce).some(Boolean)) await Promise.all(Object.values(flights).filter(Boolean).concat(new Promise(r => timers.set(r, 50)))); },
       // Versions of the server copy a pre-v24.67.0 queued edit was based on (fetched before restore()).
       legacyNeeds(fresh) {
@@ -215,12 +221,21 @@
           }
         } catch (_) {}
         const restored = [];
-        for (const [key, item] of Object.entries(readQ())) {
-          if (!item || item.v !== 3 || (item.user && item.user !== u) || !Array.isArray(item.changes) || (o.allowKey && !o.allowKey(key))) { archive('unusable', { key, item }); writeItem(key, null); continue; }
+        // Every entry of this account for a record (this tab's, closed tabs', older format) is applied in the order it was
+        // queued, then they are replaced by one entry for this tab.
+        const groups = new Map();
+        for (const [ek, item] of Object.entries(readQ())) {
+          const key = stateKeyOf(ek, item);
+          if (!item || item.v !== 3 || (item.user && item.user !== u) || !Array.isArray(item.changes) || (o.allowKey && !o.allowKey(key))) { archive('unusable', { key, item }); const q = readQ(); delete q[ek]; writeQ(q); continue; }
+          if (!groups.has(key)) groups.set(key, []); groups.get(key).push([ek, item]);
+        }
+        for (const [key, entries] of groups) {
           const remote = fresh?.[key]; if (!remote) continue;
-          const out = M.applyChanges(remote.payload, item.changes);
-          o.setLive(key, out.payload, { reason: 'restored' });
-          reportConflicts(key, out.lost, out.conflicts);
+          entries.sort((a, b) => String(a[1].queuedAt || '').localeCompare(String(b[1].queuedAt || '')));
+          let cur = remote.payload;
+          for (const [, item] of entries) { const out = M.applyChanges(cur, item.changes); cur = out.payload; reportConflicts(key, out.lost, out.conflicts); }
+          o.setLive(key, cur, { reason: 'restored' });
+          const q = readQ(); for (const [ek] of entries) delete q[ek]; writeQ(q);
           persist(key); restored.push(key);
         }
         status();

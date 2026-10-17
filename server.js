@@ -857,17 +857,32 @@ const LIVE_MAX_PAYLOAD=4096,LIVE_MAX_PER_USER=Number(process.env.ITTR_LIVE_MAX_P
 const liveWss=new WebSocketServer({server:httpServer,path:"/ws/shop-status",maxPayload:LIVE_MAX_PAYLOAD});
 const liveClients=new Set();let livePending=0;
 const LIVE_REFRESH_TYPES=new Set(["shopflow_changed","task_changed","work_order_created"]);
-const LIVE_OFFICE_TYPES=new Set(["customer_decision","sms_received"]);
-function liveMessageFor(u,type,base,full){
+const LIVE_OFFICE_TYPES=new Set(["customer_decision","sms_received","parts_arrived"]);
+// v24.73.0: office screens that load their own data (invoices, payments, bills, purchase orders, parts, customers) are
+// told when another device changed that area, so an open list refreshes instead of showing old numbers. Each signal
+// goes only to accounts allowed to see that area; it carries the area and who changed it, never the data.
+const DATA_DOMAINS=[
+ [/^\/api\/(invoices|estimates|service-orders|finance)(\/|$)|^\/api\/customers\/[^/]+\/(receive-payment|apply-credit)$/,"invoices","invoices"],
+ [/^\/api\/(bills|vendor-invoices)(\/|$)/,"bills","invoices"],
+ [/^\/api\/(purchase-orders|parts)(\/|$)/,"inventory","inventory"],
+ [/^\/api\/(customers|customer-units|fleet-maintenance)(\/|$)/,"customers","customers"],
+];
+const DATA_DOMAIN_PERM=Object.fromEntries(DATA_DOMAINS.map(([,d,p])=>[d,p]));
+function liveMessageFor(u,type,base,full,domain){
  if(!u)return null;
+ if(type==="data_changed"){const perm=DATA_DOMAIN_PERM[domain];return u.role==="admin"||(u.role==="manager"&&u.permissions?.[perm]===true)?full:null}
  if(u.role==="admin"||u.role==="manager")return full;
  if(u.role==="mechanic"&&LIVE_REFRESH_TYPES.has(type))return base;
  return null;
 }
 function broadcastShopStatus(type,payload={}){
  const at=new Date().toISOString(),full=JSON.stringify({type,at,...payload}),base=JSON.stringify({type,at});
- for(const ws of liveClients){if(ws.readyState!==WebSocket.OPEN)continue;const msg=liveMessageFor(ws.ittrUser,type,base,full);if(msg)try{ws.send(msg)}catch(_){}}
+ for(const ws of liveClients){if(ws.readyState!==WebSocket.OPEN)continue;const msg=liveMessageFor(ws.ittrUser,type,base,full,payload.domain);if(msg)try{ws.send(msg)}catch(_){}}
 }
+// One place for every module: a successful change under these routes announces its area (coalesced per 300 ms).
+const pendingDomains=new Map();
+app.use((req,res,next)=>{if(req.method==="GET"||req.method==="HEAD"||req.method==="OPTIONS")return next();const hit=DATA_DOMAINS.find(([re])=>re.test(req.path));if(!hit)return next();
+ res.on("finish",()=>{if(res.statusCode>=400)return;const d=hit[1],by=String(req.user?.username||"");const cur=pendingDomains.get(d);if(cur){cur.by.add(by);return}const entry={by:new Set([by])};pendingDomains.set(d,entry);setTimeout(()=>{pendingDomains.delete(d);broadcastShopStatus("data_changed",{domain:d,by:[...entry.by].filter(Boolean).slice(0,5)})},300).unref?.()});next()});
 // The sign-in token arrives in the first message ({type:"auth",token}), not in the web address, where proxies and
 // server logs could record it. The old ?token= form (app copies before v24.58.1) is off unless ITTR_LEGACY_WS_TOKEN=1.
 const LIVE_SESSION_SQL=`SELECT s.id session_id,s.expires_at,u.id user_id,u.username,u.display_name,u.role,u.permissions FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.expires_at>now() AND u.active=true`;
@@ -5132,7 +5147,7 @@ async function receivePartStock(db,{partId,qty,unitCost,vendor,reference,usernam
  await db.query(`INSERT INTO part_purchase_cost_history(part_id,vendor,vendor_id,vendor_location_id,vendor_branch_snapshot,invoice_number,purchased_at,quantity,unit_cost,landed_unit_cost,core_cost,username) VALUES($1,$2,$3,$4,$5,$6,now(),$7,$8,$8,0,$9)`,[partId,vc.vendor||vendor,vc.vendorId,vc.locationId,vc.branch||null,reference||null,qty,unitCost,username]);
  return {before,after};
 }
-registerPurchaseOrderRoutes(app,{auth,managerPermission,requireDb,audit,receiveStock:receivePartStock,sendShopEmail,shopProfile});
+registerPurchaseOrderRoutes(app,{auth,managerPermission,requireDb,audit,receiveStock:receivePartStock,sendShopEmail,shopProfile,onReceived:async x=>{let unit="";try{unit=String(((await getShopflowPayload(requireDb())).workorders||[]).find(w=>String(w?.id)===x.workOrderId)?.unit||"")}catch(_){}broadcastShopStatus("parts_arrived",{workOrderId:x.workOrderId,unit,poNumber:x.poNumber,complete:x.complete,by:x.by})}});
 registerWorkOrderStoreRoutes(app,{auth,adminOnly,ownerOnly,requireDb,audit,broadcastShopStatus});
 registerWarrantyRoutes(app,{auth,adminOnly,ownerOnly,managerPermission,requireDb,audit,reportRange});
 registerPortalRoutes(app,{requireDb,publicLimiter,audit,invoicePdf:async(db,id)=>{const x=await getInvoiceBundle(db,id);return x?await invoicePdfBuffer(x):null}});

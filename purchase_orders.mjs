@@ -49,7 +49,7 @@ async function bundle(db, id) {
   return { po, lines };
 }
 
-export function registerPurchaseOrderRoutes(app, { auth, managerPermission, requireDb, audit, receiveStock, sendShopEmail, shopProfile }) {
+export function registerPurchaseOrderRoutes(app, { auth, managerPermission, requireDb, audit, receiveStock, sendShopEmail, shopProfile , onReceived}) {
   const inv = managerPermission('inventory'), fail = (res, s, error) => res.status(s).json({ error });
   const tx = fn => async (req, res, next) => { const db = await requireDb().connect(); try { await db.query('BEGIN'); const out = await fn(db, req, res); if (res.headersSent) { await db.query('ROLLBACK'); return; } await db.query('COMMIT'); res.json(out); } catch (e) { try { await db.query('ROLLBACK'); } catch (_) {} next(e); } finally { db.release(); } };
   app.get('/api/purchase-orders', auth, inv, async (req, res, next) => { try {
@@ -137,6 +137,8 @@ export function registerPurchaseOrderRoutes(app, { auth, managerPermission, requ
     const status = open ? 'partial' : 'received';
     await db.query(`UPDATE purchase_orders SET status=$2,ordered_at=coalesce(ordered_at,now()),received_at=CASE WHEN $2='received' THEN now() ELSE received_at END,updated_at=now() WHERE id=$1`, [po.id, status]);
     await audit(req.user.username, 'purchase_order_received', { id: po.id, poNumber: po.po_number, lines: got, reference });
+    // v24.73.0: once saved, the office is told parts arrived for that work order (nothing is restarted automatically).
+    if (po.work_order_id && onReceived) res.on('finish', () => { if (res.statusCode < 400) try { onReceived({ workOrderId: String(po.work_order_id), poNumber: po.po_number, complete: status === 'received', by: req.user.username }); } catch (_) {} });
     return { ok: true, status, received: got };
   }));
   app.post('/api/purchase-orders/:id/email', auth, inv, async (req, res, next) => { try {

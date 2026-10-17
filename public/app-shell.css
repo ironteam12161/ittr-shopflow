@@ -123,3 +123,7 @@
 #board .bdCard[draggable="true"]{cursor:grab}
 #board .bdCard.dragging{opacity:.5}
 #board .bdCol.dropHere{outline:2px dashed var(--ds-primary);outline-offset:-2px;background:var(--ds-primary-soft)}
+
+/* v24.73.0: "updated on another device" note for office screens (shown instead of reloading while someone types) */
+.ittrStaleNote{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom));z-index:60;display:flex;align-items:center;gap:8px;max-width:calc(100vw - 32px);padding:8px 10px 8px 14px;border-radius:10px;background:var(--ds-surface,#fff);color:var(--ds-text,#111);border:1px solid var(--ds-border,#d0d5dd);box-shadow:0 6px 24px rgba(0,0,0,.18);font-size:14px}
+.ittrStaleNote button{min-height:36px}
