@@ -150,6 +150,29 @@ try {
     await ctx.close();
   });
 
+  await scenario('S5 a late state response cannot repopulate caches after logout or replace a new account', async () => {
+    for (const switchAccount of [false,true]) {
+      const {ctx,page}=await newPage();await page.goto(B);await signIn(page,OWNER.username,OWNER.password);
+      // Ignore cancellation to exercise the generation fence independently of AbortController.
+      await page.evaluate(()=>{
+        window.ITTR_NO_LOGOUT_RELOAD=true;
+        const original=window.fetch;
+        window.auditNativeFetch=original;
+        window.fetch=(url,opts)=>String(url)==='/api/translate'?new Promise(resolve=>{window.auditReleaseTranslation=()=>resolve(new Response(JSON.stringify({translations:['Приватний ремонт']}),{status:200,headers:{'Content-Type':'application/json'}}))}):String(url)==='/api/state'?new Promise(resolve=>{window.auditRelease=()=>resolve(new Response(JSON.stringify({shopflow:{version:999999,payload:{workorders:[{id:'LATE-SECRET',unit:'LATE-SECRET'}],issues:[]}},users:{version:999999,payload:{oldAccount:{display:'LATE-SECRET'}}},pro:{version:999999,payload:{vehicles:[{unit:'LATE-SECRET'}]}}}),{status:200,headers:{'Content-Type':'application/json'}}))}):original(url,opts);
+        window.auditRefresh=refreshCloudStateSilently();
+        aiQueue.clear();aiQueue.add("PRIVATE CUSTOMER REPAIR");currentLanguage="uk";aiTranslationEnabled=true;window.auditTranslation=flushAITranslationQueue();currentLanguage="en";
+      });
+      await until(page,()=>!!window.auditRelease&&!!window.auditReleaseTranslation);
+      await page.evaluate(()=>logout());
+      if(switchAccount){await page.evaluate(()=>{window.fetch=window.auditNativeFetch});await signIn(page,'mechb','Mechanic-Pass-1')}
+      await page.evaluate(async()=>{window.auditRelease();window.auditReleaseTranslation();await Promise.all([window.auditRefresh,window.auditTranslation]);window.fetch=window.auditNativeFetch});
+      const snapshot=await page.evaluate(()=>({who:session?.username||'',data:JSON.stringify({state,USERS,PRO}),cache:['ittr_shopflow_v2','ittr_users_v1','ittr_pro_v20','ittr_ai_translation_cache_v2'].map(k=>localStorage.getItem(k))}));
+      ok(!snapshot.data.includes('LATE-SECRET')&&!snapshot.cache.some(x=>x?.includes('LATE-SECRET')||x?.includes('PRIVATE CUSTOMER REPAIR')),'late prior-account data not adopted');
+      if(switchAccount)eq(snapshot.who,'mechb','new account kept');else eq(snapshot.cache.filter(Boolean).length,0,'no read caches after sign-out');
+      await ctx.close();
+    }
+  });
+
   await scenario('S5 session expiry (revoked elsewhere) clears the copies too', async () => {
     const { ctx, page } = await newPage(); await page.goto(B); await signIn(page, OWNER.username, OWNER.password);
     const tok = await page.evaluate(() => sessionStorage.getItem('ittr_cloud_token'));
