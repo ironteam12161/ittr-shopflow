@@ -27,7 +27,12 @@ export async function ensureCustomerLinkSchema(db) {
 export async function findActiveLink(db, token, { touch = false } = {}) {
   if (!/^[A-Za-z0-9_-]{30,80}$/.test(String(token || ''))) return null;
   const r = await db.query(`SELECT * FROM customer_links WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at>now()`, [hashLinkToken(token)]);
-  const l = r.rows[0]; if (l && touch) await db.query('UPDATE customer_links SET view_count=view_count+1,last_viewed_at=now() WHERE id=$1', [l.id]);
+  let l = r.rows[0];
+  // v24.74.0: an estimate link opened from a customer portal lives only as long as that portal: turning the portal off
+  // (or its expiry) also ends the links made from it.
+  const parent = /^portal:(\d+)$/.exec(String(l?.created_by || ''));
+  if (l && parent && !(await db.query('SELECT 1 FROM customer_links WHERE id=$1::bigint AND revoked_at IS NULL AND expires_at>now()', [parent[1]])).rowCount) l = null;
+  if (l && touch) await db.query('UPDATE customer_links SET view_count=view_count+1,last_viewed_at=now() WHERE id=$1', [l.id]);
   return l || null;
 }
 export function publicBaseUrl(req) {
@@ -140,15 +145,24 @@ export function registerCustomerLinkRoutes(app, deps) {
         const mine = (sf.issues || []).filter(i => String(i?.wo) === String(link.ref_id) && !['Proceed', 'Do Not Proceed'].includes(i.approval));
         const picks = mine.filter(i => ['approve', 'decline'].includes(want[String(i.id)]));
         if (!picks.length) return res.status(400).json({ error: 'Choose Approve or Decline for at least one repair.' });
-        let approved = 0;
-        for (const i of picks) { const db = await pool.connect();
-          try { const r = await applyFindingDecision(db, String(i.id), want[String(i.id)] === 'approve' ? 'Proceed' : 'Do Not Proceed', who);
-            if (!r.ok) return res.status(r.status || 409).json({ error: r.error }); if (want[String(i.id)] === 'approve') approved++; } finally { db.release(); } }
-        await pool.query(`UPDATE customer_links SET decided_at=now(),meta=meta||$2::jsonb WHERE id=$1`, [link.id, JSON.stringify({ name, ip, ua, approved, of: picks.length, note })]);
-        await audit(who, 'inspection_customer_decision', { workOrderId: link.ref_id, approved, of: picks.length, note, ip, ua, linkId: link.id });
+        // v24.74.0: each repair is its own decision. One that could not be recorded (changed by the shop meanwhile) no
+        // longer hides the ones that were: the answer lists every repair with its outcome, and only "none recorded" is an error.
+        let approved = 0; const results = [];
+        for (const i of picks) {
+          const decision = want[String(i.id)] === 'approve' ? 'approve' : 'decline', db = await pool.connect();
+          try { const r = await applyFindingDecision(db, String(i.id), decision === 'approve' ? 'Proceed' : 'Do Not Proceed', who);
+            results.push({ id: String(i.id), decision, ok: !!r.ok, ...(r.ok ? {} : { error: r.error || 'Not recorded.' }) });
+            if (r.ok && decision === 'approve') approved++;
+          } catch (e) { results.push({ id: String(i.id), decision, ok: false, error: 'Not recorded.' }); }
+          finally { db.release(); }
+        }
+        const recorded = results.filter(r => r.ok).length, failed = results.length - recorded;
+        if (!recorded) return res.status(409).json({ error: 'Your answer could not be recorded. Please call the shop.', results, recorded: 0, of: picks.length });
+        await pool.query(`UPDATE customer_links SET decided_at=now(),meta=meta||$2::jsonb WHERE id=$1`, [link.id, JSON.stringify({ name, ip, ua, approved, of: picks.length, recorded, note })]);
+        await audit(who, 'inspection_customer_decision', { workOrderId: link.ref_id, approved, of: picks.length, recorded, notRecorded: results.filter(r => !r.ok).map(r => r.id), note, ip, ua, linkId: link.id });
         broadcastShopStatus('customer_decision', { kind: 'inspection', id: link.ref_id, label: `Work order #${link.ref_id}`, name, approved, of: picks.length });
         broadcastShopStatus('shopflow_changed', { by: who });
-        return res.json({ ok: true, approved, of: picks.length });
+        return res.json({ ok: true, approved, of: picks.length, recorded, partial: failed > 0, results });
       }
       return res.status(400).json({ error: 'Nothing to decide on this page.' });
     } catch (e) { next(e); }
@@ -168,6 +182,8 @@ export function registerCustomerLinkRoutes(app, deps) {
       await db.query(`UPDATE customer_estimates SET status=CASE WHEN status='draft' THEN 'sent' ELSE status END,sent_at=coalesce(sent_at,now()) WHERE id=$1::bigint`, [e.id]);
     } else if (kind === 'portal') {
       if (req.user.role === 'manager' && req.user.permissions?.customers !== true) return res.status(403).json({ error: 'Manager permission required: customers.' });
+      // v24.72.0: the portal shows invoices, balances and invoice PDFs, so creating one also needs Invoices.
+      if (req.user.role === 'manager' && req.user.permissions?.invoices !== true) return res.status(403).json({ error: 'Manager permission required: invoices (the customer portal shows invoices and balances).' });
       const c = (await db.query('SELECT id FROM fullbay_import_customers WHERE id=$1::bigint', [refId])).rows[0]; if (!c) return res.status(404).json({ error: 'Customer not found.' });
       customerId = c.id;
     } else {
@@ -192,9 +208,14 @@ export function registerCustomerLinkRoutes(app, deps) {
   }
   // Email a link that was just created. The link must be a live one for this estimate / work order / customer.
   app.post('/api/customer-links/email', auth, adminOnly, async (req, res, next) => { try {
-    const db = requireDb(), kind = String(req.body?.kind || ''), refId = str(req.body?.refId, 60), url = String(req.body?.url || '').trim();
-    const token = (url.match(/\/c\/([A-Za-z0-9_-]{30,80})$/) || [])[1], link = token ? await findActiveLink(db, token) : null;
+    const db = requireDb(), kind = String(req.body?.kind || ''), refId = str(req.body?.refId, 60), given = String(req.body?.url || '').trim();
+    const token = (given.match(/\/c\/([A-Za-z0-9_-]{30,80})$/) || [])[1], link = token ? await findActiveLink(db, token) : null;
     if (!link || link.kind !== kind || String(link.ref_id) !== refId) return res.status(400).json({ error: 'Create a new link first, then email it.' });
+    // v24.74.0: the button in the email always points at this shop's own address, built here; a link pasted with another
+    // host (or http/other schemes) is refused instead of being sent to the customer.
+    const base = publicBaseUrl(req), url = `${base}/c/${token}`;
+    let givenOrigin = ''; try { givenOrigin = new URL(given).origin; } catch (_) {}
+    if (givenOrigin !== new URL(base).origin) return res.status(400).json({ error: 'This link does not point to the shop\'s website. Create a new link, then email it.' });
     const list = String(req.body?.to || '').split(/[,;\s]+/).map(a => a.trim().toLowerCase()).filter(Boolean);
     if (!list.length || list.some(a => !/^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$/.test(a))) return res.status(400).json({ error: 'Enter the customer\'s email address.' });
     const c = await linkEmailContext(db, kind, refId, link.customer_id), shop = shopProfile(), esc = v => String(v ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));

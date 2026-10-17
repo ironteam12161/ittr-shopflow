@@ -1,6 +1,7 @@
 // v24.71.0: security regression suite for the October 2026 audit (S2, S3, S4, E1) — real server + disposable database.
-// S2  mechanic A never receives mechanic B's work orders, findings or customers in ANY response (reads, every mutation a
-//     mechanic can reach, errors), and helpers / parts / timing / inspection / self-start keep working.
+// S2  (v24.75.0 policy: every mechanic may READ all shop work orders and findings) a mechanic never receives office-only
+//     shop data or part buy costs in ANY response (reads, every mutation a mechanic can reach, errors), cannot ACT on
+//     another mechanic's work order, and helpers / parts / timing / inspection / self-start keep working.
 // S3  role × permission matrix for /api/smart-search, /api/customer-units/suggest and the self-start lookup: forbidden
 //     categories and contact fields are absent, not just hidden.
 // S4  a live socket that stays open is closed on sign-out, "sign out other devices", password reset, account delete and
@@ -22,7 +23,7 @@ const R = srv.request;
 const failures = [];
 async function scenario(name, fn) { try { await fn(); console.log(`PASS ${name}`); } catch (e) { failures.push(name); console.error(`FAIL ${name}: ${e.message.split('\n')[0]}`); } }
 // Markers that belong only to mechanic B's work and to private customer contact details.
-const B_MARKERS = ['BOB-SECRET-UNIT', 'Bobs Hidden Fleet', 'B-FINDING-SECRET', 'bob-only-note'];
+const B_MARKERS = ['office-only-key-secret', '"unitCost"'];
 const CONTACT = { email: 'secret-contact@fleet.test', phone: '555-0199-777', address: '42 Hidden Yard Rd' };
 const noB = (obj, where) => { const s = JSON.stringify(obj); for (const m of B_MARKERS) ok(!s.includes(m), `${where}: leaked "${m}"`); };
 const T = (uid, t, x = {}) => ({ uid, t, done: false, startedAt: '', stoppedAt: '', elapsedMs: 0, ...x });
@@ -39,7 +40,7 @@ try {
   const custId = cust.item?.id || cust.customer?.id || cust.id;
   await R(`/api/customers/${custId}/units`, { method: 'POST', token: owner, body: { unit_number: 'CT-500', vin: '', make: 'Volvo', notes: 'unit-private-note' } });
   const part = await R('/api/parts', { method: 'POST', token: owner, body: { partNumber: 'SEC-FLT-1', description: 'Security filter', quantity: 5, cost: 4, price: 9 } });
-  const partId = Number(part.part?.id || part.id);
+  const partId = Number(part.item?.id || part.part?.id || part.id);
   await R('/api/invoices', { method: 'POST', token: owner, body: { customerId: custId, customerName: 'Contact Test Fleet', unitNumber: 'CT-500' } });
 
   const st = await R('/api/state', { token: owner }); const sf = st.shopflow.payload;
@@ -51,13 +52,14 @@ try {
     { id: 'ia1', wo: 701, mechanic: 'mecha', description: 'Alice finding', approval: 'Waiting for Customer' },
     { id: 'ib1', wo: 702, mechanic: 'mechb', description: 'B-FINDING-SECRET', approval: 'Waiting for Customer' },
   ];
-  sf.privateOfficeKey = { note: 'bob-only-note' }; // any other top-level key is office data
+  sf.privateOfficeKey = { note: 'office-only-key-secret' }; // any other top-level key is office data
   await R('/api/state/shopflow', { method: 'PUT', token: owner, body: { payload: sf, expectedVersion: st.shopflow.version } });
   await R('/api/timeclock/punch', { method: 'POST', token: mechA, body: { action: 'in' } });
 
-  await scenario('S2 reads: GET /api/state and history versions are scoped to mechanic A', async () => {
+  await scenario('S2 reads: GET /api/state and history versions: all shop work, no office data', async () => {
     const s = await R('/api/state', { token: mechA }); noB(s, 'GET /api/state');
-    eq(s.shopflow.payload.workorders.length, 1, 'A sees one work order');
+    eq(s.shopflow.payload.workorders.map(w => w.id).sort().join(), '701,702', 'A sees every shop work order (read only)');
+    ok(s.shopflow.payload.issues.some(i => i.description === 'B-FINDING-SECRET'), 'and their findings');
     ok(!('privateOfficeKey' in s.shopflow.payload), 'other top-level keys are not sent to a mechanic');
     const v = await R(`/api/state/shopflow/version/${s.shopflow.version}`, { token: mechA }); noB(v, 'history version');
   });
@@ -82,20 +84,20 @@ try {
     await R('/api/timeclock/punch', { method: 'POST', token: mechA, body: { action: 'in' } });
   });
 
-  await scenario('S2 errors: touching B\'s work order is refused without B\'s data', async () => {
-    for (const [path, method, body] of [['/api/work-orders/702/helpers', 'POST', { username: 'mechc' }], ['/api/work-orders/702/tasks/by-uid/b-t1/action', 'POST', { action: 'start' }], ['/api/work-orders/702/inspection', 'POST', { inspection: { status: 'In Progress' } }], ['/api/work-orders/702/task-sessions', 'GET'], ['/api/work-orders/702/pdf', 'GET']]) {
+  await scenario('S2 errors: acting on B\'s work order is refused without office data', async () => {
+    for (const [path, method, body] of [['/api/work-orders/702/helpers', 'POST', { username: 'mechc' }], ['/api/work-orders/702/tasks/by-uid/b-t1/action', 'POST', { action: 'start' }], ['/api/work-orders/702/inspection', 'POST', { inspection: { status: 'In Progress' } }], ['/api/work-orders/702/tasks/by-uid/b-t1/parts', 'POST', { partNumber: 'X', description: 'x', qty: 1 }], ['/api/work-orders/702/pdf', 'GET']]) {
       const r = await R(path, { method, token: mechA, body, allowError: true });
       ok(r.status >= 400, `${method} ${path} refused (got ${r.status})`); noB(r, `${method} ${path}`);
     }
   });
 
-  await scenario('S2 self-start (USDOT/VIN) still works and returns only A\'s work', async () => {
+  await scenario('S2 self-start (USDOT/VIN) still works and returns the mechanic view', async () => {
     const lk = await R('/api/work-orders/self-start/lookup?unit=CT-500', { token: mechA }); noB(lk, 'lookup');
     ok((lk.matches || []).some(m => m.unit_number === 'CT-500'), 'unit found by mechanic');
     const s = JSON.stringify(lk); for (const v of Object.values(CONTACT)) ok(!s.includes(v), `mechanic lookup leaked contact ${v}`);
     const r = await R('/api/work-orders/self-start', { method: 'POST', token: mechA, body: { unit: 'CT-500', customer: 'Contact Test Fleet', jobs: ['Check lights'] } });
     noB(r, 'self-start'); ok(r.workOrder?.id, 'work order created');
-    ok(r.shopflow.workorders.every(w => w.mechanic === 'mecha' || (w.helpers || []).some(h => String(h.username || h) === 'mecha')), 'self-start response has only A\'s work orders');
+    ok(r.shopflow.workorders.some(w => w.id === r.workOrder.id && w.mechanic === 'mecha') && !('privateOfficeKey' in r.shopflow), 'self-start response is the mechanic view');
   });
 
   await scenario('S3 matrix: smart-search and unit suggestions follow permissions', async () => {

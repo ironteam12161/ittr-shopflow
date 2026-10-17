@@ -394,7 +394,10 @@ try{
   ok(m.payload.workorders[0].status==='In Progress'&&m.payload.workorders[1].priority==='High','both edits kept');
   eq(m.payload.issues.length,2,'my new finding kept');eq(m.payload.settings.rate,125,'their settings change kept (I did not touch it)');eq(m.conflicts.length,0,'no conflict');
   const both=rebaseShopflow(base,{...base,workorders:[wo('1',{status:'Completed'}),wo('2'),wo('3')]},{...base,workorders:[wo('1',{status:'Waiting Parts'}),wo('2'),wo('3')]});
-  eq(both.payload.workorders[0].status,'Waiting Parts','same work order changed on both devices: the saved copy is kept');eq(both.conflicts[0],'Work order 1','and it is reported');
+  eq(both.payload.workorders[0].status,'Waiting Parts','same work order changed on both devices: the saved copy is kept');eq(both.conflicts[0],'Work order 1 (status)','and it is reported, naming the field');
+  // v24.73.0: different fields of the same work order changed on two devices are both kept.
+  const fields=rebaseShopflow(base,{...base,workorders:[wo('1',{status:'In Progress'}),wo('2'),wo('3')]},{...base,workorders:[wo('1',{priority:'High'}),wo('2'),wo('3')]});
+  ok(fields.payload.workorders[0].status==='In Progress'&&fields.payload.workorders[0].priority==='High'&&!fields.conflicts.length,'different fields of one work order merged without a conflict');
   ok(!rebaseShopflow(base,base,remote).changed,'nothing changed here: the server copy is used as is');}
  console.log('PASS save collisions: changes from two devices are merged per work order; only a work order changed on both is reported');
  // ---------------------------------------------------------------- v24.66.0 Workshop AI follows manager permissions

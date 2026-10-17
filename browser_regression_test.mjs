@@ -90,7 +90,7 @@ try {
     await page.evaluate(() => navigator.serviceWorker?.ready);
     await ctx.setOffline(true);
     await page.evaluate(() => { const w = state.workorders.find(x => x.id === '3001'); w.complaint = 'BROWSER-OFFLINE'; save(); });
-    await until(page, () => !!JSON.parse(localStorage.getItem('ittr_sync_queue_v3:owner') || '{}').shopflow);
+    await until(page, () => Object.values(JSON.parse(localStorage.getItem('ittr_sync_queue_v3:owner') || '{}')).some(x => x.key === 'shopflow'));
     ok(/Offline/.test(await page.textContent('#syncQueueText')), 'badge says offline with a pending change');
     await page.reload().catch(() => {}); await sleep(800); // offline reload: the app cannot sign in, the queue stays
     const remote = await srv.request('/api/state', { token: owner }); remote.shopflow.payload.workorders.find(w => w.id === '3002').complaint = 'OTHER-DEVICE';
@@ -113,11 +113,11 @@ try {
     const { ctx, page } = await newPage({ width: 390, height: 844 }); await page.goto(B); await signIn(page, 'mech1', 'Mechanic-Pass-1');
     await page.route('**/api/state/shopflow', r => r.request().method() === 'PUT' ? r.abort('failed') : r.continue());
     await page.evaluate(() => { state.workorders.find(x => x.id === '3003').completionNotes = 'MECH-PENDING'; save(); });
-    await until(page, () => !!JSON.parse(localStorage.getItem('ittr_sync_queue_v3:mech1') || '{}').shopflow && ittrSync.status().error);
+    await until(page, () => Object.values(JSON.parse(localStorage.getItem('ittr_sync_queue_v3:mech1') || '{}')).some(x => x.key === 'shopflow') && ittrSync.status().error);
     // Same steps as the Start New Job wizard after the server created the work order.
     await page.evaluate(async () => { const r = await apiJSON('/api/work-orders/self-start', { method: 'POST', body: JSON.stringify({ unit: 'SS-77', jobs: ['PM service'] }) }); if (r?.shopflow) ittrAdoptServerShopflow(r.shopflow, r.version); });
     ok(await page.evaluate(() => state.workorders.some(w => w.unit === 'SS-77') && state.workorders.find(x => x.id === '3003')?.completionNotes === 'MECH-PENDING'), 'new job shown and the unsaved edit still on screen');
-    ok(await page.evaluate(() => !!JSON.parse(localStorage.getItem('ittr_sync_queue_v3:mech1') || '{}').shopflow), 'the unsaved edit is still queued');
+    ok(await page.evaluate(() => Object.values(JSON.parse(localStorage.getItem('ittr_sync_queue_v3:mech1') || '{}')).some(x => x.key === 'shopflow')), 'the unsaved edit is still queued');
     await page.unroute('**/api/state/shopflow'); await page.evaluate(() => ittrSync.sync('shopflow'));
     await until(page, () => !localStorage.getItem('ittr_sync_queue_v3:mech1'), null, 10000);
     eq((await serverWo(3003)).completionNotes, 'MECH-PENDING', 'saved after the connection came back');

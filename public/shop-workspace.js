@@ -109,7 +109,15 @@
     if (same) { renderWs(); return; }
     showView('wo');
   };
-  window.wsTab = tab => { woWs.tab = tab; try { history.replaceState({ ittr: true, view: 'wo', woId: woWs.id, woTab: tab }, '', `${location.pathname}${location.search}#wo/${encodeURIComponent(woWs.id)}/${tab}`); } catch (_) {} renderWs(); };
+  // v24.74.0: the selected tab keeps keyboard focus after the page redraws and is scrolled into view on narrow screens.
+  window.wsTab = (tab, focus = true) => { woWs.tab = tab; try { history.replaceState({ ittr: true, view: 'wo', woId: woWs.id, woTab: tab }, '', `${location.pathname}${location.search}#wo/${encodeURIComponent(woWs.id)}/${tab}`); } catch (_) {} renderWs(); const b = document.getElementById(`wsTab-${tab}`); if (b) { try { b.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (_) {} if (focus) b.focus({ preventScroll: true }); } };
+  // Tab pattern: Left/Right/Home/End move between sections; only the selected tab is in the Tab order.
+  document.addEventListener('keydown', e => {
+    const t = e.target?.closest?.('.wsTabs [role=tab]'); if (!t || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+    const all = [...t.parentElement.querySelectorAll('[role=tab]')], i = all.indexOf(t);
+    const next = e.key === 'Home' ? all[0] : e.key === 'End' ? all[all.length - 1] : all[(i + (e.key === 'ArrowRight' ? 1 : -1) + all.length) % all.length];
+    e.preventDefault(); window.wsTab(next.id.replace(/^wsTab-/, ''));
+  });
   function woPhotosHtml(w, { title = '', mineOnly = false } = {}) {
     const list = issuesFor(w).filter(i => !mineOnly || i.mechanic === me());
     if (!list.length) return title ? '' : `<div class="ds-empty">${E(T('No findings with photos on this work order yet.'))}</div>`;
@@ -157,9 +165,10 @@
         <div><h1>${E(T('Unit'))} ${E(w.unit || '—')} <span class="muted wsWoNo">#${E(String(w.id))}</span></h1><div class="muted">${E(w.customer || '')}${w.parking ? ` · ${E(T('Parking'))} ${E(w.parking)}` : ''} · ${E(fmtScheduled(w))}</div></div></div>
       <div class="wsMeta">${stageChip(st)}${blockers.map(blockerChip).join('')}<span class="wsMechs">${assignmentChips(w)}</span></div>
     </div>
-    <div class="wsTabs" role="tablist" aria-label="${E(T('Work order sections'))}">${TABS.map(([k, label]) => `<button type="button" role="tab" id="wsTab-${k}" aria-selected="${k === tab}" aria-controls="wsPanel" class="wsTab${k === tab ? ' active' : ''}" onclick="wsTab('${k}')">${E(T(label))}${counts[k] ? ` <span class="wsCount">${counts[k]}</span>` : ''}</button>`).join('')}</div>
+    <div class="wsTabs" role="tablist" aria-label="${E(T('Work order sections'))}">${TABS.map(([k, label]) => `<button type="button" role="tab" id="wsTab-${k}" aria-selected="${k === tab}" tabindex="${k === tab ? 0 : -1}" aria-controls="wsPanel" class="wsTab${k === tab ? ' active' : ''}" onclick="wsTab('${k}')">${E(T(label))}${counts[k] ? ` <span class="wsCount">${counts[k]}</span>` : ''}</button>`).join('')}</div>
     <div id="wsPanel" class="wsPanel" role="tabpanel" aria-labelledby="wsTab-${tab}"></div>`;
     const panel = box.querySelector('#wsPanel');
+    { const tl = box.querySelector('.wsTabs'), at = tl?.querySelector('.wsTab.active'); if (tl && at) { const l = at.offsetLeft - tl.offsetLeft; if (l < tl.scrollLeft || l + at.offsetWidth > tl.scrollLeft + tl.clientWidth) tl.scrollLeft = Math.max(0, l - 16); } }
     panel.innerHTML = tab === 'jobs' ? `<div class="card wsJobs">${workOrderDetailHtml(w)}</div>` : tab === 'findings' ? findingsHtml(w) : tab === 'photos' ? woPhotosHtml(w) : tab === 'inspection' ? inspectionHtml(w) : tab === 'time' ? timeHtml(w) : billingHtml(w);
     if (tab === 'jobs' || tab === 'time') try { loadWorkOrderTaskSessions(w.id); } catch (_) {}
     try { hydrateFindingPhotos(); } catch (_) {}

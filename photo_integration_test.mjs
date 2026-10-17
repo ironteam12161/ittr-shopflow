@@ -65,7 +65,8 @@ try {
   ok(pa.thumbUrl.includes(encodeURIComponent(thumb).replace(/%2F/g, '/')) || pa.thumbUrl.includes(thumb), 'list gives the thumbnail link, not the full photo');
   ok(!('url' in pa), 'list does not sign full-size links');
   const tr = await fetch(pa.thumbUrl); eq(tr.status, 200, 'thumbnail link loads'); eq(Buffer.from(await tr.arrayBuffer()).length, s3.objects.get(thumb).body.length, 'thumbnail bytes served');
-  eq((await get('/api/work-orders/501/photos', mech2)).status, 403, 'other mechanic cannot list');
+  // v24.75.0 policy: every mechanic may VIEW the shop's work orders and their photos; adding/changing stays as before.
+  eq((await get('/api/work-orders/501/photos', mech2)).status, 200, 'other mechanic can view the list');
   const ml = await get('/api/work-orders/501/photos', mgr);
   eq(ml.status, 200, 'manager can list photos (owner decision, v24.70.0)'); eq(ml.photos.length, 2, 'manager sees both photos');
   ok((await get(`/api/photos/${a.photoId}/url`, mgr)).url, 'manager gets a viewing link');
@@ -73,7 +74,7 @@ try {
   const one = await get(`/api/photos/${a.photoId}`, owner); ok(one.url && one.thumbUrl && one.caption, 'single photo gives full + thumb links');
   const tv = await get(`/api/photos/${a.photoId}/url?variant=thumb`, mech1); ok(tv.url.includes('_t.jpg'), 'variant=thumb signs the thumbnail');
   const fv = await get(`/api/photos/${a.photoId}/url`, mech1); ok(!fv.url.includes('_t.jpg'), 'default link is the full photo');
-  eq((await get(`/api/photos/${a.photoId}/url`, mech2)).status, 403, 'other mechanic cannot get a link');
+  ok((await get(`/api/photos/${a.photoId}/url`, mech2)).url, 'other mechanic can get a viewing link');
 
   // An expired signed link is refused by storage (what the viewer's "link expired — get a new one" handles).
   s3.server.forceExpired.add(full);

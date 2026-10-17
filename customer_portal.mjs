@@ -4,15 +4,28 @@
 import { findActiveLink, createCustomerLink, publicBaseUrl } from './customer_links.mjs';
 
 const money = v => Math.round(Number(v || 0) * 100) / 100;
-// Invoices and estimates belong to the customer by id; older imported ones only by name.
-const OWN = (alias) => `(${alias}.customer_id=$1::bigint OR (${alias}.customer_id IS NULL AND lower(trim(${alias}.customer_name))=lower(trim($2))))`;
+// Invoices and estimates belong to the customer by id; older imported ones only by name. v24.74.0: the name fallback
+// applies only when no other customer record has the same name, so two businesses sharing a name never see each other's
+// unlinked records.
+const OWN = (alias) => `(${alias}.customer_id=$1::bigint OR (${alias}.customer_id IS NULL AND lower(trim(${alias}.customer_name))=lower(trim($2)) AND (SELECT count(*) FROM fullbay_import_customers cx WHERE lower(trim(cx.customer_name))=lower(trim($2)))=1))`;
 
 export async function portalView(db, link, { shopInfo }) {
   const c = (await db.query('SELECT id,customer_name FROM fullbay_import_customers WHERE id=$1::bigint', [link.ref_id])).rows[0]; if (!c) return null;
   const args = [c.id, c.customer_name || ''];
   const units = (await db.query(`SELECT unit_number,vin,year,make,model FROM customer_units WHERE customer_id=$1::bigint ORDER BY unit_number LIMIT 300`, [c.id]).catch(() => ({ rows: [] }))).rows;
-  const invoices = (await db.query(`SELECT i.id,i.invoice_number,i.invoice_date,i.due_date,i.status,i.total,i.balance_due,i.unit_number,i.payment_url FROM customer_invoices i
-    WHERE ${OWN('i')} AND i.status NOT IN ('draft','void') ORDER BY i.invoice_date DESC,i.id DESC LIMIT 150`, args)).rows;
+  // v24.74.0: every unpaid invoice is listed (oldest debts included) ahead of recent history, and the account totals
+  // come from one sum over all of the customer's invoices, not from the rows shown.
+  const invoices = (await db.query(`SELECT * FROM (
+      (SELECT i.id,i.invoice_number,i.invoice_date,i.due_date,i.status,i.total,i.balance_due,i.unit_number,i.payment_url FROM customer_invoices i
+        WHERE ${OWN('i')} AND i.status NOT IN ('draft','void') AND coalesce(i.balance_due,0)>0.004 ORDER BY i.due_date NULLS LAST,i.id LIMIT 500)
+      UNION
+      (SELECT i.id,i.invoice_number,i.invoice_date,i.due_date,i.status,i.total,i.balance_due,i.unit_number,i.payment_url FROM customer_invoices i
+        WHERE ${OWN('i')} AND i.status NOT IN ('draft','void') ORDER BY i.invoice_date DESC,i.id DESC LIMIT 150)) x
+    ORDER BY (coalesce(balance_due,0)>0.004) DESC,invoice_date DESC,id DESC`, args)).rows;
+  const totals = (await db.query(`SELECT coalesce(sum(i.balance_due) FILTER (WHERE i.balance_due>0.004),0) owed,
+      coalesce(sum(i.balance_due) FILTER (WHERE i.balance_due>0.004 AND i.due_date<current_date),0) overdue,
+      count(*) FILTER (WHERE i.balance_due>0.004)::int open_count
+    FROM customer_invoices i WHERE ${OWN('i')} AND i.status NOT IN ('draft','void')`, args)).rows[0] || {};
   const estimates = (await db.query(`SELECT e.id,e.estimate_number,e.estimate_date,e.valid_until,e.status,e.total,e.unit_number,e.customer_decided_at FROM customer_estimates e
     WHERE ${OWN('e')} AND e.status IN ('sent','approved','declined') ORDER BY e.estimate_date DESC,e.id DESC LIMIT 50`, args)).rows;
   const last = {};
@@ -22,7 +35,7 @@ export async function portalView(db, link, { shopInfo }) {
     return { id: Number(i.id), number: i.invoice_number, date: i.invoice_date, dueDate: i.due_date, status: bal <= 0.004 ? 'paid' : i.status === 'partial' ? 'partly paid' : 'open', total: money(i.total), balance: bal, unit: i.unit_number || '',
       overdueDays: bal > 0.004 && due && due < today ? Math.round((today - due) / 86400000) : 0, payUrl: bal > 0.004 && /^https:\/\//.test(i.payment_url || '') ? i.payment_url : '' }; });
   return { kind: 'portal', shop: shopInfo(), customer: { name: c.customer_name },
-    owed: money(inv.reduce((a, i) => a + i.balance, 0)), overdue: money(inv.filter(i => i.overdueDays > 0).reduce((a, i) => a + i.balance, 0)),
+    owed: money(totals.owed), overdue: money(totals.overdue), openInvoices: Number(totals.open_count || 0), asOf: new Date().toISOString(),
     units: units.map(u => ({ unit: u.unit_number, vin: u.vin || '', description: [u.year, u.make, u.model].filter(Boolean).join(' '), lastService: last[String(u.unit_number || '').toLowerCase()] || null })),
     estimates: estimates.map(e => ({ id: Number(e.id), number: e.estimate_number, date: e.estimate_date, status: e.status, total: money(e.total), unit: e.unit_number || '',
       canApprove: e.status === 'sent' && !e.customer_decided_at && !(e.valid_until && new Date(e.valid_until) < today) })),

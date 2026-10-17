@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.71.1-INSPECTION-20261016">
+<meta name="ittr-build" content="ITTR-24.75.0-MECHANIC-VIEW-20261017">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -28,7 +28,7 @@
  P.removeItem=function(k){rm.call(this,k);if(this===sessionStorage&&keys[k])try{rm.call(localStorage,'ittr_app_'+k)}catch(e){}};
 }catch(e){}})();
 </script>
-<title>ITTR ShopFlow v24.71.1</title>
+<title>ITTR ShopFlow v24.75.0</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -835,7 +835,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.71.1">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.75.0">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -852,13 +852,13 @@ body.invoiceWorkspaceMode .invoiceRateWrap{display:grid!important;grid-template-
 @media(max-width:900px){body.invoiceWorkspaceMode .invoiceGridHeader{display:none!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow{grid-template-columns:1fr 1fr!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceGridItemLabel,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLaborDescription{grid-column:1/-1!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceQtyUnit,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceTaxCell,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLineNet{grid-column:1!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLaborRateField,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceDiscountControl,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceRowActions{grid-column:2!important}}
 </style>
 <link rel="stylesheet" href="./inspection-workflow.css?v=3">
-<script src="./sync-merge.js?v=24.71.1"></script>
-<script src="./sync-queue.js?v=24.71.1"></script>
-<link rel="stylesheet" href="./design-system.css?v=24.71.1">
-<link rel="stylesheet" href="./app-shell.css?v=24.71.1">
-<script src="./icons.js?v=24.71.1"></script>
-<script src="./photo-viewer.js?v=24.71.1"></script>
-<script src="./photo-queue.js?v=24.71.1"></script>
+<script src="./sync-merge.js?v=24.75.0"></script>
+<script src="./sync-queue.js?v=24.75.0"></script>
+<link rel="stylesheet" href="./design-system.css?v=24.75.0">
+<link rel="stylesheet" href="./app-shell.css?v=24.75.0">
+<script src="./icons.js?v=24.75.0"></script>
+<script src="./photo-viewer.js?v=24.75.0"></script>
+<script src="./photo-queue.js?v=24.75.0"></script>
 <style id="ittrNavLayoutV2">
 /* v24.39.0 desktop navigation: one full-width tab strip grouped by workflow (Shop · Money · Records · Operations). */
 @media(min-width:761px){
@@ -1008,7 +1008,7 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 </style>
 </head>
 <body class="loggedOut">
-<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.71.1 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.75.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1098,7 +1098,7 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 <section id="wo" class="hidden" aria-label="Work order"></section>
 <section id="workorders" class="hidden">
   <div class="toolbar"><div><h1>Work Orders</h1><div class="muted">Open, scheduled and active repair work in one place.</div></div><div><button class="secondary" onclick="showView('completed')">Completed History</button> <button class="adminOnly" onclick="openWorkOrder()">+ New Work Order</button></div></div>
-  <div class="woTools"><input id="woSearch" type="search" placeholder="Search WO #, unit, customer, VIN or job…" oninput="renderAdminTable()" autocomplete="off"><select id="woMechFilter" onchange="renderAdminTable()" aria-label="Mechanic"><option value="">All mechanics</option></select></div>
+  <div class="woTools"><input id="woSearch" type="search" aria-label="Search work orders" placeholder="Search WO #, unit, customer, VIN or job…" oninput="renderAdminTable()" autocomplete="off"><select id="woMechFilter" onchange="renderAdminTable()" aria-label="Mechanic"><option value="">All mechanics</option></select></div>
   <div class="filterbar">
     <button class="filterbtn active" onclick="setAdminFilter('all',this)">All</button>
     <button class="filterbtn" onclick="setAdminFilter('future',this)">Future / Waiting</button>
@@ -1138,9 +1138,14 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 
 
 
-  <h2 style="margin:6px 0 8px">Ready to Work</h2>
+  <div class="mechViewBar" role="group" aria-label="Which work orders to show">
+    <button type="button" class="mechViewAll" aria-pressed="true" onclick="setMechView(false)">All shop work</button>
+    <button type="button" class="mechViewMine" aria-pressed="false" onclick="setMechView(true)">My assigned work</button>
+    <input type="search" class="mechViewSearch" aria-label="Search work orders" placeholder="Search unit, WO #, customer, mechanic" oninput="setMechSearch(this.value)">
+  </div>
+  <h2 style="margin:6px 0 8px">Ready to Work <span class="muted mechViewCount" id="mechanicJobsCount"></span></h2>
   <div class="jobs" id="mechanicJobs"></div>
-  <h2 style="margin:16px 0 8px">Upcoming / On the Way</h2>
+  <h2 style="margin:16px 0 8px">Upcoming / On the Way <span class="muted mechViewCount" id="mechanicUpcomingCount"></span></h2>
   <div class="jobs" id="mechanicUpcoming"></div>
   <div id="mechanicActivityPanel" class="card mechanicActivityPanel">
     <div class="mechanicActivityTop">
@@ -1231,8 +1236,13 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 
 
 <section id="mycompleted" class="hidden">
-  <div class="toolbar"><h1>My Completed Work</h1></div>
-  <div class="notice">Only work orders completed by your mechanic account appear here. You can review prior work, notes, future recommendations, and reactivate a job if something was missed.</div>
+  <div class="toolbar"><h1>Completed Work</h1></div>
+  <div class="mechViewBar" role="group" aria-label="Which completed work orders to show">
+    <button type="button" class="mechViewAll" aria-pressed="true" onclick="setMechView(false)">All shop work</button>
+    <button type="button" class="mechViewMine" aria-pressed="false" onclick="setMechView(true)">My assigned work</button>
+    <input type="search" class="mechViewSearch" aria-label="Search completed work orders" placeholder="Search unit, WO #, customer, mechanic" oninput="setMechSearch(this.value)">
+  </div>
+  <div class="notice">Completed work orders for the whole shop. You can reactivate one you completed or were the primary mechanic on if something was missed.</div>
   <div class="jobs" id="myCompletedJobs"></div>
 </section>
 
@@ -1601,7 +1611,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.71.1';
+const FRONTEND_VERSION='24.75.0';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudVersions={},cloudRefreshBusy=false;
 /* v24.67.0: pending saves live in public/sync-queue.js (per account, as change sets, removed only once saved). */
@@ -1612,13 +1622,21 @@ function ittrSetLive(key,obj){
  else if(key==="pro"){PRO=Object.assign({vehicles:[],maintenance:[],audit:[],notifications:[],delays:[]},obj||{});for(const k of ['vehicles','maintenance','audit','notifications','delays'])if(!Array.isArray(PRO[k]))PRO[k]=[];try{localStorage.setItem(PRO_KEY,JSON.stringify(PRO))}catch(_){}}
  clearTimeout(ittrSetLive.t);ittrSetLive.t=setTimeout(()=>{try{if(session)render()}catch(_){}},0);
 }
+// v24.72.0: the server does not let a mechanic's save change finished work (a completed work order, a completed
+// inspection, a job another mechanic finished). Say so instead of letting the change silently disappear.
+function ittrReportNotApplied(list){
+ if(!Array.isArray(list)||!list.length)return;
+ const uk=currentLanguage==="uk",why={completed:uk?"замовлення вже завершене":"the work order is already completed",inspection_completed:uk?"інспекцію вже завершено":"the inspection is already completed",finished_by_other:uk?"роботу завершив інший механік":"another mechanic finished that job"};
+ const parts=[...new Set(list.map(x=>`WO #${x.workOrderId}: ${why[x.reason]||x.reason}`))].slice(0,3);
+ showToast((uk?"Не збережено: ":"Not saved: ")+parts.join("; ")+(uk?". Попросіть офіс відкрити його знову.":". Ask the office to reopen it."),"warning",10000);
+}
 const ittrSync=window.ittrCreateSyncEngine({
  storage:localStorage,user:()=>session?.username||"",online:()=>navigator.onLine,
  getLive:key=>ITTR_LIVE[key]?.(),setLive:ittrSetLive,
  serverVersion:key=>Number(cloudVersions[key]||0),setServerVersion:(key,v)=>{cloudVersions[key]=Number(v||0)},
  allowKey:key=>session?.role==="mechanic"?key==="shopflow":(key!=="users"||session?.role==="admin"),
  fetchState:()=>apiJSON("/api/state"),
- put:(key,json,expected)=>apiJSON(`/api/state/${key}`,{method:"PUT",body:`{"payload":${json},"expectedVersion":${Number(expected)}}`}),
+ put:(key,json,expected)=>apiJSON(`/api/state/${key}`,{method:"PUT",body:`{"payload":${json},"expectedVersion":${Number(expected)}}`}).then(d=>{try{ittrReportNotApplied(d?.notApplied)}catch(_){}return d}),
  onStatus:()=>updateSyncQueueBadge(),
  onQueued:()=>{try{navigator.serviceWorker?.ready?.then(r=>r.sync?.register?.('ittr-sync')).catch(()=>{})}catch(_){}},
  onConflicts:(key,list)=>showToast(currentLanguage==="uk"?`Інший пристрій змінив те саме одночасно (${list.slice(0,3).join(", ")}). Залишено його версію — перевірте свою зміну там.`:`Another device changed the same thing at the same time (${list.slice(0,3).join(", ")}). Their version was kept — please check your change there.`,"warning",9000),
@@ -1957,7 +1975,8 @@ function mechanicAccounts(){
   .sort((a,b)=>a.display.localeCompare(b.display));
 }
 function mechanicDisplay(username){
- const u=USERS[username];
+ // v24.75.0: assignments are stored in lower case; account keys may not be.
+ const key=String(username||""),u=USERS[key]||Object.entries(USERS||{}).find(([k])=>k.toLowerCase()===key.trim().toLowerCase())?.[1];
  return u?.display||username||"Unassigned";
 }
 
@@ -1965,7 +1984,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.71.1";
+const ROUTE_MODULE_VERSION="24.75.0";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -2070,6 +2089,10 @@ function syncMobileChrome(){
  const nav=document.getElementById("mobileBottomNav"),header=document.querySelector("header"),root=document.documentElement;
  if(root){root.style.setProperty("--mobile-nav-height",`${nav&&getComputedStyle(nav).display!=="none"?Math.ceil(nav.getBoundingClientRect().height):0}px`);root.style.setProperty("--mobile-header-height",`${header&&getComputedStyle(header).display!=="none"?Math.ceil(header.getBoundingClientRect().height):0}px`)}
 }
+// v24.74.0 (UI audit U7): a visible "label then field" pair (<div class="field"><label>Truck</label><select id=…>) gets a
+// real link, so screen readers announce the field's name. Runs again (debounced) when screens redraw.
+function ittrLinkFieldLabels(root=document){for(const l of root.querySelectorAll('.field > label:not([for]), .row > label:not([for])')){const f=l.nextElementSibling;if(!f||!/^(INPUT|SELECT|TEXTAREA)$/.test(f.tagName)||f.type==="hidden")continue;if(f.id)l.htmlFor=f.id;else if(!f.getAttribute("aria-label"))f.setAttribute("aria-label",l.textContent.trim())}}
+{let t=null;const run=()=>{clearTimeout(t);t=setTimeout(()=>{try{ittrLinkFieldLabels()}catch(_){}},150)};document.addEventListener("DOMContentLoaded",run);try{new MutationObserver(run).observe(document.documentElement,{childList:true,subtree:true})}catch(_){}}
 function syncModalState(){document.body?.classList.toggle("modalOpen",!!document.querySelector(".modal.open")||document.getElementById("mobileMoreSheet")?.classList.contains("open"));syncMobileChrome()}
 function getTopOpenModal(){
  const open=[...document.querySelectorAll(".modal.open")];
@@ -2189,7 +2212,32 @@ function bindNavigation(){
 let liveSocket=null,liveReconnectTimer=null,liveReconnectAttempt=0,liveSocketStopped=false;
 function setLiveStatus(stateName,label){const dot=document.getElementById("liveStatusDot"),text=document.getElementById("liveStatusText"),badge=document.getElementById("liveStatusBadge");if(dot){dot.className=`liveStatusDot ${stateName}`}if(badge){badge.dataset.state=stateName;badge.title=stateName==="connected"?"Live: changes from other people appear instantly":stateName==="offline"?"Offline: your changes are saved on this device and sync when you are back online":"Reconnecting to the shop server…"}if(text)text.textContent=stateName==="offline"?translateDynamicText("Offline · saved here"):translateDynamicText(label)}
 function stopLiveStatusSocket(){liveSocketStopped=true;clearTimeout(liveReconnectTimer);liveReconnectTimer=null;try{liveSocket?.close()}catch(_){}liveSocket=null}
-function connectLiveStatusSocket(){if(!cloudToken||!navigator.onLine)return;if(liveSocket&&[WebSocket.OPEN,WebSocket.CONNECTING].includes(liveSocket.readyState))return;liveSocketStopped=false;setLiveStatus("reconnecting",liveReconnectAttempt?"Reconnecting":"Connecting");const proto=location.protocol==="https:"?"wss":"ws";const ws=new WebSocket(`${proto}://${location.host}/ws/shop-status`);liveSocket=ws;ws.onopen=()=>{try{ws.send(JSON.stringify({type:"auth",token:cloudToken}))}catch(_){}};ws.onmessage=e=>{try{const msg=JSON.parse(e.data);if(msg.type==="connected"){liveReconnectAttempt=0;setLiveStatus("connected","Live");refreshCloudStateSilently()}if(["shopflow_changed","task_changed","work_order_created"].includes(msg.type))refreshCloudStateSilently();if(msg.type==="customer_decision"&&session?.role!=="mechanic")window.dispatchEvent(new CustomEvent("ittr:customer-decision",{detail:msg}));if(msg.type==="sms_received"&&session?.role!=="mechanic")window.dispatchEvent(new CustomEvent("ittr:sms",{detail:msg}))}catch(_){}};ws.onclose=()=>{liveSocket=null;if(liveSocketStopped||!navigator.onLine)return;liveReconnectAttempt++;const delay=Math.min(30000,1000*(2**Math.min(5,liveReconnectAttempt-1)))+Math.floor(Math.random()*500);setLiveStatus("reconnecting","Reconnecting");clearTimeout(liveReconnectTimer);liveReconnectTimer=setTimeout(connectLiveStatusSocket,delay)};ws.onerror=()=>{try{ws.close()}catch(_){}}}
+// v24.73.0: another device changed invoices/payments, bills, purchase orders/stock or customers. The open screen that
+// shows that area reloads its list; if this person is typing in it (or a dialog is open), nothing is overwritten:
+// a note with a Refresh button appears instead. The Repair Board's purchase-order blockers refresh on stock changes.
+const ITTR_DOMAIN_VIEWS={invoices:["invoices","estimates","reports","customers"],bills:["bills","reports"],inventory:["parts","purchaseorders"],customers:["customers","trucksearch","compliance"]};
+let ittrDataChangedTimer=null;const ittrDataChangedPending=new Set();
+function ittrRefreshModuleView(view){const inst=routeModuleInstances.get(view);if(inst?.scope?.host){inst.scope.host.dispatchEvent(new CustomEvent("ittr:module-refresh"));return true}return false}
+function ittrStaleNote(view){
+ let n=document.getElementById("ittrStaleNote");
+ if(!n){n=document.createElement("div");n.id="ittrStaleNote";n.className="ittrStaleNote";n.setAttribute("role","status");document.body.appendChild(n)}
+ n.innerHTML=`<span>${esc(currentLanguage==="uk"?"Оновлено на іншому пристрої.":"Updated on another device.")}</span> <button type="button" class="secondary">${esc(currentLanguage==="uk"?"Оновити":"Refresh")}</button> <button type="button" class="ghost" aria-label="Close">×</button>`;
+ const [refresh,close]=n.querySelectorAll("button");refresh.onclick=()=>{n.remove();ittrRefreshModuleView(view)};close.onclick=()=>n.remove();
+}
+function ittrDataChanged(msg){
+ if(!["admin","manager"].includes(session?.role))return;
+ ittrDataChangedPending.add(String(msg.domain||""));clearTimeout(ittrDataChangedTimer);
+ ittrDataChangedTimer=setTimeout(()=>{
+  const domains=[...ittrDataChangedPending];ittrDataChangedPending.clear();
+  if(domains.includes("inventory")&&window.ittrOpenPOs){window.ittrOpenPOs.at=0;try{if(["board","wo"].includes(currentView))window.ittrWsAfterShow?.(currentView)}catch(_){}}
+  const views=new Set(domains.flatMap(d=>ITTR_DOMAIN_VIEWS[d]||[]));
+  if(!views.has(currentView))return;
+  const host=routeModuleInstances.get(currentView)?.scope?.host,a=document.activeElement;
+  const editing=(host&&a&&host.contains(a)&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)&&a.type!=="search")||document.querySelector(".modal.open")||document.body.classList.contains("invoiceWorkspaceMode");
+  if(editing)ittrStaleNote(currentView);else ittrRefreshModuleView(currentView);
+ },400);
+}
+function connectLiveStatusSocket(){if(!cloudToken||!navigator.onLine)return;if(liveSocket&&[WebSocket.OPEN,WebSocket.CONNECTING].includes(liveSocket.readyState))return;liveSocketStopped=false;setLiveStatus("reconnecting",liveReconnectAttempt?"Reconnecting":"Connecting");const proto=location.protocol==="https:"?"wss":"ws";const ws=new WebSocket(`${proto}://${location.host}/ws/shop-status`);liveSocket=ws;ws.onopen=()=>{try{ws.send(JSON.stringify({type:"auth",token:cloudToken}))}catch(_){}};ws.onmessage=e=>{try{const msg=JSON.parse(e.data);if(msg.type==="connected"){liveReconnectAttempt=0;setLiveStatus("connected","Live");refreshCloudStateSilently()}if(["shopflow_changed","task_changed","work_order_created"].includes(msg.type))refreshCloudStateSilently();if(msg.type==="data_changed")ittrDataChanged(msg);if(msg.type==="parts_arrived"&&["admin","manager"].includes(session?.role)&&msg.by!==session?.username)showToast((currentLanguage==="uk"?`Запчастини прибули для замовлення #${msg.workOrderId}`:`Parts arrived for WO #${msg.workOrderId}`)+(msg.unit?` · Unit ${msg.unit}`:"")+(msg.complete?"":(currentLanguage==="uk"?" (частково)":" (partial)"))+(currentLanguage==="uk"?". Механік продовжить роботу, коли ви підтвердите.":". Confirm on the Repair Board when the truck can continue."),"success",12000);if(msg.type==="customer_decision"&&session?.role!=="mechanic")window.dispatchEvent(new CustomEvent("ittr:customer-decision",{detail:msg}));if(msg.type==="sms_received"&&session?.role!=="mechanic")window.dispatchEvent(new CustomEvent("ittr:sms",{detail:msg}))}catch(_){}};ws.onclose=()=>{liveSocket=null;if(liveSocketStopped||!navigator.onLine)return;liveReconnectAttempt++;const delay=Math.min(30000,1000*(2**Math.min(5,liveReconnectAttempt-1)))+Math.floor(Math.random()*500);setLiveStatus("reconnecting","Reconnecting");clearTimeout(liveReconnectTimer);liveReconnectTimer=setTimeout(connectLiveStatusSocket,delay)};ws.onerror=()=>{try{ws.close()}catch(_){}}}
 function updateOnlineState(){
  const b=document.getElementById("offlineBanner");
  if(b)b.style.display=navigator.onLine?"none":"block";
@@ -2413,6 +2461,20 @@ const UI_TRANSLATIONS={
  "No upcoming assigned trucks.":"Немає очікуваних траків.",
  "No trucks ready to work on.":"Немає траків, готових до роботи.",
  "My Completed Work":"Мої завершені роботи",
+ "All shop work":"Уся робота цеху",
+ "My assigned work":"Моя призначена робота",
+ "Assigned to you":"Призначено вам",
+ "View only":"Лише перегляд",
+ "Unassigned":"Не призначено",
+ "Jobs:":"Роботи:",
+ "No work orders match your search.":"Немає замовлень за вашим пошуком.",
+ "No trucks assigned to you are ready.":"Немає готових траків, призначених вам.",
+ "No upcoming trucks.":"Немає очікуваних траків.",
+ "This work order is no longer available.":"Це замовлення більше недоступне.",
+ "Search unit, WO #, customer, mechanic":"Пошук: юніт, № замовлення, клієнт, механік",
+ "View only: you are not assigned to this work order. Ask the office to add you, or the assigned mechanic to add you as a helper.":"Лише перегляд: вас не призначено на це замовлення. Попросіть офіс додати вас або призначеного механіка додати вас помічником.",
+ "This work order is assigned to you but is not released for work yet.":"Це замовлення призначено вам, але ще не відкрито для роботи.",
+ "Completed work orders for the whole shop. You can reactivate one you completed or were the primary mechanic on if something was missed.":"Завершені замовлення всього цеху. Ви можете повторно відкрити замовлення, яке завершили або де були основним механіком, якщо щось пропущено.",
  "Findings Center":"Центр зауважень",
  "Action Required":"Потрібна дія",
  "Yesterday":"Вчора",
@@ -2773,7 +2835,7 @@ Object.assign(UI_TRANSLATIONS,{
  "QC Inspection":"Контроль якості",
  "Ready for Pickup":"Готовий до видачі",
  "Invoiced":"Рахунок виставлено",
- "Paid":"Оплачено",
+ "Paid":"Оплачено","Balance":"Залишок",
  "Vehicle Profile":"Профіль техніки",
  "Year":"Рік",
  "Make":"Марка",
@@ -3217,6 +3279,49 @@ function upcomingForCurrentMechanic(w){
  if(isInHouse(w))return w.fleetAuto===false;
  return !w.truckHere;
 }
+// v24.75.0: mechanics SEE all of the shop's work (the server sends every work order); the helpers above still decide
+// what a mechanic may DO (start, time, complete, add findings/helpers): only on work they are assigned to.
+// Each open work order is in exactly one list: Ready (truck here / fleet released / reopened) or Upcoming.
+// "My assigned work" keeps primary and helper assignments. The choice is remembered per account on this device.
+const MECH_VIEW={user:"",mine:false,q:""};
+function mechViewKey(u){return `ittr.mechView.${String(u||"").toLowerCase()}`}
+function syncMechViewAccount(){
+ const u=String(session?.username||"").toLowerCase();if(MECH_VIEW.user===u)return;
+ MECH_VIEW.user=u;MECH_VIEW.mine=false;MECH_VIEW.q="";
+ try{MECH_VIEW.mine=JSON.parse(localStorage.getItem(mechViewKey(u))||"{}").mine===true}catch(_){}
+ document.querySelectorAll(".mechViewSearch").forEach(x=>{x.value=""});
+}
+function shopReadyForMechanics(w){return !!w&&w.status!=="Completed"&&(readyForMechanic(w)||!!w.isReactivated)}
+function shopUpcomingForMechanics(w){return !!w&&w.status!=="Completed"&&!shopReadyForMechanics(w)}
+function mechViewMatches(w){
+ if(MECH_VIEW.mine&&!mechanicAssignedToWorkOrder(w,session?.username))return false;
+ const q=MECH_VIEW.q.trim().toLowerCase();if(!q)return true;
+ return [w.unit,w.id,`#${w.id}`,w.customer,w.vin,w.status,w.parking,mechanicAssignmentsLabel(w),...assignedMechanicUsernames(w),...(w.tasks||[]).map(t=>t?.t)].some(x=>String(x??"").toLowerCase().includes(q));
+}
+function setMechView(mine){
+ MECH_VIEW.mine=!!mine;try{localStorage.setItem(mechViewKey(MECH_VIEW.user),JSON.stringify({mine:MECH_VIEW.mine}))}catch(_){}
+ renderMechanicLists();
+}
+function setMechSearch(v){MECH_VIEW.q=String(v||"").slice(0,80);document.querySelectorAll(".mechViewSearch").forEach(x=>{if(x.value!==MECH_VIEW.q)x.value=MECH_VIEW.q});renderMechanicLists()}
+// Who is on it: work-order number, status, primary mechanic and helpers, on every mechanic card.
+function mechWoMeta(w){
+ const primary=String(w?.mechanic||"").trim(),helpers=(Array.isArray(w?.helpers)?w.helpers:[]).filter(Boolean);
+ const mine=mechanicAssignedToWorkOrder(w,session?.username);
+ return `<div class="mechWoMeta"><span class="mechWoNo">WO #${esc(String(w.id))}</span>${woStageBadge(w)}<span>${tr("Primary")}: <b>${esc(primary?mechanicDisplay(primary):tr("Unassigned"))}</b></span>${helpers.length?`<span>${tr("Helpers")}: ${helpers.map(h=>esc(mechanicDisplay(h))).join(", ")}</span>`:""}${mine?`<span class="badge b-here">${tr("Assigned to you")}</span>`:`<span class="badge b-future">${tr("View only")}</span>`}</div>`;
+}
+function renderMechanicLists(){
+ if(session?.role!=="mechanic")return;
+ syncMechViewAccount();
+ document.querySelectorAll(".mechViewAll").forEach(b=>b.setAttribute("aria-pressed",String(!MECH_VIEW.mine)));
+ document.querySelectorAll(".mechViewMine").forEach(b=>b.setAttribute("aria-pressed",String(MECH_VIEW.mine)));
+ const wo=(state.workorders||[]).filter(mechViewMatches),empty=t=>`<div class="card empty">${esc(tr(MECH_VIEW.q?"No work orders match your search.":t))}</div>`;
+ const ready=wo.filter(shopReadyForMechanics),upcoming=wo.filter(shopUpcomingForMechanics);
+ const jobsBox=document.getElementById("mechanicJobs");if(jobsBox)jobsBox.innerHTML=ready.map(mechanicCard).join("")||empty(MECH_VIEW.mine?"No trucks assigned to you are ready.":"No trucks ready to work on.");
+ const upBox=document.getElementById("mechanicUpcoming");if(upBox)upBox.innerHTML=upcoming.map(mechanicUpcomingCard).join("")||empty(MECH_VIEW.mine?"No upcoming assigned trucks.":"No upcoming trucks.");
+ const c1=document.getElementById("mechanicJobsCount");if(c1)c1.textContent=`(${ready.length})`;
+ const c2=document.getElementById("mechanicUpcomingCount");if(c2)c2.textContent=`(${upcoming.length})`;
+ renderMyCompleted();
+}
 // v24.41.8: one date style everywhere ("Sep 30, 2026" and "8:00 AM").
 function fmtDay(v){if(!v)return "";const d=new Date(/^\d{4}-\d{2}-\d{2}$/.test(String(v))?`${v}T12:00:00`:v);return Number.isFinite(d.getTime())?d.toLocaleDateString(currentLanguage==="uk"?"uk-UA":"en-US",{month:"short",day:"numeric",year:"numeric"}):String(v)}
 function fmtClock(hhmm){const m=String(hhmm||"").match(/^(\d{1,2}):(\d{2})/);if(!m)return "";const d=new Date(2000,0,1,Number(m[1]),Number(m[2]));return d.toLocaleTimeString(currentLanguage==="uk"?"uk-UA":"en-US",{hour:"numeric",minute:"2-digit"})}
@@ -3409,7 +3514,7 @@ Labor total: ${d.laborTotal==null?'—':money(d.laborTotal)} · Parts total: ${d
 Needs review: ${warn.join('; ')}`:''}
 
 Nothing has been written to customer/unit history yet.`}
-async function analyzeShopAiAttachment(c,f,message){if(!f)return false;if(/\.csv$/i.test(f.name)||/csv/i.test(f.type)){showToast('CSV detected. Opening Fullbay Data Center so you can use the safe customer/unit or repair-order importer.','info',6500);document.getElementById('shopAiFile').value='';toggleShopAI(false);showView('operations');setTimeout(()=>{try{showProPanel('fullbay')}catch{}},250);return true}const fd=new FormData();fd.append('file',f);fd.append('message',message||'Import this legacy invoice into ITTR.');const resp=await shopAiFetch(c,'/api/ai/import/analyze',{method:'POST',headers:authHeaders(),body:fd});const data=await resp.json().catch(()=>({}));if(!shopAiAlive(c))return true;if(!resp.ok)throw new Error(data.error||`AI import failed (${resp.status})`);shopAiImportDraft=data.draft;document.getElementById('shopAiFile').value='';const body=document.getElementById('shopAiMessages');body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',shopAiImportSummary(shopAiImportDraft)));body?.insertAdjacentHTML('beforeend','<div class="aiMsg assistant"><div class="aiMsgHead">Review actions</div><div class="actions"><button class="primary" onclick="commitShopAiHistoryDraft()">Add to Completed History</button><button class="secondary" onclick="commitShopAiInvoiceDraft()">Create Draft Invoice Instead</button><button class="secondary" onclick="shopAiImportDraft=null">Discard</button></div></div>');return true}
+async function analyzeShopAiAttachment(c,f,message){if(!f)return false;if(/\.csv$/i.test(f.name)||/csv/i.test(f.type)){showToast('CSV detected. Opening Fullbay Data Center so you can use the safe customer/unit or repair-order importer.','info',6500);document.getElementById('shopAiFile').value='';toggleShopAI(false);showView('procenter');setTimeout(()=>{try{showProPanel('fullbay')}catch{}},250);return true}const fd=new FormData();fd.append('file',f);fd.append('message',message||'Import this legacy invoice into ITTR.');const resp=await shopAiFetch(c,'/api/ai/import/analyze',{method:'POST',headers:authHeaders(),body:fd});const data=await resp.json().catch(()=>({}));if(!shopAiAlive(c))return true;if(!resp.ok)throw new Error(data.error||`AI import failed (${resp.status})`);shopAiImportDraft=data.draft;document.getElementById('shopAiFile').value='';const body=document.getElementById('shopAiMessages');body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',shopAiImportSummary(shopAiImportDraft)));body?.insertAdjacentHTML('beforeend','<div class="aiMsg assistant"><div class="aiMsgHead">Review actions</div><div class="actions"><button class="primary" onclick="commitShopAiHistoryDraft()">Add to Completed History</button><button class="secondary" onclick="commitShopAiInvoiceDraft()">Create Draft Invoice Instead</button><button class="secondary" onclick="shopAiImportDraft=null">Discard</button></div></div>');return true}
 async function commitShopAiHistoryDraft(){if(!shopAiImportDraft)return showToast('No legacy history draft is waiting for review.','warning');if(!shopAiImportDraft.matches?.customer||!shopAiImportDraft.matches?.unit)return showToast('Customer and unit must both match before history can be saved.','warning',8000);if(!confirm('Add these extracted repairs as COMPLETED historical Fullbay work for this customer/unit?'))return;const c=shopAiConv,draft=shopAiImportDraft;const r=await shopAiFetch(c,'/api/ai/import/commit-history',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({draft})});const d=await r.json().catch(()=>({}));if(!shopAiAlive(c))return;if(!r.ok)throw new Error(d.error||'Could not add completed history.');shopAiImportDraft=null;showToast(`Completed history added: ${d.serviceOrder}.`,'success',6500);const body=document.getElementById('shopAiMessages');body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`Saved ${d.services} completed service record${d.services===1?'':'s'} to ${d.serviceOrder}. Open the customer or unit Service History to review the repair details.`))}
 async function commitShopAiInvoiceDraft(){if(!shopAiImportDraft)return showToast('No AI import draft is waiting for review.','warning');if(!confirm('Create a DRAFT invoice from this AI extraction? You can review and edit it before finalizing.'))return;const c=shopAiConv,draft=shopAiImportDraft;const r=await shopAiFetch(c,'/api/ai/import/commit-invoice',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({draft})});const d=await r.json().catch(()=>({}));if(!shopAiAlive(c))return;if(!r.ok)throw new Error(d.error||'Could not create draft invoice.');shopAiImportDraft=null;showToast('Draft invoice created. Opening it in a new tab.','success');openInvoiceWorkspace?.(d.id)}
 async function tryShopAiAction(c,message){const r=await shopAiFetch(c,'/api/ai/copilot/action',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({message})});const d=await r.json().catch(()=>({}));if(!shopAiAlive(c))return true;if(!r.ok||!d.action)return false;const a=d.action,body=document.getElementById('shopAiMessages');if(a.type==='navigate'){body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`${a.label}.`));toggleShopAI(false);showView(a.view);return true}if(a.type==='diagnostic'){body?.insertAdjacentHTML('beforeend',shopAiMessageHtml('assistant',`${a.label}\\n${(a.report?.checks||[]).map(x=>'✓ '+x).join('\\n')}\\nRecent audit events: ${a.report?.recentAuditEvents??0}\\n${a.report?.note||''}`));return true}return false}
@@ -3448,6 +3553,7 @@ function mechanicCompletedCard(w){
      <div><b>Unit ${esc(w.unit)}</b><div class="muted">${esc(w.customer||"")}${w.parking?` · Parking ${esc(w.parking)}`:""}</div></div>
      <span class="badge b-done">Completed</span>
    </div>
+   ${mechWoMeta(w)}
    <div style="margin-top:10px">
      ${(w.tasks||[]).map(t=>`<div class="muted">${normalizedTaskOutcome(t)==="completed"?"✓":normalizedTaskOutcome(t)==="next_visit"?"↻":normalizedTaskOutcome(t)==="not_completed"?"✕":"•"} ${esc(t.t)} — ${esc(normalizedTaskOutcome(t)?taskOutcomeLabel(t):(Number(w.outcomeWorkflowVersion||0)===0?"Legacy — outcome not recorded":"Decision Required"))}${t.elapsedMs?` · ${fmtDuration(taskElapsed(t))}`:""}${t.outcomeNote?` · ${esc(t.outcomeNote)}`:""}${t.outcomeBy?` · By ${esc(mechanicDisplay(t.outcomeBy))}`:""}</div>`).join("")}
    </div>
@@ -3461,13 +3567,17 @@ function mechanicCompletedCard(w){
    </div>
  </div>`;
 }
+function mechanicTookPart(w){return w.completedBy===session?.username||mechanicAssignedToWorkOrder(w,session?.username)||(w.tasks||[]).some(t=>t.outcomeBy===session?.username)}
 function renderMyCompleted(){
  const box=document.getElementById("myCompletedJobs");
  if(!box || session?.role!=="mechanic")return;
- const mine=(state.workorders||[])
-   .filter(w=>w.status==="Completed" && (w.completedBy===session.username || mechanicAssignedToWorkOrder(w,session.username) || (w.tasks||[]).some(t=>t.outcomeBy===session.username)))
-   .sort((a,b)=>new Date(b.completedAt||0)-new Date(a.completedAt||0));
- box.innerHTML=mine.map(mechanicCompletedCard).join("")||'<div class="card empty">You have no completed work orders yet.</div>';
+ syncMechViewAccount();
+ // v24.75.0: every completed work order of the shop; "My assigned work" also keeps jobs this mechanic finished a task on.
+ const q=MECH_VIEW.q,mine=MECH_VIEW.mine;
+ const list=(state.workorders||[])
+   .filter(w=>w.status==="Completed"&&(mine?mechanicTookPart(w):true)&&(()=>{const was=MECH_VIEW.mine;MECH_VIEW.mine=false;const ok=mechViewMatches(w);MECH_VIEW.mine=was;return ok})())
+   .sort((a,b)=>new Date(b.completedAt||0)-new Date(a.completedAt||0)).slice(0,300);
+ box.innerHTML=list.map(mechanicCompletedCard).join("")||`<div class="card empty">${esc(tr(q?"No work orders match your search.":mine?"You have no completed work orders yet.":"No completed work orders yet."))}</div>`;
 }
 function openReactivate(id){
  if(!requireMechanic())return;
@@ -3479,40 +3589,26 @@ function openReactivate(id){
  document.getElementById("reactivateWorkOrderId").value=id;
  document.getElementById("reactivateModal").classList.add("open");
 }
-document.getElementById("reactivateForm").onsubmit=e=>{
+// v24.75.0: reopening goes through its own server route (the whole-shop save never changes a completed work order).
+document.getElementById("reactivateForm").onsubmit=async e=>{
  e.preventDefault();
  if(!requireMechanic())return;
  const f=new FormData(e.target);
- const id=Number(f.get("workOrderId"));
- const w=state.workorders.find(x=>x.id===id);
+ const id=f.get("workOrderId");
+ const w=state.workorders.find(x=>String(x.id)===String(id));
  if(!w || w.status!=="Completed")return;
  if(!(w.completedBy===session.username || w.mechanic===session.username))return alert(tr("You can only reactivate your own completed work."));
  const reason=(f.get("reason")||"").trim();
  const added=(f.get("tasks")||"").split("\n").map(x=>x.trim()).filter(Boolean);
  if(!reason || !added.length)return;
- added.forEach(t=>{
-   w.tasks.push(newTaskRecord(t,{source:"reactivation"}));
- });
- // Reactivation becomes a new active visit owned by the mechanic who reopened it.
- w.mechanic=session.username;
- w.status="In Progress";
- w.outcomeWorkflowVersion=1;
- w.completedAt="";
- w.completedBy="";
- w.isReactivated=true;
- w.reactivatedBy=session.username;
- w.reactivatedAt=new Date().toISOString();
- // A mechanic can only reactivate a truck they are currently working on,
- // so customer units are treated as physically present for this reactivated visit.
- if(w.unitType==="customer")w.truckHere=true;
- if(isInHouse(w))w.fleetAuto=true;
- w.reactivationCount=Number(w.reactivationCount||0)+1;
- w.history=w.history||[];
- w.history.push(workOrderHistoryEntry("reactivated",{reason,addedTasks:added}));
- save();
- closeModal("reactivateModal");
- render();
- openDetail(id);
+ const btn=e.target.querySelector('button[type="submit"]');if(btn)btn.disabled=true;
+ try{
+  const d=await apiJSON(`/api/work-orders/${encodeURIComponent(w.id)}/reactivate`,{method:"POST",body:JSON.stringify({reason,tasks:added})});
+  if(d?.shopflow)ittrAdoptServerShopflow(d.shopflow,d.version);
+  if(d?.version!=null)ittrNoteShopflowVersion(d.version);
+  closeModal("reactivateModal");render();openDetail(w.id);
+ }catch(x){alert(x.message||tr("Could not reactivate the work order."))}
+ finally{if(btn)btn.disabled=false}
 };
 
 function canCurrentMechanicComplete(w){
@@ -4679,19 +4775,12 @@ function render(){
  if(session?.role==="mechanic"){
    // v24.41.5: load the time clock on every page load/refresh, not only after an activity change.
    renderMechanicActivity();
-   const upcomingBox=document.getElementById("mechanicUpcoming");
-   if(upcomingBox){
-     upcomingBox.innerHTML=wo.filter(upcomingForCurrentMechanic).map(mechanicUpcomingCard).join("")||'<div class="card empty">No upcoming assigned trucks.</div>';
-   }
-
-   const jobsBox=document.getElementById("mechanicJobs");
-   if(jobsBox){
-     jobsBox.innerHTML=wo.filter(visibleToCurrentMechanic).map(mechanicCard).join("")||'<div class="card empty">No trucks ready to work on.</div>';
-   }
+   renderMechanicLists();
 
    const issuesBox=document.getElementById("issues");
    if(issuesBox){
-     const mine=issues.filter(i=>!i.mechanic||i.mechanic===session.username).sort((a,b)=>findingDateValue(b)-findingDateValue(a)),groups={};
+     // v24.75.0: the server now sends every work order's findings; this list stays the mechanic's own findings.
+     const mine=issues.filter(i=>i.mechanic===session.username||(!i.mechanic&&mechanicAssignedToWorkOrder(wo.find(x=>x.id==i.wo)||{},session.username))).sort((a,b)=>findingDateValue(b)-findingDateValue(a)),groups={};
      mine.forEach(i=>{const dk=findingDayKey(i),w=wo.find(x=>x.id==i.wo),unit=w?.unit||i.unitSnapshot||"Unknown Unit",k=`${dk}|||${unit}`;(groups[k]||(groups[k]={date:dk,unit,items:[]})).items.push(i)});
      issuesBox.innerHTML=Object.values(groups).map(g=>`<div class="findingUnitGroup"><div class="findingUnitHeader" style="cursor:default"><div><div class="findingUnitName">${esc(g.unit)}</div><div class="findingUnitMeta">${esc(findingDateLabel(g.date))} · ${g.items.length} finding${g.items.length===1?"":"s"}</div></div></div><div class="findingUnitBody">${g.items.map(issueCard).join("")}</div></div>`).join("")||'<div class="card empty">No inspection findings yet.</div>';
    }
@@ -4704,7 +4793,6 @@ function render(){
      if(keepWo&&[...issueWO.options].some(o=>o.value===keepWo))issueWO.value=keepWo;fillIssueTasks(keepTask);
    }
 
-   renderMyCompleted();
  }
 
  const pendingApprovals=issues.filter(i=>(i.approval||"Waiting for Customer")==="Waiting for Customer");
@@ -4757,20 +4845,21 @@ function mechanicUpcomingCard(w){
      </div>
      <span class="badge b-wait">On the Way</span>
    </div>
+   ${mechWoMeta(w)}
    <div style="margin-top:10px">
-     <b>Assigned to you:</b>
+     <b>Jobs:</b>
      ${assignedJobs||'<div class="muted">No repair tasks listed.</div>'}
    </div>
    ${w.notes?`<div class="futureNote"><b>Admin notes</b><div>${esc(w.notes)}</div></div>`:""}
    <div style="margin-top:12px">
-     <button class="success mechanicAction jobStateActive" onclick="mechanicMarkTruckHere(${jsArg(w.id)})">✓ Truck Is Here</button>
-     <button class="secondary" onclick="openDetail(${jsArg(w.id)})">View Assignment</button>
+     ${upcomingForCurrentMechanic(w)?`<button class="success mechanicAction jobStateActive" onclick="mechanicMarkTruckHere(${jsArg(w.id)})">✓ Truck Is Here</button>`:""}
+     <button class="secondary" onclick="openDetail(${jsArg(w.id)})">View</button>
    </div>
  </div>`;
 }
 
-// MECHANIC UI RULE: never display internal work-order numbers; identify work by Unit Number only.
-function mechanicCard(w){return `<div class="card jobcard"><div class="jobtop"><div><b>Unit ${esc(w.unit)}</b><div class="muted">${esc(w.customer)}${w.parking?` · Parking ${esc(w.parking)}`:""} · ${esc(fmtScheduled(w))}</div></div>${statusBadge(w.status)}</div><div style="margin-top:10px">${w.tasks.map(t=>`<div class="muted">${t.done?"✓":(t.startedAt&&!t.stoppedAt?"▶":"○")} ${esc(t.t)}${t.done?` · ${fmtDuration(taskElapsed(t))}`:""}</div>`).join("")}</div><div style="margin-top:10px"><button onclick="openDetail(${jsArg(w.id)})">Open Job</button></div></div>`}
+// v24.75.0: mechanic cards show the work-order number with the unit (owner's request), so two visits of one unit can be told apart.
+function mechanicCard(w){return `<div class="card jobcard"><div class="jobtop"><div><b>Unit ${esc(w.unit)}</b><div class="muted">${esc(w.customer)}${w.parking?` · Parking ${esc(w.parking)}`:""} · ${esc(fmtScheduled(w))}</div></div>${statusBadge(w.status)}</div>${mechWoMeta(w)}<div style="margin-top:10px">${w.tasks.map(t=>`<div class="muted">${t.done?"✓":(t.startedAt&&!t.stoppedAt?"▶":"○")} ${esc(t.t)}${t.done?` · ${fmtDuration(taskElapsed(t))}`:""}</div>`).join("")}</div><div style="margin-top:10px"><button onclick="openDetail(${jsArg(w.id)})">${visibleToCurrentMechanic(w)?"Open Job":"View"}</button></div></div>`}
 // v24.69.0 finding photos: a gallery of small thumbnails (never cropped), the full-screen viewer (public/photo-viewer.js),
 // several photos per finding with caption + before/after, and a durable upload queue (public/photo-queue.js). The finding
 // is saved first; its photos are kept on this device and uploaded after, so a failed upload never loses the finding.
@@ -6109,7 +6198,7 @@ function workOrderDetailHtml(w){
   <div style="margin-top:10px"><button class="success mechanicAction jobStateActive" onclick="mechanicMarkTruckHere(${jsArg(w.id)});closeModal('detailModal')">✓ Truck Is Here</button></div>`:
  (session?.role==="mechanic" && w.status==="Completed" && (w.completedBy===session.username || mechanicAssignedToWorkOrder(w,session.username) || (w.tasks||[]).some(t=>t.outcomeBy===session.username))?`
   <div style="margin-top:14px">${(w.completedBy===session.username || w.mechanic===session.username)?`<button class="secondary" onclick="closeModal('detailModal');openReactivate(${jsArg(w.id)})">Reactivate / Add Missed Work</button>`:`<div class="notice">You participated in this work order. Only the primary/completing mechanic can reactivate it.</div>`}</div>`:
- (session?.role==="mechanic"?`<div class="notice" style="margin-top:14px">This work order is not assigned/released to your mechanic account.</div>`:"")));
+ (session?.role==="mechanic"?`<div class="notice" style="margin-top:14px">${mechanicAssignedToWorkOrder(w,session.username)?"This work order is assigned to you but is not released for work yet.":"View only: you are not assigned to this work order. Ask the office to add you, or the assigned mechanic to add you as a helper."}</div>`:"")));
  return `
   <div class="muted">${esc(w.customer)} · ${esc(fmtScheduled(w))}${w.parking?` · Parking: ${esc(w.parking)}`:""}</div>${(w.vin||w.make||w.model||w.plate||w.dotNumber)?`<div class="vehicleMatchCard" style="margin-top:8px"><b>${esc([w.year,w.make,w.model].filter(Boolean).join(" ")||`Unit ${w.unit}`)}</b><div class="muted">${esc([w.vin?`VIN ${w.vin}`:"",w.plate?`Plate ${w.plate}`:"",w.dotNumber?`DOT ${w.dotNumber}`:"",w.mileage?`${Number(w.mileage).toLocaleString()} mi`:""].filter(Boolean).join(" · "))}</div></div>`:""}
   <div class="assignmentStrip">${assignmentChips(w)}</div>
@@ -6127,15 +6216,12 @@ function workOrderDetailHtml(w){
   ${mechanicControls}`;
 }
 function openDetail(id){
- let w=state.workorders.find(x=>x.id===id); if(!w)return; if(session?.role==="mechanic"){
- const ownCompleted=w.status==="Completed" && (w.completedBy===session.username || mechanicAssignedToWorkOrder(w,session.username) || (w.tasks||[]).some(t=>t.outcomeBy===session.username));
- const ownUpcoming=upcomingForCurrentMechanic(w);
- if(!visibleToCurrentMechanic(w) && !ownCompleted && !ownUpcoming) return alert(tr("You do not have access to this work order."));
-}
+ let w=state.workorders.find(x=>String(x.id)===String(id)); if(!w)return alert(tr("This work order is no longer available."));
+ // v24.75.0: every mechanic may open any shop work order to read it; the buttons inside follow assignment (below).
  // v24.70.0: the office opens a full work-order page instead of the pop-up; every action that refreshes the detail
  // (timers, parts, helpers, parking…) calls openDetail again and so refreshes that page.
  if(["admin","manager"].includes(session?.role)&&typeof window.openWoWorkspace==="function"&&!window.__ittrForceDetailModal){window.openWoWorkspace(w.id);return}
- document.getElementById("detailTitle").textContent=session?.role==="mechanic"?`Unit ${w.unit}`:`Work Order #${w.id} — ${w.unit}`;
+ document.getElementById("detailTitle").textContent=`Work Order #${w.id} — ${w.unit}`;
  document.getElementById("detailBody").innerHTML=workOrderDetailHtml(w);
  document.getElementById("detailModal").classList.add("open");
  loadWorkOrderTaskSessions(w.id);
@@ -6355,7 +6441,7 @@ function renderInvoices(){const items=invoiceItems.filter(invoiceMatchesSearch).
  const sum=list=>list.reduce((a,i)=>a+Number(i.balance_due||0),0),open=invoiceItems.filter(i=>['sent','partial'].includes(i.status)),overList=open.filter(i=>invStatus(i)==='overdue'),drafts=invoiceItems.filter(i=>i.status==='draft'),paid=invoiceItems.filter(i=>i.status==='paid');
  const n=(c,w)=>`${c} ${translateDynamicText(c===1?w:w+'s')}`;
  document.getElementById('invoiceKpis').innerHTML=`<div class="stat"><b>${invMoney(sum(open))}</b><span>${translateDynamicText('Customers owe')} · ${n(open.length,'invoice')}</span></div><div class="stat${overList.length?' statBad':''}"><b>${invMoney(sum(overList))}</b><span>${translateDynamicText('Overdue')} · ${n(overList.length,'invoice')}</span></div><div class="stat"><b>${invMoney(drafts.reduce((a,i)=>a+Number(i.total||0),0))}</b><span>${translateDynamicText('Drafts')} · ${n(drafts.length,'invoice')}</span></div><div class="stat"><b>${invMoney(paid.reduce((a,i)=>a+Number(i.total||0),0))}</b><span>${translateDynamicText('Paid')} · ${n(paid.length,'invoice')}</span></div>`;
- document.getElementById('invoiceTable').innerHTML=items.map(i=>{const st=invStatus(i);return `<tr class="invRow inv-${st}"><td><b>${esc(i.invoice_number)}</b>${i.work_order_id?`<div class="muted">WO #${esc(i.work_order_id)}</div>`:''}</td><td><b>${esc(i.customer_name)}</b><div class="muted">Unit ${esc(i.unit_number||'—')}</div></td><td>${esc(fmtDay(String(i.invoice_date||'').slice(0,10)))}<div class="${st==='overdue'?'overdueText':'muted'}">${translateDynamicText('Due')} ${esc(i.due_date?fmtDay(String(i.due_date).slice(0,10)):'—')}</div></td><td>${invStatusPill(i)}</td><td><b>${invMoney(i.total)}</b></td><td>${invMoney(i.amount_paid)}</td><td><b>${invMoney(i.balance_due)}</b></td><td><button class="secondary" onclick="openInvoiceWorkspace(${jsArg(i.id)})">Open</button></td></tr>`}).join('')||`<tr><td colspan="8" class="empty">${esc(translateDynamicText(invoiceSearchText?'No invoices match this search.':'No invoices in this view. Create one with + New Invoice, or from a completed work order.'))}</td></tr>`;
+ document.getElementById('invoiceTable').innerHTML=items.map(i=>{const st=invStatus(i);return `<tr class="invRow inv-${st}"><td class="invC-num"><b>${esc(i.invoice_number)}</b>${i.work_order_id?`<div class="muted">WO #${esc(i.work_order_id)}</div>`:''}</td><td class="invC-cust"><b>${esc(i.customer_name)}</b><div class="muted">Unit ${esc(i.unit_number||'—')}</div></td><td class="invC-date">${esc(fmtDay(String(i.invoice_date||'').slice(0,10)))}<div class="${st==='overdue'?'overdueText':'muted'}">${translateDynamicText('Due')} ${esc(i.due_date?fmtDay(String(i.due_date).slice(0,10)):'—')}</div></td><td class="invC-status">${invStatusPill(i)}</td><td class="invC-total" data-l="${esc(translateDynamicText('Total'))}"><b>${invMoney(i.total)}</b></td><td class="invC-paid" data-l="${esc(translateDynamicText('Paid'))}">${invMoney(i.amount_paid)}</td><td class="invC-bal" data-l="${esc(translateDynamicText('Balance'))}"><b>${invMoney(i.balance_due)}</b></td><td class="invC-act"><button class="secondary" onclick="openInvoiceWorkspace(${jsArg(i.id)})">Open</button></td></tr>`}).join('')||`<tr><td colspan="8" class="empty">${esc(translateDynamicText(invoiceSearchText?'No invoices match this search.':'No invoices in this view. Create one with + New Invoice, or from a completed work order.'))}</td></tr>`;
  const badge=document.getElementById('invoiceNavBadge');if(badge){const c=overList.length;badge.textContent=c;badge.style.display=c?'inline-flex':'none'}}
 let activeServiceOrder=null;
 async function createServiceOrderFromWO(id){try{const r=await fetch(`/api/service-orders/from-work-order/${id}`,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:'{}'}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to create service order');await openServiceOrder(d.id)}catch(e){alert(e.message)}}
@@ -7095,10 +7181,10 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
 <script src="./finance-shared.js?v=24.47.3"></script>
 <script src="./inspection-checklist.js?v=3"></script>
 <script src="./inspection-workflow.js?v=8"></script>
-<script src="./canned-jobs.js?v=24.71.1"></script>
-<script src="./share-links.js?v=24.71.1"></script>
-<script src="./sms.js?v=24.71.1"></script>
-<script src="./shop-workspace.js?v=24.71.1"></script>
+<script src="./canned-jobs.js?v=24.75.0"></script>
+<script src="./share-links.js?v=24.75.0"></script>
+<script src="./sms.js?v=24.75.0"></script>
+<script src="./shop-workspace.js?v=24.75.0"></script>
 <script>
 /* v24.46.2: Start a Truck keeps what the mechanic typed until the work order is created.
    Saved on this phone (localStorage) while typing and when the screen locks; restored when the wizard is opened

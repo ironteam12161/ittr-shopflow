@@ -57,7 +57,8 @@ try {
     eq(ranInvoiceQuery(), row.inv, `${tag}: invoice query executed by truck_history`);
     ok(r.ittrWorkOrders.some(w => w.workOrder === '9001'), `${tag}: this truck's work order (mech1's) in its history`);
     ({ r } = await call(who, 'work_orders', { status: 'all' }));
-    eq(r.workOrders.some(w => w.workOrder === '9002'), row.user.role !== 'mechanic', `${tag}: other mechanics' work orders listed`);
+    // v24.75.0 policy: every mechanic may read every shop work order (the app shows them all); acting stays assignment-only.
+    ok(r.workOrders.some(w => w.workOrder === '9002'), `${tag}: other mechanics' work orders listed`);
 
     ({ r, json } = await call(who, 'search_repair_history', { text: 'brake' }));
     ok(/replaced brake shoes/.test(json), `${tag}: repair search works`);

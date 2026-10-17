@@ -100,6 +100,7 @@ function onClick(e){const row=e.target.closest('tr[data-open]');if(row)return op
   await newForm({vendor:v,lines:pick.map(p=>({inventoryPartId:p.inventoryPartId,partNumber:p.partNumber,description:p.description,qty:p.suggestQty,unitCost:p.unitCost}))})}catch(err){toast(err.message,'error')}})()}
 
 export async function mount(scope){S={...S,scope};
+ scope.on(scope.host,'ittr:module-refresh',()=>load(),{passive:true});
  scope.on(scope.host,'click',onClick);
  scope.on(scope.host,'input',e=>{if(e.target.dataset.f!=='q')return;clearTimeout(S.qt);S.qt=setTimeout(()=>{S.q=e.target.value.trim();load()},250)});
  scope.on(document,'keydown',e=>{if(e.key==='Escape'&&S.modal)closeModal()});

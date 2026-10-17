@@ -64,7 +64,22 @@ app.use((req,res,next)=>aiContext.run({feature:featureForPath(req.path),req},nex
 const httpServer=http.createServer(app);
 const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:20*1024*1024}});
 // v24.39.0: years of Fullbay history can be a large CSV — imports get their own, larger limit.
-const csvUpload=multer({storage:multer.memoryStorage(),limits:{fileSize:80*1024*1024}});
+const csvUploadRaw=multer({storage:multer.memoryStorage(),limits:{fileSize:80*1024*1024}});
+// v24.72.0: CSV uploads are held in memory, so each request is capped as a whole (not only per file: 40 files x 80 MB
+// was ~3 GB in one request) and only a few run at once, one per account. Limits can be raised by environment variable.
+const CSV_MAX_REQUEST_BYTES=Number(process.env.ITTR_CSV_MAX_REQUEST_MB||200)*1024*1024,CSV_MAX_CONCURRENT=Number(process.env.ITTR_CSV_MAX_CONCURRENT||2);
+let csvInFlight=0;const csvUsersInFlight=new Set();
+function csvUploadGuard(req,res,next){
+ const len=Number(req.headers["content-length"]);
+ if(!Number.isFinite(len)||len<=0)return res.status(411).json({error:"Upload size is required (Content-Length)."});
+ if(len>CSV_MAX_REQUEST_BYTES)return res.status(413).json({error:`This upload is ${Math.ceil(len/1048576)} MB; the limit is ${Math.round(CSV_MAX_REQUEST_BYTES/1048576)} MB per upload. Split it into smaller batches.`});
+ const who=String(req.user?.username||req.ip);
+ if(csvUsersInFlight.has(who))return res.status(429).json({error:"Your previous upload is still being processed. Wait for it to finish."});
+ if(csvInFlight>=CSV_MAX_CONCURRENT)return res.status(503).json({error:"Other uploads are being processed right now. Try again in a minute."});
+ csvInFlight++;csvUsersInFlight.add(who);let done=false;const release=()=>{if(done)return;done=true;csvInFlight--;csvUsersInFlight.delete(who)};
+ res.on("finish",release);res.on("close",release);next();
+}
+const csvUpload={single:f=>[csvUploadGuard,csvUploadRaw.single(f)],array:(f,n)=>[csvUploadGuard,csvUploadRaw.array(f,n)]};
 const photoUpload=multer({
  storage:multer.memoryStorage(),
  limits:{fileSize:25*1024*1024,files:1},
@@ -503,6 +518,7 @@ async function initDb(){
  CREATE UNIQUE INDEX IF NOT EXISTS customer_units_samsara_vehicle_uidx ON customer_units(samsara_vehicle_id) WHERE samsara_vehicle_id IS NOT NULL;
 
  ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS stripe_session_id TEXT;
+ ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS payment_return_ref TEXT;
  ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS email_sent_at TIMESTAMPTZ;
  ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS dot_number TEXT;
  ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS discount_type TEXT DEFAULT 'fixed';
@@ -842,17 +858,32 @@ const LIVE_MAX_PAYLOAD=4096,LIVE_MAX_PER_USER=Number(process.env.ITTR_LIVE_MAX_P
 const liveWss=new WebSocketServer({server:httpServer,path:"/ws/shop-status",maxPayload:LIVE_MAX_PAYLOAD});
 const liveClients=new Set();let livePending=0;
 const LIVE_REFRESH_TYPES=new Set(["shopflow_changed","task_changed","work_order_created"]);
-const LIVE_OFFICE_TYPES=new Set(["customer_decision","sms_received"]);
-function liveMessageFor(u,type,base,full){
+const LIVE_OFFICE_TYPES=new Set(["customer_decision","sms_received","parts_arrived"]);
+// v24.73.0: office screens that load their own data (invoices, payments, bills, purchase orders, parts, customers) are
+// told when another device changed that area, so an open list refreshes instead of showing old numbers. Each signal
+// goes only to accounts allowed to see that area; it carries the area and who changed it, never the data.
+const DATA_DOMAINS=[
+ [/^\/api\/(invoices|estimates|service-orders|finance)(\/|$)|^\/api\/customers\/[^/]+\/(receive-payment|apply-credit)$/,"invoices","invoices"],
+ [/^\/api\/(bills|vendor-invoices)(\/|$)/,"bills","invoices"],
+ [/^\/api\/(purchase-orders|parts)(\/|$)/,"inventory","inventory"],
+ [/^\/api\/(customers|customer-units|fleet-maintenance)(\/|$)/,"customers","customers"],
+];
+const DATA_DOMAIN_PERM=Object.fromEntries(DATA_DOMAINS.map(([,d,p])=>[d,p]));
+function liveMessageFor(u,type,base,full,domain){
  if(!u)return null;
+ if(type==="data_changed"){const perm=DATA_DOMAIN_PERM[domain];return u.role==="admin"||(u.role==="manager"&&u.permissions?.[perm]===true)?full:null}
  if(u.role==="admin"||u.role==="manager")return full;
  if(u.role==="mechanic"&&LIVE_REFRESH_TYPES.has(type))return base;
  return null;
 }
 function broadcastShopStatus(type,payload={}){
  const at=new Date().toISOString(),full=JSON.stringify({type,at,...payload}),base=JSON.stringify({type,at});
- for(const ws of liveClients){if(ws.readyState!==WebSocket.OPEN)continue;const msg=liveMessageFor(ws.ittrUser,type,base,full);if(msg)try{ws.send(msg)}catch(_){}}
+ for(const ws of liveClients){if(ws.readyState!==WebSocket.OPEN)continue;const msg=liveMessageFor(ws.ittrUser,type,base,full,payload.domain);if(msg)try{ws.send(msg)}catch(_){}}
 }
+// One place for every module: a successful change under these routes announces its area (coalesced per 300 ms).
+const pendingDomains=new Map();
+app.use((req,res,next)=>{if(req.method==="GET"||req.method==="HEAD"||req.method==="OPTIONS")return next();const hit=DATA_DOMAINS.find(([re])=>re.test(req.path));if(!hit)return next();
+ res.on("finish",()=>{if(res.statusCode>=400)return;const d=hit[1],by=String(req.user?.username||"");const cur=pendingDomains.get(d);if(cur){cur.by.add(by);return}const entry={by:new Set([by])};pendingDomains.set(d,entry);setTimeout(()=>{pendingDomains.delete(d);broadcastShopStatus("data_changed",{domain:d,by:[...entry.by].filter(Boolean).slice(0,5)})},300).unref?.()});next()});
 // The sign-in token arrives in the first message ({type:"auth",token}), not in the web address, where proxies and
 // server logs could record it. The old ?token= form (app copies before v24.58.1) is off unless ITTR_LEGACY_WS_TOKEN=1.
 const LIVE_SESSION_SQL=`SELECT s.id session_id,s.expires_at,u.id user_id,u.username,u.display_name,u.role,u.permissions FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.expires_at>now() AND u.active=true`;
@@ -1276,7 +1307,7 @@ app.post("/api/fullbay/history/reconcile",auth,managerPermission("customers"),as
  res.json({ok:true,report});
 }catch(e){next(e)}});
 
-app.get("/api/fullbay/service-orders/:so",auth,managerPermission("customers"),async(req,res,next)=>{try{
+app.get("/api/fullbay/service-orders/:so",auth,managerPermission("customers"),(req,res,next)=>{if(!can(req,"invoices")){const send=res.json.bind(res);res.json=b=>send(b?.order?{...b,order:stripHistoryMoney(b.order)}:b)}next()},async(req,res,next)=>{try{
  const db=requireDb(),so=String(req.params.so||"").trim(),canonical=canonicalFullbaySo(so),customerId=String(req.query.customerId||"").trim(),unit=String(req.query.unit||"").trim();
  if(!canonical)return res.status(400).json({error:"Service order is required."});
  const params=[canonical];let where="regexp_replace(regexp_replace(coalesce(service_order,''),'\\s*\\(Quick SO\\)\\s*$','','i'),'^SO[\\s#-]*','','i')=$1";
@@ -1723,6 +1754,16 @@ app.delete("/api/customers/:id",auth,ownerOnly,async(req,res,next)=>{const db=aw
  await db.query("INSERT INTO customer_deletion_events(customer_id,customer_name,deletion_mode,reason,reference_counts,customer_snapshot,deleted_by) VALUES($1,$2,'hard',$3,$4::jsonb,$5::jsonb,$6)",[customer.id,customer.customer_name,reason,JSON.stringify(references),JSON.stringify(customer),req.user.username]);
  await db.query("DELETE FROM fullbay_import_customers WHERE id=$1",[customer.id]);await db.query("COMMIT");await audit(req.user.username,"customer_hard_deleted",{customerId:customer.id,name:customer.customer_name,references,reason});res.json({ok:true,mode:"hard",references});
  }catch(e){try{await db.query("ROLLBACK")}catch{}next(e)}finally{db.release()}});
+// v24.72.0: service history on customer and vehicle profiles follows the Invoices permission too. Without it, the
+// shop's own invoices are left out and imported Fullbay records keep the work done but lose the invoice number and
+// money (labor/parts/total), so Customers alone no longer shows invoice information another way.
+const HISTORY_MONEY_KEYS=new Set(["invoice","invoiceStatus","laborAmount","partAmount","totalAmount","subtotal","taxAmount","discount","additionalFees","otherCharges","lines","balanceDue","amountPaid"]);
+const HISTORY_MONEY_RE=/(price|cost|amount|subtotal|^tax|rate$|^total|balance|paid)/i;
+const stripHistoryMoney=v=>Array.isArray(v)?v.map(stripHistoryMoney):v&&typeof v==="object"?Object.fromEntries(Object.entries(v).filter(([k])=>!HISTORY_MONEY_KEYS.has(k)&&!HISTORY_MONEY_RE.test(k)).map(([k,x])=>[k,stripHistoryMoney(x)])):v;
+function historyForPermissions(req,history){
+ if(can(req,"invoices"))return history;
+ return (Array.isArray(history)?history:[]).filter(h=>h?.source!=="invoice").map(stripHistoryMoney);
+}
 app.get("/api/customers/:id/profile",auth,managerPermission("customers"),async(req,res)=>{
  const warnings=[];
  try{
@@ -1737,7 +1778,7 @@ app.get("/api/customers/:id/profile",auth,managerPermission("customers"),async(r
   const ittrHistory=workorders.slice(0,300).map(w=>({source:"ittr",id:w?.id,unit:w?.unit,date:w?.date,time:w?.time,status:w?.status,completedAt:w?.completedAt,mechanic:w?.mechanic,helpers:Array.isArray(w?.helpers)?w.helpers:[],tasks:(Array.isArray(w?.tasks)?w.tasks:[]).filter(Boolean).map(t=>({t:t?.t,done:t?.done,outcome:t?.outcome,outcomeNote:t?.outcomeNote})),notes:w?.notes,completionNotes:w?.completionNotes,futureNotes:w?.futureNotes,revisitMiles:w?.revisitMiles,vin:w?.vin,year:w?.year,make:w?.make,model:w?.model,plate:w?.plate,mileage:w?.mileage}));
   let fullbayHistory=[];try{const sr=await db.query(`SELECT service_order,invoice_number,unit_number,vin,max(action_completed_at) completed_at,max(unit_miles) unit_miles,max(lead_tech) lead_tech,max(tech) tech,sum(coalesce(hours,0)) hours,sum(coalesce(labor_amount,0)) labor_amount,sum(coalesce(part_amount,0)) part_amount,sum(coalesce(total_amount,0)) total_amount,json_agg(json_build_object('action',action_number,'complaint',complaint,'correction',actual_correction,'hours',hours,'component',component,'system',system,'tech',tech,'laborAmount',labor_amount,'partAmount',part_amount,'totalAmount',total_amount) ORDER BY action_completed_at,action_number) actions FROM fullbay_service_history WHERE customer_id::text=$1::text OR (customer_id IS NULL AND lower(customer_name)=lower($2)) GROUP BY service_order,invoice_number,unit_number,vin ORDER BY max(action_completed_at) DESC NULLS LAST LIMIT 1000`,[customer.id,customer.customer_name]);fullbayHistory=sr.rows.map(x=>({source:"fullbay",id:x.service_order,invoice:x.invoice_number,unit:x.unit_number,vin:x.vin,completedAt:x.completed_at,status:"Completed (Fullbay)",mechanic:x.tech||x.lead_tech||"",mileage:x.unit_miles,hours:Number(x.hours||0),laborAmount:Number(x.labor_amount||0),partAmount:Number(x.part_amount||0),totalAmount:Number(x.total_amount||0),tasks:(Array.isArray(x.actions)?x.actions:[]).map(a=>({t:a.complaint||a.correction||`Action ${a.action||""}`,done:true,outcome:"Completed",outcomeNote:a.correction||"",hours:a.hours,component:a.component,system:a.system,tech:a.tech,laborAmount:Number(a.laborAmount||0),partAmount:Number(a.partAmount||0),totalAmount:Number(a.totalAmount||0)}))}))}catch(e){warnings.push(`Imported Fullbay history unavailable (${e.code||"DB"}).`);console.error("Customer profile Fullbay history warning:",e)}
   const history=[...ittrHistory,...fullbayHistory].sort((a,b)=>new Date(b.completedAt||b.date||0)-new Date(a.completedAt||a.date||0)).slice(0,1200);
-  res.json({customer:customerPublic(customer),units,history,warnings});
+  res.json({customer:customerPublic(customer),units,history:historyForPermissions(req,history),warnings});
  }catch(e){console.error("Customer profile fatal error:",e);res.status(500).json({error:`Customer profile database error${e?.code?` [${e.code}]`:""}.`,code:e?.code||"CUSTOMER_PROFILE"})}
 });
 app.post("/api/customers/:id/units",auth,managerPermission("customers"),async(req,res,next)=>{try{
@@ -1787,7 +1828,7 @@ app.get("/api/customer-units/:id/profile",auth,managerPermission("customers"),as
   try{const xr=await db.query(`SELECT id,work_order_id,unit_number_snapshot,vin_snapshot,inspection_type,inspection_subtype,status,mechanic_username,started_at,completed_at,summary,findings FROM mechanic_inspections WHERE unit_id=$1::bigint OR (unit_id IS NULL AND (lower(unit_number_snapshot)=lower($2) OR ($3<>'' AND upper(coalesce(vin_snapshot,''))=upper($3)))) ORDER BY coalesce(completed_at,started_at,updated_at) DESC`,[unit.id,unit.unit_number||"",unit.vin||""]);const liveWo=liveWorkOrderIdSet(await getCoreState());inspectionHistory=xr.rows.filter(x=>!x.work_order_id||liveWo.has(String(x.work_order_id))).map(x=>({source:"inspection",id:x.id,workOrderId:x.work_order_id,unit:x.unit_number_snapshot,vin:x.vin_snapshot,completedAt:x.completed_at||x.started_at,status:x.status,mechanic:x.mechanic_username,inspectionType:x.inspection_type,inspectionSubtype:x.inspection_subtype,summary:x.summary||{},findings:Array.isArray(x.findings)?x.findings:[],tasks:(Array.isArray(x.findings)?x.findings:[]).map(f=>({t:f.label||f.id||"Inspection finding",outcome:f.status,outcomeNote:f.note||""}))}))}catch(e){console.error("Vehicle inspection history warning:",e?.message)}
   const history=[...inspectionHistory,...invoiceHistory,...fullbayHistory,...ittrHistory].sort((a,b)=>new Date(b.completedAt||b.date||0)-new Date(a.completedAt||a.date||0));
  const active=ittrHistory.filter(x=>x.status!=="Completed");
- res.json({unit,customer:unit.customer_id?{id:unit.customer_id,customer_name:unit.customer_name,dot_number:unit.dot_number,phone:unit.customer_phone,email:unit.customer_email}:null,history,active});
+ res.json({unit,customer:unit.customer_id?{id:unit.customer_id,customer_name:unit.customer_name,dot_number:unit.dot_number,phone:unit.customer_phone,email:unit.customer_email}:null,history:historyForPermissions(req,history),active});
 }catch(e){next(e)}});
 
 app.get("/api/customer-units/suggest",auth,async(req,res,next)=>{try{
@@ -1840,19 +1881,13 @@ app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
   out.ok=true;res.json(out);
  }catch(e){out.error=String(e?.message||e).slice(0,500);console.error("Customer CRM diagnostics failed:",e);res.status(500).json(out)}
 });
-async function reconcileDuplicateImportedCustomers(){
- if(!pool)return {merged:0};let merged=0;
- const r=await pool.query(`SELECT id,customer_name,fullbay_id FROM fullbay_import_customers ORDER BY id`);
- const groups=new Map();for(const c of r.rows){const k=normCustomerName(String(c.customer_name||"").replace(/^=+/,""));if(!k)continue;if(!groups.has(k))groups.set(k,[]);groups.get(k).push(c)}
- for(const items of groups.values()){
-  if(items.length<2)continue;const canonical=items.slice().sort((a,b)=>(b.fullbay_id?1:0)-(a.fullbay_id?1:0)||Number(a.id)-Number(b.id))[0];
-  for(const dupe of items){if(String(dupe.id)===String(canonical.id))continue;
-   await pool.query("UPDATE customer_units SET customer_id=$1,customer_name=$2,updated_at=now() WHERE customer_id::text=$3::text OR (customer_id IS NULL AND lower(customer_name)=lower($4))",[canonical.id,canonical.customer_name,dupe.id,dupe.customer_name]);
-   await pool.query("UPDATE fullbay_service_history SET customer_id=$1,customer_name=$2,updated_at=now() WHERE customer_id::text=$3::text OR (customer_id IS NULL AND lower(customer_name)=lower($4))",[canonical.id,canonical.customer_name,dupe.id,dupe.customer_name]);
-   await pool.query("DELETE FROM fullbay_import_customers WHERE id=$1",[dupe.id]);merged++;
-  }
- }
- return {merged};
+// v24.72.0: startup no longer merges customers by name. Two different businesses can share a name, and the old
+// automatic merge deleted records without moving every reference. Startup only counts same-name groups and logs them;
+// the owner reviews them in Customers → duplicate audit and merges with the preview (one transaction, all references).
+async function reportDuplicateImportedCustomers(){
+ if(!pool)return {groups:0};
+ const r=await pool.query(`SELECT lower(trim(regexp_replace(customer_name,'^=+',''))) k,count(*)::int n FROM fullbay_import_customers WHERE coalesce(trim(customer_name),'')<>'' GROUP BY 1 HAVING count(*)>1`);
+ return {groups:r.rowCount,records:r.rows.reduce((n,x)=>n+x.n,0)};
 }
 
 
@@ -2025,11 +2060,27 @@ app.post('/api/customers/merge',auth,ownerOnly,async(req,res,next)=>{
    invoices=await db.query('UPDATE customer_invoices SET customer_id=$1,customer_name=$2,updated_at=now() WHERE customer_id=$3 RETURNING id',[masterId,master.customer_name,duplicateId]);
   if((await db.query("SELECT to_regclass('service_orders') AS name")).rows[0]?.name)
    serviceOrders=await db.query('UPDATE service_orders SET customer_id=$1,customer_name=$2,updated_at=now() WHERE customer_id=$3 RETURNING id',[masterId,master.customer_name,duplicateId]);
-  await db.query(`UPDATE fullbay_import_customers SET phone=coalesce(nullif(phone,''),$2),email=coalesce(nullif(email,''),$3),dot_number=coalesce(nullif(dot_number,''),$4),updated_at=now() WHERE id=$1`,[masterId,dup.phone||null,dup.email||null,dup.usdot||null]);
+  // v24.72.0: every other record that points at the duplicate moves too, in the same transaction (estimates, portal
+  // links, payments/credits, inspection documents, text messages, and work orders in the shop record), so nothing is
+  // left pointing at a deleted customer.
+  const moved={};
+  for(const t of ["customer_estimates","customer_links","customer_payments","inspection_documents","sms_messages"]){
+   const cols=(await db.query("SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=$1",[t])).rows.map(r=>r.column_name);
+   if(!cols.includes("customer_id"))continue;
+   const r=await db.query(`UPDATE ${t} SET customer_id=$1${cols.includes("customer_name")?",customer_name=$3":""} WHERE customer_id::text=$2::text`,cols.includes("customer_name")?[masterId,String(duplicateId),master.customer_name]:[masterId,String(duplicateId)]);
+   moved[t]=r.rowCount;
+  }
+  const sfq=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");let woMoved=0;
+  if(sfq.rowCount){const sf=sfq.rows[0].payload||{};for(const w of Array.isArray(sf.workorders)?sf.workorders:[])if(w&&String(w.customerId||"")===String(duplicateId)){w.customerId=masterId;w.customer=master.customer_name;woMoved++}
+   if(woMoved)await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow'",[JSON.stringify(sf),req.user.username]);}
+  moved.workOrders=woMoved;
+  await db.query(`UPDATE fullbay_import_customers SET phone=coalesce(nullif(phone,''),$2),email=coalesce(nullif(email,''),$3),dot_number=coalesce(nullif(dot_number,''),$4),updated_at=now() WHERE id=$1`,[masterId,dup.phone||null,dup.email||null,dup.dot_number||null]);
   await db.query('DELETE FROM fullbay_import_customers WHERE id=$1',[duplicateId]);
+  // The removed record is kept in the audit log (with what moved), so a mistaken merge can be traced and undone.
+  await db.query("INSERT INTO server_audit(username,action,details) VALUES($1,'customer_merged',$2::jsonb)",[req.user.username,JSON.stringify({masterId,duplicateId,duplicateRecord:dup,movedUnits,mergedUnits,historyMoved:hist.rowCount,invoicesMoved:invoices.rowCount,serviceOrdersMoved:serviceOrders.rowCount,moved})]);
   await db.query('COMMIT');
-  try{await audit(req.user.username,'customer_merged',{masterId,duplicateId,movedUnits,mergedUnits,historyMoved:hist.rowCount,invoicesMoved:invoices.rowCount,serviceOrdersMoved:serviceOrders.rowCount})}catch{}
-  res.json({ok:true,masterId,duplicateId,movedUnits,mergedUnits,historyMoved:hist.rowCount,invoicesMoved:invoices.rowCount,serviceOrdersMoved:serviceOrders.rowCount});
+  if(woMoved)broadcastShopStatus("shopflow_changed",{by:req.user.username});
+  res.json({ok:true,masterId,duplicateId,movedUnits,mergedUnits,historyMoved:hist.rowCount,invoicesMoved:invoices.rowCount,serviceOrdersMoved:serviceOrders.rowCount,moved});
  }catch(e){try{await db.query('ROLLBACK')}catch{};next(e)}finally{db.release()}
 });
 
@@ -2053,7 +2104,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.71.1");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.75.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 // v24.71.0: liveness and readiness are separate. /api/health/live only says the process answers (never restart the
 // app because the database or an optional service such as AI is down). /api/health (= /api/health/ready, Railway's
@@ -2156,6 +2207,11 @@ app.get("/api/state",auth,async(req,res,next)=>{try{
 
   const ur=(await db.query("SELECT payload,version,updated_at FROM app_state WHERE state_key='users'")).rows[0],me=ur?.payload?.[req.user.username];
   const self=me&&typeof me==="object"?{[req.user.username]:{role:me.role||"mechanic",display:me.display||req.user.display_name||req.user.username,currentActivity:me.currentActivity||{code:"",note:"",startedAt:""},activityHistory:Array.isArray(me.activityHistory)?me.activityHistory.slice(0,50):[]}}:{};
+  // v24.75.0: a minimal directory of the other ACTIVE mechanics (username, name, role only) so work-order cards show who
+  // is assigned and the helper picker has names. No contact details, activity, permissions or account settings.
+  const crew=(await db.query("SELECT username,display_name FROM auth_users WHERE role='mechanic' AND active=true ORDER BY username LIMIT 200")).rows;
+  if(!self[req.user.username])self[req.user.username]={role:"mechanic",display:req.user.display_name||req.user.username,currentActivity:{code:"",note:"",startedAt:""},activityHistory:[]};
+  for(const m of crew)if(!self[m.username])self[m.username]={role:"mechanic",display:m.display_name||m.username,directoryOnly:true};
   return res.json({shopflow:{payload:shopflowForUser(req.user,r.payload),version:Number(r.version),updatedAt:r.updated_at},users:{payload:self,version:Number(ur?.version||0),updatedAt:ur?.updated_at||null}});
  }
  const q=await db.query("SELECT state_key,payload,version,updated_at FROM app_state ORDER BY state_key");const d={};for(const r of q.rows)d[r.state_key]={payload:r.payload,version:Number(r.version),updatedAt:r.updated_at};
@@ -2168,11 +2224,24 @@ app.get("/api/state",auth,async(req,res,next)=>{try{
 // carries the shop record (GET /api/state, history versions, and every mutation a mechanic can reach). A mechanic gets
 // only their own work orders (primary or helper), those work orders' findings, and the work-order counter; any other
 // top-level key stays on the server (a mechanic's save keeps it — see the PUT merge).
+// v24.75.0: every active mechanic SEES all of the shop's work orders (assigned or not) and their findings, so the crew can
+// see what is in the bay, coming up and done. What a mechanic may CHANGE is unchanged: mechanicOwnsWorkOrder (primary or
+// helper) still guards every action route and the whole-shop save. Part buy costs and any invoice/contact fields are left out
+// of a mechanic's copy (they come back from the server on save; see TASK_SERVER_KEYS / MECHANIC_HIDDEN_WO_KEYS in the merge).
 const MECHANIC_SHOPFLOW_KEYS=["lastWorkOrderId"];
+const MECHANIC_HIDDEN_WO_KEYS=["invoice","invoiceId","invoiceNumber","invoiceStatus","invoiceTotal","totalAmount","amount","laborRate","estimateTotal","customerEmail","customerPhone","email","phone","billingNote"];
+const MECHANIC_HIDDEN_PART_KEYS=["unitCost","cost","lastCost","averageCost","margin"]; // buy cost only, as in parts search (MECHANIC_HIDDEN_PART_FIELDS)
+function mechanicCanViewWorkOrder(user,w){return !!w&&(user?.role==="admin"||user?.role==="mechanic")}
+function mechanicWorkOrderView(w){
+ if(!w||typeof w!=="object")return w;
+ const o={...w};for(const k of MECHANIC_HIDDEN_WO_KEYS)delete o[k];
+ if(Array.isArray(o.tasks))o.tasks=o.tasks.map(t=>{if(!t||typeof t!=="object"||!Array.isArray(t.parts))return t;return {...t,parts:t.parts.map(p=>{if(!p||typeof p!=="object")return p;const x={...p};for(const k of MECHANIC_HIDDEN_PART_KEYS)delete x[k];return x})}});
+ return o;
+}
 function shopflowForUser(user,payload){
  const sf=(payload&&typeof payload==='object')?payload:{workorders:[],issues:[]};
  if(user?.role!=="mechanic")return sf;
- const workorders=(Array.isArray(sf.workorders)?sf.workorders:[]).filter(w=>mechanicOwnsWorkOrder(user,w));
+ const workorders=(Array.isArray(sf.workorders)?sf.workorders:[]).filter(w=>mechanicCanViewWorkOrder(user,w)).map(mechanicWorkOrderView);
  const ids=new Set(workorders.map(w=>String(w?.id||'')));
  const issues=(Array.isArray(sf.issues)?sf.issues:[]).filter(i=>ids.has(String(i?.wo||'')));
  const out={workorders,issues};for(const k of MECHANIC_SHOPFLOW_KEYS)if(k in sf)out[k]=sf[k];
@@ -2273,16 +2342,47 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{
     const ownedIds=new Set(currentW.filter(w=>mechanicOwnsWorkOrder(req.user,w)).map(w=>String(w?.id||'')));
     // v24.70.0: QC, blockers and pick-up belong to the office (Repair Board); a mechanic's save keeps them as they were.
     const protectedKeys=['id','unit','customer','customerId','unitRecordId','vin','dotNumber','year','make','model','plate','mechanic','helpers','priority','parking','unitType','truckHere','date','time','createdAt','createdBy','createdVia','qc','blockers','releasedAt','releasedBy'];
+    // v24.72.0: what a mechanic's whole-shop save may change is limited, so finished work cannot be rewritten through it:
+    // a Completed/Invoiced/Closed work order is not changed at all; no existing job is removed; parts and job timers come
+    // only from their own routes (stock and time records); a job finished by someone else stays as it is; a completed
+    // inspection is final (the office reopens it). What was not applied is returned (notApplied) so the phone can say so.
+    const LOCKED_WO=new Set(["Completed","Invoiced","Closed"]),notApplied=[],me=String(req.user.username||"").toLowerCase();
+    const taskPrint=t=>JSON.stringify([String(t?.uid||""),String(t?.t||""),!!t?.done,String(t?.taskOutcome||""),String(t?.outcomeNote||"")]);
+    const woPrint=w=>JSON.stringify([String(w?.status||""),String(w?.notes||""),String(w?.completionNotes||""),String(w?.futureNotes||""),(Array.isArray(w?.tasks)?w.tasks:[]).map(taskPrint)]);
+    const inspPrint=i=>JSON.stringify([String(i?.status||""),Object.entries(i?.results||{}).sort(([a],[b])=>a.localeCompare(b)).map(([k,r])=>[k,String(r?.status||""),String(r?.note||"")])]);
+    const kept=[];
+    const TASK_SERVER_KEYS=["uid","parts","startedAt","stoppedAt","elapsedMs","runningBy","sessions","pausedAt","pauseReason","timeAdjustments"];
     const workorders=currentW.map(old=>{
-      if(!ownedIds.has(String(old?.id||'')))return old;
+      if(!ownedIds.has(String(old?.id||''))){
+       // v24.75.0: mechanics now see every work order; a change to one they are not assigned to is not saved and is reported.
+       const proposed=incomingById.get(String(old?.id||''));
+       if(proposed&&woPrint(proposed)!==woPrint(old))notApplied.push({workOrderId:String(old.id),reason:"not_assigned"});
+       return old;
+      }
       const proposed=incomingById.get(String(old?.id||''));if(!proposed)return old;
+      if(LOCKED_WO.has(String(old?.status||""))){if(woPrint(proposed)!==woPrint(old))notApplied.push({workOrderId:String(old.id),reason:"completed"});return old}
       const merged=clean(proposed);for(const k of protectedKeys)merged[k]=old[k];
+      for(const k of MECHANIC_HIDDEN_WO_KEYS){if(k in old)merged[k]=old[k];else delete merged[k]}
       // v24.47.5: a whole-shop save from a phone holding an older copy never puts a finished inspection back to
       // "In Progress" (the mechanic then showed as inspecting all day) and never drops answers already saved.
       if(old?.inspection&&typeof old.inspection==="object"){
        const oi=old.inspection,ni=merged.inspection&&typeof merged.inspection==="object"?merged.inspection:{};
-       merged.inspection=oi.status==="Completed"&&ni.status!=="Completed"?oi:{...oi,...ni,results:{...(oi.results||{}),...(ni.results||{})}};
+       if(oi.status==="Completed"){if(inspPrint(ni)!==inspPrint(oi))notApplied.push({workOrderId:String(old.id),reason:"inspection_completed"});merged.inspection=oi}
+       else merged.inspection={...oi,...ni,results:{...(oi.results||{}),...(ni.results||{})}};
       }
+      {const oldTasks=Array.isArray(old.tasks)?old.tasks:[],byUid=new Map(oldTasks.filter(t=>t?.uid).map(t=>[String(t.uid),t]));
+       const finishedByOther=t=>(t?.done||t?.completedAt||t?.taskOutcome)&&[t.completedBy,t.outcomeBy].some(x=>x&&String(x).toLowerCase()!==me);
+       const seen=new Set(),out=[];
+       for(const t of Array.isArray(merged.tasks)?merged.tasks:[]){
+        if(!t||typeof t!=="object")continue;const prior=t.uid?byUid.get(String(t.uid)):null;
+        if(prior){if(seen.has(String(prior.uid)))continue;seen.add(String(prior.uid));
+         if(finishedByOther(prior)){if(taskPrint(t)!==taskPrint(prior))notApplied.push({workOrderId:String(old.id),taskUid:String(prior.uid),reason:"finished_by_other"});out.push(prior);continue}
+         const x={...t};for(const k of TASK_SERVER_KEYS)if(k in prior)x[k]=prior[k];else delete x[k];out.push(x)}
+        else{const x={...t};delete x.sessions;x.parts=[];if(x.uid&&!/^[A-Za-z0-9_.:-]{1,80}$/.test(String(x.uid)))delete x.uid;out.push(x)}
+       }
+       // Jobs without a permanent id (repaired at startup) are matched by nothing and follow the phone's list.
+       for(const t of oldTasks)if(t?.uid&&!seen.has(String(t.uid))){out.push(t);kept.push({workOrderId:String(old.id),taskUid:String(t.uid)})}
+       merged.tasks=out}
       const oldHistory=Array.isArray(old.history)?old.history:[],newHistory=Array.isArray(merged.history)?merged.history:[];
       merged.history=[...oldHistory,...newHistory.slice(oldHistory.length).map(x=>clean(x))];
       if(Array.isArray(merged.tasks)){const oldTasks=new Map((Array.isArray(old.tasks)?old.tasks:[]).map(t=>[String(t?.uid||''),t]));merged.tasks=merged.tasks.map(t=>{const prior=oldTasks.get(String(t?.uid||''));if(!prior||!prior.findingId)return t;return {...t,findingId:prior.findingId,source:prior.source,findingDecision:prior.findingDecision,approvalChangedAt:prior.approvalChangedAt,approvalChangedBy:prior.approvalChangedBy,cancelled:prior.cancelled,declinedAt:prior.declinedAt,declinedBy:prior.declinedBy}})}
@@ -2292,13 +2392,15 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{
     const incomingIssues=new Map(incomingI.map(i=>[String(i?.id||''),i]));
     const existingIds=new Set(currentI.map(i=>String(i?.id||'')));
     const issues=currentI.map(old=>{
-      if(!ownedIds.has(String(old?.wo||'')))return old;const proposed=incomingIssues.get(String(old?.id||''));if(!proposed)return old;const x=clean(proposed);
+      if(!ownedIds.has(String(old?.wo||''))){const p=incomingIssues.get(String(old?.id||''));if(p&&JSON.stringify([p.description,p.recommendation,p.severity])!==JSON.stringify([old.description,old.recommendation,old.severity]))notApplied.push({workOrderId:String(old.wo),findingId:String(old.id),reason:"not_assigned"});return old}const proposed=incomingIssues.get(String(old?.id||''));if(!proposed)return old;const x=clean(proposed);
       for(const k of ['id','wo','createdAt','created','mechanic','approval','adminNote','decisionAt','decisionBy','convertedToTask','officeReviewedAt','officeReviewedBy','sentAt','sentBy'])x[k]=old[k];return x;
     });
     // v24.70.0: a finding id from a phone is a plain token (the app uses a timestamp); anything else could break out of the
     // office page's markup, so it is not stored.
     for(const proposed of incomingI){const id=String(proposed?.id||'');if(existingIds.has(id)||!ownedIds.has(String(proposed?.wo||''))||!/^[A-Za-z0-9_.-]{1,40}$/.test(id))continue;const x=clean(proposed);x.mechanic=req.user.username;x.approval='Waiting for Customer';x.adminNote='';x.decisionAt='';x.decisionBy='';x.convertedToTask=false;x.officeReviewedAt='';x.officeReviewedBy='';x.sentAt='';x.sentBy='';issues.push(x)}
     nextPayload={...current,workorders,issues};
+    if(notApplied.length)res.locals.notApplied=notApplied.slice(0,50);
+    if(notApplied.length||kept.length)await audit(req.user.username,"mechanic_save_not_applied",{items:notApplied.slice(0,50),jobsKept:kept.slice(0,50)});
   }
   const q=await db.query("UPDATE app_state SET payload=$2::jsonb,version=version+1,updated_at=now(),updated_by=$3 WHERE state_key=$1 AND version=$4 RETURNING version,updated_at",[key,JSON.stringify(nextPayload),req.user.username,expectedVersion]);
   if(!q.rowCount){await db.query('ROLLBACK');db.release();return res.status(409).json({error:"This data changed before the save completed. Refresh and try again.",code:"STATE_VERSION_CONFLICT"})}
@@ -2309,7 +2411,7 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{
   if(key==="shopflow")broadcastShopStatus("shopflow_changed",{by:req.user.username,version:Number(q.rows[0].version)});
   // v24.41.4: a mechanic who starts an inspection while clocked out is clocked in automatically, like starting a job timer.
   if(key==="shopflow"&&req.user?.role==="mechanic"){const me=String(req.user.username).toLowerCase();if((nextPayload?.workorders||[]).some(w=>w?.inspection?.status==="In Progress"&&String(w.inspection.startedBy||"").toLowerCase()===me&&Date.now()-new Date(w.inspection.startedAt||0).getTime()<10*60000))await autoClockInSafe(req.user,"inspection")}
-  db.release();res.json({ok:true,version:Number(q.rows[0].version),updatedAt:q.rows[0].updated_at});
+  db.release();res.json({ok:true,version:Number(q.rows[0].version),updatedAt:q.rows[0].updated_at,...(res.locals.notApplied?{notApplied:res.locals.notApplied}:{})});
  }catch(e){try{await db.query('ROLLBACK')}catch(_){};db.release();next(e)}
 });
 
@@ -2718,6 +2820,39 @@ app.post("/api/work-orders/self-start",auth,async(req,res,next)=>{
 });
 // v24.71.0: helper, part and job-timer changes now tell the other devices (the owner's dashboard) at once over the
 // live socket; before, only the 4-second poll of a visible tab picked them up.
+// v24.75.0: "Reactivate / Add Missed Work" on a completed work order. Before, the phone did this through the whole-shop
+// save, which (since v24.72.0) never changes a completed work order for a mechanic, so the reopen was silently refused.
+// Who may reopen is unchanged: the mechanic who completed it or its primary mechanic (and the owner/managers). A reason
+// and at least one missed job are required; the reopen is recorded in the work-order history and the audit log.
+app.post("/api/work-orders/:id/reactivate",auth,async(req,res,next)=>{
+ const db=await requireDb().connect();
+ try{
+  const workOrderId=String(req.params.id),reason=String(req.body?.reason||"").replace(/[<>]/g,"").trim().slice(0,1000);
+  const added=(Array.isArray(req.body?.tasks)?req.body.tasks:[]).map(t=>String(t||"").replace(/[<>]/g,"").trim().slice(0,300)).filter(Boolean).slice(0,30);
+  if(!reason||!added.length){return res.status(400).json({error:"Give a reason and at least one missed job."})}
+  await db.query("BEGIN");
+  const q=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");
+  if(!q.rowCount){await db.query("ROLLBACK");return res.status(404).json({error:"Shop data not found."})}
+  const sf=q.rows[0].payload&&typeof q.rows[0].payload==="object"?q.rows[0].payload:{workorders:[],issues:[]};sf.workorders=Array.isArray(sf.workorders)?sf.workorders:[];
+  const w=sf.workorders.find(x=>String(x?.id)===workOrderId);if(!w){await db.query("ROLLBACK");return res.status(404).json({error:"Work order not found."})}
+  if(String(w.status)!=="Completed"){await db.query("ROLLBACK");return res.status(409).json({error:"Only a completed work order can be reactivated."})}
+  const me=String(req.user.username||"").toLowerCase(),office=["admin","manager"].includes(req.user.role);
+  if(!office&&!(req.user.role==="mechanic"&&[w.completedBy,w.mechanic].some(x=>String(x||"").toLowerCase()===me))){await db.query("ROLLBACK");return res.status(403).json({error:"You can only reactivate your own completed work."})}
+  const now=new Date().toISOString();
+  w.tasks=Array.isArray(w.tasks)?w.tasks:[];
+  for(const t of added)w.tasks.push({uid:`wo-${workOrderId}-reopen-${crypto.randomBytes(5).toString("hex")}`,t,done:false,startedAt:"",stoppedAt:"",runningBy:"",elapsedMs:0,completedAt:"",taskOutcome:"",outcomeNote:"",outcomeAt:"",outcomeBy:"",paused:false,pausedAt:"",pauseReason:"",pauseNote:"",source:"reactivation"});
+  if(req.user.role==="mechanic")w.mechanic=req.user.username;
+  Object.assign(w,{status:"In Progress",outcomeWorkflowVersion:1,completedAt:"",completedBy:"",isReactivated:true,reactivatedBy:req.user.username,reactivatedAt:now,reactivationCount:Number(w.reactivationCount||0)+1});
+  if(w.unitType==="customer")w.truckHere=true;if(w.unitType==="fleet"||w.unitType==="equipment")w.fleetAuto=true;
+  w.history=Array.isArray(w.history)?w.history:[];
+  w.history.push({type:"reactivated",at:now,by:req.user.username,byDisplay:req.user.display_name||req.user.username,reason,addedTasks:added});
+  const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
+  await db.query("COMMIT");
+  await audit(req.user.username,"work_order_reactivated",{workOrderId,reason,addedTasks:added.length});
+  broadcastShopStatus("shopflow_changed",{by:req.user.username,version:Number(u.rows[0].version)});
+  res.json({ok:true,version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at,shopflow:shopflowForUser(req.user,sf)});
+ }catch(e){try{await db.query("ROLLBACK")}catch(_){};next(e)}finally{try{db.release()}catch(_){}}
+});
 app.post("/api/work-orders/:id/helpers",auth,async(req,res,next)=>{
  const db=await requireDb().connect();
  try{
@@ -2809,7 +2944,7 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/parts",auth,async(req,res,n
   t.parts.push(part);w.history=Array.isArray(w.history)?w.history:[];w.history.push({type:"part_added",at:part.addedAt,by:req.user.username,task:t.t,partNumber:finalPartNumber,description:finalDescription,qty,stockMode:part.stockMode});
   const u=await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow' RETURNING version,updated_at",[JSON.stringify(sf),req.user.username]);
   await db.query("COMMIT");await audit(req.user.username,"task_part_reserved",{workOrderId,taskUid:uid,partId:part.id,inventoryPartId,qty,stockWarning:stockWarning||undefined});
-  broadcastShopStatus("shopflow_changed",{by:req.user.username,workOrderId:String(req.params.id),version:Number(u.rows[0].version)});res.json({ok:true,stockWarning:stockWarning||undefined,part,shopflow:shopflowForUser(req.user,sf),version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
+  broadcastShopStatus("shopflow_changed",{by:req.user.username,workOrderId:String(req.params.id),version:Number(u.rows[0].version)});res.json({ok:true,stockWarning:stockWarning||undefined,part:req.user?.role==="mechanic"?mechanicWorkOrderView({tasks:[{parts:[part]}]}).tasks[0].parts[0]:part,shopflow:shopflowForUser(req.user,sf),version:Number(u.rows[0].version),updatedAt:u.rows[0].updated_at});
  }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
 });
 // ITTR_INVENTORY_RESERVE_FINALIZE_V1_WO_REMOVE
@@ -3029,7 +3164,7 @@ app.get("/api/work-orders/:id/pdf",auth,async(req,res,next)=>{try{
  const pro=states.pro&&typeof states.pro==="object"?states.pro:{vehicles:[]};
  const w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===workOrderId);
  if(!w)return res.status(404).json({error:"Work order not found."});
- if(!["admin","manager"].includes(req.user?.role)&&!mechanicOwnsWorkOrder(req.user,w))return res.status(403).json({error:"You do not have access to this work order."});
+ if(!["admin","manager"].includes(req.user?.role)&&!mechanicCanViewWorkOrder(req.user,w))return res.status(403).json({error:"You do not have access to this work order."});
  if(String(w.status)!=="Completed")return res.status(409).json({error:"Work order PDF is available after the work order is completed."});
  const profileVehicle=(Array.isArray(pro.vehicles)?pro.vehicles:[]).find(v=>String(v?.unit||"").toLowerCase()===String(w.unit||"").toLowerCase())||{}; const vehicle={year:w.year||profileVehicle.year,make:w.make||profileVehicle.make,model:w.model||profileVehicle.model,vin:w.vin||profileVehicle.vin,plate:w.plate||profileVehicle.plate,mileage:w.mileage||profileVehicle.mileage,engine:w.engine||profileVehicle.engine,transmission:w.transmission||profileVehicle.transmission,customer:w.customer||profileVehicle.customer};
  const sessions=(await db.query(`SELECT task_uid,task_name,mechanic_username,started_at,ended_at,end_reason,pause_reason,pause_note FROM task_time_sessions WHERE work_order_id=$1 ORDER BY started_at,id`,[workOrderId])).rows||[];
@@ -3107,7 +3242,7 @@ app.get("/api/work-orders/:id/task-sessions",auth,async(req,res,next)=>{try{
   const sf=stateQ.rows[0].payload&&typeof stateQ.rows[0].payload==="object"?stateQ.rows[0].payload:{workorders:[]};
   const w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===workOrderId);
   if(!w)return res.status(404).json({error:"Work order not found."});
-  if(!mechanicOwnsWorkOrder(req.user,w) && !["admin","manager"].includes(req.user?.role))
+  if(!mechanicCanViewWorkOrder(req.user,w) && !["admin","manager"].includes(req.user?.role))
     return res.status(403).json({error:"You do not have access to this work order."});
 
   const tasks=Array.isArray(w.tasks)?w.tasks:[];
@@ -3402,7 +3537,7 @@ async function getShopflowPayload(db=requireDb()){
 }
 // v24.70.0 (owner's decision): managers may VIEW finding photos (the Findings page is open to every manager); adding
 // photos stays with the owner and the assigned mechanics, and changing/deleting with the uploader or the owner.
-function canViewPhotoWorkOrder(user,w){return user?.role==="manager"||canAccessPhotoWorkOrder(user,w)}
+function canViewPhotoWorkOrder(user,w){return user?.role==="manager"||mechanicCanViewWorkOrder(user,w)}
 function canAccessPhotoWorkOrder(user,w){
  if(user?.role==="admin")return true;
  return user?.role==="mechanic"&&assignedMechanicUsernames(w).includes(String(user?.username||"").trim().toLowerCase());
@@ -3708,7 +3843,7 @@ app.get("/api/work-orders/:id/inspection/pdf",auth,async(req,res,next)=>{try{
  const pro=states.pro&&typeof states.pro==="object"?states.pro:{vehicles:[]};
  const w=(Array.isArray(sf.workorders)?sf.workorders:[]).find(x=>String(x?.id)===workOrderId);
  if(!w)return res.status(404).json({error:"Work order not found."});
- if(!canManageInspectionRepairs(req.user,w))return res.status(403).json({error:"You do not have access to this work order."});
+ if(!["admin","manager"].includes(req.user?.role)&&!mechanicCanViewWorkOrder(req.user,w))return res.status(403).json({error:"You do not have access to this work order."});
  const insp=w.inspection||{};
  if(!insp.required||!insp.type)return res.status(409).json({error:"This work order has no inspection."});
  if(!inspectionChecklist())return res.status(503).json({error:"Inspection checklist is still loading. Try again in a moment."});
@@ -4702,7 +4837,7 @@ function resendFriendlyError(status,d){const raw=String(d?.message||d?.error||''
  if(status===429)return 'Resend rate limit reached. Wait a minute and try again.';
  return (raw||'Email could not be sent.').slice(0,500)}
 const invoiceFromEmail=String(process.env.INVOICE_FROM_EMAIL||'').trim();
-app.post('/api/invoices/:id/payment-link',auth,managerPermission("invoices"),async(req,res,next)=>{try{if(!stripeSecret)return res.status(503).json({error:'Stripe is not configured. Add STRIPE_SECRET_KEY in Railway.'});const x=await getInvoiceBundle(requireDb(),req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const i=x.invoice,amount=Math.round(Number(i.balance_due||0)*100);if(amount<50)return res.status(409).json({error:'Invoice has no payable balance.'});const base=String(process.env.APP_PUBLIC_URL||'').replace(/\/$/,'');const p=new URLSearchParams();p.set('mode','payment');p.set('success_url',`${base}/?payment=success&invoice=${encodeURIComponent(i.invoice_number)}`);p.set('cancel_url',`${base}/?payment=cancel&invoice=${encodeURIComponent(i.invoice_number)}`);p.set('line_items[0][price_data][currency]','usd');p.set('line_items[0][price_data][product_data][name]',`Invoice ${i.invoice_number}`);p.set('line_items[0][price_data][unit_amount]',String(amount));p.set('line_items[0][quantity]','1');p.set('metadata[invoice_id]',String(i.id));p.set('metadata[invoice_number]',String(i.invoice_number));const rr=await fetch('https://api.stripe.com/v1/checkout/sessions',{method:'POST',headers:{Authorization:`Bearer ${stripeSecret}`,'Content-Type':'application/x-www-form-urlencoded'},body:p});const d=await rr.json();if(!rr.ok)throw new Error(d?.error?.message||'Stripe checkout could not be created.');await requireDb().query('UPDATE customer_invoices SET payment_url=$2,stripe_session_id=$3,updated_at=now() WHERE id=$1::bigint',[i.id,d.url,d.id]);await audit(req.user.username,'invoice_payment_link_created',{invoiceId:i.id});res.json({ok:true,url:d.url})}catch(e){next(e)}});
+app.post('/api/invoices/:id/payment-link',auth,managerPermission("invoices"),async(req,res,next)=>{try{if(!stripeSecret)return res.status(503).json({error:'Stripe is not configured. Add STRIPE_SECRET_KEY in Railway.'});const x=await getInvoiceBundle(requireDb(),req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const i=x.invoice,amount=Math.round(Number(i.balance_due||0)*100);if(amount<50)return res.status(409).json({error:'Invoice has no payable balance.'});const base=publicBaseUrl(req),ref=crypto.randomBytes(24).toString('base64url');const p=new URLSearchParams();p.set('mode','payment');p.set('success_url',`${base}/pay/return?ref=${ref}&status=success`);p.set('cancel_url',`${base}/pay/return?ref=${ref}&status=cancel`);p.set('line_items[0][price_data][currency]','usd');p.set('line_items[0][price_data][product_data][name]',`Invoice ${i.invoice_number}`);p.set('line_items[0][price_data][unit_amount]',String(amount));p.set('line_items[0][quantity]','1');p.set('metadata[invoice_id]',String(i.id));p.set('metadata[invoice_number]',String(i.invoice_number));const rr=await fetch('https://api.stripe.com/v1/checkout/sessions',{method:'POST',headers:{Authorization:`Bearer ${stripeSecret}`,'Content-Type':'application/x-www-form-urlencoded'},body:p});const d=await rr.json();if(!rr.ok)throw new Error(d?.error?.message||'Stripe checkout could not be created.');await requireDb().query('UPDATE customer_invoices SET payment_url=$2,stripe_session_id=$3,payment_return_ref=$4,updated_at=now() WHERE id=$1::bigint',[i.id,d.url,d.id,ref]);await audit(req.user.username,'invoice_payment_link_created',{invoiceId:i.id});res.json({ok:true,url:d.url})}catch(e){next(e)}});
 function invoicePdfLines(x){return (Array.isArray(x.lines)?x.lines:[]).filter(l=>l.line_type==='labor'||String(l.part_number||'').trim()||String(l.description||'').trim()||Number(l.unit_price||0)!==0||Number(l.quantity||0)!==1).map(l=>({...l,description:invoiceEnglishText(l.description,l.line_type==='part'?'Part / material':'Repair / service'),job_name:invoiceEnglishText(l.job_name||'','Repair / service')}))}
 async function invoicePdfBuffer(x){
  return renderCustomerDocumentPdf({PDFDocument,kind:'INVOICE',invoice:{...x.invoice,customer_note:invoiceEnglishText(x.invoice.customer_note||'','')},lines:invoicePdfLines(x),payments:x.payments||[],shop:shopProfile(),logoPath:path.join(__dirname,"public","assets","iron-team-logo.png"),text:v=>String(v??''),dateText:v=>{if(!v)return '';try{return invoiceDateText(v)}catch(_){return String(v).slice(0,10)}}});
@@ -4712,8 +4847,8 @@ function invoiceEmailDefaults(i){const shop=shopProfile(),bal=Number(i.balance_d
   message:`Hello${i.customer_name?` ${String(i.customer_name).split(/\s+/).slice(0,3).join(' ')}`:''},\n\nThank you for choosing ${shop.name}. Your invoice ${i.invoice_number}${i.unit_number?` for Unit ${i.unit_number}`:''} is attached.\n\n${bal>0.004?`Balance due: $${bal.toFixed(2)} (due ${due}).`:'This invoice is paid in full — thank you!'}\n\nIf you have any questions, just reply to this email${shop.phone?` or call us at ${shop.phone}`:''}.\n\nThank you,\n${shop.name}`}}
 function escHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 // v24.39.0: colorful branded template shared with estimates (email_templates.mjs).
-function invoiceEmailHtml(i,message,lines=[]){const base=process.env.APP_PUBLIC_URL?String(process.env.APP_PUBLIC_URL).replace(/\/$/,''):'';
- return documentEmailHtml({kind:'invoice',doc:i,lines,message,shop:shopProfile(),logoUrl:base?`${base}/assets/iron-team-logo.png`:'',payUrl:i.payment_url||'',payLabel:'View &amp; Pay Invoice',accent:String(process.env.SHOP_ACCENT_COLOR||'#c2410c')})}
+function invoiceEmailHtml(i,message,lines=[],attached=true){const base=process.env.APP_PUBLIC_URL?String(process.env.APP_PUBLIC_URL).replace(/\/$/,''):'';
+ return documentEmailHtml({kind:'invoice',doc:i,lines,message,shop:shopProfile(),logoUrl:base?`${base}/assets/iron-team-logo.png`:'',payUrl:i.payment_url||'',payLabel:'View &amp; Pay Invoice',accent:String(process.env.SHOP_ACCENT_COLOR||'#c2410c'),attached})}
 app.get('/api/invoices/:id/email-draft',auth,managerPermission("invoices"),async(req,res,next)=>{try{const x=await getInvoiceBundle(requireDb(),req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const d=invoiceEmailDefaults(x.invoice);const es=await emailSenderStatus();res.json({...d,to:d.to||x.invoice.profile_customer_email||'',configured:es.configured,from:es.from,provider:es.provider,hasPaymentLink:Boolean(x.invoice.payment_url),lastSentAt:x.invoice.email_sent_at||null})}catch(e){next(e)}});
 app.post('/api/invoices/:id/email',auth,managerPermission("invoices"),async(req,res,next)=>{let deliveryId=null;try{
  if(!(await emailSenderStatus()).configured)return res.status(503).json({error:EMAIL_NOT_CONNECTED});
@@ -4722,7 +4857,7 @@ app.post('/api/invoices/:id/email',auth,managerPermission("invoices"),async(req,
  const to=list(req.body?.to||req.body?.email||def.to||i.profile_customer_email),cc=list(req.body?.cc);
  if(!to.length)return res.status(400).json({error:'Customer email is required.'});const bad=[...to,...cc].find(e=>!emailOk(e));if(bad)return res.status(400).json({error:`"${bad}" is not a valid email address.`});
  if(to.length+cc.length>10)return res.status(400).json({error:'Too many recipients.'});
- const subject=String(req.body?.subject||def.subject).replace(/[\r\n]+/g,' ').trim().slice(0,200),message=String(req.body?.message||def.message).slice(0,5000),attachPdf=req.body?.attachPdf!==false;
+ const subject=String(req.body?.subject||def.subject).replace(/[\r\n]+/g,' ').trim().slice(0,200),attachPdf=req.body?.attachPdf!==false,message=String(req.body?.message||(attachPdf?def.message:def.message.replace(' is attached.',' is ready.'))).slice(0,5000);
  if(!subject)return res.status(400).json({error:'Email subject is required.'});
  const requestId=String(req.body?.requestId||crypto.randomUUID()).replace(/[^A-Za-z0-9_-]/g,'').slice(0,80)||crypto.randomUUID(),idempotencyKey=`invoice-${i.id}-${requestId}`;
  const prior=(await db.query('SELECT id,status,provider_message_id,to_addresses,cc_addresses FROM invoice_email_deliveries WHERE idempotency_key=$1',[idempotencyKey])).rows[0];
@@ -4735,11 +4870,17 @@ app.post('/api/invoices/:id/email',auth,managerPermission("invoices"),async(req,
  const attachments=attachPdf?[{filename:`${String(i.invoice_number).replace(/[^A-Za-z0-9_-]/g,'_')}.pdf`,content:(await invoicePdfBuffer(x)).toString('base64')}]:[];
  const shop=shopProfile(),replyTo=String(process.env.INVOICE_REPLY_TO||shop.email||'').trim();
  // v24.47.0: shop's connected Google email first, Resend as backup (email_templates.mjs).
- const d=await sendShopEmail({to,cc,replyTo,subject,html:invoiceEmailHtml(i,message,x.lines),text:message,attachments,idempotencyKey,tags:[{name:'document',value:'invoice'},{name:'invoice_id',value:String(i.id)}]});
+ const d=await sendShopEmail({to,cc,replyTo,subject,html:invoiceEmailHtml(i,message,x.lines,attachments.length>0),text:message,attachments,idempotencyKey,tags:[{name:'document',value:'invoice'},{name:'invoice_id',value:String(i.id)}]});
  if(!d.ok){const reason=d.provider==='resend'?resendFriendlyError(d.status||502,{message:d.error}):d.error;await db.query("UPDATE invoice_email_deliveries SET status='failed',error_message=$2 WHERE id=$1::bigint",[deliveryId,reason]);await audit(req.user.username,'invoice_email_failed',{invoiceId:i.id,invoiceNumber:i.invoice_number,to,cc,deliveryId,error:reason,provider:d.provider});return res.status(d.status===503?503:502).json({error:reason})}
- await db.query("UPDATE invoice_email_deliveries SET status='sent',provider_message_id=$2,sent_at=now(),error_message=NULL WHERE id=$1::bigint",[deliveryId,d.id||null]);
+ // v24.74.0: the provider accepted the email. From here a bookkeeping failure must not mark the delivery failed (the
+ // person would send it again); the answer says it was sent and that the record could not be updated.
+ const sentId=deliveryId;deliveryId=null;
+ try{
+ await db.query("UPDATE invoice_email_deliveries SET status='sent',provider_message_id=$2,sent_at=now(),error_message=NULL WHERE id=$1::bigint",[sentId,d.id||null]);
  await db.query("UPDATE customer_invoices SET customer_email=$2,email_sent_at=now(),sent_at=CASE WHEN status<>'draft' THEN coalesce(sent_at,now()) ELSE sent_at END,updated_at=now() WHERE id=$1::bigint",[i.id,to[0]]);
- await audit(req.user.username,'invoice_emailed',{invoiceId:i.id,invoiceNumber:i.invoice_number,to,cc,subject,attachedPdf:attachments.length>0,provider:d.provider,messageId:d.id,deliveryId});res.json({ok:true,id:d.id,to,cc});
+ await audit(req.user.username,'invoice_emailed',{invoiceId:i.id,invoiceNumber:i.invoice_number,to,cc,subject,attachedPdf:attachments.length>0,provider:d.provider,messageId:d.id,deliveryId:sentId});
+ }catch(err){console.error('invoice email bookkeeping failed:',err?.message);return res.json({ok:true,id:d.id,to,cc,warning:'The email was sent, but the invoice could not be marked as sent. Do not send it again.'})}
+ res.json({ok:true,id:d.id,to,cc});
 }catch(e){if(deliveryId){try{await requireDb().query("UPDATE invoice_email_deliveries SET status='failed',error_message=$2 WHERE id=$1::bigint",[deliveryId,String(e?.message||'Email failed').slice(0,500)])}catch{}}if(e?.status)return res.status(e.status).json({error:e.message});next(e)}});
 const memoryCache=new Map();
 function aiErrorResponse(res,err,fallback){
@@ -4994,7 +5135,7 @@ app.post("/api/ai/shop-chat",auth,async(req,res)=>{try{
   manuals=await findWorkshopManuals(db,unit,question);
   const st=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");
   const sf=st.rows[0]?.payload||{};
-  workorders=(Array.isArray(sf.workorders)?sf.workorders:[]).filter(w=>req.user.role!=='mechanic'||mechanicOwnsWorkOrder(req.user,w)).filter(w=>String(w.unit||'').toLowerCase()===String(unit.unit_number||'').toLowerCase()||String(w.vin||'').toLowerCase()===String(unit.vin||'').toLowerCase()).slice(-60).map(w=>({id:w.id,unit:w.unit,status:w.status,date:w.date,completedAt:w.completedAt,mileage:w.mileage,tasks:(w.tasks||[]).map(t=>({name:t.t,outcome:t.taskOutcome||'',note:t.outcomeNote||'',elapsedMs:t.elapsedMs||0}))}));
+  workorders=(Array.isArray(sf.workorders)?sf.workorders:[]).filter(w=>req.user.role!=='mechanic'||mechanicCanViewWorkOrder(req.user,w)).filter(w=>String(w.unit||'').toLowerCase()===String(unit.unit_number||'').toLowerCase()||String(w.vin||'').toLowerCase()===String(unit.vin||'').toLowerCase()).slice(-60).map(w=>({id:w.id,unit:w.unit,status:w.status,date:w.date,completedAt:w.completedAt,mileage:w.mileage,tasks:(w.tasks||[]).map(t=>({name:t.t,outcome:t.taskOutcome||'',note:t.outcomeNote||'',elapsedMs:t.elapsedMs||0}))}));
  }
  const financialAllowed=seeMoney;
  const recentIttrServices=compactInvoiceHistory(invoices);
@@ -5049,6 +5190,16 @@ registerComplianceRoutes(app,{auth,ownerOnly,adminOnly,requireDb,audit,PDFDocume
 registerBillRoutes(app,{auth,managerPermission,ownerOnly,requireDb,audit,resolveVendor,knownVendor,reportRange});
 // v24.58.1: customer links (estimate approval, inspection share; the fleet portal plugs in through portalView).
 const publicLimiter=rateLimit({windowMs:60*1000,max:60,standardHeaders:true,legacyHeaders:false,message:{error:"Too many requests. Please wait a minute and try again."}});
+// v24.74.0: after paying (or cancelling) on Stripe the customer lands on a public receipt page, not the staff login.
+// The page knows the invoice only through the random reference made with the checkout and shows what the server
+// recorded (paid / being confirmed / not paid), never other invoices or account details.
+app.get('/pay/return',publicLimiter,(req,res)=>{res.setHeader('Cache-Control','no-store');res.setHeader('X-Robots-Tag','noindex, nofollow');res.setHeader('Referrer-Policy','no-referrer');res.sendFile(path.join(__dirname,'public','pay-return.html'))});
+app.get('/api/public/pay/:ref',publicLimiter,async(req,res,next)=>{try{res.setHeader('Cache-Control','no-store');res.setHeader('X-Robots-Tag','noindex, nofollow');
+ const ref=String(req.params.ref||'');if(!/^[A-Za-z0-9_-]{30,64}$/.test(ref))return res.status(404).json({error:'This payment page is not available.'});
+ const i=(await requireDb().query("SELECT invoice_number,status,total,balance_due FROM customer_invoices WHERE payment_return_ref=$1 AND status<>'void' LIMIT 1",[ref])).rows[0];
+ if(!i)return res.status(404).json({error:'This payment page is not available.'});
+ const shop=shopProfile(),balance=Math.round(Number(i.balance_due||0)*100)/100;
+ res.json({invoiceNumber:i.invoice_number,paid:i.status==='paid'||balance<=0.004,balance,total:Math.round(Number(i.total||0)*100)/100,shop:{name:shop.name,phone:shop.phone||'',email:shop.email||''}})}catch(e){next(e)}});
 async function readShopflowState(db){const r=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");const p=r.rows[0]?.payload;return p&&typeof p==="object"?p:{workorders:[],issues:[]}}
 async function findingPhotoUrls(db,findingIds){const out={};if(!findingIds.length||!r2Configured)return out;
  const rows=(await db.query("SELECT finding_id,r2_key FROM finding_photos WHERE finding_id = ANY($1::text[]) AND deleted_at IS NULL ORDER BY created_at",[findingIds]).catch(()=>({rows:[]}))).rows;
@@ -5070,7 +5221,7 @@ async function receivePartStock(db,{partId,qty,unitCost,vendor,reference,usernam
  await db.query(`INSERT INTO part_purchase_cost_history(part_id,vendor,vendor_id,vendor_location_id,vendor_branch_snapshot,invoice_number,purchased_at,quantity,unit_cost,landed_unit_cost,core_cost,username) VALUES($1,$2,$3,$4,$5,$6,now(),$7,$8,$8,0,$9)`,[partId,vc.vendor||vendor,vc.vendorId,vc.locationId,vc.branch||null,reference||null,qty,unitCost,username]);
  return {before,after};
 }
-registerPurchaseOrderRoutes(app,{auth,managerPermission,requireDb,audit,receiveStock:receivePartStock,sendShopEmail,shopProfile});
+registerPurchaseOrderRoutes(app,{auth,managerPermission,requireDb,audit,receiveStock:receivePartStock,sendShopEmail,shopProfile,onReceived:async x=>{let unit="";try{unit=String(((await getShopflowPayload(requireDb())).workorders||[]).find(w=>String(w?.id)===x.workOrderId)?.unit||"")}catch(_){}broadcastShopStatus("parts_arrived",{workOrderId:x.workOrderId,unit,poNumber:x.poNumber,complete:x.complete,by:x.by})}});
 registerWorkOrderStoreRoutes(app,{auth,adminOnly,ownerOnly,requireDb,audit,broadcastShopStatus});
 registerWarrantyRoutes(app,{auth,adminOnly,ownerOnly,managerPermission,requireDb,audit,reportRange});
 registerPortalRoutes(app,{requireDb,publicLimiter,audit,invoicePdf:async(db,id)=>{const x=await getInvoiceBundle(db,id);return x?await invoicePdfBuffer(x):null}});
@@ -5176,5 +5327,5 @@ initDb()
   .then(()=>{if(pool)setAsideNonBankZelle(pool).catch(e=>console.error("Gmail Zelle clean-up failed:",e?.message))})
   .then(()=>repairWorkOrderNumberCollisions())
   .then(async()=>{try{const q=await pool.query("SELECT id FROM workshop_manuals WHERE active=true AND (index_status IS NULL OR index_status IN ('queued','indexing')) AND (r2_key IS NOT NULL OR EXISTS(SELECT 1 FROM workshop_manual_files f WHERE f.manual_id=workshop_manuals.id))");for(const r of q.rows)queueManualIndex(r.id)}catch(e){console.error('[manual index startup]',e?.message)}})
-  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v${ITTR_APP_VERSION} Online running on port ${port}`))})
+  .then(async()=>{try{const x=await reportDuplicateImportedCustomers();if(x.groups)console.log(`[customers] ${x.groups} customer name(s) appear on more than one record (${x.records} records). Not merged automatically: review them in Customers → duplicate audit.`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v${ITTR_APP_VERSION} Online running on port ${port}`))})
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

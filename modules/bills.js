@@ -259,6 +259,7 @@ function onFilter(e){const t=e.target;if(!t.dataset.f)return;S.filters[t.dataset
  if(t.dataset.f==='q'){clearTimeout(S.qTimer);S.qTimer=setTimeout(load,250);return}load()}
 
 export async function mount(scope){S={...S,scope,data:null};
+ scope.on(scope.host,'ittr:module-refresh',()=>load(),{passive:true});
  try{const r=sessionStorage.getItem('ittr_bills_range');if(r){S.filters.range=r;const sel=scope.host.querySelector('[data-f="range"]');if(sel)sel.value=r;if(r==='custom')scope.host.querySelectorAll('[data-f="from"],[data-f="to"]').forEach(x=>x.classList.remove('hidden'))}}catch(_){}
  if(!isOwner())scope.host.querySelectorAll('.ownerOnlyBills').forEach(x=>x.remove());
  scope.on(scope.host,'click',onClick);scope.on(scope.host,'input',e=>{if(e.target.dataset.f==='q')onFilter(e)});scope.on(scope.host,'change',e=>{if(e.target.dataset.f&&e.target.dataset.f!=='q')onFilter(e)});

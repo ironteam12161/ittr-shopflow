@@ -83,11 +83,43 @@ try {
     A.edit(sf => { find(sf, 1).complaint = 'MINE'; find(sf, 3).complaint = 'MINE-3'; }); await A.settle();
     const s = (await server(owner)).payload;
     eq(find(s, 1).complaint, 'THEIRS', 'same work order: the version already saved is kept'); eq(find(s, 3).complaint, 'MINE-3', 'an unrelated change in the same save is not lost');
-    ok(A.conflicts.includes('Work order 1'), 'the conflict is reported (warning shown)');
+    ok(A.conflicts.some(c => c.startsWith('Work order 1')), 'the conflict is reported (warning shown)');
     const arc = A.engine.archived().find(x => x.kind === 'conflict'); ok(arc && JSON.stringify(arc).includes('MINE'), 'this device\'s version of the conflicting work order is kept in the device archive');
     eq(A.engine.item('shopflow'), null, 'queue empty after the explicit resolution');
   }
   console.log('PASS same-record conflict: other device\'s version kept and reported, unrelated change saved, mine archived');
+
+  // ---------------------------------------------------------------- v24.73.0: same work order, different fields/jobs
+  await reset();
+  {
+    await remoteEdit(owner, sf => { find(sf, 1).tasks.push({ uid: 't1b', t: 'Brakes', done: false }); });
+    const A = device({ storage: memStorage(), user: 'opsadmin', token: owner }); await A.load();
+    await remoteEdit(owner, sf => { const w = find(sf, 1); w.priority = 'Urgent'; w.tasks.find(t => t.uid === 't1b').done = true; });
+    A.edit(sf => { const w = find(sf, 1); w.notes = 'MECH-NOTE'; w.tasks.find(t => t.uid === 't1').done = true; }); await A.settle();
+    const w = find((await server(owner)).payload, 1);
+    ok(w.notes === 'MECH-NOTE' && w.priority === 'Urgent', 'note from this device and priority from the other both kept');
+    ok(w.tasks.find(t => t.uid === 't1').done && w.tasks.find(t => t.uid === 't1b').done, 'two different jobs finished on two devices both kept');
+    eq(A.conflicts.length, 0, 'no conflict for different fields of the same work order'); eq(A.engine.item('shopflow'), null, 'queue empty');
+  }
+  console.log('PASS same work order, different fields and jobs: both devices\' changes merged, no conflict');
+
+  // ---------------------------------------------------------------- v24.73.0: two offline tabs of one account
+  await reset();
+  {
+    const storage = memStorage();
+    const A = device({ storage, user: 'opsadmin', token: owner }), B = device({ storage, user: 'opsadmin', token: owner });
+    await A.load(); await B.load(); A.online = false; B.online = false;
+    A.edit(sf => { find(sf, 1).complaint = 'TAB-A'; }); B.edit(sf => { find(sf, 2).complaint = 'TAB-B'; }); await A.settle(); await B.settle();
+    const raw = storage.getItem(KEYS.QUEUE_PREFIX + 'opsadmin');
+    ok(raw.includes('TAB-A') && raw.includes('TAB-B'), 'both tabs\' offline edits are kept on the device');
+    // Both tabs are closed without saving; the next tab signs in online.
+    const C = device({ storage, user: 'opsadmin', token: owner }); const back = await C.load();
+    ok(back.restored.includes('shopflow') && find(C.live.shopflow, 1).complaint === 'TAB-A' && find(C.live.shopflow, 2).complaint === 'TAB-B', 'a new tab gets both edits back');
+    await C.engine.sync('shopflow'); await C.settle();
+    const s = (await server(owner)).payload; ok(find(s, 1).complaint === 'TAB-A' && find(s, 2).complaint === 'TAB-B', 'both saved');
+    eq(storage.getItem(KEYS.QUEUE_PREFIX + 'opsadmin'), null, 'queue empty after the save');
+  }
+  console.log('PASS two offline tabs: both recovery copies kept and saved from the next tab');
 
   // ---------------------------------------------------------------- edits made while a save is in flight
   await reset();
@@ -103,7 +135,7 @@ try {
     release(); await A.settle();
     const s = (await server(owner)).payload;
     eq(find(s, 1).complaint, 'FIRST+MORE', 'a record edited again during the save ends up with the newest value'); eq(find(s, 4).complaint, 'DURING', 'a record edited during the save is saved too');
-    ok(A.puts >= 2 && String(queuedAtSecondSave).includes('DURING') && JSON.parse(queuedAtSecondSave).shopflow.changes.find(c => c.id === '1')?.b?.complaint === 'FIRST', 'confirming the older save left the newer revision queued (rebased on the confirmed copy) and it was sent next');
+    ok(A.puts >= 2 && String(queuedAtSecondSave).includes('DURING') && Object.values(JSON.parse(queuedAtSecondSave)).find(x => x.key === 'shopflow').changes.find(c => c.id === '1')?.b?.complaint === 'FIRST', 'confirming the older save left the newer revision queued (rebased on the confirmed copy) and it was sent next');
     eq(A.engine.item('shopflow'), null, 'queue empty at the end');
   }
   console.log('PASS edits during an in-flight save: confirming the older save keeps the newer queued revision, which is then saved');

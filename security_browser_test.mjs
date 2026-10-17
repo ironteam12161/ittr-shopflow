@@ -208,6 +208,17 @@ try {
     eq(o.page.errors.length + m.page.errors.length, 0, `no script errors (${o.page.errors.concat(m.page.errors).join(' | ')})`);
     await o.ctx.close(); await m.ctx.close();
   });
+  await scenario('SYNC an open invoice list updates when another device adds an invoice (no reload)', async () => {
+    const { ctx, page } = await newPage(); await page.goto(B); await signIn(page, OWNER.username, OWNER.password);
+    await page.evaluate(() => showView('invoices')); await until(page, () => typeof window.loadInvoices === 'function', null, 15000); await sleep(1500);
+    ok(!(await page.evaluate(() => document.getElementById('invoices')?.innerText || '')).includes('Live Refresh Fleet'), 'not there yet');
+    const t0 = Date.now();
+    await srv.request('/api/invoices', { method: 'POST', token: owner, body: { customerName: 'Live Refresh Fleet', unitNumber: 'LR-1' } });
+    await until(page, () => (document.getElementById('invoices')?.innerText || '').includes('Live Refresh Fleet'), null, 8000);
+    console.log(`  invoice list updated after ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+    eq(page.errors.length, 0, `no script errors (${page.errors.join(' | ')})`);
+    await ctx.close();
+  });
 } catch (e) {
   failures.push('setup'); console.error(`FAIL ${NAME} setup${STEP ? ` [at: ${STEP}]` : ''}: ${e.stack || e.message}\n${srv.output().slice(-3000)}`);
 } finally {
