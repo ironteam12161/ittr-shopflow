@@ -126,7 +126,16 @@
         try {
           const r = await o.put(key, json, expected);
           if (stale(g, u)) return;
-          finish(key, item, fast ? JSON.parse(json) : merged, r.version, sentLiveJson, fast, conflicts, lost);
+          let saved=fast?JSON.parse(json):merged,version=r.version;
+          if(Object.prototype.hasOwnProperty.call(r,'payload')){saved=r.payload;fast=false;}
+          else if(r.notApplied?.length){
+            // Compatibility with an older server that reports a partial save without its canonical result.
+            const fresh=await o.fetchState();if(stale(g,u))return;
+            if(!fresh?.[key])throw Object.assign(new Error('The saved server copy is not available.'),{status:503});
+            saved=fresh[key].payload;version=fresh[key].version;fast=false;
+          }
+          if(r.notApplied?.length)archive('refused',{key,items:r.notApplied,submitted:JSON.parse(json)});
+          finish(key,item,saved,version,sentLiveJson,fast,conflicts,lost);
           return;
         } catch (e) {
           if (stale(g, u)) return;

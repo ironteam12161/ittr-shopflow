@@ -28,15 +28,18 @@ export async function portalView(db, link, { shopInfo }) {
     FROM customer_invoices i WHERE ${OWN('i')} AND i.status NOT IN ('draft','void')`, args)).rows[0] || {};
   const estimates = (await db.query(`SELECT e.id,e.estimate_number,e.estimate_date,e.valid_until,e.status,e.total,e.unit_number,e.customer_decided_at FROM customer_estimates e
     WHERE ${OWN('e')} AND e.status IN ('sent','approved','declined') ORDER BY e.estimate_date DESC,e.id DESC LIMIT 50`, args)).rows;
-  const last = {};
-  for (const i of invoices) { const u = String(i.unit_number || '').toLowerCase(); if (u && !last[u]) last[u] = i.invoice_date; }
+  // Service recency must not depend on debt-first sorting or the displayed history limit.
+  const serviceDates = (await db.query(`SELECT lower(trim(i.unit_number)) unit_key,max(i.invoice_date) last_date
+    FROM customer_invoices i WHERE ${OWN('i')} AND i.status NOT IN ('draft','void')
+    GROUP BY lower(trim(i.unit_number))`, args)).rows;
+  const last = Object.fromEntries(serviceDates.map(i => [i.unit_key,i.last_date]));
   const today = new Date(new Date().toDateString());
   const inv = invoices.map(i => { const bal = money(i.balance_due), due = i.due_date ? new Date(i.due_date) : null;
     return { id: Number(i.id), number: i.invoice_number, date: i.invoice_date, dueDate: i.due_date, status: bal <= 0.004 ? 'paid' : i.status === 'partial' ? 'partly paid' : 'open', total: money(i.total), balance: bal, unit: i.unit_number || '',
       overdueDays: bal > 0.004 && due && due < today ? Math.round((today - due) / 86400000) : 0, payUrl: bal > 0.004 && /^https:\/\//.test(i.payment_url || '') ? i.payment_url : '' }; });
   return { kind: 'portal', shop: shopInfo(), customer: { name: c.customer_name },
     owed: money(totals.owed), overdue: money(totals.overdue), openInvoices: Number(totals.open_count || 0), asOf: new Date().toISOString(),
-    units: units.map(u => ({ unit: u.unit_number, vin: u.vin || '', description: [u.year, u.make, u.model].filter(Boolean).join(' '), lastService: last[String(u.unit_number || '').toLowerCase()] || null })),
+    units: units.map(u => ({ unit: u.unit_number, vin: u.vin || '', description: [u.year, u.make, u.model].filter(Boolean).join(' '), lastService: last[String(u.unit_number || '').trim().toLowerCase()] || null })),
     estimates: estimates.map(e => ({ id: Number(e.id), number: e.estimate_number, date: e.estimate_date, status: e.status, total: money(e.total), unit: e.unit_number || '',
       canApprove: e.status === 'sent' && !e.customer_decided_at && !(e.valid_until && new Date(e.valid_until) < today) })),
     invoices: inv };
