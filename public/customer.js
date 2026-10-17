@@ -58,7 +58,14 @@
   const pay=e.target.closest('[data-pay]');if(pay){location.href=pay.dataset.pay;return}
   const pdf=e.target.closest('[data-pdf]');if(pdf){window.open(`/api/public/link/${token}/invoice/${pdf.dataset.pdf}/pdf`,'_blank','noopener');return}
   const es=e.target.closest('[data-est]');if(es){es.disabled=true;try{const r=await fetch(`/api/public/link/${token}/estimate/${es.dataset.est}/open`,{method:'POST'}),d=await r.json();if(!r.ok)throw new Error(d.error);location.href=d.url}catch(x){alert(x.message||'Could not open the estimate.');es.disabled=false}}});
- function render(){if(!V)return;V.kind==='estimate'?renderEstimate():V.kind==='inspection'?renderInspection():renderPortal()}
+ // v24.74.0: choosing Approve/Decline redraws the page; the typed name, note, tick box and the focused button are kept.
+ function draftOf(){const g=id=>document.getElementById(id),a=document.activeElement;
+  return {name:g('signName')?.value,note:g('signNote')?.value,agree:g('signAgree')?.checked,
+   focus:a&&a!==document.body&&app.contains(a)?(a.id?`#${CSS.escape(a.id)}`:a.dataset?.k!=null?`[data-k="${CSS.escape(a.dataset.k)}"][data-v="${CSS.escape(a.dataset.v||'')}"]`:a.dataset?.tab?`[data-tab="${CSS.escape(a.dataset.tab)}"]`:''):''}}
+ function restoreDraft(d){const g=id=>document.getElementById(id);
+  if(d.name!=null&&g('signName'))g('signName').value=d.name;if(d.note!=null&&g('signNote'))g('signNote').value=d.note;if(d.agree!=null&&g('signAgree'))g('signAgree').checked=d.agree;
+  if(d.focus){const f=app.querySelector(d.focus);if(f)try{f.focus({preventScroll:true})}catch{}}}
+ function render(){if(!V)return;const d=draftOf();V.kind==='estimate'?renderEstimate():V.kind==='inspection'?renderInspection():renderPortal();restoreDraft(d)}
  function done(msg){app.innerHTML=`${shopHead(V.shop)}<div class="card done"><div class="big" aria-hidden="true">✓</div><h1>Thank you</h1><p>${esc(msg)}</p><p class="muted">The shop got your answer right away. You can close this page.</p></div>${foot(V.shop)}`}
  app.addEventListener('click',async e=>{
   const z=e.target.closest('[data-zoom]');if(z){const d=document.createElement('div');d.className='zoom';d.innerHTML=`<img src="${esc(z.src)}" alt="">`;d.onclick=()=>d.remove();document.body.appendChild(d);return}
@@ -72,8 +79,13 @@
   btn.disabled=true;btn.textContent='Sending…';err.textContent='';
   try{const r=await fetch(`/api/public/link/${token}/decide`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,name,note,agree})});const d=await r.json().catch(()=>({}));
    if(!r.ok)throw new Error(d.error||'Your answer was not sent. Please try again or call the shop.');
+   if(V.kind==='inspection'&&d.partial){partialDone(d);return}
    done(V.kind==='estimate'?(d.approved?`You approved ${d.approved} of ${d.of} job${d.of===1?'':'s'}.`:'You declined the estimate.'):`You approved ${d.approved} of ${d.of} repair${d.of===1?'':'s'}.`)}
   catch(x){err.textContent=x.message;btn.disabled=false;btn.textContent='Send my answer'}});
+ // v24.74.0: some repairs were recorded and some were not (the shop changed them meanwhile): say which, per repair.
+ function partialDone(d){const name=id=>(V.findings.find(f=>String(f.id)===String(id))||{}).title||'Repair';
+  const row=r=>`<li><b>${esc(name(r.id))}</b> — ${r.ok?(r.decision==='approve'?'approved':'declined'):`<span class="err">not recorded${r.error?`: ${esc(r.error)}`:''}</span>`}</li>`;
+  app.innerHTML=`${shopHead(V.shop)}<div class="card done" id="partialResult"><h1>Part of your answer was recorded</h1><p>${d.recorded} of ${d.of} repair${d.of===1?'':'s'} recorded. Please call the shop about the rest.</p><ul class="lines">${(d.results||[]).map(row).join('')}</ul></div>${foot(V.shop)}`}
  (async()=>{try{if(!token)throw new Error('This link is not complete. Please open the full link from your message.');
   const r=await fetch(`/api/public/link/${token}`),d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'This page could not be opened.');V=d;
   document.title=`${d.shop.name} — ${d.kind==='estimate'?`Estimate ${d.estimate.number}`:d.kind==='inspection'?'Inspection report':'Customer portal'}`;render()}

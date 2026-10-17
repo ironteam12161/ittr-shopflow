@@ -828,8 +828,11 @@ export function registerFinanceRoutes(app, deps) {
       html: documentEmailHtml({ kind: 'estimate', doc: e, lines: x.lines, message, shop, logoUrl: base ? `${base}/assets/iron-team-logo.png` : '', payUrl: approveUrl, payLabel: 'Review &amp; Approve Online', accent: String(process.env.SHOP_ACCENT_COLOR || '#c2410c') }),
       attachments: [{ filename: `${String(e.estimate_number).replace(/[^A-Za-z0-9_-]/g, '_')}.pdf`, content: (await estimatePdf(x)).toString('base64') }], tags: [{ name: 'document', value: 'estimate' }] });
     if (!r.ok) fail(502, r.error);
-    await db.query(`UPDATE customer_estimates SET customer_email=$2,status=CASE WHEN status='draft' THEN 'sent' ELSE status END,sent_at=coalesce(sent_at,now()),updated_at=now() WHERE id=$1::bigint`, [e.id, to[0]]);
-    await audit(req.user.username, 'estimate_emailed', { estimateId: e.id, to, cc, provider: r.provider, messageId: r.id });
+    // v24.74.0: the email is out; a failure to record it must not look like a failed send (the person would send again).
+    try {
+      await db.query(`UPDATE customer_estimates SET customer_email=$2,status=CASE WHEN status='draft' THEN 'sent' ELSE status END,sent_at=coalesce(sent_at,now()),updated_at=now() WHERE id=$1::bigint`, [e.id, to[0]]);
+      await audit(req.user.username, 'estimate_emailed', { estimateId: e.id, to, cc, provider: r.provider, messageId: r.id });
+    } catch (err) { console.error('estimate email bookkeeping failed:', err?.message); return { ok: true, id: r.id, to, warning: 'The email was sent, but the estimate could not be marked as sent. Do not send it again.' }; }
     return { ok: true, id: r.id, to };
   }));
   app.get('/api/estimates/:id/pdf', auth, invoicesPerm, async (req, res, next) => {
@@ -855,8 +858,10 @@ export function registerFinanceRoutes(app, deps) {
         const token = await gmailAccessToken(acc), shopName = String(shopProfile()?.name || process.env.SHOP_NAME || 'ShopFlow').replace(/["\r\n<>]/g, '');
         const raw = buildMimeMessage({ ...msg, from: `"${shopName}" <${acc.email}>`, to: msg.to, cc: msg.cc || [], replyTo: msg.replyTo && String(msg.replyTo).toLowerCase() !== acc.email ? msg.replyTo : '' });
         const d = await googleJson(`${googleUrls().gmail}/users/me/messages/send`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ raw: Buffer.from(raw, 'utf8').toString('base64url') }) });
-        await db.query('UPDATE email_sender SET last_sent_at=now(),last_error=NULL,last_error_at=NULL WHERE id=1');
-        return { ok: true, id: d.id };
+        // v24.74.0: Google accepted the message, so it is sent. Updating our own "last sent" note can fail without
+        // turning this into a failure (which used to send the same email again through the Resend backup).
+        await db.query('UPDATE email_sender SET last_sent_at=now(),last_error=NULL,last_error_at=NULL WHERE id=1').catch(e => console.error('email_sender bookkeeping failed:', e?.message));
+        return { ok: true, accepted: true, id: d.id };
       } catch (e) { const error = friendlyGoogleError(e); await db.query('UPDATE email_sender SET last_error=$1,last_error_at=now() WHERE id=1', [error]).catch(() => {}); return { ok: false, error }; }
     }
   });

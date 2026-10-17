@@ -16,7 +16,7 @@ function detailCell(label, value) {
 }
 
 // kind: 'invoice' | 'estimate'. doc: invoice/estimate row. lines: document lines. message: the editable note.
-export function documentEmailHtml({ kind = 'invoice', doc = {}, lines = [], message = '', shop, logoUrl = '', payUrl = '', payLabel = 'View &amp; Pay Invoice', accent = '#c2410c' }) {
+export function documentEmailHtml({ kind = 'invoice', doc = {}, lines = [], message = '', shop, logoUrl = '', payUrl = '', payLabel = 'View &amp; Pay Invoice', accent = '#c2410c', attached = true }) {
   const isEst = kind === 'estimate', number = doc.invoice_number || doc.estimate_number || '';
   const balance = Number(doc.balance_due ?? doc.total ?? 0), total = Number(doc.total || 0);
   const tone = isEst ? PALETTE.quote : balance > 0.004 ? PALETTE.due : PALETTE.paid;
@@ -65,7 +65,7 @@ export function documentEmailHtml({ kind = 'invoice', doc = {}, lines = [], mess
  ${jobRows ? `<tr><td style="padding:20px 26px 0"><div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:${PALETTE.muted};font-weight:800;margin-bottom:4px">${isEst ? 'Work quoted' : 'Work performed'}</div>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${jobRows}</table>
   <table role="presentation" width="260" align="right" cellpadding="0" cellspacing="0" style="margin-top:10px">${totals}</table></td></tr>` : ''}
- <tr><td style="padding:22px 26px 6px;font-size:13px;color:${PALETTE.muted}">📎 The full ${isEst ? 'estimate' : 'invoice'} is attached as a PDF. Questions? Just reply to this email${shop.phone ? ` or call <b style="color:${PALETTE.ink}">${escHtml(shop.phone)}</b>` : ''}.</td></tr>
+ <tr><td style="padding:22px 26px 6px;font-size:13px;color:${PALETTE.muted}">${attached ? `📎 The full ${isEst ? 'estimate' : 'invoice'} is attached as a PDF. ` : ''}Questions? Just reply to this email${shop.phone ? ` or call <b style="color:${PALETTE.ink}">${escHtml(shop.phone)}</b>` : ''}.</td></tr>
  <tr><td style="padding:16px 26px 22px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px"><tr><td style="padding:10px 12px;font-size:12px;color:#92400e">🛞 <b>Safety reminder:</b> after tire or wheel service, re-torque wheel nuts after the first 50 miles.</td></tr></table></td></tr>
  <tr><td bgcolor="${PALETTE.navy}" style="background:${PALETTE.navy};padding:18px 26px;color:#cbd5e1;font-size:12px;line-height:1.6">
   <b style="color:#fff;font-size:13px">${escHtml(shop.name)}</b><br>${escHtml([shop.address1, shop.address2].filter(Boolean).join(', '))}<br>${[shop.phone, shop.email, shop.website].filter(Boolean).map(escHtml).join(' &nbsp;·&nbsp; ')}
@@ -117,7 +117,8 @@ export async function sendShopEmail(msg) {
   const g = googleSender ? await googleSender.status().catch(() => ({ connected: false })) : { connected: false };
   if (g.connected) {
     const r = await googleSender.send(msg).catch(e => ({ ok: false, error: String(e?.message || 'Google email failed.') }));
-    if (r.ok || !resendConfigured()) return { ...r, provider: 'gmail', from: g.email };
+    // v24.74.0: the backup is only for mail Google did not accept; once accepted it is never sent a second time.
+    if (r.ok || r.accepted || !resendConfigured()) return { ...r, ok: !!(r.ok || r.accepted), provider: 'gmail', from: g.email };
     const rr = await sendResendEmail(msg);
     return rr.ok ? { ...rr, provider: 'resend', googleError: r.error } : { ok: false, provider: 'gmail', error: `${r.error} (Resend backup also failed: ${rr.error})` };
   }

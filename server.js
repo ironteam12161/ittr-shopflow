@@ -518,6 +518,7 @@ async function initDb(){
  CREATE UNIQUE INDEX IF NOT EXISTS customer_units_samsara_vehicle_uidx ON customer_units(samsara_vehicle_id) WHERE samsara_vehicle_id IS NOT NULL;
 
  ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS stripe_session_id TEXT;
+ ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS payment_return_ref TEXT;
  ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS email_sent_at TIMESTAMPTZ;
  ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS dot_number TEXT;
  ALTER TABLE customer_invoices ADD COLUMN IF NOT EXISTS discount_type TEXT DEFAULT 'fixed';
@@ -2103,7 +2104,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.73.0");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.74.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 // v24.71.0: liveness and readiness are separate. /api/health/live only says the process answers (never restart the
 // app because the database or an optional service such as AI is down). /api/health (= /api/health/ready, Railway's
@@ -4779,7 +4780,7 @@ function resendFriendlyError(status,d){const raw=String(d?.message||d?.error||''
  if(status===429)return 'Resend rate limit reached. Wait a minute and try again.';
  return (raw||'Email could not be sent.').slice(0,500)}
 const invoiceFromEmail=String(process.env.INVOICE_FROM_EMAIL||'').trim();
-app.post('/api/invoices/:id/payment-link',auth,managerPermission("invoices"),async(req,res,next)=>{try{if(!stripeSecret)return res.status(503).json({error:'Stripe is not configured. Add STRIPE_SECRET_KEY in Railway.'});const x=await getInvoiceBundle(requireDb(),req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const i=x.invoice,amount=Math.round(Number(i.balance_due||0)*100);if(amount<50)return res.status(409).json({error:'Invoice has no payable balance.'});const base=String(process.env.APP_PUBLIC_URL||'').replace(/\/$/,'');const p=new URLSearchParams();p.set('mode','payment');p.set('success_url',`${base}/?payment=success&invoice=${encodeURIComponent(i.invoice_number)}`);p.set('cancel_url',`${base}/?payment=cancel&invoice=${encodeURIComponent(i.invoice_number)}`);p.set('line_items[0][price_data][currency]','usd');p.set('line_items[0][price_data][product_data][name]',`Invoice ${i.invoice_number}`);p.set('line_items[0][price_data][unit_amount]',String(amount));p.set('line_items[0][quantity]','1');p.set('metadata[invoice_id]',String(i.id));p.set('metadata[invoice_number]',String(i.invoice_number));const rr=await fetch('https://api.stripe.com/v1/checkout/sessions',{method:'POST',headers:{Authorization:`Bearer ${stripeSecret}`,'Content-Type':'application/x-www-form-urlencoded'},body:p});const d=await rr.json();if(!rr.ok)throw new Error(d?.error?.message||'Stripe checkout could not be created.');await requireDb().query('UPDATE customer_invoices SET payment_url=$2,stripe_session_id=$3,updated_at=now() WHERE id=$1::bigint',[i.id,d.url,d.id]);await audit(req.user.username,'invoice_payment_link_created',{invoiceId:i.id});res.json({ok:true,url:d.url})}catch(e){next(e)}});
+app.post('/api/invoices/:id/payment-link',auth,managerPermission("invoices"),async(req,res,next)=>{try{if(!stripeSecret)return res.status(503).json({error:'Stripe is not configured. Add STRIPE_SECRET_KEY in Railway.'});const x=await getInvoiceBundle(requireDb(),req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const i=x.invoice,amount=Math.round(Number(i.balance_due||0)*100);if(amount<50)return res.status(409).json({error:'Invoice has no payable balance.'});const base=publicBaseUrl(req),ref=crypto.randomBytes(24).toString('base64url');const p=new URLSearchParams();p.set('mode','payment');p.set('success_url',`${base}/pay/return?ref=${ref}&status=success`);p.set('cancel_url',`${base}/pay/return?ref=${ref}&status=cancel`);p.set('line_items[0][price_data][currency]','usd');p.set('line_items[0][price_data][product_data][name]',`Invoice ${i.invoice_number}`);p.set('line_items[0][price_data][unit_amount]',String(amount));p.set('line_items[0][quantity]','1');p.set('metadata[invoice_id]',String(i.id));p.set('metadata[invoice_number]',String(i.invoice_number));const rr=await fetch('https://api.stripe.com/v1/checkout/sessions',{method:'POST',headers:{Authorization:`Bearer ${stripeSecret}`,'Content-Type':'application/x-www-form-urlencoded'},body:p});const d=await rr.json();if(!rr.ok)throw new Error(d?.error?.message||'Stripe checkout could not be created.');await requireDb().query('UPDATE customer_invoices SET payment_url=$2,stripe_session_id=$3,payment_return_ref=$4,updated_at=now() WHERE id=$1::bigint',[i.id,d.url,d.id,ref]);await audit(req.user.username,'invoice_payment_link_created',{invoiceId:i.id});res.json({ok:true,url:d.url})}catch(e){next(e)}});
 function invoicePdfLines(x){return (Array.isArray(x.lines)?x.lines:[]).filter(l=>l.line_type==='labor'||String(l.part_number||'').trim()||String(l.description||'').trim()||Number(l.unit_price||0)!==0||Number(l.quantity||0)!==1).map(l=>({...l,description:invoiceEnglishText(l.description,l.line_type==='part'?'Part / material':'Repair / service'),job_name:invoiceEnglishText(l.job_name||'','Repair / service')}))}
 async function invoicePdfBuffer(x){
  return renderCustomerDocumentPdf({PDFDocument,kind:'INVOICE',invoice:{...x.invoice,customer_note:invoiceEnglishText(x.invoice.customer_note||'','')},lines:invoicePdfLines(x),payments:x.payments||[],shop:shopProfile(),logoPath:path.join(__dirname,"public","assets","iron-team-logo.png"),text:v=>String(v??''),dateText:v=>{if(!v)return '';try{return invoiceDateText(v)}catch(_){return String(v).slice(0,10)}}});
@@ -4789,8 +4790,8 @@ function invoiceEmailDefaults(i){const shop=shopProfile(),bal=Number(i.balance_d
   message:`Hello${i.customer_name?` ${String(i.customer_name).split(/\s+/).slice(0,3).join(' ')}`:''},\n\nThank you for choosing ${shop.name}. Your invoice ${i.invoice_number}${i.unit_number?` for Unit ${i.unit_number}`:''} is attached.\n\n${bal>0.004?`Balance due: $${bal.toFixed(2)} (due ${due}).`:'This invoice is paid in full — thank you!'}\n\nIf you have any questions, just reply to this email${shop.phone?` or call us at ${shop.phone}`:''}.\n\nThank you,\n${shop.name}`}}
 function escHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 // v24.39.0: colorful branded template shared with estimates (email_templates.mjs).
-function invoiceEmailHtml(i,message,lines=[]){const base=process.env.APP_PUBLIC_URL?String(process.env.APP_PUBLIC_URL).replace(/\/$/,''):'';
- return documentEmailHtml({kind:'invoice',doc:i,lines,message,shop:shopProfile(),logoUrl:base?`${base}/assets/iron-team-logo.png`:'',payUrl:i.payment_url||'',payLabel:'View &amp; Pay Invoice',accent:String(process.env.SHOP_ACCENT_COLOR||'#c2410c')})}
+function invoiceEmailHtml(i,message,lines=[],attached=true){const base=process.env.APP_PUBLIC_URL?String(process.env.APP_PUBLIC_URL).replace(/\/$/,''):'';
+ return documentEmailHtml({kind:'invoice',doc:i,lines,message,shop:shopProfile(),logoUrl:base?`${base}/assets/iron-team-logo.png`:'',payUrl:i.payment_url||'',payLabel:'View &amp; Pay Invoice',accent:String(process.env.SHOP_ACCENT_COLOR||'#c2410c'),attached})}
 app.get('/api/invoices/:id/email-draft',auth,managerPermission("invoices"),async(req,res,next)=>{try{const x=await getInvoiceBundle(requireDb(),req.params.id);if(!x)return res.status(404).json({error:'Invoice not found.'});const d=invoiceEmailDefaults(x.invoice);const es=await emailSenderStatus();res.json({...d,to:d.to||x.invoice.profile_customer_email||'',configured:es.configured,from:es.from,provider:es.provider,hasPaymentLink:Boolean(x.invoice.payment_url),lastSentAt:x.invoice.email_sent_at||null})}catch(e){next(e)}});
 app.post('/api/invoices/:id/email',auth,managerPermission("invoices"),async(req,res,next)=>{let deliveryId=null;try{
  if(!(await emailSenderStatus()).configured)return res.status(503).json({error:EMAIL_NOT_CONNECTED});
@@ -4799,7 +4800,7 @@ app.post('/api/invoices/:id/email',auth,managerPermission("invoices"),async(req,
  const to=list(req.body?.to||req.body?.email||def.to||i.profile_customer_email),cc=list(req.body?.cc);
  if(!to.length)return res.status(400).json({error:'Customer email is required.'});const bad=[...to,...cc].find(e=>!emailOk(e));if(bad)return res.status(400).json({error:`"${bad}" is not a valid email address.`});
  if(to.length+cc.length>10)return res.status(400).json({error:'Too many recipients.'});
- const subject=String(req.body?.subject||def.subject).replace(/[\r\n]+/g,' ').trim().slice(0,200),message=String(req.body?.message||def.message).slice(0,5000),attachPdf=req.body?.attachPdf!==false;
+ const subject=String(req.body?.subject||def.subject).replace(/[\r\n]+/g,' ').trim().slice(0,200),attachPdf=req.body?.attachPdf!==false,message=String(req.body?.message||(attachPdf?def.message:def.message.replace(' is attached.',' is ready.'))).slice(0,5000);
  if(!subject)return res.status(400).json({error:'Email subject is required.'});
  const requestId=String(req.body?.requestId||crypto.randomUUID()).replace(/[^A-Za-z0-9_-]/g,'').slice(0,80)||crypto.randomUUID(),idempotencyKey=`invoice-${i.id}-${requestId}`;
  const prior=(await db.query('SELECT id,status,provider_message_id,to_addresses,cc_addresses FROM invoice_email_deliveries WHERE idempotency_key=$1',[idempotencyKey])).rows[0];
@@ -4812,11 +4813,17 @@ app.post('/api/invoices/:id/email',auth,managerPermission("invoices"),async(req,
  const attachments=attachPdf?[{filename:`${String(i.invoice_number).replace(/[^A-Za-z0-9_-]/g,'_')}.pdf`,content:(await invoicePdfBuffer(x)).toString('base64')}]:[];
  const shop=shopProfile(),replyTo=String(process.env.INVOICE_REPLY_TO||shop.email||'').trim();
  // v24.47.0: shop's connected Google email first, Resend as backup (email_templates.mjs).
- const d=await sendShopEmail({to,cc,replyTo,subject,html:invoiceEmailHtml(i,message,x.lines),text:message,attachments,idempotencyKey,tags:[{name:'document',value:'invoice'},{name:'invoice_id',value:String(i.id)}]});
+ const d=await sendShopEmail({to,cc,replyTo,subject,html:invoiceEmailHtml(i,message,x.lines,attachments.length>0),text:message,attachments,idempotencyKey,tags:[{name:'document',value:'invoice'},{name:'invoice_id',value:String(i.id)}]});
  if(!d.ok){const reason=d.provider==='resend'?resendFriendlyError(d.status||502,{message:d.error}):d.error;await db.query("UPDATE invoice_email_deliveries SET status='failed',error_message=$2 WHERE id=$1::bigint",[deliveryId,reason]);await audit(req.user.username,'invoice_email_failed',{invoiceId:i.id,invoiceNumber:i.invoice_number,to,cc,deliveryId,error:reason,provider:d.provider});return res.status(d.status===503?503:502).json({error:reason})}
- await db.query("UPDATE invoice_email_deliveries SET status='sent',provider_message_id=$2,sent_at=now(),error_message=NULL WHERE id=$1::bigint",[deliveryId,d.id||null]);
+ // v24.74.0: the provider accepted the email. From here a bookkeeping failure must not mark the delivery failed (the
+ // person would send it again); the answer says it was sent and that the record could not be updated.
+ const sentId=deliveryId;deliveryId=null;
+ try{
+ await db.query("UPDATE invoice_email_deliveries SET status='sent',provider_message_id=$2,sent_at=now(),error_message=NULL WHERE id=$1::bigint",[sentId,d.id||null]);
  await db.query("UPDATE customer_invoices SET customer_email=$2,email_sent_at=now(),sent_at=CASE WHEN status<>'draft' THEN coalesce(sent_at,now()) ELSE sent_at END,updated_at=now() WHERE id=$1::bigint",[i.id,to[0]]);
- await audit(req.user.username,'invoice_emailed',{invoiceId:i.id,invoiceNumber:i.invoice_number,to,cc,subject,attachedPdf:attachments.length>0,provider:d.provider,messageId:d.id,deliveryId});res.json({ok:true,id:d.id,to,cc});
+ await audit(req.user.username,'invoice_emailed',{invoiceId:i.id,invoiceNumber:i.invoice_number,to,cc,subject,attachedPdf:attachments.length>0,provider:d.provider,messageId:d.id,deliveryId:sentId});
+ }catch(err){console.error('invoice email bookkeeping failed:',err?.message);return res.json({ok:true,id:d.id,to,cc,warning:'The email was sent, but the invoice could not be marked as sent. Do not send it again.'})}
+ res.json({ok:true,id:d.id,to,cc});
 }catch(e){if(deliveryId){try{await requireDb().query("UPDATE invoice_email_deliveries SET status='failed',error_message=$2 WHERE id=$1::bigint",[deliveryId,String(e?.message||'Email failed').slice(0,500)])}catch{}}if(e?.status)return res.status(e.status).json({error:e.message});next(e)}});
 const memoryCache=new Map();
 function aiErrorResponse(res,err,fallback){
@@ -5126,6 +5133,16 @@ registerComplianceRoutes(app,{auth,ownerOnly,adminOnly,requireDb,audit,PDFDocume
 registerBillRoutes(app,{auth,managerPermission,ownerOnly,requireDb,audit,resolveVendor,knownVendor,reportRange});
 // v24.58.1: customer links (estimate approval, inspection share; the fleet portal plugs in through portalView).
 const publicLimiter=rateLimit({windowMs:60*1000,max:60,standardHeaders:true,legacyHeaders:false,message:{error:"Too many requests. Please wait a minute and try again."}});
+// v24.74.0: after paying (or cancelling) on Stripe the customer lands on a public receipt page, not the staff login.
+// The page knows the invoice only through the random reference made with the checkout and shows what the server
+// recorded (paid / being confirmed / not paid), never other invoices or account details.
+app.get('/pay/return',publicLimiter,(req,res)=>{res.setHeader('Cache-Control','no-store');res.setHeader('X-Robots-Tag','noindex, nofollow');res.setHeader('Referrer-Policy','no-referrer');res.sendFile(path.join(__dirname,'public','pay-return.html'))});
+app.get('/api/public/pay/:ref',publicLimiter,async(req,res,next)=>{try{res.setHeader('Cache-Control','no-store');res.setHeader('X-Robots-Tag','noindex, nofollow');
+ const ref=String(req.params.ref||'');if(!/^[A-Za-z0-9_-]{30,64}$/.test(ref))return res.status(404).json({error:'This payment page is not available.'});
+ const i=(await requireDb().query("SELECT invoice_number,status,total,balance_due FROM customer_invoices WHERE payment_return_ref=$1 AND status<>'void' LIMIT 1",[ref])).rows[0];
+ if(!i)return res.status(404).json({error:'This payment page is not available.'});
+ const shop=shopProfile(),balance=Math.round(Number(i.balance_due||0)*100)/100;
+ res.json({invoiceNumber:i.invoice_number,paid:i.status==='paid'||balance<=0.004,balance,total:Math.round(Number(i.total||0)*100)/100,shop:{name:shop.name,phone:shop.phone||'',email:shop.email||''}})}catch(e){next(e)}});
 async function readShopflowState(db){const r=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow'");const p=r.rows[0]?.payload;return p&&typeof p==="object"?p:{workorders:[],issues:[]}}
 async function findingPhotoUrls(db,findingIds){const out={};if(!findingIds.length||!r2Configured)return out;
  const rows=(await db.query("SELECT finding_id,r2_key FROM finding_photos WHERE finding_id = ANY($1::text[]) AND deleted_at IS NULL ORDER BY created_at",[findingIds]).catch(()=>({rows:[]}))).rows;
