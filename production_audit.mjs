@@ -154,7 +154,7 @@ check('compliance routes registered before API 404',server.includes('registerCom
 check('data reset is owner-only, typed-confirmed and snapshotted',comp.includes("app.post('/api/admin/reset-data', auth, ownerOnly")&&comp.includes("'START FRESH'")&&comp.includes('INSERT INTO data_reset_snapshots'));
 check('annual inspections fill the shop\'s own PDF forms',comp.includes('export async function renderInspectionTemplate')&&exists('assets/inspection-templates/annual-truck.pdf')&&exists('assets/inspection-templates/annual-trailer.pdf'));
 check('customer emails use the branded template',server.includes('documentEmailHtml({kind:\'invoice\''));
-check('Fullbay imports accept large CSV exports',server.includes('const csvUpload=multer(')&&server.includes('"/api/fullbay/import/service-history",auth,managerPermission("customers"),csvUpload'));
+check('Fullbay imports accept large CSV exports',server.includes('const csvUploadRaw=multer(')&&server.includes('fileSize:80*1024*1024')&&server.includes('"/api/fullbay/import/service-history",auth,managerPermission("customers"),csvUpload'));
 
 const dupIds=[...root.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]).filter((x,i,a)=>a.indexOf(x)!==i);
 check('no duplicate DOM ids in shell',dupIds.length===0,[...new Set(dupIds)].join(','));

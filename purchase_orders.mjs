@@ -118,12 +118,19 @@ export function registerPurchaseOrderRoutes(app, { auth, managerPermission, requ
     const po = (await db.query('SELECT * FROM purchase_orders WHERE id=$1::bigint FOR UPDATE', [req.params.id])).rows[0]; if (!po) return fail(res, 404, 'Purchase order not found.');
     if (!['ordered', 'partial', 'draft'].includes(po.status)) return fail(res, 409, `This purchase order is ${po.status}.`);
     const lines = (await db.query('SELECT * FROM purchase_order_lines WHERE po_id=$1 FOR UPDATE', [po.id])).rows, byId = new Map(lines.map(l => [String(l.id), l]));
-    const reference = str(req.body?.reference, 80), got = [];
+    const reference = str(req.body?.reference, 80), got = [], seen = new Set();
     for (const x of Array.isArray(req.body?.lines) ? req.body.lines : []) {
       const l = byId.get(String(x?.id)), q = Math.max(0, num(x?.qty)); if (!l || !q) continue;
+      // v24.72.0: one entry per line. A repeated line was checked against the same "still due" twice and could put more
+      // on the shelf than was ordered; the whole receipt is refused (rolled back) instead.
+      if (seen.has(String(l.id))) return fail(res, 400, `${l.part_number || l.description}: this line is listed twice in one receipt.`);
+      seen.add(String(l.id));
       const left = num(l.qty_ordered) - num(l.qty_received); if (q > left + 1e-9) return fail(res, 400, `${l.part_number || l.description}: only ${left} still due on this order.`);
+      l.qty_received = num(l.qty_received) + q;
       if (l.inventory_part_id) await receiveStock(db, { partId: l.inventory_part_id, qty: q, unitCost: num(l.unit_cost), vendor: po.vendor, reference: reference || po.po_number, username: req.user.username, note: `Received on ${po.po_number}` });
-      await db.query('UPDATE purchase_order_lines SET qty_received=qty_received+$2 WHERE id=$1', [l.id, q]); got.push({ id: Number(l.id), qty: q, stocked: Boolean(l.inventory_part_id) });
+      const upd = await db.query('UPDATE purchase_order_lines SET qty_received=qty_received+$2 WHERE id=$1 AND qty_received+$2<=qty_ordered+0.000001', [l.id, q]);
+      if (!upd.rowCount) return fail(res, 409, `${l.part_number || l.description}: more than ordered would be received. Refresh the order and try again.`);
+      got.push({ id: Number(l.id), qty: q, stocked: Boolean(l.inventory_part_id) });
     }
     if (!got.length) return fail(res, 400, 'Enter how many arrived for at least one line.');
     const open = Number((await db.query('SELECT count(*)::int n FROM purchase_order_lines WHERE po_id=$1 AND qty_received<qty_ordered', [po.id])).rows[0].n);

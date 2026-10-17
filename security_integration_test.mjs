@@ -39,7 +39,7 @@ try {
   const custId = cust.item?.id || cust.customer?.id || cust.id;
   await R(`/api/customers/${custId}/units`, { method: 'POST', token: owner, body: { unit_number: 'CT-500', vin: '', make: 'Volvo', notes: 'unit-private-note' } });
   const part = await R('/api/parts', { method: 'POST', token: owner, body: { partNumber: 'SEC-FLT-1', description: 'Security filter', quantity: 5, cost: 4, price: 9 } });
-  const partId = Number(part.part?.id || part.id);
+  const partId = Number(part.item?.id || part.part?.id || part.id);
   await R('/api/invoices', { method: 'POST', token: owner, body: { customerId: custId, customerName: 'Contact Test Fleet', unitNumber: 'CT-500' } });
 
   const st = await R('/api/state', { token: owner }); const sf = st.shopflow.payload;

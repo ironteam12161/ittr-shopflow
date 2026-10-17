@@ -64,7 +64,22 @@ app.use((req,res,next)=>aiContext.run({feature:featureForPath(req.path),req},nex
 const httpServer=http.createServer(app);
 const upload=multer({storage:multer.memoryStorage(),limits:{fileSize:20*1024*1024}});
 // v24.39.0: years of Fullbay history can be a large CSV — imports get their own, larger limit.
-const csvUpload=multer({storage:multer.memoryStorage(),limits:{fileSize:80*1024*1024}});
+const csvUploadRaw=multer({storage:multer.memoryStorage(),limits:{fileSize:80*1024*1024}});
+// v24.72.0: CSV uploads are held in memory, so each request is capped as a whole (not only per file: 40 files x 80 MB
+// was ~3 GB in one request) and only a few run at once, one per account. Limits can be raised by environment variable.
+const CSV_MAX_REQUEST_BYTES=Number(process.env.ITTR_CSV_MAX_REQUEST_MB||200)*1024*1024,CSV_MAX_CONCURRENT=Number(process.env.ITTR_CSV_MAX_CONCURRENT||2);
+let csvInFlight=0;const csvUsersInFlight=new Set();
+function csvUploadGuard(req,res,next){
+ const len=Number(req.headers["content-length"]);
+ if(!Number.isFinite(len)||len<=0)return res.status(411).json({error:"Upload size is required (Content-Length)."});
+ if(len>CSV_MAX_REQUEST_BYTES)return res.status(413).json({error:`This upload is ${Math.ceil(len/1048576)} MB; the limit is ${Math.round(CSV_MAX_REQUEST_BYTES/1048576)} MB per upload. Split it into smaller batches.`});
+ const who=String(req.user?.username||req.ip);
+ if(csvUsersInFlight.has(who))return res.status(429).json({error:"Your previous upload is still being processed. Wait for it to finish."});
+ if(csvInFlight>=CSV_MAX_CONCURRENT)return res.status(503).json({error:"Other uploads are being processed right now. Try again in a minute."});
+ csvInFlight++;csvUsersInFlight.add(who);let done=false;const release=()=>{if(done)return;done=true;csvInFlight--;csvUsersInFlight.delete(who)};
+ res.on("finish",release);res.on("close",release);next();
+}
+const csvUpload={single:f=>[csvUploadGuard,csvUploadRaw.single(f)],array:(f,n)=>[csvUploadGuard,csvUploadRaw.array(f,n)]};
 const photoUpload=multer({
  storage:multer.memoryStorage(),
  limits:{fileSize:25*1024*1024,files:1},
@@ -1276,7 +1291,7 @@ app.post("/api/fullbay/history/reconcile",auth,managerPermission("customers"),as
  res.json({ok:true,report});
 }catch(e){next(e)}});
 
-app.get("/api/fullbay/service-orders/:so",auth,managerPermission("customers"),async(req,res,next)=>{try{
+app.get("/api/fullbay/service-orders/:so",auth,managerPermission("customers"),(req,res,next)=>{if(!can(req,"invoices")){const send=res.json.bind(res);res.json=b=>send(b?.order?{...b,order:stripHistoryMoney(b.order)}:b)}next()},async(req,res,next)=>{try{
  const db=requireDb(),so=String(req.params.so||"").trim(),canonical=canonicalFullbaySo(so),customerId=String(req.query.customerId||"").trim(),unit=String(req.query.unit||"").trim();
  if(!canonical)return res.status(400).json({error:"Service order is required."});
  const params=[canonical];let where="regexp_replace(regexp_replace(coalesce(service_order,''),'\\s*\\(Quick SO\\)\\s*$','','i'),'^SO[\\s#-]*','','i')=$1";
@@ -1723,6 +1738,16 @@ app.delete("/api/customers/:id",auth,ownerOnly,async(req,res,next)=>{const db=aw
  await db.query("INSERT INTO customer_deletion_events(customer_id,customer_name,deletion_mode,reason,reference_counts,customer_snapshot,deleted_by) VALUES($1,$2,'hard',$3,$4::jsonb,$5::jsonb,$6)",[customer.id,customer.customer_name,reason,JSON.stringify(references),JSON.stringify(customer),req.user.username]);
  await db.query("DELETE FROM fullbay_import_customers WHERE id=$1",[customer.id]);await db.query("COMMIT");await audit(req.user.username,"customer_hard_deleted",{customerId:customer.id,name:customer.customer_name,references,reason});res.json({ok:true,mode:"hard",references});
  }catch(e){try{await db.query("ROLLBACK")}catch{}next(e)}finally{db.release()}});
+// v24.72.0: service history on customer and vehicle profiles follows the Invoices permission too. Without it, the
+// shop's own invoices are left out and imported Fullbay records keep the work done but lose the invoice number and
+// money (labor/parts/total), so Customers alone no longer shows invoice information another way.
+const HISTORY_MONEY_KEYS=new Set(["invoice","invoiceStatus","laborAmount","partAmount","totalAmount","subtotal","taxAmount","discount","additionalFees","otherCharges","lines","balanceDue","amountPaid"]);
+const HISTORY_MONEY_RE=/(price|cost|amount|subtotal|^tax|rate$|^total|balance|paid)/i;
+const stripHistoryMoney=v=>Array.isArray(v)?v.map(stripHistoryMoney):v&&typeof v==="object"?Object.fromEntries(Object.entries(v).filter(([k])=>!HISTORY_MONEY_KEYS.has(k)&&!HISTORY_MONEY_RE.test(k)).map(([k,x])=>[k,stripHistoryMoney(x)])):v;
+function historyForPermissions(req,history){
+ if(can(req,"invoices"))return history;
+ return (Array.isArray(history)?history:[]).filter(h=>h?.source!=="invoice").map(stripHistoryMoney);
+}
 app.get("/api/customers/:id/profile",auth,managerPermission("customers"),async(req,res)=>{
  const warnings=[];
  try{
@@ -1737,7 +1762,7 @@ app.get("/api/customers/:id/profile",auth,managerPermission("customers"),async(r
   const ittrHistory=workorders.slice(0,300).map(w=>({source:"ittr",id:w?.id,unit:w?.unit,date:w?.date,time:w?.time,status:w?.status,completedAt:w?.completedAt,mechanic:w?.mechanic,helpers:Array.isArray(w?.helpers)?w.helpers:[],tasks:(Array.isArray(w?.tasks)?w.tasks:[]).filter(Boolean).map(t=>({t:t?.t,done:t?.done,outcome:t?.outcome,outcomeNote:t?.outcomeNote})),notes:w?.notes,completionNotes:w?.completionNotes,futureNotes:w?.futureNotes,revisitMiles:w?.revisitMiles,vin:w?.vin,year:w?.year,make:w?.make,model:w?.model,plate:w?.plate,mileage:w?.mileage}));
   let fullbayHistory=[];try{const sr=await db.query(`SELECT service_order,invoice_number,unit_number,vin,max(action_completed_at) completed_at,max(unit_miles) unit_miles,max(lead_tech) lead_tech,max(tech) tech,sum(coalesce(hours,0)) hours,sum(coalesce(labor_amount,0)) labor_amount,sum(coalesce(part_amount,0)) part_amount,sum(coalesce(total_amount,0)) total_amount,json_agg(json_build_object('action',action_number,'complaint',complaint,'correction',actual_correction,'hours',hours,'component',component,'system',system,'tech',tech,'laborAmount',labor_amount,'partAmount',part_amount,'totalAmount',total_amount) ORDER BY action_completed_at,action_number) actions FROM fullbay_service_history WHERE customer_id::text=$1::text OR (customer_id IS NULL AND lower(customer_name)=lower($2)) GROUP BY service_order,invoice_number,unit_number,vin ORDER BY max(action_completed_at) DESC NULLS LAST LIMIT 1000`,[customer.id,customer.customer_name]);fullbayHistory=sr.rows.map(x=>({source:"fullbay",id:x.service_order,invoice:x.invoice_number,unit:x.unit_number,vin:x.vin,completedAt:x.completed_at,status:"Completed (Fullbay)",mechanic:x.tech||x.lead_tech||"",mileage:x.unit_miles,hours:Number(x.hours||0),laborAmount:Number(x.labor_amount||0),partAmount:Number(x.part_amount||0),totalAmount:Number(x.total_amount||0),tasks:(Array.isArray(x.actions)?x.actions:[]).map(a=>({t:a.complaint||a.correction||`Action ${a.action||""}`,done:true,outcome:"Completed",outcomeNote:a.correction||"",hours:a.hours,component:a.component,system:a.system,tech:a.tech,laborAmount:Number(a.laborAmount||0),partAmount:Number(a.partAmount||0),totalAmount:Number(a.totalAmount||0)}))}))}catch(e){warnings.push(`Imported Fullbay history unavailable (${e.code||"DB"}).`);console.error("Customer profile Fullbay history warning:",e)}
   const history=[...ittrHistory,...fullbayHistory].sort((a,b)=>new Date(b.completedAt||b.date||0)-new Date(a.completedAt||a.date||0)).slice(0,1200);
-  res.json({customer:customerPublic(customer),units,history,warnings});
+  res.json({customer:customerPublic(customer),units,history:historyForPermissions(req,history),warnings});
  }catch(e){console.error("Customer profile fatal error:",e);res.status(500).json({error:`Customer profile database error${e?.code?` [${e.code}]`:""}.`,code:e?.code||"CUSTOMER_PROFILE"})}
 });
 app.post("/api/customers/:id/units",auth,managerPermission("customers"),async(req,res,next)=>{try{
@@ -1787,7 +1812,7 @@ app.get("/api/customer-units/:id/profile",auth,managerPermission("customers"),as
   try{const xr=await db.query(`SELECT id,work_order_id,unit_number_snapshot,vin_snapshot,inspection_type,inspection_subtype,status,mechanic_username,started_at,completed_at,summary,findings FROM mechanic_inspections WHERE unit_id=$1::bigint OR (unit_id IS NULL AND (lower(unit_number_snapshot)=lower($2) OR ($3<>'' AND upper(coalesce(vin_snapshot,''))=upper($3)))) ORDER BY coalesce(completed_at,started_at,updated_at) DESC`,[unit.id,unit.unit_number||"",unit.vin||""]);const liveWo=liveWorkOrderIdSet(await getCoreState());inspectionHistory=xr.rows.filter(x=>!x.work_order_id||liveWo.has(String(x.work_order_id))).map(x=>({source:"inspection",id:x.id,workOrderId:x.work_order_id,unit:x.unit_number_snapshot,vin:x.vin_snapshot,completedAt:x.completed_at||x.started_at,status:x.status,mechanic:x.mechanic_username,inspectionType:x.inspection_type,inspectionSubtype:x.inspection_subtype,summary:x.summary||{},findings:Array.isArray(x.findings)?x.findings:[],tasks:(Array.isArray(x.findings)?x.findings:[]).map(f=>({t:f.label||f.id||"Inspection finding",outcome:f.status,outcomeNote:f.note||""}))}))}catch(e){console.error("Vehicle inspection history warning:",e?.message)}
   const history=[...inspectionHistory,...invoiceHistory,...fullbayHistory,...ittrHistory].sort((a,b)=>new Date(b.completedAt||b.date||0)-new Date(a.completedAt||a.date||0));
  const active=ittrHistory.filter(x=>x.status!=="Completed");
- res.json({unit,customer:unit.customer_id?{id:unit.customer_id,customer_name:unit.customer_name,dot_number:unit.dot_number,phone:unit.customer_phone,email:unit.customer_email}:null,history,active});
+ res.json({unit,customer:unit.customer_id?{id:unit.customer_id,customer_name:unit.customer_name,dot_number:unit.dot_number,phone:unit.customer_phone,email:unit.customer_email}:null,history:historyForPermissions(req,history),active});
 }catch(e){next(e)}});
 
 app.get("/api/customer-units/suggest",auth,async(req,res,next)=>{try{
@@ -1840,19 +1865,13 @@ app.get("/api/admin/customer-crm-diagnostics",auth,adminOnly,async(req,res)=>{
   out.ok=true;res.json(out);
  }catch(e){out.error=String(e?.message||e).slice(0,500);console.error("Customer CRM diagnostics failed:",e);res.status(500).json(out)}
 });
-async function reconcileDuplicateImportedCustomers(){
- if(!pool)return {merged:0};let merged=0;
- const r=await pool.query(`SELECT id,customer_name,fullbay_id FROM fullbay_import_customers ORDER BY id`);
- const groups=new Map();for(const c of r.rows){const k=normCustomerName(String(c.customer_name||"").replace(/^=+/,""));if(!k)continue;if(!groups.has(k))groups.set(k,[]);groups.get(k).push(c)}
- for(const items of groups.values()){
-  if(items.length<2)continue;const canonical=items.slice().sort((a,b)=>(b.fullbay_id?1:0)-(a.fullbay_id?1:0)||Number(a.id)-Number(b.id))[0];
-  for(const dupe of items){if(String(dupe.id)===String(canonical.id))continue;
-   await pool.query("UPDATE customer_units SET customer_id=$1,customer_name=$2,updated_at=now() WHERE customer_id::text=$3::text OR (customer_id IS NULL AND lower(customer_name)=lower($4))",[canonical.id,canonical.customer_name,dupe.id,dupe.customer_name]);
-   await pool.query("UPDATE fullbay_service_history SET customer_id=$1,customer_name=$2,updated_at=now() WHERE customer_id::text=$3::text OR (customer_id IS NULL AND lower(customer_name)=lower($4))",[canonical.id,canonical.customer_name,dupe.id,dupe.customer_name]);
-   await pool.query("DELETE FROM fullbay_import_customers WHERE id=$1",[dupe.id]);merged++;
-  }
- }
- return {merged};
+// v24.72.0: startup no longer merges customers by name. Two different businesses can share a name, and the old
+// automatic merge deleted records without moving every reference. Startup only counts same-name groups and logs them;
+// the owner reviews them in Customers → duplicate audit and merges with the preview (one transaction, all references).
+async function reportDuplicateImportedCustomers(){
+ if(!pool)return {groups:0};
+ const r=await pool.query(`SELECT lower(trim(regexp_replace(customer_name,'^=+',''))) k,count(*)::int n FROM fullbay_import_customers WHERE coalesce(trim(customer_name),'')<>'' GROUP BY 1 HAVING count(*)>1`);
+ return {groups:r.rowCount,records:r.rows.reduce((n,x)=>n+x.n,0)};
 }
 
 
@@ -2025,11 +2044,27 @@ app.post('/api/customers/merge',auth,ownerOnly,async(req,res,next)=>{
    invoices=await db.query('UPDATE customer_invoices SET customer_id=$1,customer_name=$2,updated_at=now() WHERE customer_id=$3 RETURNING id',[masterId,master.customer_name,duplicateId]);
   if((await db.query("SELECT to_regclass('service_orders') AS name")).rows[0]?.name)
    serviceOrders=await db.query('UPDATE service_orders SET customer_id=$1,customer_name=$2,updated_at=now() WHERE customer_id=$3 RETURNING id',[masterId,master.customer_name,duplicateId]);
-  await db.query(`UPDATE fullbay_import_customers SET phone=coalesce(nullif(phone,''),$2),email=coalesce(nullif(email,''),$3),dot_number=coalesce(nullif(dot_number,''),$4),updated_at=now() WHERE id=$1`,[masterId,dup.phone||null,dup.email||null,dup.usdot||null]);
+  // v24.72.0: every other record that points at the duplicate moves too, in the same transaction (estimates, portal
+  // links, payments/credits, inspection documents, text messages, and work orders in the shop record), so nothing is
+  // left pointing at a deleted customer.
+  const moved={};
+  for(const t of ["customer_estimates","customer_links","customer_payments","inspection_documents","sms_messages"]){
+   const cols=(await db.query("SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name=$1",[t])).rows.map(r=>r.column_name);
+   if(!cols.includes("customer_id"))continue;
+   const r=await db.query(`UPDATE ${t} SET customer_id=$1${cols.includes("customer_name")?",customer_name=$3":""} WHERE customer_id::text=$2::text`,cols.includes("customer_name")?[masterId,String(duplicateId),master.customer_name]:[masterId,String(duplicateId)]);
+   moved[t]=r.rowCount;
+  }
+  const sfq=await db.query("SELECT payload FROM app_state WHERE state_key='shopflow' FOR UPDATE");let woMoved=0;
+  if(sfq.rowCount){const sf=sfq.rows[0].payload||{};for(const w of Array.isArray(sf.workorders)?sf.workorders:[])if(w&&String(w.customerId||"")===String(duplicateId)){w.customerId=masterId;w.customer=master.customer_name;woMoved++}
+   if(woMoved)await db.query("UPDATE app_state SET payload=$1::jsonb,version=version+1,updated_at=now(),updated_by=$2 WHERE state_key='shopflow'",[JSON.stringify(sf),req.user.username]);}
+  moved.workOrders=woMoved;
+  await db.query(`UPDATE fullbay_import_customers SET phone=coalesce(nullif(phone,''),$2),email=coalesce(nullif(email,''),$3),dot_number=coalesce(nullif(dot_number,''),$4),updated_at=now() WHERE id=$1`,[masterId,dup.phone||null,dup.email||null,dup.dot_number||null]);
   await db.query('DELETE FROM fullbay_import_customers WHERE id=$1',[duplicateId]);
+  // The removed record is kept in the audit log (with what moved), so a mistaken merge can be traced and undone.
+  await db.query("INSERT INTO server_audit(username,action,details) VALUES($1,'customer_merged',$2::jsonb)",[req.user.username,JSON.stringify({masterId,duplicateId,duplicateRecord:dup,movedUnits,mergedUnits,historyMoved:hist.rowCount,invoicesMoved:invoices.rowCount,serviceOrdersMoved:serviceOrders.rowCount,moved})]);
   await db.query('COMMIT');
-  try{await audit(req.user.username,'customer_merged',{masterId,duplicateId,movedUnits,mergedUnits,historyMoved:hist.rowCount,invoicesMoved:invoices.rowCount,serviceOrdersMoved:serviceOrders.rowCount})}catch{}
-  res.json({ok:true,masterId,duplicateId,movedUnits,mergedUnits,historyMoved:hist.rowCount,invoicesMoved:invoices.rowCount,serviceOrdersMoved:serviceOrders.rowCount});
+  if(woMoved)broadcastShopStatus("shopflow_changed",{by:req.user.username});
+  res.json({ok:true,masterId,duplicateId,movedUnits,mergedUnits,historyMoved:hist.rowCount,invoicesMoved:invoices.rowCount,serviceOrdersMoved:serviceOrders.rowCount,moved});
  }catch(e){try{await db.query('ROLLBACK')}catch{};next(e)}finally{db.release()}
 });
 
@@ -2053,7 +2088,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.71.1");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.72.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 // v24.71.0: liveness and readiness are separate. /api/health/live only says the process answers (never restart the
 // app because the database or an optional service such as AI is down). /api/health (= /api/health/ready, Railway's
@@ -2273,16 +2308,41 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{
     const ownedIds=new Set(currentW.filter(w=>mechanicOwnsWorkOrder(req.user,w)).map(w=>String(w?.id||'')));
     // v24.70.0: QC, blockers and pick-up belong to the office (Repair Board); a mechanic's save keeps them as they were.
     const protectedKeys=['id','unit','customer','customerId','unitRecordId','vin','dotNumber','year','make','model','plate','mechanic','helpers','priority','parking','unitType','truckHere','date','time','createdAt','createdBy','createdVia','qc','blockers','releasedAt','releasedBy'];
+    // v24.72.0: what a mechanic's whole-shop save may change is limited, so finished work cannot be rewritten through it:
+    // a Completed/Invoiced/Closed work order is not changed at all; no existing job is removed; parts and job timers come
+    // only from their own routes (stock and time records); a job finished by someone else stays as it is; a completed
+    // inspection is final (the office reopens it). What was not applied is returned (notApplied) so the phone can say so.
+    const LOCKED_WO=new Set(["Completed","Invoiced","Closed"]),notApplied=[],me=String(req.user.username||"").toLowerCase();
+    const taskPrint=t=>JSON.stringify([String(t?.uid||""),String(t?.t||""),!!t?.done,String(t?.taskOutcome||""),String(t?.outcomeNote||"")]);
+    const woPrint=w=>JSON.stringify([String(w?.status||""),String(w?.notes||""),String(w?.completionNotes||""),String(w?.futureNotes||""),(Array.isArray(w?.tasks)?w.tasks:[]).map(taskPrint)]);
+    const inspPrint=i=>JSON.stringify([String(i?.status||""),Object.entries(i?.results||{}).sort(([a],[b])=>a.localeCompare(b)).map(([k,r])=>[k,String(r?.status||""),String(r?.note||"")])]);
+    const kept=[];
+    const TASK_SERVER_KEYS=["uid","parts","startedAt","stoppedAt","elapsedMs","runningBy","sessions","pausedAt","pauseReason","timeAdjustments"];
     const workorders=currentW.map(old=>{
       if(!ownedIds.has(String(old?.id||'')))return old;
       const proposed=incomingById.get(String(old?.id||''));if(!proposed)return old;
+      if(LOCKED_WO.has(String(old?.status||""))){if(woPrint(proposed)!==woPrint(old))notApplied.push({workOrderId:String(old.id),reason:"completed"});return old}
       const merged=clean(proposed);for(const k of protectedKeys)merged[k]=old[k];
       // v24.47.5: a whole-shop save from a phone holding an older copy never puts a finished inspection back to
       // "In Progress" (the mechanic then showed as inspecting all day) and never drops answers already saved.
       if(old?.inspection&&typeof old.inspection==="object"){
        const oi=old.inspection,ni=merged.inspection&&typeof merged.inspection==="object"?merged.inspection:{};
-       merged.inspection=oi.status==="Completed"&&ni.status!=="Completed"?oi:{...oi,...ni,results:{...(oi.results||{}),...(ni.results||{})}};
+       if(oi.status==="Completed"){if(inspPrint(ni)!==inspPrint(oi))notApplied.push({workOrderId:String(old.id),reason:"inspection_completed"});merged.inspection=oi}
+       else merged.inspection={...oi,...ni,results:{...(oi.results||{}),...(ni.results||{})}};
       }
+      {const oldTasks=Array.isArray(old.tasks)?old.tasks:[],byUid=new Map(oldTasks.filter(t=>t?.uid).map(t=>[String(t.uid),t]));
+       const finishedByOther=t=>(t?.done||t?.completedAt||t?.taskOutcome)&&[t.completedBy,t.outcomeBy].some(x=>x&&String(x).toLowerCase()!==me);
+       const seen=new Set(),out=[];
+       for(const t of Array.isArray(merged.tasks)?merged.tasks:[]){
+        if(!t||typeof t!=="object")continue;const prior=t.uid?byUid.get(String(t.uid)):null;
+        if(prior){if(seen.has(String(prior.uid)))continue;seen.add(String(prior.uid));
+         if(finishedByOther(prior)){if(taskPrint(t)!==taskPrint(prior))notApplied.push({workOrderId:String(old.id),taskUid:String(prior.uid),reason:"finished_by_other"});out.push(prior);continue}
+         const x={...t};for(const k of TASK_SERVER_KEYS)if(k in prior)x[k]=prior[k];else delete x[k];out.push(x)}
+        else{const x={...t};delete x.sessions;x.parts=[];if(x.uid&&!/^[A-Za-z0-9_.:-]{1,80}$/.test(String(x.uid)))delete x.uid;out.push(x)}
+       }
+       // Jobs without a permanent id (repaired at startup) are matched by nothing and follow the phone's list.
+       for(const t of oldTasks)if(t?.uid&&!seen.has(String(t.uid))){out.push(t);kept.push({workOrderId:String(old.id),taskUid:String(t.uid)})}
+       merged.tasks=out}
       const oldHistory=Array.isArray(old.history)?old.history:[],newHistory=Array.isArray(merged.history)?merged.history:[];
       merged.history=[...oldHistory,...newHistory.slice(oldHistory.length).map(x=>clean(x))];
       if(Array.isArray(merged.tasks)){const oldTasks=new Map((Array.isArray(old.tasks)?old.tasks:[]).map(t=>[String(t?.uid||''),t]));merged.tasks=merged.tasks.map(t=>{const prior=oldTasks.get(String(t?.uid||''));if(!prior||!prior.findingId)return t;return {...t,findingId:prior.findingId,source:prior.source,findingDecision:prior.findingDecision,approvalChangedAt:prior.approvalChangedAt,approvalChangedBy:prior.approvalChangedBy,cancelled:prior.cancelled,declinedAt:prior.declinedAt,declinedBy:prior.declinedBy}})}
@@ -2299,6 +2359,8 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{
     // office page's markup, so it is not stored.
     for(const proposed of incomingI){const id=String(proposed?.id||'');if(existingIds.has(id)||!ownedIds.has(String(proposed?.wo||''))||!/^[A-Za-z0-9_.-]{1,40}$/.test(id))continue;const x=clean(proposed);x.mechanic=req.user.username;x.approval='Waiting for Customer';x.adminNote='';x.decisionAt='';x.decisionBy='';x.convertedToTask=false;x.officeReviewedAt='';x.officeReviewedBy='';x.sentAt='';x.sentBy='';issues.push(x)}
     nextPayload={...current,workorders,issues};
+    if(notApplied.length)res.locals.notApplied=notApplied.slice(0,50);
+    if(notApplied.length||kept.length)await audit(req.user.username,"mechanic_save_not_applied",{items:notApplied.slice(0,50),jobsKept:kept.slice(0,50)});
   }
   const q=await db.query("UPDATE app_state SET payload=$2::jsonb,version=version+1,updated_at=now(),updated_by=$3 WHERE state_key=$1 AND version=$4 RETURNING version,updated_at",[key,JSON.stringify(nextPayload),req.user.username,expectedVersion]);
   if(!q.rowCount){await db.query('ROLLBACK');db.release();return res.status(409).json({error:"This data changed before the save completed. Refresh and try again.",code:"STATE_VERSION_CONFLICT"})}
@@ -2309,7 +2371,7 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{
   if(key==="shopflow")broadcastShopStatus("shopflow_changed",{by:req.user.username,version:Number(q.rows[0].version)});
   // v24.41.4: a mechanic who starts an inspection while clocked out is clocked in automatically, like starting a job timer.
   if(key==="shopflow"&&req.user?.role==="mechanic"){const me=String(req.user.username).toLowerCase();if((nextPayload?.workorders||[]).some(w=>w?.inspection?.status==="In Progress"&&String(w.inspection.startedBy||"").toLowerCase()===me&&Date.now()-new Date(w.inspection.startedAt||0).getTime()<10*60000))await autoClockInSafe(req.user,"inspection")}
-  db.release();res.json({ok:true,version:Number(q.rows[0].version),updatedAt:q.rows[0].updated_at});
+  db.release();res.json({ok:true,version:Number(q.rows[0].version),updatedAt:q.rows[0].updated_at,...(res.locals.notApplied?{notApplied:res.locals.notApplied}:{})});
  }catch(e){try{await db.query('ROLLBACK')}catch(_){};db.release();next(e)}
 });
 
@@ -5176,5 +5238,5 @@ initDb()
   .then(()=>{if(pool)setAsideNonBankZelle(pool).catch(e=>console.error("Gmail Zelle clean-up failed:",e?.message))})
   .then(()=>repairWorkOrderNumberCollisions())
   .then(async()=>{try{const q=await pool.query("SELECT id FROM workshop_manuals WHERE active=true AND (index_status IS NULL OR index_status IN ('queued','indexing')) AND (r2_key IS NOT NULL OR EXISTS(SELECT 1 FROM workshop_manual_files f WHERE f.manual_id=workshop_manuals.id))");for(const r of q.rows)queueManualIndex(r.id)}catch(e){console.error('[manual index startup]',e?.message)}})
-  .then(async()=>{try{const x=await reconcileDuplicateImportedCustomers();if(x.merged)console.log(`Merged ${x.merged} duplicate imported customer record(s).`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v${ITTR_APP_VERSION} Online running on port ${port}`))})
+  .then(async()=>{try{const x=await reportDuplicateImportedCustomers();if(x.groups)console.log(`[customers] ${x.groups} customer name(s) appear on more than one record (${x.records} records). Not merged automatically: review them in Customers → duplicate audit.`)}catch(e){console.error("Customer dedupe warning:",e?.message)}try{const x=await repairFullbayServiceDatesAtStartup();if(x.repaired)console.log(`Repaired ${x.repaired} Fullbay service date(s).`)}catch(e){console.error("Fullbay service date repair warning:",e?.message)}try{const x=await repairFullbayTextArtifactsAtStartup();const n=Object.values(x).reduce((a,b)=>a+Number(b||0),0);if(n)console.log(`Normalized Fullbay display artifacts: ${JSON.stringify(x)}`)}catch(e){console.error("Fullbay text normalization warning:",e?.message)}httpServer.listen(port,()=>console.log(`ITTR v${ITTR_APP_VERSION} Online running on port ${port}`))})
   .catch(e=>{console.error("ITTR database startup failed:",e);process.exit(1)});

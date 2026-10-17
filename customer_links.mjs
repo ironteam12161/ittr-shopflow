@@ -168,6 +168,8 @@ export function registerCustomerLinkRoutes(app, deps) {
       await db.query(`UPDATE customer_estimates SET status=CASE WHEN status='draft' THEN 'sent' ELSE status END,sent_at=coalesce(sent_at,now()) WHERE id=$1::bigint`, [e.id]);
     } else if (kind === 'portal') {
       if (req.user.role === 'manager' && req.user.permissions?.customers !== true) return res.status(403).json({ error: 'Manager permission required: customers.' });
+      // v24.72.0: the portal shows invoices, balances and invoice PDFs, so creating one also needs Invoices.
+      if (req.user.role === 'manager' && req.user.permissions?.invoices !== true) return res.status(403).json({ error: 'Manager permission required: invoices (the customer portal shows invoices and balances).' });
       const c = (await db.query('SELECT id FROM fullbay_import_customers WHERE id=$1::bigint', [refId])).rows[0]; if (!c) return res.status(404).json({ error: 'Customer not found.' });
       customerId = c.id;
     } else {
