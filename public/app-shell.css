@@ -185,3 +185,29 @@ body.modalOpen #shopAiFab,body.invoiceWorkspaceMode #shopAiFab{display:none!impo
  #customers .smartDirectoryHint{width:100%;overflow-x:auto}
  #customers .smartDirectoryHint span{flex:0 0 auto}
 }
+
+/* Dashboard: current activity first; compact calendar cells keep quiet days short. */
+#dashboard .dashboardStatusHeading{margin-top:0}
+#dashboard #mechanicLiveStatus{margin-bottom:24px}
+#dashboard .calendarControls{grid-template-columns:auto minmax(0,1fr) auto}
+#dashboard .calendarFilter{display:block;font-size:13px;font-weight:700;margin:0 0 12px}
+#dashboard .calendarFilter input{display:block;width:100%;max-width:560px;margin-top:5px}
+#dashboard .calendarWeek{align-items:start}
+#dashboard .calendarWeek .calendarCell{min-height:84px;max-height:480px;overflow-y:auto}
+#dashboard .calJob{display:block;width:100%;text-align:left;font:inherit;color:var(--ds-ink,#101828);white-space:normal;min-height:44px;overflow-wrap:anywhere}
+#dashboard .calJob>span{display:block}
+#dashboard .calJob .meta,#dashboard .calIdentity{font-size:12px;line-height:1.5;color:#475467}
+#dashboard .calJob .task{font-size:14px;line-height:1.45;white-space:normal;overflow:visible}
+#dashboard .calStage{font-size:12px;font-weight:800;margin:4px 0}
+#dashboard .calReason{font-size:12px;line-height:1.4;margin:4px 0;color:#7a2e0e}
+#dashboard .calJob:focus-visible{outline:3px solid #175cd3;outline-offset:2px}
+#dashboard .calendarNav button,#dashboard .calendarModes button{min-height:44px}
+.partsNavBadge{background:#b54708}
+@media(max-width:1100px) and (min-width:761px){#dashboard .calendarWeek{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){
+ #dashboard .calendarControls{grid-template-columns:minmax(0,1fr)}
+ #dashboard .calendarWeek .calendarCell{max-height:none}
+ #dashboard .calendarWeek .calendarCellEmpty{min-height:0;padding:8px 10px}
+ #dashboard .calendarCellEmpty .calendarCellHeader{margin-bottom:0}
+ #dashboard .calendarCellEmpty .calendarEmpty{display:none}
+}
