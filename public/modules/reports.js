@@ -485,10 +485,10 @@ function renderArAging(){const box=$('#repArAging'),d=AR.data;if(!box||!d)return
  const m=v=>v?usd(v):'';const t=d.totals;
  const csvRows=[];for(const c of list){csvRows.push({company:c.name,invoice:'',unit:'',date:'',due:'',days:'',...Object.fromEntries(B.map(([k])=>[k,c.buckets[k]])),credit:c.credit,balance:c.net});for(const i of c.invoices)csvRows.push({company:c.name,invoice:i.invoiceNumber,unit:i.unit,date:String(i.invoiceDate||'').slice(0,10),due:String(i.dueDate||'').slice(0,10),days:i.daysPastDue,...Object.fromEntries(B.map(([k])=>[k,i.bucket===k?i.balance:''])),credit:'',balance:i.balance})}
  registerCsv('ar-aging',[{key:'company',label:'Company'},{key:'invoice',label:'Invoice'},{key:'unit',label:'Unit'},{key:'date',label:'Date'},{key:'due',label:'Due date'},{key:'days',label:'Days past due'},...B.map(([k,l])=>({key:k,label:l})),{key:'credit',label:'Credit'},{key:'balance',label:'Balance'}],csvRows);
- const rows=list.map(c=>{const open=AR.all||AR.open.has(c.key);return `<tr class="arCust" data-ar="toggle" data-key="${h(c.key)}"><td><span class="arCaret">${c.invoices.length?(open?'▾':'▸'):''}</span><b>${h(c.name)}</b><div class="sub">${c.invoices.length} open invoice${c.invoices.length===1?'':'s'}${c.oldestDays>0?` · oldest ${c.oldestDays} days late`:''}</div></td>
+ const rows=list.map(c=>{const open=AR.all||AR.open.has(c.key);return `<tr class="arCust" data-ar="toggle" data-key="${h(c.key)}"><td><span class="arCaret">${c.invoices.length?(open?'▾':'▸'):''}</span><b>${h(c.name)}</b><div class="sub">${c.invoices.length} open invoice${c.invoices.length===1?'':'s'}${c.oldestDays>0?` · oldest ${c.oldestDays} days late`:''}${!c.customerId&&c.invoices.length?' · not linked to a customer record (payments go on each invoice)':''}</div></td>
    ${B.map(([k])=>`<td class="n${k!=='current'&&c.buckets[k]?' late':''}">${m(c.buckets[k])}</td>`).join('')}<td class="n credit">${c.credit?`−${usd(c.credit)}`:''}</td><td class="n"><b class="${c.net<-0.009?'creditBal':''}">${usd(c.net)}</b>${c.net<-0.009?'<div class="sub">credit</div>':''}</td>
-   <td class="repNoPrint">${c.customerId?`<button data-ar="pay" data-cust="${c.customerId}">${c.credit>0.009&&c.owed>0.009?'Apply credit / pay':'Receive payment'}</button>`:''}</td></tr>
-   ${open?c.invoices.map(i=>`<tr class="arInv" data-inv="${i.id}"><td>Invoice ${h(i.invoiceNumber)}${i.status==='draft'?' <span class="repTag">draft</span>':''}<div class="sub">${day(i.invoiceDate)} · due ${day(i.dueDate)}${i.unit?` · Unit ${h(i.unit)}`:''}${i.daysPastDue?` · ${i.daysPastDue} days late`:''}</div></td>${B.map(([k])=>`<td class="n">${i.bucket===k?usd(i.balance):''}</td>`).join('')}<td></td><td class="n">${usd(i.balance)}</td><td class="repNoPrint"></td></tr>`).join(''):''}`}).join('');
+   <td class="repNoPrint">${c.customerId?`<button data-ar="pay" data-cust="${c.customerId}">${c.credit>0.009&&c.owed>0.009?'Apply credit / pay':'Receive payment'}</button>`:c.invoices.some(i=>i.status!=='draft')?`<button data-ar="pay-unlinked" data-key="${h(c.key)}">Receive payment</button>`:''}</td></tr>
+   ${open?c.invoices.map(i=>`<tr class="arInv" data-inv="${i.id}"><td>Invoice ${h(i.invoiceNumber)}${i.status==='draft'?' <span class="repTag">draft</span>':''}<div class="sub">${day(i.invoiceDate)} · due ${day(i.dueDate)}${i.unit?` · Unit ${h(i.unit)}`:''}${i.daysPastDue?` · ${i.daysPastDue} days late`:''}</div></td>${B.map(([k])=>`<td class="n">${i.bucket===k?usd(i.balance):''}</td>`).join('')}<td></td><td class="n">${usd(i.balance)}</td><td class="repNoPrint">${!c.customerId&&i.status!=='draft'?`<button class="secondary" data-ar="pay-inv" data-inv="${i.id}" data-key="${h(c.key)}">Record payment</button>`:''}</td></tr>`).join(''):''}`}).join('');
  box.innerHTML=card('A/R aging by company',`As of ${day(d.asOf)}. ${t.owing} compan${t.owing===1?'y owes':'ies owe'} ${usd(t.owed)}${t.withCredit?` · ${t.withCredit} ha${t.withCredit===1?'s':'ve'} ${usd(t.credit)} credit`:''}. Click a company to see its invoices.`,
   `<div class="arBar repNoPrint"><input type="search" data-ar="q" value="${h(AR.q)}" placeholder="Search company, invoice #, unit…">
    <span class="arChips">${[['all','All'],['owe','Owe money'],['credit','Have credit'],['overdue','Overdue']].map(([k,l])=>`<button data-ar="show" data-v="${k}" class="${AR.show===k?'on':''}">${l}</button>`).join('')}</span>
@@ -508,6 +508,17 @@ function onArEvent(e){const t=e.target.closest?.('[data-ar]');if(!t||!t.closest(
  if(a==='all'){AR.all=!AR.all;AR.open.clear();return renderArAging()}
  if(a==='print'){AR.all=true;renderArAging();document.body.classList.add('arPrinting');setTimeout(()=>{window.print();document.body.classList.remove('arPrinting')},50);return}
  if(a==='pay'){window.openReceivePayment?.({customerId:Number(t.dataset.cust),mode:'pay',onDone:()=>{AR.data=null;loadArAging()}});return}
+ // An invoice whose company is not linked to a customer record cannot use the company payment screen (it keeps
+ // payments and credit per customer). Its payment goes on the invoice itself, like "Record payment" in the invoice.
+ if(a==='pay-unlinked'||a==='pay-inv'){const c=AR.data?.customers.find(x=>x.key===t.dataset.key),payable=(c?.invoices||[]).filter(i=>i.status!=='draft');
+  const inv=a==='pay-inv'?payable.find(i=>String(i.id)===t.dataset.inv):payable.length===1?payable[0]:null;
+  if(!inv){if(c){AR.open.add(c.key);renderArAging()}return toast('Choose the invoice this payment is for: use Record payment on its row.','info')}
+  return payArInvoice(inv)}
+}
+async function payArInvoice(inv){
+ if(typeof window.paymentDialog!=='function'||typeof window.sendPayment!=='function')return window.openInvoice?.(inv.id);
+ const v=await window.paymentDialog({title:`Record payment · Invoice ${inv.invoiceNumber}`,amount:inv.balance,balance:inv.balance});if(!v)return;
+ if(await window.sendPayment(`/api/invoices/${inv.id}/payments`,'POST',v)){toast(`Payment of ${usd(v.amount)} recorded on invoice ${inv.invoiceNumber}.`,'success');AR.data=null;loadArAging()}
 }
 
 async function zelleToInvoice(msgId,inv,amount,ref){
