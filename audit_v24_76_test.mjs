@@ -153,9 +153,11 @@ try {
     const { ctx, page } = await newPage(); await signIn(page, 'mgrfull', MPASS);
     await page.evaluate(() => showView('invoices')); await sleep(800);
     await page.evaluate(id => openInvoice(id, true), inv); await page.waitForSelector('#invoiceModal.open'); await sleep(500);
+    await page.focus('#invCustomerNote'); // focused, not typed in (the dialog layer also focuses a field on open)
     await R(`/api/invoices/${inv}`, { method: 'PUT', token: owner, body: { customerNote: 'Changed on another device' } });
     // v24.76.0: a clean editor updates by itself (no click needed); the Refresh note is for unsaved drafts.
     ok(await until(() => page.evaluate(() => activeInvoice?.invoice?.customer_note === 'Changed on another device'), 6000), 'clean editor shows the newer invoice');
+    await sleep(1500); eq((await R(`/api/invoices/${inv}`, { token: owner })).invoice.customer_note, 'Changed on another device', 'reloading the editor never saves the old values back');
     // Dirty draft: type in the editor, then another device changes the invoice.
     const field = await page.evaluateHandle(() => [...document.querySelectorAll('#invoiceEditor .ilDesc')].find(e => e.offsetParent && !e.readOnly && !e.disabled)); // a line field (not autosaved while typing)
     await field.fill('MY UNSAVED DRAFT TEXT');
@@ -317,6 +319,24 @@ try {
     await sleep(1200); eq(await page.$$eval('.ittrChoice', x => x.length), 1, 'one question, not one per autosave attempt');
     await page.click('[data-header-choice="keep"]');
     ok(await until(async () => /Local note/.test((await R(`/api/invoices/${inv}`, { token: owner })).invoice.customer_note || ''), 5000), 'choosing "keep" saves this device\'s note on purpose');
+    // The header save that runs before adding or removing a line asks too (before, it reverted the other device's
+    // header change even when this person never touched the header). Live updates are off so the editor is stale.
+    await sleep(1500); await page.evaluate(() => stopLiveStatusSocket()); await sleep(1200);
+    await R(`/api/invoices/${inv}`, { method: 'PUT', token: owner, body: { customerNote: 'Third remote' } });
+    const p = page.evaluate(() => persistInvoiceDraftBeforeStructureChange('Preserving your invoice'));
+    await page.waitForSelector('[data-header-choice="reload"]', { timeout: 6000 }); await page.click('[data-header-choice="reload"]');
+    eq(await p, false, 'the line change stops when the newer version is loaded');
+    eq((await R(`/api/invoices/${inv}`, { token: owner })).invoice.customer_note, 'Third remote', 'the other device\'s note is kept');
+    ok(await until(() => page.evaluate(() => activeInvoice?.invoice?.customer_note === 'Third remote'), 5000), 'the editor shows the newer version');
+    await ctx.close();
+  });
+  await scenario('A22 the same account on two devices: a change from the other device updates the open invoice', async () => {
+    const inv = await newInvoice(1), other = await srv.login('mgrfull', MPASS); // the account's second device
+    const { ctx, page } = await newPage(); await signIn(page, 'mgrfull', MPASS);
+    await page.evaluate(() => showView('invoices')); await sleep(800);
+    await page.evaluate(id => openInvoice(id, true), inv); await page.waitForSelector('#invoiceModal.open'); await sleep(4500); // past this tab's own writes
+    await R(`/api/invoices/${inv}`, { method: 'PUT', token: other, body: { customerNote: 'From my phone' } });
+    ok(await until(() => page.evaluate(() => activeInvoice?.invoice?.customer_note === 'From my phone'), 6000), 'the open editor shows the change from the other device');
     await ctx.close();
   });
   await scenario('A17 work-order Billing tab links to its estimate and invoice', async () => {
@@ -331,16 +351,24 @@ try {
     ok(await page.$('[data-ws-open-estimate]'), 'estimate listed');
     await page.click('[data-ws-open-invoice]'); await page.waitForSelector('#invoiceModal.open', { timeout: 8000 });
     eq(await page.evaluate(() => activeInvoice?.invoice?.id), inv, 'the linked invoice opens');
+    await page.evaluate(() => closeInvoiceWorkspace()); await sleep(300); await page.evaluate(() => { location.hash = '#wo/9501/billing'; }); await page.waitForSelector('[data-ws-open-estimate]', { timeout: 8000 });
+    const estReq = page.waitForRequest(r => new URL(r.url()).pathname === `/api/estimates/${e.id}`, { timeout: 8000 });
+    await page.click('[data-ws-open-estimate]'); await estReq;
+    eq(await page.evaluate(() => currentView), 'estimates', 'the linked estimate opens on Estimates');
     await ctx.close();
   });
   await scenario('A18 Operations tools: search filters, favorites stay per account', async () => {
     const { ctx, page } = await newPage(820); await signIn(page, OWNER.username, OWNER.password);
     await page.evaluate(() => showView('procenter')); await page.waitForSelector('#opsToolSearch');
     await page.fill('#opsToolSearch', 'audit log'); await sleep(150);
-    const shown = await page.$$eval('.opsGroup:not(.opsFavs) .opsTool:not([hidden])', x => x.map(t => t.textContent.trim().slice(0, 20)));
-    ok(shown.length >= 1 && shown.every(t => /audit/i.test(t)), `only matching tools (${shown})`);
+    // Visible on screen (checkVisibility), not just the attribute: a display rule can override [hidden].
+    const shown = await page.$$eval('.opsGroup:not(.opsFavs) .opsTool', x => x.filter(t => t.checkVisibility()).map(t => t.textContent.trim().slice(0, 20)));
+    ok(shown.length >= 1 && shown.every(t => /audit/i.test(t)), `only matching tools are visible (${shown})`);
     await page.fill('#opsToolSearch', ''); await page.click('.opsTool[data-tool="daily-report"] .opsStar');
     ok(/Daily report/.test(await page.textContent('#opsFavList')), 'starred tool in Favorites');
+    await page.evaluate(() => { const o = window.showProPanel; window.__panelCalls = 0; window.showProPanel = (...a) => { window.__panelCalls++; return o(...a); }; });
+    await page.click('#opsFavList button'); await sleep(300);
+    eq(await page.evaluate(() => window.__panelCalls), 1, 'a favorite runs its tool once');
     await page.reload(); await page.waitForFunction(() => typeof cloudReady !== 'undefined' && cloudReady && session, null, { timeout: 15000 });
     await page.evaluate(() => showView('procenter')); await page.waitForSelector('#opsFavList'); await sleep(300);
     ok(/Daily report/.test(await page.textContent('#opsFavList')), 'favorite kept after reload');
@@ -351,12 +379,12 @@ try {
   });
   await scenario('A19 mechanic job details: no empty timer row, add-part form folded until needed', async () => {
     const st = await R('/api/state', { token: owner }), sf = st.shopflow.payload;
-    sf.workorders = [...sf.workorders.filter(w => w.id !== 9601), { id: 9601, unit: 'JOB-1', customer: 'X', status: 'In Progress', mechanic: 'mech1', helpers: [], unitType: 'customer', truckHere: true, tasks: [{ uid: 'j1', t: 'Brake inspection', done: false, startedAt: '', stoppedAt: '', elapsedMs: 0, parts: [] }] }];
+    sf.workorders = [...sf.workorders.filter(w => w.id !== 9601), { id: 9601, unit: 'JOB-1', customer: 'X', status: 'In Progress', mechanic: 'mech1', helpers: [], unitType: 'customer', truckHere: true, tasks: [{ uid: 'j1', t: 'Brake inspection', done: false, startedAt: '', stoppedAt: '', elapsedMs: 0, parts: [] }, { uid: 'j2', t: 'Done without timer', done: true, outcome: 'completed', startedAt: '', stoppedAt: '', elapsedMs: 0, parts: [] }] }];
     await R('/api/state/shopflow', { method: 'PUT', token: owner, body: { payload: sf, expectedVersion: st.shopflow.version } });
     const { ctx, page } = await newPage(390); await signIn(page, 'mech1', KPASS);
     await page.evaluate(() => openDetail(9601)); await page.waitForSelector('#detailModal.open');
-    const d = await page.evaluate(() => { const b = document.getElementById('detailBody'); return { notStarted: /Not started/.test(b.textContent), emptyTimer: /Latest Start|Started:/.test(b.querySelector('.taskrow')?.textContent || ''), folded: !!b.querySelector('details.partAddDetails:not([open])'), partInputVisible: !!b.querySelector('#partNo_9601_0')?.checkVisibility() }; });
-    ok(d.notStarted && !d.emptyTimer, 'unstarted job shows "Not started" instead of empty times'); ok(d.folded && !d.partInputVisible, `add-part form folded (${JSON.stringify(d)})`);
+    const d = await page.evaluate(() => { const b = document.getElementById('detailBody'); return { notStarted: /Not started/.test(b.querySelectorAll('.taskrow')[0]?.textContent || ''), doneSaysNotStarted: /Not started/.test(b.querySelectorAll('.taskrow')[1]?.textContent || ''), emptyTimer: /Latest Start|Started:/.test(b.querySelector('.taskrow')?.textContent || ''), folded: !!b.querySelector('details.partAddDetails:not([open])'), partInputVisible: !!b.querySelector('#partNo_9601_0')?.checkVisibility() }; });
+    ok(d.notStarted && !d.emptyTimer, 'unstarted job shows "Not started" instead of empty times'); ok(!d.doneSaysNotStarted, 'a finished job never says "Not started"'); ok(d.folded && !d.partInputVisible, `add-part form folded (${JSON.stringify(d)})`);
     await page.click('details.partAddDetails > summary'); ok(await page.evaluate(() => !!document.querySelector('#detailBody #partNo_9601_0')?.checkVisibility()), '+ Add part opens the form');
     await ctx.close();
   });

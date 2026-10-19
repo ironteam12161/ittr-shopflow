@@ -28,12 +28,12 @@ function enhanceTools(host,signal){
   host.querySelectorAll('.opsStar').forEach(s=>{const on=favs.has(s.dataset.star);s.setAttribute('aria-pressed',String(on));s.textContent=on?'★':'☆';const name=s.previousElementSibling?.querySelector('b')?.textContent?.trim()||'tool';s.setAttribute('aria-label',`${on?'Remove':'Add'} ${name} ${on?'from':'to'} favorites`)});
   box.replaceChildren();const picked=[...host.querySelectorAll('.opsGroup:not(.opsFavs) .opsTool')].filter(t=>favs.has(t.dataset.tool));
   if(!picked.length){box.innerHTML='<div class="opsEmpty">Tap ☆ next to a tool to keep it here.</div>';return}
-  for(const t of picked){const b=t.querySelector('button').cloneNode(true);b.removeAttribute('id');b.addEventListener('click',()=>t.querySelector('button').click(),{signal});box.appendChild(b)}};
+  for(const t of picked){const b=t.querySelector('button').cloneNode(true);b.removeAttribute('id');b.removeAttribute('onclick');b.removeAttribute('aria-current');b.addEventListener('click',()=>t.querySelector('button').click(),{signal});box.appendChild(b)}};
  host.addEventListener('click',e=>{const s=e.target.closest('.opsStar');if(s){const f=readFavs();f.has(s.dataset.star)?f.delete(s.dataset.star):f.add(s.dataset.star);writeFavs(f);paintFavs();return}
   const tool=e.target.closest('.opsGroup:not(.opsFavs) .opsTool > button:first-child');if(tool){host.querySelectorAll('.opsBtns button[aria-current]').forEach(x=>x.removeAttribute('aria-current'));tool.setAttribute('aria-current','true')}},{signal});
  const search=host.querySelector('#opsToolSearch'),count=host.querySelector('#opsToolCount');
  search?.addEventListener('input',()=>{const q=search.value.trim().toLowerCase();let n=0;
-  host.querySelectorAll('.opsGroup:not(.opsFavs)').forEach(g=>{let shown=0;g.querySelectorAll('.opsTool').forEach(t=>{const hit=!q||t.textContent.toLowerCase().includes(q);t.hidden=!hit;if(hit)shown++});g.hidden=!!q&&!shown;n+=shown});
+  host.querySelectorAll('.opsGroup:not(.opsFavs)').forEach(g=>{let shown=0;g.querySelectorAll('.opsTool').forEach(t=>{const hit=!q||t.textContent.toLowerCase().includes(q);t.hidden=!hit;if(hit&&!t.querySelector('button.hiddenRole'))shown++});g.hidden=!!q&&!shown;n+=shown});
   if(count)count.textContent=q?`${n} tool${n===1?'':'s'}`:''},{signal});
  paintFavs();
 }
