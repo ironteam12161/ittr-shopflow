@@ -1620,15 +1620,16 @@ function ittrSessionCurrent(g,token){return g===ittrSessionGeneration&&token===c
 function ittrSessionCancelled(){return Object.assign(new Error("The account session changed."),{name:"AbortError",code:"SESSION_CHANGED"})}
 async function ittrSessionFetch(url,options={}){
  const generation=ittrSessionGeneration,token=cloudToken,controller=new AbortController();
- const cancel=()=>controller.abort();options.signal?.addEventListener("abort",cancel,{once:true});if(options.signal?.aborted)cancel();
+ // Keep caller cancellation connected after headers, including a streaming response body.
+ const signal=options.signal?(typeof AbortSignal.any==="function"?AbortSignal.any([options.signal,controller.signal]):options.signal):controller.signal;
  ittrSessionRequests.add(controller);
  const check=()=>{if(!ittrSessionCurrent(generation,token))throw ittrSessionCancelled()};
  const protect=response=>{
   for(const method of ["json","text","blob","arrayBuffer","formData"]){const read=response[method].bind(response);response[method]=async(...args)=>{check();const value=await read(...args);check();return value}}
   const clone=response.clone.bind(response);response.clone=()=>protect(clone());return response;
  };
- try{const response=await fetch(url,{...options,signal:controller.signal});check();return protect(response)}
- finally{ittrSessionRequests.delete(controller);options.signal?.removeEventListener("abort",cancel)}
+ try{const response=await fetch(url,{...options,signal});check();return protect(response)}
+ finally{ittrSessionRequests.delete(controller)}
 }
 /* v24.67.0: pending saves live in public/sync-queue.js (per account, as change sets, removed only once saved). */
 const ITTR_LIVE={users:()=>USERS,shopflow:()=>state,pro:()=>PRO};

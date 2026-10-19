@@ -1,5 +1,6 @@
 // Actual server handler and sync engine with isolated adapters: no DB or provider needed.
 // DB/browser suites independently exercise the same boundaries in CI.
+import http from 'node:http';
 import fs from 'node:fs';import vm from 'node:vm';import crypto from 'node:crypto';import assert from 'node:assert/strict';
 const source=fs.readFileSync('server.js','utf8'),clone=x=>JSON.parse(JSON.stringify(x));
 let handler,saved,reply,current;
@@ -22,3 +23,19 @@ for(const canonical of [true,false]){
  const engine=c.ittrCreateSyncEngine({user:()=> 'alice',storage,getLive:()=>live,setLive:(_,v)=>live=v,online:()=>true,serverVersion:()=>version,setServerVersion:(_,v)=>version=v,fetchState:async()=>({shopflow:{payload:accepted,version:2}}),put:async(_,json)=>{count++;if(count===1){live.workorders[0].futureNotes='typed during save';return {version:2,notApplied:[{reason:'completed'}],...(canonical?{payload:accepted}:{})}}return {version:3,payload:JSON.parse(json)}}});engine.setBase('shopflow',initial,1);live.workorders[0].notes='accepted';live.workorders[0].status='Completed';await engine.sync('shopflow');assert.equal(live.workorders[0].status,'In Progress');assert.equal(live.workorders[0].notes,'accepted');assert.equal(live.workorders[0].futureNotes,'typed during save');assert.equal(engine.status().pending,0);assert.equal(engine.archived()[0].kind,'refused');assert.equal(JSON.parse(engine.base('shopflow').json).workorders[0].status,'In Progress');
 }
 console.log('PASS canonical/legacy partial saves: rejected edit removed, accepted and in-flight edits preserved, refusal archived');
+
+// Cancellation must remain connected after fetch resolves its response headers.
+const html=fs.readFileSync('public/index.html','utf8');
+const fetchFunction=html.slice(html.indexOf('async function ittrSessionFetch('),html.indexOf('/* v24.67.0: pending saves'));
+const streamingServer=http.createServer((req,res)=>{res.writeHead(200,{'Content-Type':'text/plain'});res.write('partial body');});
+await new Promise(resolve=>streamingServer.listen(0,'127.0.0.1',resolve));
+try{
+ for(const signals of [AbortSignal,{}]){
+  const context={ittrSessionGeneration:1,cloudToken:'synthetic',AbortController,AbortSignal:signals,ittrSessionRequests:new Set(),ittrSessionCurrent:()=>true,ittrSessionCancelled:()=>Error('stale'),fetch};
+  vm.runInNewContext(fetchFunction,context);
+  const controller=new AbortController(),response=await context.ittrSessionFetch(`http://127.0.0.1:${streamingServer.address().port}`,{signal:controller.signal});
+  controller.abort();let deadline;
+  try{await assert.rejects(Promise.race([response.text(),new Promise((_,reject)=>{deadline=setTimeout(()=>reject(new Error('Body cancellation timed out')),1000)})]),{name:'AbortError'})}finally{clearTimeout(deadline)}
+ }
+}finally{streamingServer.closeAllConnections();await new Promise(resolve=>streamingServer.close(resolve))}
+console.log('PASS caller cancellation aborts response bodies with native and fallback signal composition');
