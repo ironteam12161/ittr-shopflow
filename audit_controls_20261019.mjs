@@ -59,12 +59,17 @@ browser=await chromium.launch({headless:true,args:['--no-sandbox']});
   await R(`/api/invoices/${inv.id}/lines/${line.id}`,{method:'PUT',token,body:{lineType:'labor',description:newDescription,quantity:Number(line.quantity),unitPrice:Number(line.unit_price),taxable:false,jobName:line.job_name}});
   await p.waitForSelector('#ittrStaleNote',{timeout:5000});await p.locator('#ittrStaleNote button').first().click();await sleep(600);
   observations.push({kind:'invoice-editor-refresh',remoteDescription:newDescription,editorDescription:await p.evaluate(id=>activeInvoice?.lines?.find(l=>String(l.id)===String(id))?.description,line.id),noteStillVisible:await p.locator('#ittrStaleNote').count()});
+  await p.evaluate(async()=>{document.querySelectorAll('.modal.open').forEach(e=>e.classList.remove('open'));syncModalState();await showView('purchaseorders')});await sleep(250);
+  const poRow=p.locator('#purchaseorders tr[data-open]').first();
+  const rowMeta=await poRow.evaluate(e=>({tag:e.tagName,tabIndex:e.tabIndex,role:e.getAttribute('role'),text:e.innerText.slice(0,200)}));await poRow.click();await sleep(200);
+  observations.push({kind:'purchase-order-row-access',...rowMeta,pointerOpened:await p.locator('.poModal').count()>0});
+
  }catch(e){observations.push({kind:'focused-check-error',error:e.stack||String(e)})}
  await ctx.close();console.log('AUDIT_FOCUSED '+JSON.stringify(observations));
 }
 const officeViews=['dashboard','board','workorders','approvals','customers','compliance','parts','purchaseorders','estimates','invoices','bills','reports','procenter','completed','accounts','activityhistory','trucksearch'];
-const selectors='button,a,[role=button],[onclick]';const exercised=new Map(),modalSpecs=new Map();
-for(const role of ['auditowner','managerall','managerlimited','mechanic1','mechanic2'])for(const width of role==='auditowner'?[1440,900,390]:[1440,390]){
+const selectors='button,a,[role=button],[onclick],tr[data-open],tr[data-mech],tr[data-clock],tr[data-vbill],tr[data-ltype],tr[data-vend]';const exercised=new Map(),modalSpecs=new Map();
+for(const role of (process.env.ITTR_AUDIT_FOCUSED_ONLY==='1'?[]:['auditowner','managerall','managerlimited','mechanic1','mechanic2']))for(const width of role==='auditowner'?[1440,900,390]:[1440,390]){
  const ctx=await browser.newContext({viewport:{width,height:900},timezoneId:'America/Chicago',serviceWorkers:'block',acceptDownloads:true});
  await ctx.addInitScript(()=>{window.__auditPrints=0;window.print=()=>window.__auditPrints++;});
  await ctx.route('**/*',route=>{const u=new URL(route.request().url());if(['127.0.0.1','localhost'].includes(u.hostname)||['data:','blob:'].includes(u.protocol))return route.continue();return route.abort();});
@@ -119,7 +124,7 @@ for(const role of ['auditowner','managerall','managerlimited','mechanic1','mecha
  }
  // Role navigation matrix is checked even when a forbidden tab has no visible button.
  const gates=await page.evaluate(vs=>vs.map(v=>({view:v,allowed:allowedViewForRole(v)})),officeViews).catch(()=>[]);observations.push({kind:'role-gates',role,width,gates});
- await ctx.close();console.log('AUDIT_PROGRESS '+JSON.stringify({role,width,screens:screens.length,controls:records.length}));
+ await ctx.close();writeFileSync('/tmp/ittr-control-audit-partial.json',JSON.stringify({records,screens,observations}));console.log('AUDIT_PROGRESS '+JSON.stringify({role,width,screens:screens.length,controls:records.length}));
 }
 // Customer portal has a separate unauthenticated shell.
 for(const width of [1440,390]){const ctx=await browser.newContext({viewport:{width,height:900},serviceWorkers:'block'}),p=await ctx.newPage(),errs=[];p.on('pageerror',e=>errs.push(e.message));await p.goto(base+portalPath);await sleep(500);screens.push({role:'customer',width,case:'portal',...await p.evaluate(()=>({overflow:document.documentElement.scrollWidth>innerWidth,buttons:[...document.querySelectorAll('button,a')].map(e=>({text:e.innerText,href:e.getAttribute('href')})),text:document.body.innerText.slice(0,2000)})),errors:errs});await ctx.close();}
