@@ -28,7 +28,7 @@ if (!browser) {
   reportSuite(NAME, 'SKIPPED', 'Chromium not available'); console.log(`SKIP ${NAME}: Chromium not available`); process.exit(0);
 }
 const OWNER = { username: 'owner', password: 'Shop-Boss-Pass-2026' };
-const srv = await startTestServer({ prefix: 'ittr_a76', admin: OWNER });
+const srv = await startTestServer({ prefix: 'ittr_a76', admin: OWNER, env: { STRIPE_WEBHOOK_SECRET: 'whsec_test_ittr' } });
 const R = srv.request, db = srv.db;
 const failures = [];
 // ITTR_AUDIT_ONLY=A16,A19 runs only those scenarios (local debugging); the full check always runs all of them.
@@ -410,6 +410,50 @@ try {
     await page.focus('#invCustomerNote'); await page.keyboard.type('!');
     ok(await until(() => page.evaluate(() => document.getElementById('invoiceDraftState')?.dataset.state === 'saved'), 5000), 'the note autosaved again');
     eq(await page.evaluate(() => ittrInvoiceEditorDirty()), true, 'the unsaved line still counts as unsaved');
+    await ctx.close();
+  });
+  await scenario('A27 a change from the same account on another device right after this tab saved something still updates the open invoice', async () => {
+    const inv = await newInvoice(1), other = await newInvoice(1), phone = await srv.login('mgrfull', MPASS);
+    const { ctx, page } = await newPage(); await signIn(page, 'mgrfull', MPASS);
+    await page.evaluate(() => showView('invoices')); await sleep(800);
+    await page.evaluate(id => openInvoice(id, true), inv); await page.waitForSelector('#invoiceModal.open'); await sleep(4500);
+    // This tab saves something (another invoice), and within a second the phone changes the open one.
+    await page.evaluate(id => apiJSON(`/api/invoices/${id}`, { method: 'PUT', body: { customerNote: 'tab wrote this' } }), other);
+    await R(`/api/invoices/${inv}`, { method: 'PUT', token: phone, body: { customerNote: 'From my phone, right after' } });
+    ok(await until(() => page.evaluate(() => activeInvoice?.invoice?.customer_note === 'From my phone, right after'), 6000), 'the open editor shows the phone\'s change');
+    // This tab's own autosave still never reloads its own editor.
+    let gets = 0; page.on('request', q => { if (q.method() === 'GET' && new RegExp(`/api/invoices/${inv}$`).test(q.url())) gets++; });
+    await page.focus('#invCustomerNote'); await page.keyboard.type(' x');
+    ok(await until(() => page.evaluate(() => document.getElementById('invoiceDraftState')?.dataset.state === 'saved'), 5000), 'autosaved'); await sleep(1500);
+    eq(gets, 0, 'its own autosave does not reload the editor');
+    await ctx.close();
+  });
+  await scenario('A28 a customer\'s online estimate approval refreshes an open Estimates page', async () => {
+    const e = await R('/api/estimates', { method: 'POST', token: owner, body: { customerName: 'Private Audit Fleet LLC' } });
+    await R(`/api/estimates/${e.id}/lines`, { method: 'POST', token: owner, body: { lineType: 'labor', description: 'Brake job', quantity: 1, unitPrice: 100, jobName: 'Brakes' } });
+    await R(`/api/estimates/${e.id}`, { method: 'PUT', token: owner, body: { status: 'sent' } });
+    const link = await R('/api/customer-links', { method: 'POST', token: owner, body: { kind: 'estimate', refId: String(e.id) } });
+    const token = link.token || String(link.url || '').split('/c/')[1];
+    const { ctx, page } = await newPage(); await signIn(page, 'mgrfull', MPASS);
+    await page.evaluate(() => showView('estimates')); await page.waitForSelector(`#estimates [data-open="${e.id}"]`, { timeout: 8000 });
+    const pub = await R(`/api/public/link/${token}`);
+    const jobs = Object.fromEntries((pub.jobs || pub.estimate?.jobs || []).map(j => [j.key, 'approve']));
+    const d = await R(`/api/public/link/${token}/decide`, { method: 'POST', body: { name: 'Test Customer', agree: true, jobs } });
+    eq(d.status, 'approved', 'the customer approved');
+    ok(await until(() => page.evaluate(id => /approved/i.test(document.querySelector(`#estimates [data-open="${id}"]`)?.textContent || ''), e.id), 6000), 'the open list shows approved without a reload');
+    await ctx.close();
+  });
+  await scenario('A29 an online (Stripe) payment refreshes an open invoice', async () => {
+    const inv = await newInvoice(1); await R(`/api/invoices/${inv}/finalize`, { method: 'POST', token: owner, body: {} });
+    const { ctx, page } = await newPage(); await signIn(page, 'mgrfull', MPASS);
+    await page.evaluate(() => showView('invoices')); await sleep(800);
+    await page.evaluate(id => openInvoice(id, true), inv); await page.waitForSelector('#invoiceModal.open'); await sleep(800);
+    const crypto = await import('node:crypto'), t = Math.floor(Date.now() / 1000);
+    const body = JSON.stringify({ type: 'checkout.session.completed', data: { object: { id: 'cs_a29', payment_intent: 'pi_a29', payment_status: 'paid', amount_total: 300, created: t, metadata: { invoice_id: String(inv) } } } });
+    const hook = () => fetch(srv.base() + '/api/stripe/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Stripe-Signature': `t=${t},v1=${crypto.createHmac('sha256', 'whsec_test_ittr').update(`${t}.${body}`).digest('hex')}` }, body }).then(r => r.json());
+    eq((await hook()).recorded, true, 'payment recorded (test signature, no real provider)');
+    ok(await until(() => page.evaluate(() => (activeInvoice?.payments || []).some(p => p.reference === 'pi_a29')), 6000), 'the open invoice shows the online payment');
+    eq((await hook()).recorded, false, 'a replayed event records nothing');
     await ctx.close();
   });
   await scenario('A17 work-order Billing tab links to its estimate and invoice', async () => {

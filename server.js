@@ -232,6 +232,9 @@ app.post("/api/stripe/webhook",express.raw({type:"*/*",limit:"1mb"}),async(req,r
   if(!dup){await db.query("INSERT INTO customer_invoice_payments(invoice_id,amount,method,reference,note,paid_at,received_by) VALUES($1::bigint,$2::numeric,'Credit Card',$3,'Paid online (Stripe)',to_timestamp($4),'stripe')",[invoiceId,amount,ref,Number(ses.created||Date.now()/1000)]);
    await db.query("UPDATE customer_invoices SET amount_paid=amount_paid+$2::numeric,updated_at=now() WHERE id=$1::bigint",[invoiceId,amount]);await recalcInvoice(db,invoiceId)}
   await db.query("COMMIT");if(!dup)await audit("stripe","invoice_payment",{invoiceId,amount,method:"Credit Card",reference:ref,online:true});
+  // v24.76.1: this route answers before the change-announcement middleware, so it announces the payment itself (open
+  // invoices, balances and reports refresh). A replayed event (dup) changes nothing and announces nothing.
+  if(!dup){announceDataDomain("invoices","stripe");announceDataDomain("customers","stripe")}
   res.json({received:true,recorded:!dup})
  }catch(e){try{await db.query("ROLLBACK")}catch{}console.error("[stripe webhook]",e?.message);res.status(500).json({error:"Could not record the payment."})}finally{db.release()}
 });
@@ -894,10 +897,13 @@ const pendingDomains=new Map(),DATA_REVISIONS={invoices:0,bills:0,inventory:0,cu
 function touchDataDomain(...domains){const req=aiContext.getStore()?.req;if(!req)return;req.ittrDomains=req.ittrDomains||new Set();for(const d of domains)if(d in DATA_REVISIONS)req.ittrDomains.add(d)}
 // Balances shown on customer screens change with these invoice actions.
 const CUSTOMER_BALANCE_RE=/^\/api\/invoices\/[^/]+\/(finalize|void|payments|reopen)(\/|$)|^\/api\/customers\/[^/]+\/(receive-payment|apply-credit)$|^\/api\/(customer-payments|payments)(\/|$)/;
-function announceDataDomain(d,by){DATA_REVISIONS[d]=(DATA_REVISIONS[d]||0)+1;const cur=pendingDomains.get(d);if(cur){cur.by.add(by);return}const entry={by:new Set([by])};pendingDomains.set(d,entry);setTimeout(()=>{pendingDomains.delete(d);broadcastShopStatus("data_changed",{domain:d,rev:DATA_REVISIONS[d],boot:DATA_BOOT,by:[...entry.by].filter(Boolean).slice(0,5)})},300).unref?.()}
+// v24.76.1: "clients" names the browser tabs that made the change (X-ITTR-Client, a random per-tab id); "" stands for a
+// change with no tab (webhooks, background jobs, older pages), which every tab treats as someone else's.
+const ittrClientOf=req=>String(req?.get?.("x-ittr-client")||"").replace(/[^a-zA-Z0-9-]/g,"").slice(0,40);
+function announceDataDomain(d,by,client=""){DATA_REVISIONS[d]=(DATA_REVISIONS[d]||0)+1;const cur=pendingDomains.get(d);if(cur){cur.by.add(by);cur.clients.add(client);return}const entry={by:new Set([by]),clients:new Set([client])};pendingDomains.set(d,entry);setTimeout(()=>{pendingDomains.delete(d);broadcastShopStatus("data_changed",{domain:d,rev:DATA_REVISIONS[d],boot:DATA_BOOT,by:[...entry.by].filter(Boolean).slice(0,5),clients:[...entry.clients].slice(0,10)})},300).unref?.()}
 function dataRevisionsFor(u){const out={};for(const d of Object.keys(DATA_REVISIONS)){const perm=DATA_DOMAIN_PERM[d];if(u?.role==="admin"||(u?.role==="manager"&&u.permissions?.[perm]===true))out[d]=DATA_REVISIONS[d]}return {boot:DATA_BOOT,revisions:out}}
 app.use((req,res,next)=>{if(req.method==="GET"||req.method==="HEAD"||req.method==="OPTIONS")return next();const hit=DATA_DOMAINS.find(([re])=>re.test(req.path));
- res.on("finish",()=>{if(res.statusCode>=400)return;const ds=new Set(req.ittrDomains||[]);if(hit)ds.add(hit[1]);if(CUSTOMER_BALANCE_RE.test(req.path)||(req.method==="DELETE"&&/^\/api\/invoices\/[^/]+$/.test(req.path)))ds.add("customers");if(!ds.size)return;const by=String(req.user?.username||"");for(const d of ds)announceDataDomain(d,by)});next()});
+ res.on("finish",()=>{if(res.statusCode>=400)return;const ds=new Set(req.ittrDomains||[]);if(hit)ds.add(hit[1]);if(CUSTOMER_BALANCE_RE.test(req.path)||(req.method==="DELETE"&&/^\/api\/invoices\/[^/]+$/.test(req.path)))ds.add("customers");if(!ds.size)return;const by=String(req.user?.username||""),client=ittrClientOf(req);for(const d of ds)announceDataDomain(d,by,client)});next()});
 // The sign-in token arrives in the first message ({type:"auth",token}), not in the web address, where proxies and
 // server logs could record it. The old ?token= form (app copies before v24.58.1) is off unless ITTR_LEGACY_WS_TOKEN=1.
 const LIVE_SESSION_SQL=`SELECT s.id session_id,s.expires_at,u.id user_id,u.username,u.display_name,u.role,u.permissions FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.expires_at>now() AND u.active=true`;
@@ -5267,7 +5273,7 @@ async function readShopflowState(db){const r=await db.query("SELECT payload FROM
 async function findingPhotoUrls(db,findingIds){const out={};if(!findingIds.length||!r2Configured)return out;
  const rows=(await db.query("SELECT finding_id,r2_key FROM finding_photos WHERE finding_id = ANY($1::text[]) AND deleted_at IS NULL ORDER BY created_at",[findingIds]).catch(()=>({rows:[]}))).rows;
  for(const r of rows.slice(0,60)){try{(out[r.finding_id]||(out[r.finding_id]=[])).push(await getSignedUrl(requireR2(),new GetObjectCommand({Bucket:r2Bucket,Key:r.r2_key}),{expiresIn:3600}))}catch(_){}}return out}
-const customerLinkDeps={auth,adminOnly,managerPermission,requireDb,audit,publicLimiter,shopProfile,readShopflow:readShopflowState,applyFindingDecision,
+const customerLinkDeps={auth,adminOnly,managerPermission,requireDb,audit,publicLimiter,shopProfile,readShopflow:readShopflowState,applyFindingDecision,announceDataDomain,
  englishText:t=>englishFindingNote(t),findingPhotoUrls,inspectionItemsFor,broadcastShopStatus,publicFile:f=>path.join(__dirname,"public",f),sendEmail:sendShopEmail};
 const portalShopInfo=()=>{const s=shopProfile();return {name:s.name,phone:s.phone,email:s.email||"",address:[s.address1,s.address2].filter(Boolean).join(", ")}};
 customerLinkDeps.portalView=(db,link)=>portalView(db,link,{shopInfo:portalShopInfo});

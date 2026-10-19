@@ -1630,11 +1630,11 @@ let ittrSessionGeneration=0;
 const ittrSessionRequests=new Set();
 function ittrSessionCurrent(g,token){return g===ittrSessionGeneration&&token===cloudToken}
 function ittrSessionCancelled(){return Object.assign(new Error("The account session changed."),{name:"AbortError",code:"SESSION_CHANGED"})}
-// v24.76.0: when this tab last sent a change. A change announced under this account's name counts as "mine" only if
-// this tab wrote just before; the same account on another device (an owner's phone and desktop) is another device.
-let ittrOwnWriteAt=0;function ittrNoteOwnWrite(options){if(!/^(GET|HEAD)$/i.test(String(options?.method||"GET")))ittrOwnWriteAt=Date.now()}
+// v24.76.1: this tab's id (random, not a secret). Every request carries it and the server names the tabs that made each
+// change, so "my own change" means exactly this tab, not "this account in the last few seconds" (an owner's phone and
+// desktop are the same account).
+const ITTR_TAB_ID=String(globalThis.crypto?.randomUUID?.()||(Math.random().toString(36).slice(2)+Date.now().toString(36))).replace(/[^a-zA-Z0-9-]/g,"").slice(0,40);
 async function ittrSessionFetch(url,options={}){
- if(typeof ittrNoteOwnWrite==="function")ittrNoteOwnWrite(options);
  const generation=ittrSessionGeneration,token=cloudToken,controller=new AbortController();
  // Keep caller cancellation connected after headers, including a streaming response body.
  const signal=options.signal?(typeof AbortSignal.any==="function"?AbortSignal.any([options.signal,controller.signal]):options.signal):controller.signal;
@@ -1686,13 +1686,12 @@ function ittrAdoptServerShopflow(payload,version){
  ittrSetLive("shopflow",item?window.ittrSyncMerge.applyChanges(payload,item.changes).payload:payload);
  if(item)ittrSync.changed("shopflow");
 }
-function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
+function authHeaders(extra={}){return {...extra,"X-ITTR-Client":ITTR_TAB_ID,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
 async function previewInventoryRepair(){const box=document.getElementById('inventoryRepairResult');if(!box)return;box.innerHTML='<div class="muted">Checking…</div>';try{const d=await apiJSON('/api/inventory/repair/preview'),a=d.deletedInvoiceSales||[],b=d.stuckReservations||[];if(!a.length&&!b.length){box.innerHTML='<div class="notice">Nothing to repair — stock and reservations are consistent.</div>';return}
  box.innerHTML=`${a.length?`<b>Return to stock (invoice was deleted):</b><ul>${a.map(x=>`<li>${esc(x.partNumber||'')} ${esc(x.description||'')} — <b>+${Number(x.qty)}</b> <span class="muted">from ${esc(x.invoice)}</span></li>`).join('')}</ul>`:''}${b.length?`<b>Release stuck reservations (work order already invoiced):</b><ul>${b.map(x=>`<li>${esc(x.partNumber||'')} — ${Number(x.qty)} on WO #${esc(x.workOrderId)} ${esc(x.unit?`(Unit ${x.unit})`:'')}</li>`).join('')}</ul>`:''}<button onclick="applyInventoryRepair()">Apply repair</button>`}catch(e){box.innerHTML=`<div class="error">${esc(e.message||'Check failed.')}</div>`}}
 async function applyInventoryRepair(){if(!confirm('Apply these stock corrections? Every change is written to the part history.'))return;try{const d=await apiJSON('/api/inventory/repair/apply',{method:'POST',body:'{}'});alert(`Done. ${d.returned} return(s) to stock, ${d.released} reservation(s) released.`);previewInventoryRepair()}catch(e){alert(e.message||'Repair failed.')}}
 async function resetInventoryToZero(){const c=prompt('This sets the on-hand quantity of EVERY part to 0.\nUse it right before a full physical count.\n\nType RESET to confirm:');if(c==null)return;if(String(c).trim().toUpperCase()!=='RESET')return alert('Not reset — you did not type RESET.');try{const d=await apiJSON('/api/parts/inventory/reset-to-zero',{method:'POST',body:JSON.stringify({confirm:'RESET'})});alert(`Done. ${d.partsReset} part(s) set to 0. Start your count now.`);try{if(typeof refreshInventoryCount==='function')await refreshInventoryCount()}catch(_){}try{if(typeof render==='function')render()}catch(_){}}catch(e){alert(e.message||'Reset failed.')}}
 async function apiJSON(url,options={}){
- if(typeof ittrNoteOwnWrite==="function")ittrNoteOwnWrite(options);
  const generation=ittrSessionGeneration,token=cloudToken,controller=new AbortController();
  const cancel=()=>controller.abort();options.signal?.addEventListener("abort",cancel,{once:true});if(options.signal?.aborted)cancel();
  ittrSessionRequests.add(controller);
@@ -2377,7 +2376,7 @@ function ittrDataChanged(msg){
  if(!["admin","manager"].includes(session?.role))return;
  ittrDataChangedPending.add(String(msg.domain||""));clearTimeout(ittrDataChangedTimer);
  // Who made the change: a change only this tab made (its own autosave) never reloads its own open editor.
- const by=Array.isArray(msg.by)?msg.by.map(String):[],mine=by.length&&by.every(u=>u===session?.username)&&Date.now()-ittrOwnWriteAt<4000;if(!mine)ittrDataChangedOthers.add(String(msg.domain||""));
+ const clients=Array.isArray(msg.clients)?msg.clients.map(String):[],mine=clients.length>0&&clients.every(c=>c===ITTR_TAB_ID);if(!mine)ittrDataChangedOthers.add(String(msg.domain||""));
  ittrDataChangedTimer=setTimeout(()=>{
   const domains=[...ittrDataChangedPending];ittrDataChangedPending.clear();
   const fromOthers=new Set(ittrDataChangedOthers);ittrDataChangedOthers.clear();

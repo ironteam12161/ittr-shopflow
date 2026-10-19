@@ -258,8 +258,10 @@ export const loadsOnMount=true;
 export async function mount(scope){
  S={...S,scope,cur:null};
  scope.on(scope.host,'click',onClick);scope.on(scope.host,'change',onChange);scope.on(scope.host,'input',onInput);scope.on(document,'keydown',onKey);
- scope.on(scope.host,'ittr:module-refresh',()=>loadList(),{passive:true});
  window.ittrOpenEstimate=id=>openEstimate(id); // v24.76.0: opened directly from a work order's Billing tab
+ // v24.76.1: another device or a customer changed estimates: reload the list, and the open estimate unless a field in it
+ // is being edited (each field saves when it is left, so nothing unsaved is lost by reloading).
+ scope.on(scope.host,'ittr:module-refresh',()=>{loadList();const a=document.activeElement;if(S.cur&&!(a&&$('#estEditor')?.contains(a)&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)))reload()},{passive:true});
  await loadList();
 }
 export async function afterShow(){await loadList()}
