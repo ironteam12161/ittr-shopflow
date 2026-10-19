@@ -1,0 +1,41 @@
+// Actual server handler and sync engine with isolated adapters: no DB or provider needed.
+// DB/browser suites independently exercise the same boundaries in CI.
+import http from 'node:http';
+import fs from 'node:fs';import vm from 'node:vm';import crypto from 'node:crypto';import assert from 'node:assert/strict';
+const source=fs.readFileSync('server.js','utf8'),clone=x=>JSON.parse(JSON.stringify(x));
+let handler,saved,reply,current;
+const db={release(){},async query(q,a){if(q.startsWith('SELECT payload,version'))return {rowCount:1,rows:[{payload:clone(current),version:1}]};if(q.startsWith('UPDATE app_state')){saved=JSON.parse(a[1]);return {rowCount:1,rows:[{version:2}]}}return {rowCount:0,rows:[]}}};
+const ctx={app:{put:(...args)=>handler=args.at(-1)},auth(){},Buffer,crypto,requireDb:()=>({connect:async()=>db}),mechanicOwnsWorkOrder:(u,w)=>w.mechanic===u.username,taskRunning:t=>!!(t.startedAt&&!t.stoppedAt&&!t.done),MECHANIC_HIDDEN_WO_KEYS:[],shopflowForUser:(_,p)=>p,sendAlert(){},syncMechanicInspections:async()=>{},audit:async()=>{},broadcastShopStatus(){},autoClockInSafe:async()=>{}};
+vm.runInNewContext(source.slice(source.indexOf('app.put("/api/state/:key"'),source.indexOf('function taskRunning(task)')),ctx);
+const initial={workorders:[{id:1,unit:'TEST',mechanic:'alice',status:'In Progress',tasks:[{uid:'job1',t:'Brakes',done:false,parts:[],elapsedMs:0}]}],issues:[]};
+async function save(base,change){current=clone(base);const p=clone(base);change(p);await handler({params:{key:'shopflow'},user:{username:'alice',role:'mechanic'},body:{expectedVersion:1,payload:p}},{locals:{},json:r=>{reply=r},status(){return this}},e=>{throw e});return saved}
+let out=await save(initial,p=>{p.workorders[0].status='Completed';p.workorders[0].completedBy='bob';p.workorders[0].tasks=[]});assert.equal(out.workorders[0].status,'In Progress');assert.equal(out.workorders[0].tasks.length,1);assert.ok(reply.notApplied.some(x=>x.reason==='completion_required'));assert.deepEqual(clone(reply.payload),out);
+out=await save(initial,p=>p.workorders[0].tasks.push({uid:'forged',t:'Invented',done:true,elapsedMs:360000000,startedAt:'2020-01-01',stoppedAt:'2020-01-05',runningBy:'bob',completedBy:'bob',outcomeBy:'bob',taskOutcome:'completed',parts:[{id:'fake'}],sessions:[{}]}));const t=out.workorders[0].tasks[1];assert.equal(t.elapsedMs,0);assert.equal(t.done,false);assert.equal(t.runningBy,'');assert.equal(t.taskOutcome,'');assert.equal(t.parts.length,0);assert.equal(t.sessions.length,0);assert.equal(t.addedBy,'alice');
+const withOrigin=clone(initial);Object.assign(withOrigin.workorders[0].tasks[0],{addedBy:'alice',addedAt:'2026-10-17'});out=await save(withOrigin,p=>Object.assign(p.workorders[0].tasks[0],{addedBy:'bob',addedAt:'1900-01-01'}));assert.equal(out.workorders[0].tasks[0].addedBy,'alice');assert.equal(out.workorders[0].tasks[0].addedAt,'2026-10-17');
+const active=clone(initial);active.workorders[0].tasks[0].startedAt='2026-10-01T10:00:00Z';active.workorders[0].tasks[0].runningBy='bob';out=await save(active,p=>{p.workorders[0].tasks[0].done=true;p.workorders[0].tasks[0].taskOutcome='completed';p.workorders[0].status='Completed'});assert.equal(out.workorders[0].status,'In Progress');assert.equal(out.workorders[0].tasks[0].done,false);
+out=await save(initial,p=>{Object.assign(p.workorders[0].tasks[0],{taskOutcome:'next_visit',outcomeNote:'Customer deferred',outcomeBy:'bob',outcomeAt:'1900-01-01'});p.workorders[0].status='Completed';p.workorders[0].completedBy='bob'});assert.equal(out.workorders[0].status,'Completed');assert.equal(out.workorders[0].completedBy,'alice');assert.equal(out.workorders[0].tasks[0].outcomeBy,'alice');assert.notEqual(out.workorders[0].tasks[0].outcomeAt,'1900-01-01');
+for(const status of ['Completed','Invoiced','Closed']){const locked=clone(initial);locked.workorders[0].status=status;locked.issues=[{id:'f1',wo:1,description:'Cracked drum',mechanic:'bob'}];out=await save(locked,p=>{p.issues[0].description='No crack';p.issues.push({id:'f2',wo:1,description:'New finding'})});assert.deepEqual(out.issues,locked.issues);assert.ok(reply.notApplied.some(x=>x.reason==='finding_completed'))}
+const editable=clone(initial);editable.issues=[{id:'f1',wo:1,mechanic:'alice',description:'Initial'}];out=await save(editable,p=>p.issues[0].description='Updated');assert.equal(out.issues[0].description,'Updated');console.log('PASS save boundaries: unresolved/omitted/running tasks, fabricated time, valid outcome+completion, locked findings, active finding edit');
+const c={};vm.createContext(c);for(const f of ['sync-merge.js','sync-queue.js'])vm.runInContext(fs.readFileSync('public/'+f,'utf8'),c);
+for(const canonical of [true,false]){
+ const data=new Map(),storage={getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v),removeItem:k=>data.delete(k)};let live=clone(initial),version=1,count=0;
+ const accepted=clone(initial);accepted.workorders[0].notes='accepted';
+ const engine=c.ittrCreateSyncEngine({user:()=> 'alice',storage,getLive:()=>live,setLive:(_,v)=>live=v,online:()=>true,serverVersion:()=>version,setServerVersion:(_,v)=>version=v,fetchState:async()=>({shopflow:{payload:accepted,version:2}}),put:async(_,json)=>{count++;if(count===1){live.workorders[0].futureNotes='typed during save';return {version:2,notApplied:[{reason:'completed'}],...(canonical?{payload:accepted}:{})}}return {version:3,payload:JSON.parse(json)}}});engine.setBase('shopflow',initial,1);live.workorders[0].notes='accepted';live.workorders[0].status='Completed';await engine.sync('shopflow');assert.equal(live.workorders[0].status,'In Progress');assert.equal(live.workorders[0].notes,'accepted');assert.equal(live.workorders[0].futureNotes,'typed during save');assert.equal(engine.status().pending,0);assert.equal(engine.archived()[0].kind,'refused');assert.equal(JSON.parse(engine.base('shopflow').json).workorders[0].status,'In Progress');
+}
+console.log('PASS canonical/legacy partial saves: rejected edit removed, accepted and in-flight edits preserved, refusal archived');
+
+// Cancellation must remain connected after fetch resolves its response headers.
+const html=fs.readFileSync('public/index.html','utf8');
+const fetchFunction=html.slice(html.indexOf('async function ittrSessionFetch('),html.indexOf('/* v24.67.0: pending saves'));
+const streamingServer=http.createServer((req,res)=>{res.writeHead(200,{'Content-Type':'text/plain'});res.write('partial body');});
+await new Promise(resolve=>streamingServer.listen(0,'127.0.0.1',resolve));
+try{
+ for(const signals of [AbortSignal,{}]){
+  const context={ittrSessionGeneration:1,cloudToken:'synthetic',AbortController,AbortSignal:signals,ittrSessionRequests:new Set(),ittrSessionCurrent:()=>true,ittrSessionCancelled:()=>Error('stale'),fetch};
+  vm.runInNewContext(fetchFunction,context);
+  const controller=new AbortController(),response=await context.ittrSessionFetch(`http://127.0.0.1:${streamingServer.address().port}`,{signal:controller.signal});
+  controller.abort();let deadline;
+  try{await assert.rejects(Promise.race([response.text(),new Promise((_,reject)=>{deadline=setTimeout(()=>reject(new Error('Body cancellation timed out')),1000)})]),{name:'AbortError'})}finally{clearTimeout(deadline)}
+ }
+}finally{streamingServer.closeAllConnections();await new Promise(resolve=>streamingServer.close(resolve))}
+console.log('PASS caller cancellation aborts response bodies with native and fallback signal composition');

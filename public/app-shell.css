@@ -175,3 +175,13 @@ body.modalOpen #shopAiFab,body.invoiceWorkspaceMode #shopAiFab{display:none!impo
 .mechWoMeta{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;margin-top:8px;font-size:13px}
 .mechWoMeta .mechWoNo{font-weight:800}
 .mechViewCount{font-size:14px;font-weight:600}
+
+/* Keep directory children inside the viewport; hint chips scroll inside their own track. */
+#customers .field,#customers .smartDirectoryHint,#customers .smartDirectoryInput{min-width:0;max-width:100%;box-sizing:border-box}
+@media(max-width:760px){
+ #customers .customerDirectoryGrid{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));margin:0 0 12px;padding:0;overflow:visible}
+ #customers .customerStat{min-width:0;overflow-wrap:anywhere}
+ #customers .smartDirectoryHero{grid-template-columns:minmax(0,1fr)}
+ #customers .smartDirectoryHint{width:100%;overflow-x:auto}
+ #customers .smartDirectoryHint span{flex:0 0 auto}
+}
