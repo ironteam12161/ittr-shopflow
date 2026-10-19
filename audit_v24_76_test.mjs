@@ -339,6 +339,24 @@ try {
     ok(await until(() => page.evaluate(() => activeInvoice?.invoice?.customer_note === 'From my phone'), 6000), 'the open editor shows the change from the other device');
     await ctx.close();
   });
+  await scenario('A23 A/R aging: a company not linked to a customer record can still receive a payment', async () => {
+    const i = await R('/api/invoices', { method: 'POST', token: owner, body: { customerName: 'Unlinked Haulers Co', unitNumber: 'UL-1' } });
+    await R(`/api/invoices/${i.id}/lines`, { method: 'POST', token: owner, body: { lineType: 'labor', description: 'Labor', quantity: 1, unitPrice: 61, taxable: false, jobName: 'J' } });
+    await R(`/api/invoices/${i.id}/finalize`, { method: 'POST', token: owner, body: {} });
+    const { ctx, page } = await newPage(); await signIn(page, OWNER.username, OWNER.password);
+    await page.evaluate(() => { try { sessionStorage.setItem('ittr_reports_tab', 'ar'); } catch (_) {} showView('reports'); });
+    const row = page.locator('#repArAging tr.arCust', { hasText: 'Unlinked Haulers Co' });
+    await row.waitFor({ timeout: 10000 });
+    ok(/not linked to a customer record/.test(await row.textContent()), 'the row says why');
+    await row.locator('button[data-ar="pay-unlinked"]').click();
+    await page.waitForSelector('#payAmt', { timeout: 5000 });
+    eq(await page.inputValue('#payAmt'), '61.00', 'the dialog starts with the balance');
+    await page.click('.payMethods [data-pm="Cash"]'); await page.click('[data-pay="ok"]');
+    ok(await until(async () => Number((await R(`/api/invoices/${i.id}`, { token: owner })).invoice.balance_due) === 0, 5000), 'the invoice is paid');
+    ok(await until(() => page.evaluate(() => ![...document.querySelectorAll('#repArAging tr.arCust')].some(r => /Unlinked Haulers Co/.test(r.textContent))), 5000), 'the company leaves A/R aging');
+    eq(page.errs.join(' | '), '', 'no page errors');
+    await ctx.close();
+  });
   await scenario('A17 work-order Billing tab links to its estimate and invoice', async () => {
     const st = await R('/api/state', { token: owner }), sf = st.shopflow.payload;
     sf.workorders = [...sf.workorders.filter(w => w.id !== 9501), { id: 9501, unit: 'BILL-1', customer: 'Private Audit Fleet LLC', status: 'Completed', mechanic: 'mech1', helpers: [], unitType: 'customer', truckHere: true, tasks: [] }];
