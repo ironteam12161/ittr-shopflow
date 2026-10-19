@@ -1019,8 +1019,8 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
     <h1>ITTR ShopFlow Login</h1>
     <div class="muted">Sign in with your shop account.</div>
     <form id="loginForm">
-      <div class="field"><label>Username</label><input id="loginUser" required autocomplete="username"></div>
-      <div class="field"><label>Password</label><div class="loginPassWrap"><input id="loginPass" type="password" required autocomplete="current-password"><button type="button" class="loginPassShow" aria-label="Show password" aria-pressed="false" onclick="const i=document.getElementById('loginPass'),on=i.type==='password';i.type=on?'text':'password';this.setAttribute('aria-pressed',on);this.textContent=on?'Hide':'Show'">Show</button></div></div>
+      <div class="field"><label for="loginUser">Username</label><input id="loginUser" required autocomplete="username"></div>
+      <div class="field"><label for="loginPass">Password</label><div class="loginPassWrap"><input id="loginPass" type="password" required autocomplete="current-password"><button type="button" class="loginPassShow" aria-label="Show password" aria-pressed="false" onclick="const i=document.getElementById('loginPass'),on=i.type==='password';i.type=on?'text':'password';this.setAttribute('aria-pressed',on);this.textContent=on?'Hide':'Show'">Show</button></div></div>
       <div class="field hidden" id="loginCodeField"><label for="loginCode" id="loginCodeLabel">6-digit sign-in code</label><input id="loginCode" inputmode="numeric" autocomplete="one-time-code" placeholder="123 456 or a recovery code" maxlength="20"><label class="loginRemember"><input type="checkbox" id="loginRemember" checked> Remember this device for 30 days</label><button type="button" class="secondary hidden" id="loginSendEmail">Email me a code</button></div>
       <div id="loginError" class="muted" style="color:#b42318;margin-bottom:10px"></div>
       <button type="submit" style="width:100%">Sign In</button>
@@ -5557,7 +5557,16 @@ function ittrDialogDirty(m){const d=ittrDialogs.find(x=>x.m===m);return !!d&&d.b
 new MutationObserver(list=>{for(const r of list){const el=r.target;if(!(el instanceof HTMLElement)||!el.classList.contains("modal"))continue;if(el.classList.contains("open"))ittrDialogOpened(el);else ittrDialogClosed(el)}})
  .observe(document.body,{subtree:true,attributes:true,attributeFilter:["class"]});
 document.querySelectorAll(".modal.open").forEach(ittrDialogOpened);
-const ittrDialogTop=()=>{const m=getTopOpenModal();return m&&m.classList.contains("open")?m:null};
+// v24.76.1: overlays a module draws itself (Estimates editor, purchase-order forms) join the same layer: the module
+// calls ittrOverlayOpened(box,{close}) when it shows one and ittrOverlayClosed(box) when it hides it. They then get the
+// dialog name, focus trap, Escape, the unsaved-changes question (Escape and [data-overlay-close] buttons) and focus
+// return. Calling ittrOverlayOpened again after the module redraws the box takes a new baseline.
+const ittrCustomOverlays=new Map();
+window.ittrOverlayOpened=(el,{close}={})=>{if(!el)return;ittrCustomOverlays.set(el,{close});const d=ittrDialogs.find(x=>x.m===el);
+ if(d){d.base=ittrDialogValues(el);d.touched=false;const mark=()=>{d.touched=true};el.addEventListener("input",mark,{once:true});ittrDialogPrepare(el);return}
+ ittrDialogOpened(el)};
+window.ittrOverlayClosed=el=>{if(!el||!ittrCustomOverlays.delete(el))return;ittrDialogClosed(el)};
+const ittrDialogTop=()=>{const last=ittrDialogs.at(-1)?.m;if(last&&ittrCustomOverlays.has(last)&&last.isConnected&&last.offsetParent!==null)return last;const m=getTopOpenModal();return m&&m.classList.contains("open")?m:null};
 const ittrOverlayOpen=()=>document.querySelector(".pv,.ittrChoice");
 document.addEventListener("keydown",e=>{
  if(e.key!=="Tab"||ittrOverlayOpen())return;const m=ittrDialogTop();if(!m||document.activeElement?.closest?.("#shopAiPanel,#ittrStaleNote,#toastRegion"))return;
@@ -5574,13 +5583,14 @@ async function ittrConfirmDiscard(m){
  try{(ittrFocusable(m)[0]||m).focus()}catch(_){}return false;
 }
 document.addEventListener("click",async e=>{
- if(ittrDialogBypass)return;const x=e.target.closest?.(".modal.open .x,.modal.open [data-close-modal]");if(!x)return;const m=x.closest(".modal");
+ if(ittrDialogBypass)return;const x=e.target.closest?.(".modal.open .x,.modal.open [data-close-modal],[data-overlay-close]");if(!x)return;const m=x.closest(".modal.open")||[...ittrCustomOverlays.keys()].find(o=>o.contains(x));if(!m)return;
  if(!ittrDialogDirty(m))return;e.preventDefault();e.stopImmediatePropagation();
  if(await ittrConfirmDiscard(m)){ittrDialogBypass=true;try{x.click()}finally{ittrDialogBypass=false}}
 },true);
 document.addEventListener("keydown",async e=>{
  if(e.key!=="Escape"||ittrOverlayOpen())return;
  const m=ittrDialogTop();
+ if(m&&ittrCustomOverlays.has(m)){e.preventDefault();e.stopImmediatePropagation();const o=ittrCustomOverlays.get(m);if(await ittrConfirmDiscard(m))o?.close?.();return}
  if(m&&ittrDialogDirty(m)){e.preventDefault();if(await ittrConfirmDiscard(m))closeTopOpenModal();return}
  closeTopOpenModal();
 });

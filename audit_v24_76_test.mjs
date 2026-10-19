@@ -456,6 +456,41 @@ try {
     eq((await hook()).recorded, false, 'a replayed event records nothing');
     await ctx.close();
   });
+  await scenario('A30 sign-in fields are announced by name; clicking a label focuses its field', async () => {
+    for (const w of [390, 900, 1440]) {
+      const { ctx, page } = await newPage(w); await page.goto(srv.base() + '/'); await page.waitForSelector('#loginPass');
+      const names = await page.evaluate(() => [...document.querySelectorAll('#loginUser,#loginPass,#loginCode')].map(e => [e.id, (e.labels?.[0]?.textContent || e.getAttribute('aria-label') || '').trim()]));
+      eq(names.filter(([, n]) => !n).map(([id]) => id).join(','), '', `every sign-in field has a label at ${w}px`);
+      await page.click('label[for="loginPass"]'); eq(await page.evaluate(() => document.activeElement?.id), 'loginPass', 'the Password label focuses the password field');
+      await page.click('.loginPassShow'); eq(await page.evaluate(() => document.getElementById('loginPass').labels?.[0]?.textContent.trim()), 'Password', 'still named when shown');
+      await ctx.close();
+    }
+  });
+  await scenario('A31 Estimates and Purchase Orders: keyboard opening, focus kept in the form, Escape asks before discarding', async () => {
+    const e = await R('/api/estimates', { method: 'POST', token: owner, body: { customerName: 'Private Audit Fleet LLC' } });
+    const { ctx, page } = await newPage(1280); await signIn(page, OWNER.username, OWNER.password);
+    await page.evaluate(() => showView('estimates')); await page.waitForSelector(`#estimates [data-open="${e.id}"] .estOpenBtn`, { timeout: 8000 });
+    await page.focus(`#estimates [data-open="${e.id}"] .estOpenBtn`); await page.keyboard.press('Enter');
+    await page.waitForSelector('#estEditor:not(.hidden) #estEditorBox[role="dialog"]', { timeout: 6000 });
+    ok(await page.evaluate(() => !!document.getElementById('estEditorBox').getAttribute('aria-labelledby')), 'the estimate editor is a named dialog');
+    for (const [label, open, box] of [['estimate', null, '#estEditorBox'], ['purchase order', async () => { await page.evaluate(() => { const b = [...document.querySelectorAll('#estEditorBox [data-est="close"]')][0]; b?.click(); }); await page.evaluate(() => showView('purchaseorders')); await page.waitForSelector('#purchaseorders button'); await page.evaluate(() => [...document.querySelectorAll('#purchaseorders button')].find(b => /New purchase order|\+ New/i.test(b.textContent))?.click()); await page.waitForSelector('.poModal .box', { timeout: 6000 }); }, '.poModal .box']]) {
+      if (open) await open();
+      const field = await page.evaluateHandle(sel => [...document.querySelector(sel).querySelectorAll('input[type="text"],input:not([type]),textarea')].find(x => x.offsetParent && !x.disabled && !x.readOnly), box);
+      await field.fill(`unsaved ${label} draft`);
+      // Tab from the last control stays inside.
+      await page.evaluate(sel => { const f = [...document.querySelector(sel).querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href]')].filter(x => x.offsetParent); f.at(-1).focus(); }, box);
+      await page.keyboard.press('Tab');
+      ok(await page.evaluate(sel => document.querySelector(sel).contains(document.activeElement), box), `${label}: Tab stays inside the form`);
+      await page.keyboard.press('Shift+Tab'); ok(await page.evaluate(sel => document.querySelector(sel).contains(document.activeElement), box), `${label}: Shift+Tab stays inside`);
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('[data-discard-choice="keep"]', { timeout: 3000 });
+      await page.click('[data-discard-choice="keep"]');
+      ok(await page.evaluate(sel => !!document.querySelector(sel)?.offsetParent, box), `${label}: "Keep editing" keeps the form open`);
+      eq(await field.inputValue(), `unsaved ${label} draft`, `${label}: the draft is still there`);
+    }
+    eq(page.errs.join(' | '), '', 'no page errors');
+    await ctx.close();
+  });
   await scenario('A17 work-order Billing tab links to its estimate and invoice', async () => {
     const st = await R('/api/state', { token: owner }), sf = st.shopflow.payload;
     sf.workorders = [...sf.workorders.filter(w => w.id !== 9501), { id: 9501, unit: 'BILL-1', customer: 'Private Audit Fleet LLC', status: 'Completed', mechanic: 'mech1', helpers: [], unitType: 'customer', truckHere: true, tasks: [] }];
