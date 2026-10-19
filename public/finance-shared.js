@@ -74,7 +74,7 @@
    catch(err){e.target.disabled=false;showToast?.(err.message,'error')}});
  };
  // Red badge on "Fleet & Compliance" when services are overdue or due soon.
- async function refreshComplianceBadge(){let role='';try{role=session?.role||''}catch(_){}if(!['admin','manager'].includes(role))return;
+ async function refreshComplianceBadge(){let role='';try{role=session?.role||''}catch(_){}if(!['admin','manager'].includes(role))return;if(role==='manager'&&typeof managerCan==='function'&&!managerCan('customers'))return;
   try{const d=await apiJSON('/api/fleet-maintenance/summary'),n=Number(d.overdue||0)+Number(d.dueSoon||0),el=document.getElementById('complianceNavBadge');if(el){el.textContent=String(n);el.style.display=n?'':'none';el.title=`${d.overdue} overdue, ${d.dueSoon} due soon`}}catch(_){}}
  setTimeout(refreshComplianceBadge,4000);setInterval(refreshComplianceBadge,10*60*1000);
  // v24.47.0: back from connecting the shop's Google email for sending (/?emailSender=connected&emailSenderAddress=…).

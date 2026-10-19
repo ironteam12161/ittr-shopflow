@@ -18,8 +18,10 @@ async function load(){const body=S.scope?.host.querySelector('#poRows');if(!body
   :`<tr><td colspan="7" class="poEmpty">${S.q||S.status?'Nothing matches.':'No purchase orders yet. Start one with “+ New purchase order”, or let “Low-stock reorder” fill it from parts that are running low.'}</td></tr>`}
 
 function openModal(html){closeModal();const m=document.createElement('div');m.className='poModal';m.innerHTML=`<div class="box" role="dialog" aria-modal="true">${html}</div>`;
- m.addEventListener('click',onModalClick);m.addEventListener('input',onModalInput);document.body.appendChild(m);S.modal=m}
-function closeModal(){S.modal?.remove();S.modal=null}
+ m.addEventListener('click',onModalClick);m.addEventListener('input',onModalInput);document.body.appendChild(m);S.modal=m;
+ // v24.76.1: the form joins the app's dialog layer (focus kept inside, Escape and Cancel ask before discarding typed text).
+ m.querySelectorAll('[data-po="close"]').forEach(b=>b.setAttribute('data-overlay-close',''));window.ittrOverlayOpened?.(m.querySelector('.box'),{close:closeModal})}
+function closeModal(){if(S.modal)window.ittrOverlayClosed?.(S.modal.querySelector('.box'));S.modal?.remove();S.modal=null}
 
 // ---- editor -------------------------------------------------------------------------------------------------
 function lineRow(l,i){return `<tr data-i="${i}"><td>${h(l.partNumber||'—')}${l.inventoryPartId?'':' <span class="muted" title="Not linked to a stock part: it will not be added to stock when received">(non-stock)</span>'}</td><td><input data-l="description" value="${h(l.description)}"></td>
@@ -103,7 +105,7 @@ export async function mount(scope){S={...S,scope};
  scope.on(scope.host,'ittr:module-refresh',()=>load(),{passive:true});
  scope.on(scope.host,'click',onClick);
  scope.on(scope.host,'input',e=>{if(e.target.dataset.f!=='q')return;clearTimeout(S.qt);S.qt=setTimeout(()=>{S.q=e.target.value.trim();load()},250)});
- scope.on(document,'keydown',e=>{if(e.key==='Escape'&&S.modal)closeModal()});
+ scope.on(document,'keydown',e=>{if(e.key==='Escape'&&S.modal&&!window.ittrOverlayOpened)closeModal()});
  await load()}
 export async function afterShow(){load()}
 export function unmount(){closeModal();clearTimeout(S.qt);S.scope=null}

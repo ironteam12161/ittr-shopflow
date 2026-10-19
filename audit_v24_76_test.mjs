@@ -28,7 +28,7 @@ if (!browser) {
   reportSuite(NAME, 'SKIPPED', 'Chromium not available'); console.log(`SKIP ${NAME}: Chromium not available`); process.exit(0);
 }
 const OWNER = { username: 'owner', password: 'Shop-Boss-Pass-2026' };
-const srv = await startTestServer({ prefix: 'ittr_a76', admin: OWNER });
+const srv = await startTestServer({ prefix: 'ittr_a76', admin: OWNER, env: { STRIPE_WEBHOOK_SECRET: 'whsec_test_ittr' } });
 const R = srv.request, db = srv.db;
 const failures = [];
 // ITTR_AUDIT_ONLY=A16,A19 runs only those scenarios (local debugging); the full check always runs all of them.
@@ -357,6 +357,165 @@ try {
     eq(page.errs.join(' | '), '', 'no page errors');
     await ctx.close();
   });
+  await scenario('A25 a stale invoice editor never writes old line text over a newer line', async () => {
+    const inv = await newInvoice(1);
+    const lab = await R(`/api/invoices/${inv}/lines`, { method: 'POST', token: owner, body: { lineType: 'labor', description: 'ORIGINAL LABOR', quantity: 1, unitPrice: 50, taxable: false, jobName: 'J' } });
+    let lineId = null; const lineOf = async () => (await R(`/api/invoices/${inv}`, { token: owner })).lines.find(l => lineId ? l.id === lineId : l.description === 'ORIGINAL LABOR');
+    const L = await lineOf(); ok(L.print, 'lines carry a fingerprint'); lineId = L.id;
+    const body = d => ({ lineType: 'labor', description: d, quantity: 1, unitPrice: 50, taxable: false, jobName: 'J' });
+    const stale = await R(`/api/invoices/${inv}/lines/${L.id}`, { method: 'PUT', token: owner, body: { ...body('X'), expectedPrint: 'not-the-current-one' }, allowError: true });
+    eq(stale.status, 409, 'a stale line save is refused'); eq(stale.code, 'INVOICE_LINE_CHANGED', 'with a code');
+    const { ctx, page } = await newPage(); await signIn(page, 'mgrfull', MPASS);
+    await page.evaluate(() => showView('invoices')); await sleep(800);
+    await page.evaluate(id => openInvoice(id, true), inv); await page.waitForSelector('#invoiceModal.open'); await sleep(500);
+    await page.evaluate(() => stopLiveStatusSocket()); await sleep(1200); // this editor now stays stale
+    await R(`/api/invoices/${inv}/lines/${L.id}`, { method: 'PUT', token: owner, body: body('REMOTE CORRECTED LABOR') });
+    // 1) Saving the header with the line untouched leaves the other device's line alone.
+    await page.fill('#invCustomerNote', 'header only'); await page.evaluate(() => saveInvoiceHeader()); await sleep(800);
+    eq((await lineOf()).description, 'REMOTE CORRECTED LABOR', 'an untouched line is not written back');
+    // 2) Editing that same line asks; "Load the newer version" keeps the other device's text.
+    await page.evaluate(() => stopLiveStatusSocket()); await sleep(300);
+    await R(`/api/invoices/${inv}/lines/${L.id}`, { method: 'PUT', token: owner, body: body('REMOTE SECOND') });
+    const desc = page.locator(`[data-invoice-line="${L.id}"] .ilDesc`); await desc.fill('MY LABOR');
+    const p = page.evaluate(() => saveInvoiceHeader());
+    await page.waitForSelector('[data-line-choice="reload"]', { timeout: 6000 }); await page.click('[data-line-choice="reload"]'); await p;
+    eq((await lineOf()).description, 'REMOTE SECOND', 'the other device\'s line is kept');
+    ok(await until(() => page.evaluate(() => activeInvoice.lines.some(l => l.description === 'REMOTE SECOND')), 5000), 'the editor shows the newer line');
+    // 3) "Keep my changes" saves this device's text on purpose.
+    await page.evaluate(() => stopLiveStatusSocket()); await sleep(300);
+    await R(`/api/invoices/${inv}/lines/${L.id}`, { method: 'PUT', token: owner, body: body('REMOTE THIRD') });
+    await page.locator(`[data-invoice-line="${L.id}"] .ilDesc`).fill('MINE ON PURPOSE');
+    const p2 = page.evaluate(() => saveInvoiceHeader());
+    await page.waitForSelector('[data-line-choice="keep"]', { timeout: 6000 }); await page.click('[data-line-choice="keep"]'); await p2;
+    eq((await lineOf()).description, 'MINE ON PURPOSE', 'keeping my change saves it');
+    // 4) A header conflict answered with "load newer" leaves no line change behind.
+    await page.evaluate(() => stopLiveStatusSocket()); await sleep(300);
+    await R(`/api/invoices/${inv}`, { method: 'PUT', token: owner, body: { customerNote: 'remote header' } });
+    await page.locator(`[data-invoice-line="${L.id}"] .ilDesc`).fill('SHOULD NOT SAVE');
+    const p3 = page.evaluate(() => saveInvoiceHeader());
+    await page.waitForSelector('[data-header-choice="reload"]', { timeout: 6000 }); await page.click('[data-header-choice="reload"]'); await p3;
+    eq((await lineOf()).description, 'MINE ON PURPOSE', 'no line was written when the header question stopped the save');
+    eq(page.errs.join(' | '), '', 'no page errors');
+    await ctx.close();
+  });
+  await scenario('A26 a saved note leaves the invoice clean; an unsaved line stays unsaved', async () => {
+    const inv = await newInvoice(1);
+    const { ctx, page } = await newPage(); await signIn(page, 'mgrfull', MPASS);
+    await page.evaluate(() => showView('invoices')); await sleep(800);
+    await page.evaluate(id => openInvoice(id, true), inv); await page.waitForSelector('#invoiceModal.open'); await sleep(500);
+    await page.focus('#invCustomerNote'); await page.keyboard.type(' saved');
+    ok(await until(() => page.evaluate(() => document.getElementById('invoiceDraftState')?.dataset.state === 'saved'), 5000), 'the note autosaved');
+    eq(await page.evaluate(() => ittrInvoiceEditorDirty()), false, 'nothing unsaved after the autosave');
+    await page.locator('#invoiceEditor .ilDesc').first().fill('typed, not saved');
+    await page.focus('#invCustomerNote'); await page.keyboard.type('!');
+    ok(await until(() => page.evaluate(() => document.getElementById('invoiceDraftState')?.dataset.state === 'saved'), 5000), 'the note autosaved again');
+    eq(await page.evaluate(() => ittrInvoiceEditorDirty()), true, 'the unsaved line still counts as unsaved');
+    await ctx.close();
+  });
+  await scenario('A27 a change from the same account on another device right after this tab saved something still updates the open invoice', async () => {
+    const inv = await newInvoice(1), other = await newInvoice(1), phone = await srv.login('mgrfull', MPASS);
+    const { ctx, page } = await newPage(); await signIn(page, 'mgrfull', MPASS);
+    await page.evaluate(() => showView('invoices')); await sleep(800);
+    await page.evaluate(id => openInvoice(id, true), inv); await page.waitForSelector('#invoiceModal.open'); await sleep(4500);
+    // This tab saves something (another invoice), and within a second the phone changes the open one.
+    await page.evaluate(id => apiJSON(`/api/invoices/${id}`, { method: 'PUT', body: { customerNote: 'tab wrote this' } }), other);
+    await R(`/api/invoices/${inv}`, { method: 'PUT', token: phone, body: { customerNote: 'From my phone, right after' } });
+    ok(await until(() => page.evaluate(() => activeInvoice?.invoice?.customer_note === 'From my phone, right after'), 6000), 'the open editor shows the phone\'s change');
+    // This tab's own autosave still never reloads its own editor.
+    let gets = 0; page.on('request', q => { if (q.method() === 'GET' && new RegExp(`/api/invoices/${inv}$`).test(q.url())) gets++; });
+    await page.focus('#invCustomerNote'); await page.keyboard.type(' x');
+    ok(await until(() => page.evaluate(() => document.getElementById('invoiceDraftState')?.dataset.state === 'saved'), 5000), 'autosaved'); await sleep(1500);
+    eq(gets, 0, 'its own autosave does not reload the editor');
+    await ctx.close();
+  });
+  await scenario('A28 a customer\'s online estimate approval refreshes an open Estimates page', async () => {
+    const e = await R('/api/estimates', { method: 'POST', token: owner, body: { customerName: 'Private Audit Fleet LLC' } });
+    await R(`/api/estimates/${e.id}/lines`, { method: 'POST', token: owner, body: { lineType: 'labor', description: 'Brake job', quantity: 1, unitPrice: 100, jobName: 'Brakes' } });
+    await R(`/api/estimates/${e.id}`, { method: 'PUT', token: owner, body: { status: 'sent' } });
+    const link = await R('/api/customer-links', { method: 'POST', token: owner, body: { kind: 'estimate', refId: String(e.id) } });
+    const token = link.token || String(link.url || '').split('/c/')[1];
+    const { ctx, page } = await newPage(); await signIn(page, 'mgrfull', MPASS);
+    await page.evaluate(() => showView('estimates')); await page.waitForSelector(`#estimates [data-open="${e.id}"]`, { timeout: 8000 });
+    const pub = await R(`/api/public/link/${token}`);
+    const jobs = Object.fromEntries((pub.jobs || pub.estimate?.jobs || []).map(j => [j.key, 'approve']));
+    const d = await R(`/api/public/link/${token}/decide`, { method: 'POST', body: { name: 'Test Customer', agree: true, jobs } });
+    eq(d.status, 'approved', 'the customer approved');
+    ok(await until(() => page.evaluate(id => /approved/i.test(document.querySelector(`#estimates [data-open="${id}"]`)?.textContent || ''), e.id), 6000), 'the open list shows approved without a reload');
+    await ctx.close();
+  });
+  await scenario('A29 an online (Stripe) payment refreshes an open invoice', async () => {
+    const inv = await newInvoice(1); await R(`/api/invoices/${inv}/finalize`, { method: 'POST', token: owner, body: {} });
+    const { ctx, page } = await newPage(); await signIn(page, 'mgrfull', MPASS);
+    await page.evaluate(() => showView('invoices')); await sleep(800);
+    await page.evaluate(id => openInvoice(id, true), inv); await page.waitForSelector('#invoiceModal.open'); await sleep(800);
+    const crypto = await import('node:crypto'), t = Math.floor(Date.now() / 1000);
+    const body = JSON.stringify({ type: 'checkout.session.completed', data: { object: { id: 'cs_a29', payment_intent: 'pi_a29', payment_status: 'paid', amount_total: 300, created: t, metadata: { invoice_id: String(inv) } } } });
+    const hook = () => fetch(srv.base() + '/api/stripe/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Stripe-Signature': `t=${t},v1=${crypto.createHmac('sha256', 'whsec_test_ittr').update(`${t}.${body}`).digest('hex')}` }, body }).then(r => r.json());
+    eq((await hook()).recorded, true, 'payment recorded (test signature, no real provider)');
+    ok(await until(() => page.evaluate(() => (activeInvoice?.payments || []).some(p => p.reference === 'pi_a29')), 6000), 'the open invoice shows the online payment');
+    eq((await hook()).recorded, false, 'a replayed event records nothing');
+    await ctx.close();
+  });
+  await scenario('A30 sign-in fields are announced by name; clicking a label focuses its field', async () => {
+    for (const w of [390, 900, 1440]) {
+      const { ctx, page } = await newPage(w); await page.goto(srv.base() + '/'); await page.waitForSelector('#loginPass');
+      const names = await page.evaluate(() => [...document.querySelectorAll('#loginUser,#loginPass,#loginCode')].map(e => [e.id, (e.labels?.[0]?.textContent || e.getAttribute('aria-label') || '').trim()]));
+      eq(names.filter(([, n]) => !n).map(([id]) => id).join(','), '', `every sign-in field has a label at ${w}px`);
+      await page.click('label[for="loginPass"]'); eq(await page.evaluate(() => document.activeElement?.id), 'loginPass', 'the Password label focuses the password field');
+      await page.click('.loginPassShow'); eq(await page.evaluate(() => document.getElementById('loginPass').labels?.[0]?.textContent.trim()), 'Password', 'still named when shown');
+      await ctx.close();
+    }
+  });
+  await scenario('A31 Estimates and Purchase Orders: keyboard opening, focus kept in the form, Escape asks before discarding', async () => {
+    const e = await R('/api/estimates', { method: 'POST', token: owner, body: { customerName: 'Private Audit Fleet LLC' } });
+    const { ctx, page } = await newPage(1280); await signIn(page, OWNER.username, OWNER.password);
+    await page.evaluate(() => showView('estimates')); await page.waitForSelector(`#estimates [data-open="${e.id}"] .estOpenBtn`, { timeout: 8000 });
+    await page.focus(`#estimates [data-open="${e.id}"] .estOpenBtn`); await page.keyboard.press('Enter');
+    await page.waitForSelector('#estEditor:not(.hidden) #estEditorBox[role="dialog"]', { timeout: 6000 });
+    ok(await page.evaluate(() => !!document.getElementById('estEditorBox').getAttribute('aria-labelledby')), 'the estimate editor is a named dialog');
+    for (const [label, open, box] of [['estimate', null, '#estEditorBox'], ['purchase order', async () => { await page.evaluate(() => { const b = [...document.querySelectorAll('#estEditorBox [data-est="close"]')][0]; b?.click(); }); await page.evaluate(() => showView('purchaseorders')); await page.waitForSelector('#purchaseorders button'); await page.evaluate(() => [...document.querySelectorAll('#purchaseorders button')].find(b => /New purchase order|\+ New/i.test(b.textContent))?.click()); await page.waitForSelector('.poModal .box', { timeout: 6000 }); }, '.poModal .box']]) {
+      if (open) await open();
+      const field = await page.evaluateHandle(sel => [...document.querySelector(sel).querySelectorAll('input[type="text"],input:not([type]),textarea')].find(x => x.offsetParent && !x.disabled && !x.readOnly), box);
+      await field.fill(`unsaved ${label} draft`);
+      // Tab from the last control stays inside.
+      await page.evaluate(sel => { const f = [...document.querySelector(sel).querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href]')].filter(x => x.offsetParent); f.at(-1).focus(); }, box);
+      await page.keyboard.press('Tab');
+      ok(await page.evaluate(sel => document.querySelector(sel).contains(document.activeElement), box), `${label}: Tab stays inside the form`);
+      await page.keyboard.press('Shift+Tab'); ok(await page.evaluate(sel => document.querySelector(sel).contains(document.activeElement), box), `${label}: Shift+Tab stays inside`);
+      await page.keyboard.press('Escape');
+      await page.waitForSelector('[data-discard-choice="keep"]', { timeout: 3000 });
+      await page.click('[data-discard-choice="keep"]');
+      ok(await page.evaluate(sel => !!document.querySelector(sel)?.offsetParent, box), `${label}: "Keep editing" keeps the form open`);
+      eq(await field.inputValue(), `unsaved ${label} draft`, `${label}: the draft is still there`);
+    }
+    // A payment dialog over an open invoice: Tab stays in it; Escape closes only the payment dialog.
+    const inv = await newInvoice(1); await R(`/api/invoices/${inv}/finalize`, { method: 'POST', token: owner, body: {} });
+    await page.click('.poModal [data-po="close"]'); await page.click('[data-discard-choice="discard"]'); // Cancel on the edited form asks first
+    ok(await until(() => page.evaluate(() => !document.querySelector('.poModal')), 3000), 'purchase order: "Discard changes" closes the form');
+    await page.evaluate(() => showView('invoices')); await sleep(600);
+    await page.evaluate(id => openInvoice(id, true), inv); await page.waitForSelector('#invoiceModal.open'); await sleep(400);
+    await page.evaluate(id => { recordInvoicePayment(id, 1); }, inv); await page.waitForSelector('.payDlg #payAmt');
+    for (let k = 0; k < 14; k++) await page.keyboard.press('Tab');
+    ok(await page.evaluate(() => !!document.activeElement?.closest('.payDlg')), 'payment dialog: Tab stays inside');
+    await page.keyboard.press('Escape'); await sleep(300);
+    ok(await page.evaluate(() => !document.querySelector('.payDlg')), 'Escape closes the payment dialog');
+    ok(await page.evaluate(() => document.getElementById('invoiceModal').classList.contains('open')), 'the invoice behind it stays open');
+    eq(page.errs.join(' | '), '', 'no page errors');
+    await ctx.close();
+  });
+  await scenario('A32 server: refused or malformed requests keep their 4xx status; backup is one snapshot; build names its commit', async () => {
+    const bad = await R('/api/invoices', { method: 'POST', token: owner, raw: '{not json', allowError: true });
+    eq(bad.status, 400, 'malformed JSON answers 400, not 500'); ok(/valid JSON/.test(bad.error || ''), `with a clear message (${bad.error})`);
+    const b = await fetch(srv.base() + '/api/admin/backup', { headers: { Authorization: `Bearer ${owner}` } }); const j = await b.json();
+    eq(b.status, 200, 'backup downloads'); eq(j.consistentSnapshot, true, 'all tables from one snapshot'); ok(j.tables && j.rowCounts, 'tables and counts present');
+    ok('commit' in (await R('/api/build')), 'build reports the deployed commit field');
+  });
+  await scenario('A33 signed-in account checks from the shop network never block someone else\'s sign-in', async () => {
+    let limited = 0;
+    for (let k = 0; k < 110; k++) if ((await R('/api/auth/me', { token: owner, allowError: true })).status === 429) limited++;
+    eq(limited, 0, '110 signed-in checks in a row are not refused');
+    ok(await srv.login('mech1', KPASS), 'a mechanic can still sign in from the same address');
+  });
   await scenario('A17 work-order Billing tab links to its estimate and invoice', async () => {
     const st = await R('/api/state', { token: owner }), sf = st.shopflow.payload;
     sf.workorders = [...sf.workorders.filter(w => w.id !== 9501), { id: 9501, unit: 'BILL-1', customer: 'Private Audit Fleet LLC', status: 'Completed', mechanic: 'mech1', helpers: [], unitType: 'customer', truckHere: true, tasks: [] }];
@@ -491,6 +650,24 @@ try {
     await R('/api/state/shopflow', { method: 'PUT', token: owner, body: { payload: sf, expectedVersion: st.shopflow.version } });
     ok((await R('/api/state', { token: tokens.mech1 })).shopflow.payload.workorders.some(w => w.id === 9401), 'mech1 sees mech2 work');
     eq((await R('/api/work-orders/9401/tasks/by-uid/m2t/action', { method: 'POST', token: tokens.mech1, body: { action: 'start' }, allowError: true })).status, 403, 'mech1 cannot start a timer on it');
+  });
+  await scenario('A24 server checks the area permission on Compliance, texting, productivity and service orders', async () => {
+    const doc = (await db.query(`INSERT INTO inspection_documents(template,fields,unit_number,created_by) VALUES('annual','{}'::jsonb,'DOC-1','owner') RETURNING id`)).rows[0].id;
+    // mgrmix has Invoices + Inventory but not Customers; mgrcust has only Customers.
+    const cases = [
+      ['GET', '/api/annual-inspections/units', 'mgrmix', 403], ['GET', `/api/inspection-docs/${doc}`, 'mgrmix', 403], ['DELETE', `/api/inspection-docs/${doc}`, 'mgrmix', 403],
+      ['PUT', '/api/fleet-maintenance/customers/1/reminders', 'mgrmix', 403], ['GET', '/api/fleet-maintenance/summary', 'mgrmix', 403], ['GET', '/api/inspection-docs', 'mgrmix', 403],
+      ['GET', '/api/sms/threads', 'mgrmix', 403], ['GET', '/api/sms/config', 'mgrmix', 403],
+      ['GET', '/api/admin/productivity', 'mgrcust', 403], ['GET', '/api/service-orders/1', 'mgrcust', 403],
+      ['GET', '/api/inspection-docs', 'mgrcust', 200], ['GET', '/api/fleet-maintenance/summary', 'mgrcust', 200], ['GET', `/api/inspection-docs/${doc}`, 'mgrcust', 200],
+      ['GET', '/api/inspection-docs', 'mech1', 403],
+    ], bad = [];
+    for (const [method, path, who, want] of cases) {
+      const st = (await R(path, { method, token: tokens[who], body: method === 'PUT' ? { enabled: false } : undefined, allowError: true })).status ?? 200;
+      if ((want === 200) !== (st >= 200 && st < 300) || (want === 403 && st !== 403)) bad.push(`${who} ${method} ${path}: ${st}`);
+    }
+    eq(bad.join(' | '), '', 'every call answers as its permission says');
+    eq((await db.query('SELECT count(*)::int n FROM inspection_documents WHERE id=$1', [doc])).rows[0].n, 1, 'the refused delete removed nothing');
   });
   for (const [who, pass] of [['owner', OWNER.password], ['mgrfull', MPASS], ['mgrcust', MPASS], ['mech1', KPASS], ['mech2', KPASS]]) for (const w of [390, 820, 1280])
     await scenario(`A15 ${who} at ${w}px: every allowed page opens without errors or sideways scrolling`, async () => {

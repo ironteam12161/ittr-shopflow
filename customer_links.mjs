@@ -66,7 +66,7 @@ export function estimateJobs(lines) {
 
 export function registerCustomerLinkRoutes(app, deps) {
   const { auth, adminOnly, managerPermission, requireDb, audit, publicLimiter, shopProfile, readShopflow, applyFindingDecision,
-    englishText, findingPhotoUrls, inspectionItemsFor, broadcastShopStatus, publicFile, sendEmail } = deps;
+    englishText, findingPhotoUrls, inspectionItemsFor, broadcastShopStatus, publicFile, sendEmail, announceDataDomain } = deps;
   const invoicesPerm = managerPermission('invoices');
   const noStore = res => { res.setHeader('Cache-Control', 'no-store'); res.setHeader('X-Robots-Tag', 'noindex, nofollow'); res.setHeader('Referrer-Policy', 'no-referrer'); };
   const gone = res => res.status(404).json({ error: 'This link has expired or was turned off. Please contact the shop for a new one.', code: 'LINK_GONE' });
@@ -137,6 +137,9 @@ export function registerCustomerLinkRoutes(app, deps) {
           await db.query('COMMIT');
           await audit(who, 'estimate_customer_decision', { estimateId: e.id, estimateNumber: e.estimate_number, status, approved, jobs: jobs.length, ip, ua, linkId: link.id });
           broadcastShopStatus('customer_decision', { kind: 'estimate', id: e.id, label: `Estimate ${e.estimate_number}`, name, status, approved, of: jobs.length });
+          // v24.76.1: the estimate's status changed: open Estimates screens refresh, and a page that was offline catches up on
+          // reconnect (the decision is a public request, so the announcement middleware does not see it).
+          announceDataDomain?.('invoices', 'customer');
           return res.json({ ok: true, status, approved, of: jobs.length });
         } catch (e) { try { await db.query('ROLLBACK'); } catch (_) {} throw e; } finally { db.release(); }
       }

@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.76.0-AUDIT-FIXES-20261019">
+<meta name="ittr-build" content="ITTR-24.76.1-AUDIT-FIXES-20261019">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -28,7 +28,7 @@
  P.removeItem=function(k){rm.call(this,k);if(this===sessionStorage&&keys[k])try{rm.call(localStorage,'ittr_app_'+k)}catch(e){}};
 }catch(e){}})();
 </script>
-<title>ITTR ShopFlow v24.76.0</title>
+<title>ITTR ShopFlow v24.76.1</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -836,7 +836,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.76.0">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.76.1">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -853,13 +853,13 @@ body.invoiceWorkspaceMode .invoiceRateWrap{display:grid!important;grid-template-
 @media(max-width:900px){body.invoiceWorkspaceMode .invoiceGridHeader{display:none!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow{grid-template-columns:1fr 1fr!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceGridItemLabel,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLaborDescription{grid-column:1/-1!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceQtyUnit,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceTaxCell,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLineNet{grid-column:1!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLaborRateField,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceDiscountControl,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceRowActions{grid-column:2!important}}
 </style>
 <link rel="stylesheet" href="./inspection-workflow.css?v=3">
-<script src="./sync-merge.js?v=24.76.0"></script>
-<script src="./sync-queue.js?v=24.76.0"></script>
-<link rel="stylesheet" href="./design-system.css?v=24.76.0">
-<link rel="stylesheet" href="./app-shell.css?v=24.76.0">
-<script src="./icons.js?v=24.76.0"></script>
-<script src="./photo-viewer.js?v=24.76.0"></script>
-<script src="./photo-queue.js?v=24.76.0"></script>
+<script src="./sync-merge.js?v=24.76.1"></script>
+<script src="./sync-queue.js?v=24.76.1"></script>
+<link rel="stylesheet" href="./design-system.css?v=24.76.1">
+<link rel="stylesheet" href="./app-shell.css?v=24.76.1">
+<script src="./icons.js?v=24.76.1"></script>
+<script src="./photo-viewer.js?v=24.76.1"></script>
+<script src="./photo-queue.js?v=24.76.1"></script>
 <style id="ittrNavLayoutV2">
 /* v24.39.0 desktop navigation: one full-width tab strip grouped by workflow (Shop · Money · Records · Operations). */
 @media(min-width:761px){
@@ -1009,7 +1009,7 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 </style>
 </head>
 <body class="loggedOut">
-<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.76.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.76.1 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1019,8 +1019,8 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
     <h1>ITTR ShopFlow Login</h1>
     <div class="muted">Sign in with your shop account.</div>
     <form id="loginForm">
-      <div class="field"><label>Username</label><input id="loginUser" required autocomplete="username"></div>
-      <div class="field"><label>Password</label><div class="loginPassWrap"><input id="loginPass" type="password" required autocomplete="current-password"><button type="button" class="loginPassShow" aria-label="Show password" aria-pressed="false" onclick="const i=document.getElementById('loginPass'),on=i.type==='password';i.type=on?'text':'password';this.setAttribute('aria-pressed',on);this.textContent=on?'Hide':'Show'">Show</button></div></div>
+      <div class="field"><label for="loginUser">Username</label><input id="loginUser" required autocomplete="username"></div>
+      <div class="field"><label for="loginPass">Password</label><div class="loginPassWrap"><input id="loginPass" type="password" required autocomplete="current-password"><button type="button" class="loginPassShow" aria-label="Show password" aria-pressed="false" onclick="const i=document.getElementById('loginPass'),on=i.type==='password';i.type=on?'text':'password';this.setAttribute('aria-pressed',on);this.textContent=on?'Hide':'Show'">Show</button></div></div>
       <div class="field hidden" id="loginCodeField"><label for="loginCode" id="loginCodeLabel">6-digit sign-in code</label><input id="loginCode" inputmode="numeric" autocomplete="one-time-code" placeholder="123 456 or a recovery code" maxlength="20"><label class="loginRemember"><input type="checkbox" id="loginRemember" checked> Remember this device for 30 days</label><button type="button" class="secondary hidden" id="loginSendEmail">Email me a code</button></div>
       <div id="loginError" class="muted" style="color:#b42318;margin-bottom:10px"></div>
       <button type="submit" style="width:100%">Sign In</button>
@@ -1623,18 +1623,18 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.76.0';
+const FRONTEND_VERSION='24.76.1';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudVersions={},cloudRefreshBusy=false;
 let ittrSessionGeneration=0;
 const ittrSessionRequests=new Set();
 function ittrSessionCurrent(g,token){return g===ittrSessionGeneration&&token===cloudToken}
 function ittrSessionCancelled(){return Object.assign(new Error("The account session changed."),{name:"AbortError",code:"SESSION_CHANGED"})}
-// v24.76.0: when this tab last sent a change. A change announced under this account's name counts as "mine" only if
-// this tab wrote just before; the same account on another device (an owner's phone and desktop) is another device.
-let ittrOwnWriteAt=0;function ittrNoteOwnWrite(options){if(!/^(GET|HEAD)$/i.test(String(options?.method||"GET")))ittrOwnWriteAt=Date.now()}
+// v24.76.1: this tab's id (random, not a secret). Every request carries it and the server names the tabs that made each
+// change, so "my own change" means exactly this tab, not "this account in the last few seconds" (an owner's phone and
+// desktop are the same account).
+const ITTR_TAB_ID=String(globalThis.crypto?.randomUUID?.()||(Math.random().toString(36).slice(2)+Date.now().toString(36))).replace(/[^a-zA-Z0-9-]/g,"").slice(0,40);
 async function ittrSessionFetch(url,options={}){
- if(typeof ittrNoteOwnWrite==="function")ittrNoteOwnWrite(options);
  const generation=ittrSessionGeneration,token=cloudToken,controller=new AbortController();
  // Keep caller cancellation connected after headers, including a streaming response body.
  const signal=options.signal?(typeof AbortSignal.any==="function"?AbortSignal.any([options.signal,controller.signal]):options.signal):controller.signal;
@@ -1686,13 +1686,12 @@ function ittrAdoptServerShopflow(payload,version){
  ittrSetLive("shopflow",item?window.ittrSyncMerge.applyChanges(payload,item.changes).payload:payload);
  if(item)ittrSync.changed("shopflow");
 }
-function authHeaders(extra={}){return {...extra,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
+function authHeaders(extra={}){return {...extra,"X-ITTR-Client":ITTR_TAB_ID,...(cloudToken?{Authorization:`Bearer ${cloudToken}`}:{})}}
 async function previewInventoryRepair(){const box=document.getElementById('inventoryRepairResult');if(!box)return;box.innerHTML='<div class="muted">Checking…</div>';try{const d=await apiJSON('/api/inventory/repair/preview'),a=d.deletedInvoiceSales||[],b=d.stuckReservations||[];if(!a.length&&!b.length){box.innerHTML='<div class="notice">Nothing to repair — stock and reservations are consistent.</div>';return}
  box.innerHTML=`${a.length?`<b>Return to stock (invoice was deleted):</b><ul>${a.map(x=>`<li>${esc(x.partNumber||'')} ${esc(x.description||'')} — <b>+${Number(x.qty)}</b> <span class="muted">from ${esc(x.invoice)}</span></li>`).join('')}</ul>`:''}${b.length?`<b>Release stuck reservations (work order already invoiced):</b><ul>${b.map(x=>`<li>${esc(x.partNumber||'')} — ${Number(x.qty)} on WO #${esc(x.workOrderId)} ${esc(x.unit?`(Unit ${x.unit})`:'')}</li>`).join('')}</ul>`:''}<button onclick="applyInventoryRepair()">Apply repair</button>`}catch(e){box.innerHTML=`<div class="error">${esc(e.message||'Check failed.')}</div>`}}
 async function applyInventoryRepair(){if(!confirm('Apply these stock corrections? Every change is written to the part history.'))return;try{const d=await apiJSON('/api/inventory/repair/apply',{method:'POST',body:'{}'});alert(`Done. ${d.returned} return(s) to stock, ${d.released} reservation(s) released.`);previewInventoryRepair()}catch(e){alert(e.message||'Repair failed.')}}
 async function resetInventoryToZero(){const c=prompt('This sets the on-hand quantity of EVERY part to 0.\nUse it right before a full physical count.\n\nType RESET to confirm:');if(c==null)return;if(String(c).trim().toUpperCase()!=='RESET')return alert('Not reset — you did not type RESET.');try{const d=await apiJSON('/api/parts/inventory/reset-to-zero',{method:'POST',body:JSON.stringify({confirm:'RESET'})});alert(`Done. ${d.partsReset} part(s) set to 0. Start your count now.`);try{if(typeof refreshInventoryCount==='function')await refreshInventoryCount()}catch(_){}try{if(typeof render==='function')render()}catch(_){}}catch(e){alert(e.message||'Reset failed.')}}
 async function apiJSON(url,options={}){
- if(typeof ittrNoteOwnWrite==="function")ittrNoteOwnWrite(options);
  const generation=ittrSessionGeneration,token=cloudToken,controller=new AbortController();
  const cancel=()=>controller.abort();options.signal?.addEventListener("abort",cancel,{once:true});if(options.signal?.aborted)cancel();
  ittrSessionRequests.add(controller);
@@ -2048,7 +2047,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.76.0";
+const ROUTE_MODULE_VERSION="24.76.1";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -2323,7 +2322,16 @@ function ittrStaleNote(view){
 // the person chooses to keep editing or to load the newer version.
 function ittrInvoiceEditorValues(){return JSON.stringify([...document.querySelectorAll("#invoiceEditor input,#invoiceEditor select,#invoiceEditor textarea")].filter(e=>e.type!=="file").map(e=>e.type==="checkbox"||e.type==="radio"?e.checked:e.value))}
 let ittrInvoiceEditorBase="";
-function ittrInvoiceEditorDirty(){const st=document.getElementById("invoiceDraftState")?.dataset.state;return ["dirty","saving","error"].includes(st)||(!!ittrInvoiceEditorBase&&ittrInvoiceEditorValues()!==ittrInvoiceEditorBase)}
+// v24.76.1: what was last loaded or saved, kept separately for the header, each line and the editor's other fields. A
+// successful save advances only what it saved, so a saved note no longer leaves the editor "unsaved", and an unsaved
+// line stays unsaved when the header saves.
+let ittrHeaderBase="",ittrLineBase=new Map(),ittrOtherBase="";
+const ittrHeaderField=e=>/InvoiceHeaderAutosave/.test((e.getAttribute("oninput")||"")+(e.getAttribute("onblur")||"")+(e.getAttribute("onchange")||""));
+function ittrOtherEditorValues(){return JSON.stringify([...document.querySelectorAll("#invoiceEditor input,#invoiceEditor select,#invoiceEditor textarea")].filter(e=>e.type!=="file"&&!e.closest("[data-invoice-line]")&&!ittrHeaderField(e)).map(e=>e.type==="checkbox"||e.type==="radio"?e.checked:e.value))}
+function ittrSnapshotInvoiceEditor(){ittrHeaderBase=JSON.stringify(invoiceHeaderPayload());ittrLineBase=new Map((activeInvoice?.lines||[]).map(l=>[String(l.id),JSON.stringify(invoiceLinePayload(l.id))]));ittrOtherBase=ittrOtherEditorValues()}
+function ittrInvoiceLineChanged(id){const p=invoiceLinePayload(id);return !!p&&JSON.stringify(p)!==ittrLineBase.get(String(id))}
+function ittrInvoiceEditorDirty(){const st=document.getElementById("invoiceDraftState")?.dataset.state;if(["dirty","saving","error"].includes(st))return true;if(!ittrHeaderBase)return false;
+ return JSON.stringify(invoiceHeaderPayload())!==ittrHeaderBase||(activeInvoice?.lines||[]).some(l=>ittrInvoiceLineChanged(l.id))||ittrOtherEditorValues()!==ittrOtherBase}
 async function ittrStaleRefresh(view){
  const editorOpen=document.getElementById("invoiceModal")?.classList.contains("open")&&activeInvoice?.invoice?.id;
  if(!editorOpen){ittrRefreshModuleView(view);return}
@@ -2368,7 +2376,7 @@ function ittrDataChanged(msg){
  if(!["admin","manager"].includes(session?.role))return;
  ittrDataChangedPending.add(String(msg.domain||""));clearTimeout(ittrDataChangedTimer);
  // Who made the change: a change only this tab made (its own autosave) never reloads its own open editor.
- const by=Array.isArray(msg.by)?msg.by.map(String):[],mine=by.length&&by.every(u=>u===session?.username)&&Date.now()-ittrOwnWriteAt<4000;if(!mine)ittrDataChangedOthers.add(String(msg.domain||""));
+ const clients=Array.isArray(msg.clients)?msg.clients.map(String):[],mine=clients.length>0&&clients.every(c=>c===ITTR_TAB_ID);if(!mine)ittrDataChangedOthers.add(String(msg.domain||""));
  ittrDataChangedTimer=setTimeout(()=>{
   const domains=[...ittrDataChangedPending];ittrDataChangedPending.clear();
   const fromOthers=new Set(ittrDataChangedOthers);ittrDataChangedOthers.clear();
@@ -2555,7 +2563,7 @@ function ittrClearPrivateViews(){
  try{shopAiImportDraft=null}catch(_){}
  try{fmcsaCustomerLookupCache=null}catch(_){}
  blank("ittrOpenPOs",null);
- try{ittrInvoiceEditorBase=""}catch(_){}
+ try{ittrInvoiceEditorBase="";ittrHeaderBase="";ittrLineBase=new Map();ittrOtherBase=""}catch(_){}
  for(const k of Object.keys(ittrSearchGen||{}))try{ittrSearchCancel(k)}catch(_){}
  for(const id of ["invoiceEditor","detailBody","globalSmartSearchResults","smartDirectoryResults","customerProfileBody","vehicleProfileBody","invoiceLookupResults"]){const el=document.getElementById(id);if(el)el.replaceChildren()}
  document.querySelectorAll("#ittrStaleNote,.ittrChoice").forEach(n=>n.remove());
@@ -5549,7 +5557,22 @@ function ittrDialogDirty(m){const d=ittrDialogs.find(x=>x.m===m);return !!d&&d.b
 new MutationObserver(list=>{for(const r of list){const el=r.target;if(!(el instanceof HTMLElement)||!el.classList.contains("modal"))continue;if(el.classList.contains("open"))ittrDialogOpened(el);else ittrDialogClosed(el)}})
  .observe(document.body,{subtree:true,attributes:true,attributeFilter:["class"]});
 document.querySelectorAll(".modal.open").forEach(ittrDialogOpened);
-const ittrDialogTop=()=>{const m=getTopOpenModal();return m&&m.classList.contains("open")?m:null};
+// v24.76.1: overlays a module draws itself (Estimates editor, purchase-order forms) join the same layer: the module
+// calls ittrOverlayOpened(box,{close}) when it shows one and ittrOverlayClosed(box) when it hides it. They then get the
+// dialog name, focus trap, Escape, the unsaved-changes question (Escape and [data-overlay-close] buttons) and focus
+// return. Calling ittrOverlayOpened again after the module redraws the box takes a new baseline.
+const ittrCustomOverlays=new Map();
+window.ittrOverlayOpened=(el,{close}={})=>{if(!el)return;ittrCustomOverlays.set(el,{close});const d=ittrDialogs.find(x=>x.m===el);
+ if(d){d.base=ittrDialogValues(el);d.touched=false;const mark=()=>{d.touched=true};el.addEventListener("input",mark,{once:true});ittrDialogPrepare(el);return}
+ ittrDialogOpened(el)};
+window.ittrOverlayClosed=el=>{if(!el||!ittrCustomOverlays.delete(el))return;ittrDialogClosed(el)};
+// Other self-drawn dialogs (payment, confirm, Bills, Reports, Compliance, estimate email / work-order boxes) are picked up
+// when they are added to the page: name, focus kept inside and focus return. Their own Escape/Cancel handling stays.
+const ITTR_AUTO_OVERLAYS=".payDlg,.cfmDlg,.blModal,.repModal,.cmpModal,.estWoDlg,#estEmailBox";
+new MutationObserver(list=>{let removed=false;for(const r of list){removed||=r.removedNodes.length>0;for(const n of r.addedNodes){if(!(n instanceof HTMLElement))continue;const o=n.matches(ITTR_AUTO_OVERLAYS)?n:null;if(!o)continue;
+  const box=o.querySelector('[role="dialog"],[role="alertdialog"]')||o.firstElementChild||o;if(!ittrCustomOverlays.has(box))window.ittrOverlayOpened(box,{})}}
+ if(removed)for(const el of [...ittrCustomOverlays.keys()])if(!el.isConnected)window.ittrOverlayClosed(el)}).observe(document.body,{childList:true,subtree:true});
+const ittrDialogTop=()=>{const last=ittrDialogs.at(-1)?.m;if(last&&ittrCustomOverlays.has(last)&&last.isConnected&&last.offsetParent!==null)return last;const m=getTopOpenModal();return m&&m.classList.contains("open")?m:null};
 const ittrOverlayOpen=()=>document.querySelector(".pv,.ittrChoice");
 document.addEventListener("keydown",e=>{
  if(e.key!=="Tab"||ittrOverlayOpen())return;const m=ittrDialogTop();if(!m||document.activeElement?.closest?.("#shopAiPanel,#ittrStaleNote,#toastRegion"))return;
@@ -5566,13 +5589,17 @@ async function ittrConfirmDiscard(m){
  try{(ittrFocusable(m)[0]||m).focus()}catch(_){}return false;
 }
 document.addEventListener("click",async e=>{
- if(ittrDialogBypass)return;const x=e.target.closest?.(".modal.open .x,.modal.open [data-close-modal]");if(!x)return;const m=x.closest(".modal");
+ if(ittrDialogBypass)return;const x=e.target.closest?.(".modal.open .x,.modal.open [data-close-modal],[data-overlay-close]");if(!x)return;const m=x.closest(".modal.open")||[...ittrCustomOverlays.keys()].find(o=>o.contains(x));if(!m)return;
  if(!ittrDialogDirty(m))return;e.preventDefault();e.stopImmediatePropagation();
  if(await ittrConfirmDiscard(m)){ittrDialogBypass=true;try{x.click()}finally{ittrDialogBypass=false}}
 },true);
 document.addEventListener("keydown",async e=>{
  if(e.key!=="Escape"||ittrOverlayOpen())return;
+ // A dialog's own Escape handler already closed it (the focused element left the page): this Escape is used up, so the
+ // dialog behind it (an open invoice under a payment dialog) stays open.
+ if(e.target instanceof Node&&e.target!==document&&e.target!==document.body&&!e.target.isConnected)return;
  const m=ittrDialogTop();
+ if(m&&ittrCustomOverlays.has(m)){const o=ittrCustomOverlays.get(m);if(!o?.close)return;e.preventDefault();e.stopImmediatePropagation();if(await ittrConfirmDiscard(m))o.close();return}
  if(m&&ittrDialogDirty(m)){e.preventDefault();if(await ittrConfirmDiscard(m))closeTopOpenModal();return}
  closeTopOpenModal();
 });
@@ -7044,10 +7071,30 @@ function renderInvoiceEditor(){
    <div class="invoiceSignatureGrid"><span>Customer Signature: ______________________________</span><span>Printed Name: ______________________________</span><span>Date: ______________</span></div>
  </section>`;
  window.InvoiceUX?.attachEditor?.(activeInvoice);
- ittrInvoiceEditorBase=ittrInvoiceEditorValues();
+ ittrInvoiceEditorBase=ittrInvoiceEditorValues();ittrSnapshotInvoiceEditor();
 }
-async function persistInvoiceLine(id){const i=activeInvoice.invoice,b=invoiceLinePayload(id);if(!b)return {ok:true};const r=await ittrSessionFetch(`/api/invoices/${i.id}/lines/${id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(b)}),d=await r.json();if(!r.ok)throw new Error(d.error||'Line save failed');return d}
-async function saveAllInvoiceLines(){for(const l of (activeInvoice?.lines||[])){if(document.querySelector(`[data-invoice-line="${l.id}"]`))await persistInvoiceLine(l.id)}}
+// v24.76.1: a line save carries the fingerprint the line was loaded with; when another device changed that line the
+// server refuses and the person chooses: keep their version (saved over the other) or load the newer invoice. Throws
+// {stopped:true} when nothing more should be saved.
+async function persistInvoiceLine(id){const i=activeInvoice.invoice,b=invoiceLinePayload(id);if(!b)return {ok:true};
+ const l=(activeInvoice.lines||[]).find(x=>String(x.id)===String(id)),sent=JSON.stringify(b);
+ for(let attempt=0;attempt<2;attempt++){
+  const print=attempt?null:l?.print;
+  const r=await ittrSessionFetch(`/api/invoices/${i.id}/lines/${id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({...b,...(print?{expectedPrint:print}:{})})}),d=await r.json().catch(()=>({}));
+  if(r.status===409&&d.code==='INVOICE_LINE_CHANGED'){
+   invoiceSetSaveState('dirty','Changed on another device');
+   const what=String(b.description||l?.description||'').slice(0,60);
+   const c=await ittrChoose(currentLanguage==="uk"?`Рядок «${what}» змінено на іншому пристрої.`:`The line "${what}" was changed on another device.`,[["keep",currentLanguage==="uk"?"Зберегти мої зміни поверх":"Keep my changes (save over theirs)"],["reload",currentLanguage==="uk"?"Завантажити новішу версію":"Load the newer version"]],"line");
+   if(c==="keep")continue;
+   if(c==="reload")await openInvoice(i.id,document.body.classList.contains("invoiceWorkspaceMode"));
+   throw Object.assign(new Error('Not saved: the line changed on another device.'),{stopped:true});
+  }
+  if(!r.ok)throw new Error(d.error||'Line save failed');
+  if(l&&d.print)l.print=d.print;ittrLineBase.set(String(id),sent);return d;
+ }
+}
+// Only lines the person changed are saved (untouched lines are never written back over a newer copy).
+async function saveAllInvoiceLines(){for(const l of [...(activeInvoice?.lines||[])]){if(document.querySelector(`[data-invoice-line="${l.id}"]`)&&ittrInvoiceLineChanged(l.id))await persistInvoiceLine(l.id)}}
 function invoiceHeaderPayload(){
  const i=activeInvoice?.invoice||{},customerSelect=document.getElementById('invCustomerSelect'),unitSelect=document.getElementById('invUnitSelect');
  return {customerId:Number(document.getElementById('invCustomerId')?.value||0)||null,customerName:document.getElementById('invCustomer')?.value||customerSelect?.selectedOptions?.[0]?.textContent||i.customer_name||'',unitId:Number(document.getElementById('invUnitId')?.value||0)||null,unitNumber:document.getElementById('invUnit')?.value||unitSelect?.selectedOptions?.[0]?.textContent||'',vin:document.getElementById('invVin')?.value||'',dotNumber:document.getElementById('invDot')?.value||'',poNumber:document.getElementById('invPo')?.value||'',mileage:Number(document.getElementById('invMileage')?.value||0),invoiceDate:document.getElementById('invDate')?.value||'',dueDate:document.getElementById('invDue')?.value||'',terms:document.getElementById('invTerms')?.value||'Due on Receipt',taxRate:Number(document.getElementById('invTaxRate')?.value||0),shopSupplies:Number(document.getElementById('invShopSupplies')?.value||0),environmentalFee:Number(document.getElementById('invEnvFee')?.value||0),discountType:document.getElementById('invDiscountType')?.value||'fixed',discountValue:Number(document.getElementById('invDiscountValue')?.value||0),customerNote:document.getElementById('invCustomerNote')?.value||'',internalNote:document.getElementById('invInternalNote')?.value||'',fleetTier:document.getElementById('invFleetTier')?.value||i.fleet_tier||'retail'};
@@ -7066,8 +7113,8 @@ let invoiceHeaderConflictOpen=false;
 // {ok:false,stopped:true} when nothing was saved (newer version loaded, question dismissed, or already being asked).
 async function ittrPutInvoiceHeader(i){
   for(let attempt=0;attempt<2;attempt++){
-    const print=attempt?null:activeInvoice?.headerPrint;
-    const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({...invoiceHeaderPayload(),...(print?{expectedHeaderPrint:print}:{})})});
+    const print=attempt?null:activeInvoice?.headerPrint,payload=invoiceHeaderPayload();
+    const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({...payload,...(print?{expectedHeaderPrint:print}:{})})});
     const d=await r.json().catch(()=>({}));
     if(r.status===409&&d.code==='INVOICE_HEADER_CHANGED'){
       // One question at a time: the question takes focus, and that blur would otherwise save (and ask) again.
@@ -7079,6 +7126,7 @@ async function ittrPutInvoiceHeader(i){
       return {ok:false,stopped:true,d};
     }
     if(r.ok&&d?.headerPrint&&activeInvoice?.invoice?.id===i.id)activeInvoice.headerPrint=d.headerPrint;
+    if(r.ok&&activeInvoice?.invoice?.id===i.id)ittrHeaderBase=JSON.stringify(payload);
     return {ok:r.ok,d};
   }
 }
@@ -7110,12 +7158,13 @@ async function persistInvoiceDraftBeforeStructureChange(label='Saving draft'){
  const i=activeInvoice?.invoice;if(!i||['paid','void'].includes(i.status))return true;
  invoiceDraftSaveBusy=true;invoiceSetSaveState('saving',label+'…');
  try{
-   await saveAllInvoiceLines();
+   // Header first: if its conflict question stops the save, no line has been written yet.
    const {ok,d,stopped}=await ittrPutInvoiceHeader(i);if(stopped)return false;
    if(!ok)throw new Error(d.error||'Draft save failed');
+   await saveAllInvoiceLines();
    invoiceSetSaveState('saved','Draft saved');
    return true;
- }catch(e){invoiceSetSaveState('error','Draft not saved');showToast?.(e.message||'Unable to preserve invoice changes.','error',7000);return false}
+ }catch(e){if(e?.stopped)return false;invoiceSetSaveState('error','Draft not saved');showToast?.(e.message||'Unable to preserve invoice changes.','error',7000);return false}
  finally{invoiceDraftSaveBusy=false}
 }
 function invoiceSetSaveState(state,text){const el=document.getElementById('invoiceDraftState');if(!el)return;el.dataset.state=state||'';el.textContent=text||''}
@@ -7179,8 +7228,8 @@ async function checkInvoiceNow(id){
   }catch(err){b.disabled=false;if(a==='ai')b.textContent='Suggest wording';showToast(err.message,'error')}});
 }
 window.checkInvoiceNow=checkInvoiceNow;
-async function saveInvoiceHeader(){const i=activeInvoice.invoice;try{invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const {ok,d,stopped}=await ittrPutInvoiceHeader(i);if(stopped)return false;if(!ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);await loadInvoices();invoiceSetSaveState('saved','All changes saved');showToast?.('Invoice saved.','success',2200);return true}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message,'error',7000)||alert(e.message);return false}}
-async function saveInvoiceLine(id){try{const i=activeInvoice.invoice;invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const {ok,d,stopped}=await ittrPutInvoiceHeader(i);if(stopped)return;if(!ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);invoiceSetSaveState('saved','All changes saved')}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message||'Save failed','error',7000)}}
+async function saveInvoiceHeader(){const i=activeInvoice.invoice;try{invoiceSetSaveState('saving','Saving…');const {ok,d,stopped}=await ittrPutInvoiceHeader(i);if(stopped)return false;if(!ok)throw new Error(d.error||'Save failed');await saveAllInvoiceLines();await openInvoice(i.id);await loadInvoices();invoiceSetSaveState('saved','All changes saved');showToast?.('Invoice saved.','success',2200);return true}catch(e){if(e?.stopped)return false;invoiceSetSaveState('error','Save failed');showToast?.(e.message,'error',7000)||alert(e.message);return false}}
+async function saveInvoiceLine(id){try{const i=activeInvoice.invoice;invoiceSetSaveState('saving','Saving…');const {ok,d,stopped}=await ittrPutInvoiceHeader(i);if(stopped)return;if(!ok)throw new Error(d.error||'Save failed');await saveAllInvoiceLines();await openInvoice(i.id);invoiceSetSaveState('saved','All changes saved')}catch(e){if(e?.stopped)return;invoiceSetSaveState('error','Save failed');showToast?.(e.message||'Save failed','error',7000)}}
 async function deleteInvoiceLine(lineId){if(!confirm('Remove this line? If this is a labor operation, its attached parts and charges will also be removed.'))return;if(!(await persistInvoiceDraftBeforeStructureChange('Preserving your invoice')))return;const i=activeInvoice.invoice,r=await ittrSessionFetch(`/api/invoices/${i.id}/lines/${lineId}`,{method:'DELETE',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to remove line');await openInvoice(i.id)}
 async function finalizeInvoice(id){if(!confirm('Finalize this invoice and mark it sent/open? Review prices, tax and customer PO first.'))return;if(!(await saveInvoiceHeader()))return;const r=await ittrSessionFetch(`/api/invoices/${id}/finalize`,{method:'POST',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to finalize');if(Array.isArray(d.warnings)&&d.warnings.length)showToast?.('Inventory warning: '+d.warnings.join(' · '),'warning',12000);await openInvoice(id);await loadInvoices()}
 // v24.41.2 payment dialog: one form with the payment type and its transaction ID (check #, Zelle confirmation, ACH trace…).
@@ -7479,10 +7528,10 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
 <script src="./finance-shared.js?v=24.47.3"></script>
 <script src="./inspection-checklist.js?v=3"></script>
 <script src="./inspection-workflow.js?v=8"></script>
-<script src="./canned-jobs.js?v=24.76.0"></script>
-<script src="./share-links.js?v=24.76.0"></script>
-<script src="./sms.js?v=24.76.0"></script>
-<script src="./shop-workspace.js?v=24.76.0"></script>
+<script src="./canned-jobs.js?v=24.76.1"></script>
+<script src="./share-links.js?v=24.76.1"></script>
+<script src="./sms.js?v=24.76.1"></script>
+<script src="./shop-workspace.js?v=24.76.1"></script>
 <script>
 /* v24.46.2: Start a Truck keeps what the mechanic typed until the work order is created.
    Saved on this phone (localStorage) while typing and when the screen locks; restored when the wizard is opened

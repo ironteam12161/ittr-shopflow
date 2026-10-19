@@ -19,12 +19,16 @@ function renderList(){
  const stats=$('#estStats');if(stats)stats.innerHTML=STATUS.map(([k,l])=>{const s=S.stats.find(x=>x.status===k);return `<button class="estStat ${S.filter===k?'active':''}" data-est="filter" data-status="${k}"><span>${l}</span><b>${s?.n||0}</b><small>${usd(s?.total||0)}</small></button>`}).join('');
  const body=$('#estRows');if(!body)return;
  if(!S.items.length){body.innerHTML=`<tr><td colspan="7" class="empty">${S.filter||S.q?'No estimates match.':'No estimates yet. Click “+ New Estimate” to quote a job.'}</td></tr>`;return}
- body.innerHTML=S.items.map(e=>`<tr data-open="${e.id}"><td><b>${h(e.estimate_number)}</b></td><td>${h(e.customer_name)}</td><td>${h(e.unit_number||'—')}</td><td>${day(e.estimate_date)}</td><td>${day(e.valid_until)}</td><td class="estNum">${usd(e.total)}</td><td><span class="estPill ${h(e.status)}">${h(LABEL[e.status]||e.status)}</span></td></tr>`).join('');
+ // v24.76.1: the estimate number is a real button, so every estimate opens from the keyboard (the row stays clickable).
+ body.innerHTML=S.items.map(e=>`<tr data-open="${e.id}"><td><button type="button" class="estOpenBtn" aria-label="Open estimate ${h(e.estimate_number)}"><b>${h(e.estimate_number)}</b></button></td><td>${h(e.customer_name)}</td><td>${h(e.unit_number||'—')}</td><td>${day(e.estimate_date)}</td><td>${day(e.valid_until)}</td><td class="estNum">${usd(e.total)}</td><td><span class="estPill ${h(e.status)}">${h(LABEL[e.status]||e.status)}</span></td></tr>`).join('');
 }
 
 // ---------------------------------------------------------------- editor
-function openEditor(html){const ed=$('#estEditor'),box=$('#estEditorBox');if(!ed||!box)return;box.innerHTML=html;ed.classList.remove('hidden');document.body.classList.add('modalOpen')}
-function closeEditor(){$('#estEditor')?.classList.add('hidden');document.body.classList.remove('modalOpen');S.cur=null;loadList()}
+// v24.76.1: the editor joins the app's dialog layer (name, focus kept inside, Escape and Close ask before discarding typed
+// text, focus returns to the opener).
+function openEditor(html){const ed=$('#estEditor'),box=$('#estEditorBox');if(!ed||!box)return;box.innerHTML=html;ed.classList.remove('hidden');document.body.classList.add('modalOpen');
+ box.querySelectorAll('[data-est="close"]').forEach(b=>b.setAttribute('data-overlay-close',''));window.ittrOverlayOpened?.(box,{close:closeEditor})}
+function closeEditor(){window.ittrOverlayClosed?.($('#estEditorBox'));$('#estEditor')?.classList.add('hidden');document.body.classList.remove('modalOpen');S.cur=null;loadList()}
 function startNew(){
  S.cur=null;
  openEditor(`<div class="estHead"><div><h2>New estimate</h2><div class="muted">Find the truck or customer, or type a customer name.</div></div><div class="estHeadActions"><button class="secondary" data-est="close">Close</button></div></div>
@@ -231,7 +235,7 @@ async function onClick(ev){
   if(act==='tire-fees')return window.openTireFeeDialog({kind:'estimate',id,lines:S.cur.lines,onDone:reload});
  }catch(e){b.disabled=false;toast(e.message,'error')}
 }
-async function goInvoice(id){$('#estEditor')?.classList.add('hidden');document.body.classList.remove('modalOpen');await window.showView('invoices');await window.loadInvoices?.();window.openInvoiceWorkspace?.(Number(id))}
+async function goInvoice(id){window.ittrOverlayClosed?.($('#estEditorBox'));$('#estEditor')?.classList.add('hidden');document.body.classList.remove('modalOpen');await window.showView('invoices');await window.loadInvoices?.();window.openInvoiceWorkspace?.(Number(id))}
 function onChange(ev){
  const t=ev.target;
  if(t.dataset.h)return saveHeader(t);
@@ -250,7 +254,7 @@ function onInput(ev){
  if(t.dataset.estInput==='part'){clearTimeout(S.partTimer);S.partTimer=setTimeout(()=>partSearch(t),220)}
 }
 function onKey(ev){
- if(ev.key==='Escape'&&!$('#estEditor')?.classList.contains('hidden')){ev.preventDefault();closeEditor()}
+ if(ev.key==='Escape'&&!window.ittrOverlayOpened&&!$('#estEditor')?.classList.contains('hidden')){ev.preventDefault();closeEditor()}
  if(ev.key==='Enter'&&ev.target.id==='estNewJob'){ev.preventDefault();S.scope.host.querySelector('[data-est="add-job"]')?.click()}
 }
 // v24.76.0: mount() already loads this page, so showView() skips the first afterShow() (no double request).
@@ -258,8 +262,10 @@ export const loadsOnMount=true;
 export async function mount(scope){
  S={...S,scope,cur:null};
  scope.on(scope.host,'click',onClick);scope.on(scope.host,'change',onChange);scope.on(scope.host,'input',onInput);scope.on(document,'keydown',onKey);
- scope.on(scope.host,'ittr:module-refresh',()=>loadList(),{passive:true});
  window.ittrOpenEstimate=id=>openEstimate(id); // v24.76.0: opened directly from a work order's Billing tab
+ // v24.76.1: another device or a customer changed estimates: reload the list, and the open estimate unless a field in it
+ // is being edited (each field saves when it is left, so nothing unsaved is lost by reloading).
+ scope.on(scope.host,'ittr:module-refresh',()=>{loadList();const a=document.activeElement;if(S.cur&&!(a&&$('#estEditor')?.contains(a)&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)))reload()},{passive:true});
  await loadList();
 }
 export async function afterShow(){await loadList()}
