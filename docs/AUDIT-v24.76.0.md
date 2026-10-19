@@ -9,7 +9,7 @@
 - No real email, SMS, payment or AI provider was called.
 - The audit-only instrumentation in draft PR #79 was **not** merged or copied.
 
-**New suite:** `audit_v24_76_test.mjs`, 46 scenario results (A1–A21, V2–V7), now part of `npm run check`. The reproduction table below covers A1–A10; A11–A21 and V2–V7 cover the investigation items, the later improvements and the verification areas.
+**New suite:** `audit_v24_76_test.mjs`, 47 scenario results (A1–A22, V2–V7), now part of `npm run check`. The reproduction table below covers A1–A10; A11–A21 and V2–V7 cover the investigation items, the later improvements and the verification areas.
 
 ## Reproduction evidence
 
@@ -67,6 +67,20 @@ The final suite was run against the untouched baseline, and against the baseline
 - **Invoice header conflicts (A16):** see "Remaining risks" (closed).
 
 **Not done:** timing measurements on real shop tablets (needs the devices).
+
+## Second review of this release
+
+Re-reading the whole change set found five defects in this release's own new code, each confirmed by a test that fails without the fix:
+
+| # | Defect | Test that fails without the fix | Fix |
+|---|---|---|---|
+| R1 | **Reloading the invoice editor could save old values back.** Replacing the editor while a header field had focus (the dialog layer focuses one on open) fired that field's blur, which autosaved the values being replaced together with the newly loaded fingerprint. The server accepted them, silently reverting the other device's change. This affected the new automatic refresh and "Load the newer version". | A4 ("reloading the editor never saves the old values back": got "Original note"); A16 (got "Local noteRemote header") | The editor blurs the focused field with autosave suspended before it is replaced. |
+| R2 | **The save before adding or removing a line, and the Save buttons, sent no fingerprint**, so they could overwrite a header changed on another device even when this person never touched the header. | A16 (the other device's note is kept) | All four header saves go through one helper that sends the fingerprint and asks on conflict. |
+| R3 | **Same account on two devices.** A change was treated as "mine" when it was made under this username, so an owner's desktop ignored a change from their phone: no refresh and no note. | A22 | A change counts as "mine" only when this tab sent a change in the last 4 s. |
+| R4 | **Operations search did not hide tools on screen.** The layout rule overrode the `hidden` attribute; the test checked only the attribute. | A18 (now checks what is visible) | `[hidden]` wins for tools and groups. Tools hidden by manager permissions are not counted. |
+| R5 | **A favorite ran its tool twice.** The copied button kept its own click handler and also forwarded the click. | A18 ("a favorite runs its tool once": 2 calls) | The copy forwards only. |
+
+Also fixed: a job marked done without a timer no longer says "Not started" (A19). The work-order Billing estimate link is now exercised in the browser (A17).
 
 ## Coverage matrix (what the evidence supports)
 

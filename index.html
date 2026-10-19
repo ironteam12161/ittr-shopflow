@@ -1630,7 +1630,11 @@ let ittrSessionGeneration=0;
 const ittrSessionRequests=new Set();
 function ittrSessionCurrent(g,token){return g===ittrSessionGeneration&&token===cloudToken}
 function ittrSessionCancelled(){return Object.assign(new Error("The account session changed."),{name:"AbortError",code:"SESSION_CHANGED"})}
+// v24.76.0: when this tab last sent a change. A change announced under this account's name counts as "mine" only if
+// this tab wrote just before; the same account on another device (an owner's phone and desktop) is another device.
+let ittrOwnWriteAt=0;function ittrNoteOwnWrite(options){if(!/^(GET|HEAD)$/i.test(String(options?.method||"GET")))ittrOwnWriteAt=Date.now()}
 async function ittrSessionFetch(url,options={}){
+ if(typeof ittrNoteOwnWrite==="function")ittrNoteOwnWrite(options);
  const generation=ittrSessionGeneration,token=cloudToken,controller=new AbortController();
  // Keep caller cancellation connected after headers, including a streaming response body.
  const signal=options.signal?(typeof AbortSignal.any==="function"?AbortSignal.any([options.signal,controller.signal]):options.signal):controller.signal;
@@ -1688,6 +1692,7 @@ async function previewInventoryRepair(){const box=document.getElementById('inven
 async function applyInventoryRepair(){if(!confirm('Apply these stock corrections? Every change is written to the part history.'))return;try{const d=await apiJSON('/api/inventory/repair/apply',{method:'POST',body:'{}'});alert(`Done. ${d.returned} return(s) to stock, ${d.released} reservation(s) released.`);previewInventoryRepair()}catch(e){alert(e.message||'Repair failed.')}}
 async function resetInventoryToZero(){const c=prompt('This sets the on-hand quantity of EVERY part to 0.\nUse it right before a full physical count.\n\nType RESET to confirm:');if(c==null)return;if(String(c).trim().toUpperCase()!=='RESET')return alert('Not reset — you did not type RESET.');try{const d=await apiJSON('/api/parts/inventory/reset-to-zero',{method:'POST',body:JSON.stringify({confirm:'RESET'})});alert(`Done. ${d.partsReset} part(s) set to 0. Start your count now.`);try{if(typeof refreshInventoryCount==='function')await refreshInventoryCount()}catch(_){}try{if(typeof render==='function')render()}catch(_){}}catch(e){alert(e.message||'Reset failed.')}}
 async function apiJSON(url,options={}){
+ if(typeof ittrNoteOwnWrite==="function")ittrNoteOwnWrite(options);
  const generation=ittrSessionGeneration,token=cloudToken,controller=new AbortController();
  const cancel=()=>controller.abort();options.signal?.addEventListener("abort",cancel,{once:true});if(options.signal?.aborted)cancel();
  ittrSessionRequests.add(controller);
@@ -2362,8 +2367,8 @@ let ittrInvoiceInputAt=0;document.addEventListener("input",e=>{if(e.target?.clos
 function ittrDataChanged(msg){
  if(!["admin","manager"].includes(session?.role))return;
  ittrDataChangedPending.add(String(msg.domain||""));clearTimeout(ittrDataChangedTimer);
- // Who made the change: a change only this account made (its own autosave) never reloads its own open editor.
- const by=Array.isArray(msg.by)?msg.by.map(String):[];if(!by.length||by.some(u=>u!==session?.username))ittrDataChangedOthers.add(String(msg.domain||""));
+ // Who made the change: a change only this tab made (its own autosave) never reloads its own open editor.
+ const by=Array.isArray(msg.by)?msg.by.map(String):[],mine=by.length&&by.every(u=>u===session?.username)&&Date.now()-ittrOwnWriteAt<4000;if(!mine)ittrDataChangedOthers.add(String(msg.domain||""));
  ittrDataChangedTimer=setTimeout(()=>{
   const domains=[...ittrDataChangedPending];ittrDataChangedPending.clear();
   const fromOthers=new Set(ittrDataChangedOthers);ittrDataChangedOthers.clear();
@@ -6334,7 +6339,7 @@ function taskTimerRow(w,t,i){
      <b>${t.startedAt?"Latest Start":"Started"}:</b> ${fmtDateTime(t.startedAt)}
      &nbsp; | &nbsp; <b>${t.stoppedAt?"Latest Stop":"Stopped"}:</b> ${fmtDateTime(t.stoppedAt)}
      &nbsp; | &nbsp; <b>Total Labor:</b> ${fmtDuration(taskElapsed(t))}
-   </div>`:`<div class="timerinfo muted">${esc(tr("Not started"))}</div>`}
+   </div>`:(completed||t.done?"":`<div class="timerinfo muted">${esc(tr("Not started"))}</div>`)}
    <div data-task-timeline-wo="${esc(String(w.id))}" data-task-timeline-index="${i}" data-task-timeline-uid="${esc(String(t.uid||""))}"></div>
    ${isMechanic&&t.uid?`<div class="taskReport"><button type="button" class="ds-btn ds-btn-secondary ds-btn-sm" data-act="reportProblemOnTask" data-args="${attrArgs(w.id,String(t.uid))}">${typeof ittrIcon==="function"?ittrIcon("camera","sm"):""}<span>${esc(tr("Report a problem on this job"))}</span></button></div>`:""}
    ${t.findingDecision==="Do Not Proceed"?`<div class="outcomeNoteBox"><b>DECLINED — DO NOT PROCEED</b><div class="muted">Decision changed by Admin${t.approvalChangedAt?` · ${fmtDateTime(t.approvalChangedAt)}`:""}</div></div>`:""}
@@ -6956,12 +6961,17 @@ async function addInvoiceService(){const input=document.getElementById('invoiceN
 async function addInvoiceLine(type='labor',jobName='Service',parentLineId=null,override={}){const i=activeInvoice?.invoice;if(!i)return;if(!(await persistInvoiceDraftBeforeStructureChange('Preserving your invoice')))return;const typ=['labor','part','sublet','fee','other'].includes(type)?type:'labor';const defaults={labor:{description:'Labor',quantity:1,unitPrice:invoiceDefaultLaborRate(),taxable:false},part:{description:'',quantity:1,unitPrice:0,taxable:true},sublet:{description:'Sublet',quantity:1,unitPrice:0,taxable:false},fee:{description:'Fee',quantity:1,unitPrice:0,taxable:false},other:{description:'',quantity:1,unitPrice:0,taxable:false}}[typ],vals={...defaults,...override};try{const r=await ittrSessionFetch(`/api/invoices/${i.id}/lines`,{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({lineType:typ,description:vals.description,quantity:vals.quantity,unitPrice:vals.unitPrice,taxable:vals.taxable,jobName:jobName||'Service',parentLineId,discountType:'fixed',discountValue:0})}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to add line');await openInvoice(i.id);setTimeout(()=>{const row=document.querySelector(`[data-invoice-line="${d.id}"]`);row?.querySelector('.ilDesc')?.focus();row?.scrollIntoView({behavior:'smooth',block:'center'})},40)}catch(e){showToast?.(e.message,'error')||alert(e.message)}}
 // ITTR_INVENTORY_UI_V1
 function invoiceLinePayload(id){const el=document.querySelector(`[data-invoice-line="${id}"]`);if(!el)return null;const old=activeInvoice.lines.find(x=>String(x.id)===String(id))||{},lineType=el.querySelector('.ilType')?.value||old.line_type||'other',parentLineId=Number(el.querySelector('.ilParent')?.value||0)||null,inventoryPartId=lineType==='part'?(Number(el.dataset.inventoryPartId||old.inventory_part_id||0)||null):null;return {lineType,description:el.querySelector('.ilDesc')?.value||'',partNumber:lineType==='part'?(el.querySelector('.ilPart')?.value||''):'',quantity:Number(el.querySelector('.ilQty')?.value||0),unitPrice:Number(el.querySelector('.ilPrice')?.value||0),unitCost:Number(el.querySelector('.ilCost')?.value||old.unit_cost||0),taxable:Boolean(el.querySelector('.ilTax')?.checked),discountType:el.querySelector('.ilDiscountType')?.value||'fixed',discountValue:Number(el.querySelector('.ilDiscountValue')?.value||0),jobName:String(el.querySelector('.ilJob')?.value||old.job_name||'Service').trim()||'Service',jobUid:String(old.job_uid||''),parentLineId,inventoryPartId,unit:el.querySelector('.ilUnit')?.value||undefined,galPrice:el.querySelector('.ilUnit')&&el.dataset.galPrice?Number(el.dataset.galPrice):undefined,galCost:el.querySelector('.ilUnit')&&el.dataset.galCost?Number(el.dataset.galCost):undefined}}
+let invoiceEditorReplacing=false;
 function renderInvoiceEditor(){
  const {invoice:i,lines,payments}=activeInvoice,locked=['paid','void'].includes(i.status),labor=invoiceCategorySummary(lines,'labor'),parts=invoiceCategorySummary(lines,'part'),charges=invoiceCategorySummary(lines,'other'),additionalFees=Number(i.shop_supplies||0)+Number(i.environmental_fee||0);
  const terms=['Due on Receipt','Net 15','Net 30','Net 60'];
  const currentTerms=terms.includes(i.terms)?i.terms:'Due on Receipt';
  const discountType=String(i.discount_type||'fixed');
  const discountValue=Number(i.discount_value??i.discount??0);
+ // v24.76.0: replacing the editor while a header field has focus fires that field's blur, which autosaved the OLD
+ // field values with the newly loaded fingerprint (silently reverting a change made on another device). Blur it first
+ // with autosave suspended; the values on screen are being replaced by the loaded invoice anyway.
+ {const ed=document.getElementById('invoiceEditor'),a=document.activeElement;if(ed&&a&&ed.contains(a)){invoiceEditorReplacing=true;try{a.blur()}finally{invoiceEditorReplacing=false}}}
  const billingAddress=[i.billing_address||i.customer_billing_address||i.customer_address,i.billing_city||i.customer_billing_city||i.customer_city,i.billing_state||i.customer_billing_state||i.customer_state,i.billing_postal_code||i.customer_billing_postal_code||i.customer_postal_code].filter(Boolean).join(', ');
  document.getElementById('invoiceEditor').innerHTML=`
  <div class="invoicePrintOnly invoicePrintHeader">
@@ -7050,32 +7060,39 @@ function scheduleInvoiceHeaderAutosave(){
   invoiceHeaderAutosaveTimer=setTimeout(()=>flushInvoiceHeaderAutosave(),700);
 }
 let invoiceHeaderConflictOpen=false;
+// v24.76.0: every header save (autosave, the save before adding/removing a line, Save buttons) carries the header
+// fingerprint it started from. If another device changed the header since, the server refuses (409) and the person
+// chooses: keep their changes (saved over the other device's) or load the newer version. Returns {ok,d} or
+// {ok:false,stopped:true} when nothing was saved (newer version loaded, question dismissed, or already being asked).
+async function ittrPutInvoiceHeader(i){
+  for(let attempt=0;attempt<2;attempt++){
+    const print=attempt?null:activeInvoice?.headerPrint;
+    const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({...invoiceHeaderPayload(),...(print?{expectedHeaderPrint:print}:{})})});
+    const d=await r.json().catch(()=>({}));
+    if(r.status===409&&d.code==='INVOICE_HEADER_CHANGED'){
+      // One question at a time: the question takes focus, and that blur would otherwise save (and ask) again.
+      if(invoiceHeaderConflictOpen)return {ok:false,stopped:true,d};
+      invoiceSetSaveState('dirty','Changed on another device');
+      invoiceHeaderConflictOpen=true;let c;try{c=await ittrChoose(currentLanguage==="uk"?"Цей рахунок змінено на іншому пристрої.":"This invoice was changed on another device.",[["keep",currentLanguage==="uk"?"Зберегти мої зміни поверх":"Keep my changes (save over theirs)"],["reload",currentLanguage==="uk"?"Завантажити новішу версію":"Load the newer version"]],"header")}finally{invoiceHeaderConflictOpen=false}
+      if(c==="keep")continue;
+      if(c==="reload")await openInvoice(i.id,document.body.classList.contains("invoiceWorkspaceMode"));
+      return {ok:false,stopped:true,d};
+    }
+    if(r.ok&&d?.headerPrint&&activeInvoice?.invoice?.id===i.id)activeInvoice.headerPrint=d.headerPrint;
+    return {ok:r.ok,d};
+  }
+}
 async function flushInvoiceHeaderAutosave(){
   clearTimeout(invoiceHeaderAutosaveTimer);invoiceHeaderAutosaveTimer=null;
   const i=activeInvoice?.invoice;
-  if(!i||['paid','void'].includes(i.status)||invoiceHeaderAutosaveBusy)return true;
-  // One conflict question at a time: the question takes focus, and that blur would otherwise autosave (and ask) again.
+  if(!i||['paid','void'].includes(i.status)||invoiceHeaderAutosaveBusy||invoiceEditorReplacing)return true;
   if(invoiceHeaderConflictOpen)return false;
   invoiceHeaderAutosaveBusy=true;
   try{
     invoiceSetSaveState('saving','Saving…');
-    // v24.76.0: the autosave carries the header fingerprint it started from; if another device changed the header in
-    // the meantime the server refuses, and the person chooses: keep their changes (saved over the other) or load the newer.
-    const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{
-      method:'PUT',
-      headers:authHeaders({'Content-Type':'application/json'}),
-      body:JSON.stringify({...invoiceHeaderPayload(),...(activeInvoice?.headerPrint?{expectedHeaderPrint:activeInvoice.headerPrint}:{})})
-    });
-    const d=await r.json().catch(()=>({}));
-    if(r.status===409&&d.code==='INVOICE_HEADER_CHANGED'){
-      invoiceHeaderAutosaveBusy=false;invoiceSetSaveState('dirty','Changed on another device');
-      invoiceHeaderConflictOpen=true;let c;try{c=await ittrChoose(currentLanguage==="uk"?"Цей рахунок змінено на іншому пристрої.":"This invoice was changed on another device.",[["keep",currentLanguage==="uk"?"Зберегти мої зміни поверх":"Keep my changes (save over theirs)"],["reload",currentLanguage==="uk"?"Завантажити новішу версію":"Load the newer version"]],"header")}finally{invoiceHeaderConflictOpen=false}
-      if(c==="keep"){if(activeInvoice)delete activeInvoice.headerPrint;return flushInvoiceHeaderAutosave()}
-      if(c==="reload"){await openInvoice(i.id,document.body.classList.contains("invoiceWorkspaceMode"));return false}
-      return false;
-    }
-    if(!r.ok)throw new Error(d.error||'Autosave failed');
-    if(d.headerPrint&&activeInvoice)activeInvoice.headerPrint=d.headerPrint;
+    const {ok,d,stopped}=await ittrPutInvoiceHeader(i);
+    if(stopped)return false;
+    if(!ok)throw new Error(d.error||'Autosave failed');
     if(activeInvoice?.invoice)Object.assign(activeInvoice.invoice,invoiceHeaderPayload());
     invoiceSetSaveState('saved','All changes saved');
     return true;
@@ -7094,8 +7111,8 @@ async function persistInvoiceDraftBeforeStructureChange(label='Saving draft'){
  invoiceDraftSaveBusy=true;invoiceSetSaveState('saving',label+'…');
  try{
    await saveAllInvoiceLines();
-   const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(invoiceHeaderPayload())}),d=await r.json();if(r.ok&&d?.headerPrint&&activeInvoice)activeInvoice.headerPrint=d.headerPrint;
-   if(!r.ok)throw new Error(d.error||'Draft save failed');
+   const {ok,d,stopped}=await ittrPutInvoiceHeader(i);if(stopped)return false;
+   if(!ok)throw new Error(d.error||'Draft save failed');
    invoiceSetSaveState('saved','Draft saved');
    return true;
  }catch(e){invoiceSetSaveState('error','Draft not saved');showToast?.(e.message||'Unable to preserve invoice changes.','error',7000);return false}
@@ -7162,8 +7179,8 @@ async function checkInvoiceNow(id){
   }catch(err){b.disabled=false;if(a==='ai')b.textContent='Suggest wording';showToast(err.message,'error')}});
 }
 window.checkInvoiceNow=checkInvoiceNow;
-async function saveInvoiceHeader(){const i=activeInvoice.invoice;try{invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(invoiceHeaderPayload())}),d=await r.json();if(r.ok&&d?.headerPrint&&activeInvoice)activeInvoice.headerPrint=d.headerPrint;if(!r.ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);await loadInvoices();invoiceSetSaveState('saved','All changes saved');showToast?.('Invoice saved.','success',2200);return true}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message,'error',7000)||alert(e.message);return false}}
-async function saveInvoiceLine(id){try{const i=activeInvoice.invoice;invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(invoiceHeaderPayload())}),d=await r.json();if(r.ok&&d?.headerPrint&&activeInvoice)activeInvoice.headerPrint=d.headerPrint;if(!r.ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);invoiceSetSaveState('saved','All changes saved')}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message||'Save failed','error',7000)}}
+async function saveInvoiceHeader(){const i=activeInvoice.invoice;try{invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const {ok,d,stopped}=await ittrPutInvoiceHeader(i);if(stopped)return false;if(!ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);await loadInvoices();invoiceSetSaveState('saved','All changes saved');showToast?.('Invoice saved.','success',2200);return true}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message,'error',7000)||alert(e.message);return false}}
+async function saveInvoiceLine(id){try{const i=activeInvoice.invoice;invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const {ok,d,stopped}=await ittrPutInvoiceHeader(i);if(stopped)return;if(!ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);invoiceSetSaveState('saved','All changes saved')}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message||'Save failed','error',7000)}}
 async function deleteInvoiceLine(lineId){if(!confirm('Remove this line? If this is a labor operation, its attached parts and charges will also be removed.'))return;if(!(await persistInvoiceDraftBeforeStructureChange('Preserving your invoice')))return;const i=activeInvoice.invoice,r=await ittrSessionFetch(`/api/invoices/${i.id}/lines/${lineId}`,{method:'DELETE',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to remove line');await openInvoice(i.id)}
 async function finalizeInvoice(id){if(!confirm('Finalize this invoice and mark it sent/open? Review prices, tax and customer PO first.'))return;if(!(await saveInvoiceHeader()))return;const r=await ittrSessionFetch(`/api/invoices/${id}/finalize`,{method:'POST',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to finalize');if(Array.isArray(d.warnings)&&d.warnings.length)showToast?.('Inventory warning: '+d.warnings.join(' · '),'warning',12000);await openInvoice(id);await loadInvoices()}
 // v24.41.2 payment dialog: one form with the payment type and its transaction ID (check #, Zelle confirmation, ACH trace…).
