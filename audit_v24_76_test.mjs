@@ -28,7 +28,16 @@ if (!browser) {
   reportSuite(NAME, 'SKIPPED', 'Chromium not available'); console.log(`SKIP ${NAME}: Chromium not available`); process.exit(0);
 }
 const OWNER = { username: 'owner', password: 'Shop-Boss-Pass-2026' };
-const srv = await startTestServer({ prefix: 'ittr_a76', admin: OWNER, env: { STRIPE_WEBHOOK_SECRET: 'whsec_test_ittr' } });
+// A stand-in for FMCSA's QCMobile service (local, no real FMCSA call): USDOT 1111111 answers too slowly the first time,
+// USDOT 2222222 always answers too slowly.
+const fmcsaHits = {};
+const fmcsaMock = (await import('node:http')).createServer((req, res) => {
+  const dot = (req.url.match(/carriers\/(\d+)/) || [])[1] || ''; fmcsaHits[dot] = (fmcsaHits[dot] || 0) + 1;
+  const slow = dot === '2222222' || (dot === '1111111' && fmcsaHits[dot] === 1);
+  setTimeout(() => { if (res.writableEnded || res.destroyed) return; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ content: { carrier: { dotNumber: Number(dot), legalName: `CARRIER ${dot} LLC`, phyCity: 'Dallas', phyState: 'TX', allowedToOperate: 'Y' } } })); }, slow ? 2000 : 20);
+});
+await new Promise(r => fmcsaMock.listen(0, '127.0.0.1', r));
+const srv = await startTestServer({ prefix: 'ittr_a76', admin: OWNER, env: { STRIPE_WEBHOOK_SECRET: 'whsec_test_ittr', FMCSA_WEBKEY: 'test-key', FMCSA_API_BASE_URL: `http://127.0.0.1:${fmcsaMock.address().port}/qc/services`, FMCSA_TIMEOUT_MS: '700' } });
 const R = srv.request, db = srv.db;
 const failures = [];
 // ITTR_AUDIT_ONLY=A16,A19 runs only those scenarios (local debugging); the full check always runs all of them.
@@ -516,6 +525,98 @@ try {
     eq(limited, 0, '110 signed-in checks in a row are not refused');
     ok(await srv.login('mech1', KPASS), 'a mechanic can still sign in from the same address');
   });
+  await scenario('A34 two devices: the mechanic starts and completes a job on the phone; the office sees it live and invoices it', async () => {
+    const st = await R('/api/state', { token: owner }), sf = st.shopflow.payload;
+    sf.workorders = [...sf.workorders.filter(w => w.id !== 9701), { id: 9701, unit: 'CHAIN-1', customer: 'Private Audit Fleet LLC', customerId: cust.id, status: 'In Progress', mechanic: 'mech1', helpers: [], unitType: 'customer', truckHere: true, tasks: [{ uid: 'c1', t: 'Replace air filter', done: false, parts: [] }] }];
+    await R('/api/state/shopflow', { method: 'PUT', token: owner, body: { payload: sf, expectedVersion: st.shopflow.version } });
+    const office = await newPage(1280), phone = await newPage(390);
+    await signIn(office.page, OWNER.username, OWNER.password); await office.page.evaluate(() => showView('board')); await sleep(800);
+    await signIn(phone.page, 'mech1', KPASS);
+    const task = page => page.evaluate(() => state.workorders.find(w => w.id === 9701)?.tasks?.[0] || null);
+    await phone.page.evaluate(() => apiJSON('/api/work-orders/9701/tasks/by-uid/c1/action', { method: 'POST', body: { action: 'start' } }));
+    ok(await until(async () => !!(await task(office.page))?.startedAt, 8000), 'the office sees the job start without a reload');
+    await sleep(1100);
+    await phone.page.evaluate(() => apiJSON('/api/work-orders/9701/tasks/by-uid/c1/action', { method: 'POST', body: { action: 'complete' } }));
+    ok(await until(async () => { const t = await task(office.page); return t && (t.done || t.stoppedAt); }, 8000), 'the office sees the job completed without a reload');
+    // The mechanic completes the work order on the phone (the app's own save).
+    await phone.page.evaluate(() => setStatus(9701, 'Completed'));
+    ok(await until(async () => (await R('/api/state', { token: owner })).shopflow.payload.workorders.find(w => w.id === 9701)?.status === 'Completed', 8000), 'the phone\'s completion reaches the server');
+    ok(await until(() => office.page.evaluate(() => state.workorders.find(w => w.id === 9701)?.status === 'Completed'), 8000), 'the office sees the work order completed');
+    const inv = await office.page.evaluate(() => apiJSON('/api/invoices/from-work-order/9701', { method: 'POST', body: {} }));
+    const id = inv.id || inv.invoiceId || inv.invoice?.id; ok(id, `an invoice was made from the work order (${JSON.stringify(inv).slice(0, 120)})`);
+    const b = await R(`/api/invoices/${id}`, { token: owner });
+    ok(b.lines.some(l => /air filter/i.test(`${l.description} ${l.job_name}`)), 'the invoice carries the completed job');
+    eq((await R('/api/work-orders/9701/billing-links', { token: owner })).invoices.some(i => Number(i.id) === Number(id)), true, 'the work order Billing tab links to it');
+    eq([...office.page.errs, ...phone.page.errs].join(' | '), '', 'no page errors on either device');
+    await office.ctx.close(); await phone.ctx.close();
+  });
+  await scenario('A35 two devices: a finding from the phone is approved in the office and appears on the phone as a job', async () => {
+    const st = await R('/api/state', { token: owner }), sf = st.shopflow.payload;
+    sf.workorders = [...sf.workorders.filter(w => w.id !== 9801), { id: 9801, unit: 'FIND-1', customer: 'Private Audit Fleet LLC', status: 'In Progress', mechanic: 'mech1', helpers: [], unitType: 'customer', truckHere: true, tasks: [{ uid: 'g1', t: 'Inspection', done: false, parts: [] }] }];
+    await R('/api/state/shopflow', { method: 'PUT', token: owner, body: { payload: sf, expectedVersion: st.shopflow.version } });
+    const office = await newPage(1280), phone = await newPage(390);
+    await signIn(office.page, OWNER.username, OWNER.password); await office.page.evaluate(() => showView('approvals')); await sleep(800);
+    await signIn(phone.page, 'mech1', KPASS);
+    // The mechanic reports a finding the way the app saves it.
+    await phone.page.evaluate(() => { state.issues = state.issues || []; state.issues.push({ id: 98011, wo: 9801, severity: 'Needs Attention', description: 'Cracked mud flap bracket', approval: 'Waiting for Customer', taskUid: 'g1', taskSnapshot: 'Inspection' }); save(); });
+    ok(await until(() => office.page.evaluate(() => (state.issues || []).some(i => String(i.id) === '98011')), 8000), 'the office sees the new finding without a reload');
+    const d = await office.page.evaluate(() => apiJSON('/api/findings/98011/decision', { method: 'POST', body: { value: 'Proceed' } }));
+    ok(d && d.ok !== false, 'the office approves it');
+    ok(await until(() => phone.page.evaluate(() => (state.workorders.find(w => w.id === 9801)?.tasks || []).some(t => String(t.findingId ?? '') === '98011')), 8000), 'the phone shows the approved job without a reload');
+    const uid = await phone.page.evaluate(() => state.workorders.find(w => w.id === 9801).tasks.find(t => String(t.findingId ?? '') === '98011').uid);
+    await phone.page.evaluate(u => apiJSON(`/api/work-orders/9801/tasks/by-uid/${encodeURIComponent(u)}/action`, { method: 'POST', body: { action: 'start' } }), uid);
+    ok(await until(() => office.page.evaluate(u => !!state.workorders.find(w => w.id === 9801)?.tasks.find(t => t.uid === u)?.startedAt, uid), 8000), 'the office sees the mechanic start it');
+    eq([...office.page.errs, ...phone.page.errs].join(' | '), '', 'no page errors on either device');
+    await office.ctx.close(); await phone.ctx.close();
+  });
+  await scenario('A36 a device that loses the network catches up when it comes back', async () => {
+    const { ctx, page } = await newPage(1280); await signIn(page, 'mgrfull', MPASS);
+    await page.evaluate(() => showView('parts')); await sleep(1200);
+    const before = await qty();
+    await ctx.setOffline(true); await sleep(1500);
+    ok(await page.evaluate(() => !navigator.onLine), 'the page knows it is offline');
+    await R(`/api/parts/${part.id}/transaction`, { method: 'POST', token: owner, body: { type: 'adjust_add', qty: 7, note: 'while offline' } });
+    const target = await qty(); eq(target, before + 7, 'stock changed while the device was offline');
+    await ctx.setOffline(false);
+    ok(await until(() => page.evaluate(t => document.getElementById('parts')?.textContent.includes(String(t)), target), 12000), `the Parts page shows ${target} after coming back online`);
+    eq(page.errs.join(' | '), '', 'no page errors');
+    await ctx.close();
+  });
+  await scenario('A37 phone (touch, mobile viewport): a mechanic taps Start and Complete on a job', async () => {
+    const st = await R('/api/state', { token: owner }), sf = st.shopflow.payload;
+    sf.workorders = [...sf.workorders.filter(w => w.id !== 9901), { id: 9901, unit: 'TAP-1', customer: 'Private Audit Fleet LLC', status: 'In Progress', mechanic: 'mech1', helpers: [], unitType: 'customer', truckHere: true, tasks: [{ uid: 't1', t: 'Grease chassis', done: false, parts: [] }] }];
+    await R('/api/state/shopflow', { method: 'PUT', token: owner, body: { payload: sf, expectedVersion: st.shopflow.version } });
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3, serviceWorkers: 'block' });
+    const page = await ctx.newPage(); page.setDefaultTimeout(8000); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept().catch(() => {}));
+    await signIn(page, 'mech1', KPASS);
+    await page.evaluate(() => openDetail(9901)); await page.waitForSelector('#detailModal.open');
+    await page.locator('#detailBody button', { hasText: 'Start Task' }).first().tap();
+    ok(await until(async () => !!(await R('/api/state', { token: owner })).shopflow.payload.workorders.find(w => w.id === 9901)?.tasks[0]?.startedAt, 8000), 'the tap started the job on the server');
+    await sleep(1200);
+    const done = page.locator('#detailBody button', { hasText: 'Complete Task' }).first(); await done.waitFor({ timeout: 8000 }); await done.tap();
+    // Completing may ask for the outcome; answer "completed" when it does.
+    await sleep(600); const outcome = page.locator('button', { hasText: /^(Completed|Job completed|Yes, completed)/i }).first(); if (await outcome.count()) await outcome.tap().catch(() => {});
+    ok(await until(async () => { const t = (await R('/api/state', { token: owner })).shopflow.payload.workorders.find(w => w.id === 9901)?.tasks[0]; return t && (t.stoppedAt || t.done); }, 8000), 'the tap completed the job on the server');
+    eq(await page.evaluate(() => document.documentElement.scrollWidth), 390, 'no sideways scrolling on the phone');
+    eq(page.errs.join(' | '), '', 'no page errors');
+    await ctx.close();
+  });
+  await scenario('A38 FMCSA lookup: a slow first answer is retried; a service that never answers gives a clear message', async () => {
+    const t0 = Date.now(), r1 = await R('/api/fmcsa/carriers/1111111', { token: owner, allowError: true });
+    eq(r1.status, 200, `the retry found the carrier (${r1.error || ''})`); eq(r1.item?.legalName, 'CARRIER 1111111 LLC', 'with its name'); eq(fmcsaHits['1111111'], 2, 'one retry after the slow answer');
+    const r2 = await R('/api/fmcsa/carriers/2222222', { token: owner, allowError: true });
+    eq(r2.status, 504, 'a service that never answers is a timeout'); ok(/did not answer/.test(r2.error || ''), `with a clear message (${r2.error})`); eq(fmcsaHits['2222222'], 2, 'tried twice, then stopped');
+    ok(Date.now() - t0 < 6000, 'the whole lookup stays bounded');
+    // In the browser the card says it may take a while, then shows the match.
+    const { ctx, page } = await newPage(1280); await signIn(page, 'mgrfull', MPASS);
+    await page.evaluate(() => showView('customers')); await sleep(600);
+    await page.evaluate(() => openCustomerEditor()); await page.waitForSelector('#ceDot', { state: 'visible' });
+    await page.fill('#ceDot', '1111111'); delete fmcsaHits['1111111'];
+    await page.evaluate(() => { fmcsaLookupDot = ''; lookupCustomerFmcsa(true); });
+    ok(await until(() => page.evaluate(() => /CARRIER 1111111 LLC/.test(document.getElementById('fmcsaLookupCard')?.textContent || '')), 6000), 'the lookup card shows the carrier');
+    eq(page.errs.join(' | '), '', 'no page errors');
+    await ctx.close();
+  });
   await scenario('A17 work-order Billing tab links to its estimate and invoice', async () => {
     const st = await R('/api/state', { token: owner }), sf = st.shopflow.payload;
     sf.workorders = [...sf.workorders.filter(w => w.id !== 9501), { id: 9501, unit: 'BILL-1', customer: 'Private Audit Fleet LLC', status: 'Completed', mechanic: 'mech1', helpers: [], unitType: 'customer', truckHere: true, tasks: [] }];
@@ -732,7 +833,7 @@ try {
     eq(hits.join(','), '', 'no API keys or private keys in files served to browsers');
   });
 } catch (e) { failures.push(`setup: ${e.message.split('\n')[0]}`); console.error(e); }
-finally { await browser.close().catch(() => {}); await srv.cleanup(); }
+finally { await browser.close().catch(() => {}); fmcsaMock.close(); await srv.cleanup(); }
 
 if (failures.length) { reportSuite(NAME, 'FAILED', failures.join('; ')); console.error(`FAIL ${NAME}: ${failures.length} scenario(s)`); process.exit(1); }
 reportSuite(NAME, 'PASSED'); console.log(`PASS ${NAME}`);
