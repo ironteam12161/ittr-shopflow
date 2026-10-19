@@ -1638,6 +1638,7 @@ async function ittrSessionFetch(url,options={}){
 /* v24.67.0: pending saves live in public/sync-queue.js (per account, as change sets, removed only once saved). */
 const ITTR_LIVE={users:()=>USERS,shopflow:()=>state,pro:()=>PRO};
 function ittrSetLive(key,obj){
+ if(window.__ittrSigningOut)return;
  if(key==="shopflow"){state=obj&&typeof obj==="object"?obj:{workorders:[],issues:[]};try{window.reapplyInspectionEdits?.()}catch(_){}try{localStorage.setItem("ittr_shopflow_v2",JSON.stringify(state))}catch(_){}}
  else if(key==="users"){USERS=obj||{};try{localStorage.setItem("ittr_users_v1",JSON.stringify(USERS))}catch(_){}}
  else if(key==="pro"){PRO=Object.assign({vehicles:[],maintenance:[],audit:[],notifications:[],delays:[]},obj||{});for(const k of ['vehicles','maintenance','audit','notifications','delays'])if(!Array.isArray(PRO[k]))PRO[k]=[];try{localStorage.setItem(PRO_KEY,JSON.stringify(PRO))}catch(_){}}
@@ -2342,7 +2343,7 @@ document.getElementById("loginForm").onsubmit=async e=>{
     document.getElementById("loginPass").value="";
     if(d.recoveryLeft!=null)setTimeout(()=>showToast(`${tr("Recovery code used.")} ${d.recoveryLeft} ${tr("left. Make new ones in 🔒 Password.")}`,"warning",9000),800);
     if(d.user?.mfaRecommended&&!d.user?.mfa)setTimeout(()=>showToast(tr("Protect your account: turn on 2-step login in 🔒 Password."),"warning",9000),1500);
-    ittrEndSession();cloudToken=d.token;sessionStorage.setItem("ittr_cloud_token",cloudToken);
+    ittrEndSession();window.__ittrSigningOut=false;cloudToken=d.token;sessionStorage.setItem("ittr_cloud_token",cloudToken);
     session={username:d.user.username,role:d.user.role,display:d.user.display,language:d.user.language||localStorage.getItem("ittr_language")||"en"};
     currentLanguage=session.language;localStorage.setItem("ittr_language",currentLanguage);
     sessionStorage.setItem("ittr_session",JSON.stringify(session));
@@ -2431,7 +2432,7 @@ function ittrClearReadCaches(){
  try{if(typeof aiTranslationCache==="object"&&aiTranslationCache)for(const k of Object.keys(aiTranslationCache))delete aiTranslationCache[k]}catch(_){}
  try{for(const id of ["detailBody","dashboard","workorders","completed","approvals","mycompleted","activityhistory","mechanic","board","wo"]){const el=document.getElementById(id);if(el&&id==="detailBody")el.innerHTML=""}document.querySelectorAll(".modal.open").forEach(m=>m.classList.remove("open"))}catch(_){}
 }
-function ittrEndSession(){ittrSessionGeneration++;for(const c of ittrSessionRequests)c.abort();ittrSessionRequests.clear();cloudRefreshBusy=false;cloudRefreshAgain=false;try{clearTimeout(aiTranslationTimer);aiQueue.clear();aiInFlight.clear();aiRejected.clear();aiOutputs.clear();aiTranslationBusy=0}catch(_){}try{ittrSync.reset()}catch(_){}try{window.ittrPhotoQueue?.signedOut()}catch(_){}try{shopAiEndSession()}catch(_){}cloudReady=false;ittrClearReadCaches()}
+function ittrEndSession(){window.__ittrSigningOut=true;ittrSessionGeneration++;for(const c of ittrSessionRequests)c.abort();ittrSessionRequests.clear();cloudRefreshBusy=false;cloudRefreshAgain=false;try{clearTimeout(aiTranslationTimer);aiQueue.clear();aiInFlight.clear();aiRejected.clear();aiOutputs.clear();aiTranslationBusy=0}catch(_){}try{ittrSync.reset()}catch(_){}try{window.ittrPhotoQueue?.signedOut()}catch(_){}try{shopAiEndSession()}catch(_){}cloudReady=false;ittrClearReadCaches()}
 async function logout(){
   // Send what is still queued before signing out; anything left stays on this device for this account only.
   try{if(navigator.onLine&&cloudToken&&ittrSync.status().pending)await Promise.race([ittrSync.syncAll(),new Promise(r=>setTimeout(r,4000))])}catch(_){}
@@ -2443,7 +2444,8 @@ async function logout(){
   document.getElementById("loginUser").value="";document.getElementById("loginPass").value="";document.getElementById("loginScreen").style.display="flex";document.body.classList.add("loggedOut");document.title="ITTR ShopFlow";
   // v24.71.0: reload so nothing of the signed-out account stays in this page's memory or screens (the stored copies
   // are already removed). Offline, the page stays as it is: a reload could not load the app without a connection.
-  if(navigator.onLine&&!window.ITTR_NO_LOGOUT_RELOAD)setTimeout(()=>{try{location.replace(location.pathname)}catch(_){}},0);
+  ittrClearReadCaches();
+  if(navigator.onLine&&!window.ITTR_NO_LOGOUT_RELOAD)setTimeout(()=>{try{ittrClearReadCaches();location.replace(location.pathname)}catch(_){}},0);
 }
 function requireAdmin(){
   if(!["admin","manager"].includes(session?.role)){alert(tr("Manager access required."));return false}
