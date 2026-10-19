@@ -639,6 +639,7 @@ body.modalOpen{overflow:hidden}
 .partRow{display:grid;grid-template-columns:minmax(100px,.8fr) minmax(160px,1.8fr) 70px auto;gap:7px;align-items:center;padding:6px 0;border-bottom:1px dashed #e5e7eb;font-size:13px}
 .partAddGrid{display:grid;grid-template-columns:minmax(100px,.8fr) minmax(160px,1.8fr) 70px auto;gap:7px;margin-top:8px;align-items:end}
 .partAddGrid input{min-width:0}
+.partAddDetails{margin-top:8px}.partAddDetails>summary{display:inline-flex;align-items:center;min-height:44px;padding:0 14px;border:1px dashed #98a2b3;border-radius:10px;cursor:pointer;font-weight:700;list-style:none}.partAddDetails>summary::-webkit-details-marker{display:none}.partAddDetails[open]>summary{margin-bottom:4px}
 @media(max-width:700px){.partRow{grid-template-columns:1fr 58px auto}.partRow .partDesc{grid-column:1/-1}.partAddGrid{grid-template-columns:1fr 70px}.partAddGrid .partDescInput,.partAddGrid .partDescLabel{grid-column:1/-1}.partAddGrid button{grid-column:1/-1;width:100%}}
 .productivityToolbar{display:grid;grid-template-columns:180px 180px 1fr;gap:10px;align-items:end;margin-bottom:12px}.productivityQuick{display:flex;gap:7px;flex-wrap:wrap}.productivityTable{width:100%;border-collapse:collapse;font-size:13px}.productivityTable th,.productivityTable td{padding:9px 8px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}.productivityTable th{font-size:11px;text-transform:uppercase;color:#667085;background:#f9fafb}.productivityDay{margin:14px 0}.productivityDay h3{margin:0 0 8px}.productivityDetail{background:#f9fafb;border:1px solid #eaecf0;border-radius:10px;padding:9px;margin-top:7px}.productivityDetailRow{display:grid;grid-template-columns:85px 1fr 90px;gap:8px;padding:5px 0;border-bottom:1px dashed #e5e7eb}.productivityDetailRow:last-child{border-bottom:0}.aiActionGrid{display:flex;gap:7px;flex-wrap:wrap}.aiResult{white-space:pre-wrap}.aiVerify{margin-top:8px;padding:9px 10px;border:1px solid #f0b429;background:#fffaeb;border-radius:9px;font-size:12px}.miniAiButton{margin-top:6px}.productivityLoading{padding:20px;text-align:center;color:#667085}
 @media(max-width:760px){.productivityToolbar{grid-template-columns:1fr}.productivityQuick{display:grid;grid-template-columns:1fr 1fr}.productivityQuick button{width:100%}.productivityTable{display:block;overflow-x:auto;white-space:nowrap}.productivityDetailRow{grid-template-columns:1fr}.aiActionGrid{display:grid;grid-template-columns:1fr}.aiActionGrid button{width:100%}}
@@ -2125,6 +2126,7 @@ let viewHistory=[];
 // v24.70.0: the office work-order page (#wo/<id>/<tab>) — see public/shop-workspace.js.
 var woWs={id:null,tab:"jobs"};
 
+function ittrCurrentUsername(){return String(session?.username||"")}
 function managerCan(permission){return session?.role!=="manager" || session?.permissions?.[permission]===true}
 // v24.76.0: the session kept in the page is built from the server's account record in ONE place, permissions included.
 // Before, login and the session restore after a reload dropped "permissions", so every manager lost every
@@ -2354,11 +2356,23 @@ function ittrReconcileDataRevisions(msg){
  for(const d of missed)ittrDataChanged({domain:d,reconnect:true});
  return missed;
 }
+const ittrDataChangedOthers=new Set();
+// Last time the person typed in the invoice editor (focus alone is not typing: dialogs focus a field on open).
+let ittrInvoiceInputAt=0;document.addEventListener("input",e=>{if(e.target?.closest?.("#invoiceModal"))ittrInvoiceInputAt=Date.now()},true);
 function ittrDataChanged(msg){
  if(!["admin","manager"].includes(session?.role))return;
  ittrDataChangedPending.add(String(msg.domain||""));clearTimeout(ittrDataChangedTimer);
+ // Who made the change: a change only this account made (its own autosave) never reloads its own open editor.
+ const by=Array.isArray(msg.by)?msg.by.map(String):[];if(!by.length||by.some(u=>u!==session?.username))ittrDataChangedOthers.add(String(msg.domain||""));
  ittrDataChangedTimer=setTimeout(()=>{
   const domains=[...ittrDataChangedPending];ittrDataChangedPending.clear();
+  const fromOthers=new Set(ittrDataChangedOthers);ittrDataChangedOthers.clear();
+  // v24.76.0: an open invoice editor with nothing unsaved reloads by itself when another device changed invoices;
+  // with unsaved changes (or while typing in it) the note with Refresh appears instead.
+  const invOpen=document.getElementById("invoiceModal")?.classList.contains("open")&&activeInvoice?.invoice?.id;
+  if(invOpen&&fromOthers.has("invoices")){const typing=Date.now()-ittrInvoiceInputAt<3000;
+   if(!ittrInvoiceEditorDirty()&&!typing){ittrStaleRefresh("invoices");return}}
+  else if(invOpen&&!fromOthers.size)return;
   if(domains.includes("inventory")&&window.ittrOpenPOs){window.ittrOpenPOs.at=0;try{if(["board","wo"].includes(currentView))window.ittrWsAfterShow?.(currentView)}catch(_){}}
   const views=new Set(domains.flatMap(d=>ITTR_DOMAIN_VIEWS[d]||[]));
   if(!views.has(currentView))return;
@@ -2627,6 +2641,13 @@ const UI_TRANSLATIONS={
  "No trucks ready to work on.":"Немає траків, готових до роботи.",
  "My Completed Work":"Мої завершені роботи",
  "All shop work":"Уся робота цеху",
+ "+ Add part":"+ Додати запчастину",
+ "Documents for this work order":"Документи цього замовлення",
+ "No estimate or invoice is linked to this work order yet.":"До цього замовлення ще не прив'язано кошторис чи рахунок.",
+ "Estimate":"Кошторис",
+ "Invoice":"Рахунок",
+ "balance":"борг",
+ "Not started":"Не розпочато",
  "My assigned work":"Моя призначена робота",
  "Assigned to you":"Призначено вам",
  "View only":"Лише перегляд",
@@ -6225,13 +6246,16 @@ function taskPartsHTML(w,t,i){
    <div>Qty ${esc(String(p.qty||1))}${p.unit?` ${fluidUnitLabel(p.unit,p.qty)}`:''}</div>
    ${(["admin","manager"].includes(session?.role)||String(p.addedBy||"").toLowerCase()===String(session?.username||"").toLowerCase())&&w.status!=="Completed"?`<button type="button" class="danger" data-act="removeTaskPart" data-args="${attrArgs(w.id,String(t.uid||""),String(p.id||""))}">×</button>`:""}
  </div>`).join(""):`<div class="muted">No parts recorded for this job.</div>`;
- const add=((session?.role==="mechanic"&&visibleToCurrentMechanic(w))||["admin","manager"].includes(session?.role))&&w.status!=="Completed"?`<div class="partAddGrid">
+ // v24.76.0: the add-part form folds behind "+ Add part" (open while this job's timer runs, and kept open after adding
+ // a part until it is closed), so job details are not a long column of empty fields.
+ const formKey=`${w.id}:${t.uid||i}`,formOpen=ittrPartFormOpen.has(formKey)||!!(t.startedAt&&!t.stoppedAt&&!t.done);
+ const add=((session?.role==="mechanic"&&visibleToCurrentMechanic(w))||["admin","manager"].includes(session?.role))&&w.status!=="Completed"?`<details class="partAddDetails" data-part-form="${esc(formKey)}" ${formOpen?"open":""}><summary>${esc(tr("+ Add part"))}</summary><div class="partAddGrid">
    <label class="miniField"><span>Part #</span><input id="partNo_${w.id}_${i}" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" placeholder="Part Number" oninput="fullbayPartSuggest(this,${jsArg(w.id)},${i},'number')" onkeydown="partSuggestKey(event,${jsArg(w.id)},${i})" onblur="hidePartSuggest(${jsArg(w.id)},${i})"></label>
    <label class="miniField partDescLabel"><span>Description</span><input class="partDescInput" id="partDesc_${w.id}_${i}" autocomplete="off" spellcheck="false" placeholder="Part Description" oninput="fullbayPartSuggest(this,${jsArg(w.id)},${i},'description')" onkeydown="partSuggestKey(event,${jsArg(w.id)},${i})" onblur="hidePartSuggest(${jsArg(w.id)},${i})"></label>
    <label class="miniField"><span>Qty</span><input id="partQty_${w.id}_${i}" type="number" min="0.01" step="0.01" value="1" placeholder="Qty"></label>
    <label class="miniField partUnitHidden" id="partUnitWrap_${w.id}_${i}"><span>Unit</span>${fluidUnitSelect(`partUnit_${w.id}_${i}`)}</label>
    <button type="button" class="secondary" onclick="addTaskPart(${jsArg(w.id)},${i})">Add Part</button><button type="button" class="secondary" data-act="openStockPicker" data-args="${attrArgs(w.id,String(t.uid||''))}" title="Pick a part that is on the shelf (fluids in gallons or quarts)">📦 From stock</button><button type="button" class="partScanBtn" onclick="openPartsScanner('workorder',${jsArg(w.id)},${i})">▥ Scan Part</button>
- </div>`:"";
+ </div></details>`:"";
  return `<div class="taskParts"><b>Parts Used</b>${rows}${add}</div>`;
 }
 // v24.43.0 fluids: parts stocked in gallons can be used/billed in gallons or quarts (1 qt = 0.25 gal).
@@ -6265,6 +6289,8 @@ async function removeTaskPart(workOrderId,taskUid,partId){
  }catch(e){alert(e.message||"Unable to remove part.")}
 }
 
+const ittrPartFormOpen=new Set();
+document.addEventListener("toggle",e=>{const d=e.target;if(!(d instanceof HTMLDetailsElement)||!d.dataset.partForm)return;if(d.open)ittrPartFormOpen.add(d.dataset.partForm);else ittrPartFormOpen.delete(d.dataset.partForm)},true);
 function taskTimerRow(w,t,i){
  const isMechanic=session?.role==="mechanic" && visibleToCurrentMechanic(w) && w.status!=="Completed";
  const running=!!(t.startedAt && !t.stoppedAt && !t.done);
@@ -6304,11 +6330,11 @@ function taskTimerRow(w,t,i){
      <div><b>${esc(t.t)}</b>${t.source==="inspection"?` <span class="badge b-approved">Approved Finding</span>`:""}</div>
      <div class="taskcontrols">${controls}</div>
    </div>
-   <div class="timerinfo">
+   ${t.startedAt||t.stoppedAt||Number(t.elapsedMs||0)>0?`<div class="timerinfo">
      <b>${t.startedAt?"Latest Start":"Started"}:</b> ${fmtDateTime(t.startedAt)}
      &nbsp; | &nbsp; <b>${t.stoppedAt?"Latest Stop":"Stopped"}:</b> ${fmtDateTime(t.stoppedAt)}
      &nbsp; | &nbsp; <b>Total Labor:</b> ${fmtDuration(taskElapsed(t))}
-   </div>
+   </div>`:`<div class="timerinfo muted">${esc(tr("Not started"))}</div>`}
    <div data-task-timeline-wo="${esc(String(w.id))}" data-task-timeline-index="${i}" data-task-timeline-uid="${esc(String(t.uid||""))}"></div>
    ${isMechanic&&t.uid?`<div class="taskReport"><button type="button" class="ds-btn ds-btn-secondary ds-btn-sm" data-act="reportProblemOnTask" data-args="${attrArgs(w.id,String(t.uid))}">${typeof ittrIcon==="function"?ittrIcon("camera","sm"):""}<span>${esc(tr("Report a problem on this job"))}</span></button></div>`:""}
    ${t.findingDecision==="Do Not Proceed"?`<div class="outcomeNoteBox"><b>DECLINED — DO NOT PROCEED</b><div class="muted">Decision changed by Admin${t.approvalChangedAt?` · ${fmtDateTime(t.approvalChangedAt)}`:""}</div></div>`:""}
@@ -7023,20 +7049,33 @@ function scheduleInvoiceHeaderAutosave(){
   clearTimeout(invoiceHeaderAutosaveTimer);
   invoiceHeaderAutosaveTimer=setTimeout(()=>flushInvoiceHeaderAutosave(),700);
 }
+let invoiceHeaderConflictOpen=false;
 async function flushInvoiceHeaderAutosave(){
   clearTimeout(invoiceHeaderAutosaveTimer);invoiceHeaderAutosaveTimer=null;
   const i=activeInvoice?.invoice;
   if(!i||['paid','void'].includes(i.status)||invoiceHeaderAutosaveBusy)return true;
+  // One conflict question at a time: the question takes focus, and that blur would otherwise autosave (and ask) again.
+  if(invoiceHeaderConflictOpen)return false;
   invoiceHeaderAutosaveBusy=true;
   try{
     invoiceSetSaveState('saving','Saving…');
+    // v24.76.0: the autosave carries the header fingerprint it started from; if another device changed the header in
+    // the meantime the server refuses, and the person chooses: keep their changes (saved over the other) or load the newer.
     const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{
       method:'PUT',
       headers:authHeaders({'Content-Type':'application/json'}),
-      body:JSON.stringify(invoiceHeaderPayload())
+      body:JSON.stringify({...invoiceHeaderPayload(),...(activeInvoice?.headerPrint?{expectedHeaderPrint:activeInvoice.headerPrint}:{})})
     });
     const d=await r.json().catch(()=>({}));
+    if(r.status===409&&d.code==='INVOICE_HEADER_CHANGED'){
+      invoiceHeaderAutosaveBusy=false;invoiceSetSaveState('dirty','Changed on another device');
+      invoiceHeaderConflictOpen=true;let c;try{c=await ittrChoose(currentLanguage==="uk"?"Цей рахунок змінено на іншому пристрої.":"This invoice was changed on another device.",[["keep",currentLanguage==="uk"?"Зберегти мої зміни поверх":"Keep my changes (save over theirs)"],["reload",currentLanguage==="uk"?"Завантажити новішу версію":"Load the newer version"]],"header")}finally{invoiceHeaderConflictOpen=false}
+      if(c==="keep"){if(activeInvoice)delete activeInvoice.headerPrint;return flushInvoiceHeaderAutosave()}
+      if(c==="reload"){await openInvoice(i.id,document.body.classList.contains("invoiceWorkspaceMode"));return false}
+      return false;
+    }
     if(!r.ok)throw new Error(d.error||'Autosave failed');
+    if(d.headerPrint&&activeInvoice)activeInvoice.headerPrint=d.headerPrint;
     if(activeInvoice?.invoice)Object.assign(activeInvoice.invoice,invoiceHeaderPayload());
     invoiceSetSaveState('saved','All changes saved');
     return true;
@@ -7055,7 +7094,7 @@ async function persistInvoiceDraftBeforeStructureChange(label='Saving draft'){
  invoiceDraftSaveBusy=true;invoiceSetSaveState('saving',label+'…');
  try{
    await saveAllInvoiceLines();
-   const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(invoiceHeaderPayload())}),d=await r.json();
+   const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(invoiceHeaderPayload())}),d=await r.json();if(r.ok&&d?.headerPrint&&activeInvoice)activeInvoice.headerPrint=d.headerPrint;
    if(!r.ok)throw new Error(d.error||'Draft save failed');
    invoiceSetSaveState('saved','Draft saved');
    return true;
@@ -7123,8 +7162,8 @@ async function checkInvoiceNow(id){
   }catch(err){b.disabled=false;if(a==='ai')b.textContent='Suggest wording';showToast(err.message,'error')}});
 }
 window.checkInvoiceNow=checkInvoiceNow;
-async function saveInvoiceHeader(){const i=activeInvoice.invoice;try{invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(invoiceHeaderPayload())}),d=await r.json();if(!r.ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);await loadInvoices();invoiceSetSaveState('saved','All changes saved');showToast?.('Invoice saved.','success',2200);return true}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message,'error',7000)||alert(e.message);return false}}
-async function saveInvoiceLine(id){try{const i=activeInvoice.invoice;invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(invoiceHeaderPayload())}),d=await r.json();if(!r.ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);invoiceSetSaveState('saved','All changes saved')}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message||'Save failed','error',7000)}}
+async function saveInvoiceHeader(){const i=activeInvoice.invoice;try{invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(invoiceHeaderPayload())}),d=await r.json();if(r.ok&&d?.headerPrint&&activeInvoice)activeInvoice.headerPrint=d.headerPrint;if(!r.ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);await loadInvoices();invoiceSetSaveState('saved','All changes saved');showToast?.('Invoice saved.','success',2200);return true}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message,'error',7000)||alert(e.message);return false}}
+async function saveInvoiceLine(id){try{const i=activeInvoice.invoice;invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(invoiceHeaderPayload())}),d=await r.json();if(r.ok&&d?.headerPrint&&activeInvoice)activeInvoice.headerPrint=d.headerPrint;if(!r.ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);invoiceSetSaveState('saved','All changes saved')}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message||'Save failed','error',7000)}}
 async function deleteInvoiceLine(lineId){if(!confirm('Remove this line? If this is a labor operation, its attached parts and charges will also be removed.'))return;if(!(await persistInvoiceDraftBeforeStructureChange('Preserving your invoice')))return;const i=activeInvoice.invoice,r=await ittrSessionFetch(`/api/invoices/${i.id}/lines/${lineId}`,{method:'DELETE',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to remove line');await openInvoice(i.id)}
 async function finalizeInvoice(id){if(!confirm('Finalize this invoice and mark it sent/open? Review prices, tax and customer PO first.'))return;if(!(await saveInvoiceHeader()))return;const r=await ittrSessionFetch(`/api/invoices/${id}/finalize`,{method:'POST',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to finalize');if(Array.isArray(d.warnings)&&d.warnings.length)showToast?.('Inventory warning: '+d.warnings.join(' · '),'warning',12000);await openInvoice(id);await loadInvoices()}
 // v24.41.2 payment dialog: one form with the payment type and its transaction ID (check #, Zelle confirmation, ACH trace…).

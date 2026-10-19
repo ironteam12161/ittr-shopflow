@@ -9,7 +9,7 @@
 - No real email, SMS, payment or AI provider was called.
 - The audit-only instrumentation in draft PR #79 was **not** merged or copied.
 
-**New suite:** `audit_v24_76_test.mjs`, 32 scenarios, now part of `npm run check`.
+**New suite:** `audit_v24_76_test.mjs`, 41 scenarios, now part of `npm run check`. The reproduction table below covers A1–A10; A11–A21 and V2–V7 cover the investigation items, the later improvements and the verification areas.
 
 ## Reproduction evidence
 
@@ -37,7 +37,7 @@ The final suite was run against the untouched baseline, and against the baseline
 | 1 | Manager permissions lost in the browser | Fixed | `ittrSessionFromUser()` builds the page session from the server account record, permissions included. It is used by both login and the reload restore (`public/index.html`). A changed permission is picked up on a "Manager permission required" answer, on socket reconnect and when the tab becomes visible; the menu and page then follow. The server still checks every request. |
 | 2 | Stock changes announced only `invoices` | Fixed | `touchDataDomain()` (`server.js`) is called by `postInvoiceLineStock`, `releaseInvoiceReservations`, `receivePartStock`, the work-order part add/remove routes, parts receiving (inventory + bills) and inventory repair. After a successful response the middleware announces every area touched. Invoice finalize, void, payments and delete also announce `customers` (balances). |
 | 3 | Reconnect did not reconcile independently loaded screens | Fixed | Per-area revisions plus a boot id. The socket's `connected` message carries the revisions the account may see. The page refreshes only areas whose revision moved, once and coalesced, with the existing "don't overwrite while typing" rule. The first connect after sign-in only records them. |
-| 4 | Stale-data Refresh blocked by the invoice modal; it reloaded only the list | Fixed (runtime-confirmed) | The note now sits at z-index 2500, above the workspace at 1200–1400. Refresh reloads the **open invoice**. An unsaved draft prompts "Keep my changes / Load the newer version" (`ittrStaleRefresh`, `ittrChoose`). "Unsaved" means the editor's own save state is dirty, saving or error, or the field values differ from the last render. |
+| 4 | Stale-data Refresh blocked by the invoice modal; it reloaded only the list | Fixed (runtime-confirmed) | The note now sits at z-index 2500, above the workspace at 1200–1400. Refresh reloads the **open invoice**. An editor with nothing unsaved, not typed in during the last 3 s, reloads by itself when **another** device changed invoices (this account's own autosave never reloads it). An unsaved draft prompts "Keep my changes / Load the newer version" (`ittrStaleRefresh`, `ittrChoose`). "Unsaved" means the editor's own save state is dirty, saving or error, or the field values differ from the last render. |
 | 5a | "Audit / Repair History Links" threw `reconcileFullbayHistory is not defined` | Fixed | The handler is now on `window`. Failures show in the status line and as a toast (`public/modules/procenter.js` + mirror). A scan of every module page found no other inline handler without a global binding. |
 | 5b | `GET /api/fullbay/history/import-audit` returned 500 | Fixed | The query uses `actual_correction` / `part_amount`. Tested with empty and populated imported history. Import SQL is unchanged. |
 | 6 | A slow page committed address and title after a newer navigation | Fixed | `showView()` re-checks its transition token after `afterShow()`; only the newest navigation commits history, title, scroll and cleanup. Modules that load in `mount()` (Parts, Customers, Invoices, Estimates, Operations, Truck search) set `loadsOnMount`, so the first open makes one request instead of two. |
@@ -61,12 +61,12 @@ The final suite was run against the untouched baseline, and against the baseline
 - The manager permission editor explains what each permission opens and which actions need two permissions.
 - The customer portal shows "Updated <time> · Refresh". Refresh keeps choices, name and note, and keeps the old data if the refresh fails.
 - Fewer duplicate requests: one first load per page (finding 6), and one coalesced refresh per area.
+- **Operations on tablets (A18):** a tool search box, a Favorites group (star any tool; remembered per account on that device), two columns at ≤ 900 px and one at ≤ 600 px. Every existing tool is still there.
+- **Mechanic job details (A19):** a job that was never started shows "Not started" instead of empty start/stop rows. The add-part form folds behind "+ Add part"; it is open while that job's timer runs and stays open after adding a part.
+- **Work-order Billing (A17):** "Documents for this work order" lists its estimates and invoices (number, status, total, balance), and each opens directly. Needs the Invoices permission (`GET /api/work-orders/:id/billing-links`, 403 otherwise).
+- **Invoice header conflicts (A16):** see "Remaining risks" (closed).
 
-**Not done in this release, as larger design work:**
-- Tablet Operations grouping, search and favorites.
-- Shorter mechanic job details (empty timer rows, inline parts form).
-- Direct links from work-order Billing to its estimates and invoices.
-- Timing measurements on real shop tablets.
+**Not done:** timing measurements on real shop tablets (needs the devices).
 
 ## Coverage matrix (what the evidence supports)
 
@@ -74,7 +74,7 @@ The final suite was run against the untouched baseline, and against the baseline
 |---|---|---|
 | 1 Role & account testing | **PASS (disposable accounts)**; Roman/Ivan **BLOCKED** | See detail below. |
 | 2 Cross-platform sync | **PASS (partial)** | See detail below. |
-| 3 Every actionable control | **NOT TESTED (systematically)** | No route/tab/dialog/control checklist with per-control server-state verification was built. Only the listed findings and the A15 page sweep were covered. |
+| 3 Every actionable control | **PASS (partial)** | A21 lists every visible control on every allowed page for the owner, a restricted manager and a mechanic (count logged per page) and requires each to have an accessible name. Clicking each control and checking the server result was **not** done; only the controls in the scenarios above were exercised. |
 | 4 Security boundaries | **PASS (partial)** | See detail below. |
 | 5 Portal isolation & approvals | **PASS (partial)** | See detail below. |
 | 6 Email & integrations | **NOT TESTED here** / **BLOCKED** | Real providers were not used. Provider acceptance vs delivery and duplicate-send prevention are covered by `portal_email_integration_test.mjs` (fake providers). Bounce visibility, deliverability, SMS, payments and AI need authorized test modes. |
@@ -118,8 +118,8 @@ The final suite was run against the untouched baseline, and against the baseline
 - Not verified: a full ledger reconciliation against reports, or rollback on mid-operation failure beyond existing tests.
 
 **Area 9 detail.**
-- PASS: A9 dialogs, A10 portal viewer, A12 PO rows, A15 widths, existing UX suite.
-- NOT TESTED: screen readers, contrast measurement, 200% zoom, landscape.
+- PASS: A9 dialogs, A10 portal viewer, A12 PO rows, A15 widths, A20 200% zoom (640×450 CSS px) and phone landscape (844×390) for owner and mechanic with no sideways scrolling, A21 accessible names, existing UX suite.
+- NOT TESTED: screen readers, contrast measurement, real browser zoom on devices.
 
 **Area 10 detail.**
 - The deployed build, schema, backups, monitoring and service-worker update on real devices cannot be reached from here.
@@ -137,6 +137,6 @@ The final suite was run against the untouched baseline, and against the baseline
 ## Remaining risks
 
 - **Single instance assumed.** Revisions and change announcements live in one server process; several instances would each have their own (same assumption as the live socket today).
-- **A clean invoice editor is not refreshed automatically.** It shows the note, and the person presses Refresh.
-- **Header autosave race.** A remote change to invoice header fields can still be overwritten by this device's header autosave if both happen within its 0.7 s window. This is pre-existing behaviour and not changed here.
+- **Closed: clean invoice editor refresh.** It now reloads by itself (A4).
+- **Closed: header autosave race.** The invoice carries a header fingerprint. The autosave sends the one it started from; if another device changed the header, the server answers 409 `INVOICE_HEADER_CHANGED` and the person chooses "Keep my changes (save over theirs)" or "Load the newer version". Only one question is shown at a time (A16 found and fixed a double prompt). Line edits do not change the fingerprint. Older clients that send no fingerprint behave as before.
 - **Not a full security review.** This is not a complete security review or penetration test, and does not show the platform is fully secure.

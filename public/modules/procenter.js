@@ -10,7 +10,34 @@ window.aiDiagnosticAssistant=async function(){const el=document.getElementById("
 window.aiPartAssistant=async function(){const q=document.getElementById("aiPartQuery")?.value.trim(),vin=document.getElementById("aiPartVin")?.value.trim(),out=document.getElementById("aiPartResult");if(!q)return window.showToast?.("Enter a part number or description first.","warning");try{const x=await aiCall("/api/ai/part",{vin,query:q},"aiPartProcessing");if(out)out.textContent=x||""}catch(e){if(out)out.textContent=e.message;window.showToast?.(e.message,"error",7000)}};
 // v24.76.0: mount() already loads this page, so showView() skips the first afterShow() (no double request).
 export const loadsOnMount=true;
-export async function mount(scope){localAbort=new AbortController();scope.on(scope.host,"ittr:module-refresh",()=>window.renderProCenter?.(),{passive:true});await window.renderProCenter?.();setTimeout(()=>window.checkAIConnection?.(),0)}
+// v24.76.0: the tool buttons can be searched and starred. Favorites are kept per account on this device and shown in
+// their own group at the top; the open panel's button is marked as current.
+function toolId(b){return (b.querySelector('b')?.textContent||b.textContent||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')}
+const favKey=()=>`ittr.opsFav.${String(window.ittrCurrentUsername?.()||'').toLowerCase()}`;
+function readFavs(){try{return new Set(JSON.parse(localStorage.getItem(favKey())||'[]'))}catch(_){return new Set()}}
+function writeFavs(set){try{localStorage.setItem(favKey(),JSON.stringify([...set]))}catch(_){}}
+function enhanceTools(host,signal){
+ const groups=[...host.querySelectorAll('.opsGroup:not(.opsFavs) .opsBtns')];
+ for(const list of groups)for(const b of [...list.children].filter(x=>x.tagName==='BUTTON')){
+  const id=toolId(b),wrap=document.createElement('div');wrap.className='opsTool';wrap.dataset.tool=id;
+  b.parentNode.insertBefore(wrap,b);wrap.appendChild(b);
+  const star=document.createElement('button');star.type='button';star.className='opsStar';star.dataset.star=id;
+  star.setAttribute('aria-label',`Add ${(b.querySelector('b')?.textContent||'tool').trim()} to favorites`);star.textContent='☆';wrap.appendChild(star);
+ }
+ const paintFavs=()=>{const favs=readFavs(),box=host.querySelector('#opsFavList');if(!box)return;
+  host.querySelectorAll('.opsStar').forEach(s=>{const on=favs.has(s.dataset.star);s.setAttribute('aria-pressed',String(on));s.textContent=on?'★':'☆';const name=s.previousElementSibling?.querySelector('b')?.textContent?.trim()||'tool';s.setAttribute('aria-label',`${on?'Remove':'Add'} ${name} ${on?'from':'to'} favorites`)});
+  box.replaceChildren();const picked=[...host.querySelectorAll('.opsGroup:not(.opsFavs) .opsTool')].filter(t=>favs.has(t.dataset.tool));
+  if(!picked.length){box.innerHTML='<div class="opsEmpty">Tap ☆ next to a tool to keep it here.</div>';return}
+  for(const t of picked){const b=t.querySelector('button').cloneNode(true);b.removeAttribute('id');b.addEventListener('click',()=>t.querySelector('button').click(),{signal});box.appendChild(b)}};
+ host.addEventListener('click',e=>{const s=e.target.closest('.opsStar');if(s){const f=readFavs();f.has(s.dataset.star)?f.delete(s.dataset.star):f.add(s.dataset.star);writeFavs(f);paintFavs();return}
+  const tool=e.target.closest('.opsGroup:not(.opsFavs) .opsTool > button:first-child');if(tool){host.querySelectorAll('.opsBtns button[aria-current]').forEach(x=>x.removeAttribute('aria-current'));tool.setAttribute('aria-current','true')}},{signal});
+ const search=host.querySelector('#opsToolSearch'),count=host.querySelector('#opsToolCount');
+ search?.addEventListener('input',()=>{const q=search.value.trim().toLowerCase();let n=0;
+  host.querySelectorAll('.opsGroup:not(.opsFavs)').forEach(g=>{let shown=0;g.querySelectorAll('.opsTool').forEach(t=>{const hit=!q||t.textContent.toLowerCase().includes(q);t.hidden=!hit;if(hit)shown++});g.hidden=!!q&&!shown;n+=shown});
+  if(count)count.textContent=q?`${n} tool${n===1?'':'s'}`:''},{signal});
+ paintFavs();
+}
+export async function mount(scope){localAbort=new AbortController();try{enhanceTools(scope.host,localAbort.signal)}catch(e){console.warn('Operations tools:',e)}scope.on(scope.host,"ittr:module-refresh",()=>window.renderProCenter?.(),{passive:true});await window.renderProCenter?.();setTimeout(()=>window.checkAIConnection?.(),0)}
 export async function afterShow(){await window.renderProCenter?.()}
 export function unmount(){localAbort?.abort();localAbort=null;if(voiceRecognition){try{voiceRecognition.stop()}catch{}voiceRecognition=null}}
 
