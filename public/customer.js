@@ -8,7 +8,9 @@
  const day=d=>{if(!d)return'';const x=new Date(String(d).length===10?`${d}T12:00:00`:d);return isNaN(x)?'':x.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})};
  let V=null;const pick={};
  const shopHead=s=>`<header class="shop"><img src="/assets/iron-team-logo.png" alt=""><div><b>${esc(s.name)}</b><span>${esc(s.phone)}${s.address?` · ${esc(s.address)}`:''}</span></div></header>`;
- const foot=s=>`<footer>Questions? Call ${esc(s.phone)}${s.email?` or email ${esc(s.email)}`:''}.<br>This private link is for you only. Please don't forward it.</footer>`;
+ // v24.76.0: the page says when it was loaded and can be refreshed safely (choices, name and note are kept).
+ const fresh=()=>V?.loadedAt?`<div class="fresh" aria-live="polite">Updated ${esc(new Date(V.loadedAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}))} · <button type="button" class="linkBtn" data-refresh>Refresh</button>${V.refreshError?` <span class="err">${esc(V.refreshError)}</span>`:''}</div>`:'';
+ const foot=s=>`${fresh()}<footer>Questions? Call ${esc(s.phone)}${s.email?` or email ${esc(s.email)}`:''}.<br>This private link is for you only. Please don't forward it.</footer>`;
  const tag=d=>d==='approved'?'<span class="tag ok">Approved</span>':d==='declined'?'<span class="tag no">Declined</span>':'<span class="tag wait">Waiting for you</span>';
  function choice(key,cur){return `<div class="choice" role="group" aria-label="Approve or decline"><button type="button" class="yes" data-k="${esc(key)}" data-v="approve" aria-pressed="${cur==='approve'}">✓ Approve</button><button type="button" class="no" data-k="${esc(key)}" data-v="decline" aria-pressed="${cur==='decline'}">✕ Decline</button></div>`}
  function signBox(label){return `<div class="card"><h2>Sign</h2>
@@ -65,6 +67,10 @@
  function restoreDraft(d){const g=id=>document.getElementById(id);
   if(d.name!=null&&g('signName'))g('signName').value=d.name;if(d.note!=null&&g('signNote'))g('signNote').value=d.note;if(d.agree!=null&&g('signAgree'))g('signAgree').checked=d.agree;
   if(d.focus){const f=app.querySelector(d.focus);if(f)try{f.focus({preventScroll:true})}catch{}}}
+ let refreshing=false;
+ async function refreshPage(){if(refreshing||!V)return;refreshing=true;
+  try{const r=await fetch(`/api/public/link/${token}`,{cache:'no-store'}),d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Could not refresh. Your answers on this page are kept.');d.loadedAt=Date.now();V=d}
+  catch(x){V.refreshError=x.message||'Could not refresh.'}finally{refreshing=false;render()}}
  function openPhotos(btn){
   const f=(V?.findings||[]).find(x=>String(x.id)===btn.dataset.photoFinding);if(!f||!f.photos?.length)return;
   const fid=btn.dataset.photoFinding,idx=Number(btn.dataset.photoIndex)||0;
@@ -79,6 +85,7 @@
   // v24.76.0: photos open in the shop's accessible viewer (dialog with Close, Escape, zoom, keyboard, focus back on
   // the thumbnail). Before, thumbnails were plain images and the overlay could only be closed with a mouse/tap.
   const pb=e.target.closest('[data-photo-finding]');if(pb){openPhotos(pb);return}
+  if(e.target.closest('[data-refresh]')){refreshPage();return}
   const b=e.target.closest('.choice button');if(b){pick[b.dataset.k]=b.dataset.v;const y=window.scrollY;render();window.scrollTo(0,y);return}
   if(e.target.id!=='submitBtn')return;
   const err=document.getElementById('err'),btn=e.target,name=document.getElementById('signName').value.trim(),agree=document.getElementById('signAgree').checked,note=document.getElementById('signNote').value.trim();
@@ -97,7 +104,7 @@
   const row=r=>`<li><b>${esc(name(r.id))}</b> — ${r.ok?(r.decision==='approve'?'approved':'declined'):`<span class="err">not recorded${r.error?`: ${esc(r.error)}`:''}</span>`}</li>`;
   app.innerHTML=`${shopHead(V.shop)}<div class="card done" id="partialResult"><h1>Part of your answer was recorded</h1><p>${d.recorded} of ${d.of} repair${d.of===1?'':'s'} recorded. Please call the shop about the rest.</p><ul class="lines">${(d.results||[]).map(row).join('')}</ul></div>${foot(V.shop)}`}
  (async()=>{try{if(!token)throw new Error('This link is not complete. Please open the full link from your message.');
-  const r=await fetch(`/api/public/link/${token}`),d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'This page could not be opened.');V=d;
+  const r=await fetch(`/api/public/link/${token}`),d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'This page could not be opened.');d.loadedAt=Date.now();V=d;
   document.title=`${d.shop.name} — ${d.kind==='estimate'?`Estimate ${d.estimate.number}`:d.kind==='inspection'?'Inspection report':'Customer portal'}`;render()}
   catch(x){app.innerHTML=`<div class="card"><h1>Link not available</h1><p>${esc(x.message)}</p></div>`}})();
  window.ITTRCustomerPage={reload:async()=>{const r=await fetch(`/api/public/link/${token}`);V=await r.json();render()},token:()=>token};

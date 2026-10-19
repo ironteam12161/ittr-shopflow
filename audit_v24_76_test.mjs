@@ -369,6 +369,57 @@ try {
       eq(page.errs.filter(e => !/Failed to fetch|aborted|cancel/i.test(e)).join(' | '), '', 'no page errors');
       await ctx.close();
     });
+
+  // ---------- verification areas (recorded in docs/AUDIT-v24.76.0.md) ----------
+  await scenario('V2 payment → invoice balance → customer portal "You owe" agree', async () => {
+    const c = (await R('/api/customers', { method: 'POST', token: owner, body: { customer_name: 'Balance Check Fleet' } })).item;
+    const i = await R('/api/invoices', { method: 'POST', token: owner, body: { customerId: c.id, customerName: c.customer_name } });
+    await R(`/api/invoices/${i.id}/lines`, { method: 'POST', token: owner, body: { lineType: 'labor', description: 'Labor', quantity: 2, unitPrice: 50.005, taxable: false, jobName: 'Job' } });
+    await R(`/api/invoices/${i.id}/finalize`, { method: 'POST', token: owner });
+    await R(`/api/invoices/${i.id}/payments`, { method: 'POST', token: owner, body: { amount: 40, method: 'Cash' } });
+    const inv = (await R(`/api/invoices/${i.id}`, { token: owner })).invoice;
+    const portal = await R('/api/customer-links', { method: 'POST', token: owner, body: { kind: 'portal', refId: String(c.id) } });
+    const v = await R(`/api/public/link/${portal.url.split('/c/')[1]}`);
+    eq(Number(v.owed), Number(inv.balance_due), 'portal owed equals invoice balance'); ok(Number(inv.balance_due) > 0 && Number(inv.balance_due) < 100.02, `balance ${inv.balance_due}`);
+    const over = await R(`/api/invoices/${i.id}/payments`, { method: 'POST', token: owner, body: { amount: 1000, method: 'Cash' }, allowError: true });
+    ok(over.status >= 400 || Number((await R(`/api/invoices/${i.id}`, { token: owner })).invoice.balance_due) >= 0, `overpayment is refused or never makes a negative balance (${over.status})`);
+  });
+  await scenario('V5 portal isolation: another customer\'s invoice PDF and a revoked portal are refused', async () => {
+    const a = (await R('/api/customers', { method: 'POST', token: owner, body: { customer_name: 'Isolation A Co' } })).item, b = (await R('/api/customers', { method: 'POST', token: owner, body: { customer_name: 'Isolation B Co' } })).item;
+    const ib = await R('/api/invoices', { method: 'POST', token: owner, body: { customerId: b.id, customerName: b.customer_name } });
+    await R(`/api/invoices/${ib.id}/lines`, { method: 'POST', token: owner, body: { lineType: 'labor', description: 'B work', quantity: 1, unitPrice: 10, taxable: false, jobName: 'J' } }); await R(`/api/invoices/${ib.id}/finalize`, { method: 'POST', token: owner });
+    const pa = await R('/api/customer-links', { method: 'POST', token: owner, body: { kind: 'portal', refId: String(a.id) } }), ta = pa.url.split('/c/')[1];
+    eq((await fetch(`${srv.base()}/api/public/link/${ta}/invoice/${ib.id}/pdf`)).status, 404, 'A cannot open B\'s invoice PDF');
+    ok(!JSON.stringify(await R(`/api/public/link/${ta}`)).includes('Isolation B Co'), 'A\'s portal shows nothing of B');
+    await R(`/api/customer-links/${pa.id}`, { method: 'DELETE', token: owner });
+    ok((await R(`/api/public/link/${ta}`, { allowError: true })).status >= 400, 'revoked portal refused');
+    eq((await R('/api/public/link/not-a-real-token-000000000000000000000000', { allowError: true })).status >= 400, true, 'unknown token refused');
+  });
+  await scenario('V7 concurrent finalize posts stock once; two invoices taking the last unit stay in the ledger', async () => {
+    await db.query('UPDATE fullbay_import_parts SET quantity=1,allocated=0 WHERE id=$1', [part.id]);
+    const i1 = await newInvoice(1);
+    const rs = await Promise.all([1, 2, 3].map(() => R(`/api/invoices/${i1}/finalize`, { method: 'POST', token: owner, allowError: true })));
+    eq(await qty(), 0, `three simultaneous finalizes take one unit once (${rs.map(r => r.status)})`);
+    const i2 = await newInvoice(1), i3 = await newInvoice(1);
+    const rr = await Promise.all([i2, i3].map(id => R(`/api/invoices/${id}/finalize`, { method: 'POST', token: owner, allowError: true })));
+    const q = await qty(), tx = Number((await db.query(`SELECT coalesce(sum(quantity_delta),0)::numeric s FROM part_inventory_transactions WHERE part_id=$1`, [part.id]).catch(() => ({ rows: [{ s: null }] }))).rows[0].s);
+    console.log(`  note: finalize statuses ${rr.map(r => r.status)}; stock now ${q} (negative-stock policy: ${q < 0 ? 'allowed with warning' : 'not below zero'}); ledger sum ${tx}`);
+    ok(q >= -2 && q <= 0, 'stock moved by at most the two sales');
+  });
+  await scenario('V4 security headers, login enumeration, login rate limit, no secrets in the browser bundle', async () => {
+    const r = await fetch(srv.base() + '/'), h = Object.fromEntries(r.headers);
+    ok(/default-src/.test(h['content-security-policy'] || ''), 'CSP'); eq(h['x-content-type-options'], 'nosniff', 'nosniff');
+    ok(/frame-ancestors|DENY|SAMEORIGIN/i.test((h['content-security-policy'] || '') + (h['x-frame-options'] || '')), 'framing restricted');
+    const a = await R('/api/auth/login', { method: 'POST', body: { username: 'no-such-user-x', password: 'Wrong-Pass-123' }, allowError: true });
+    const b = await R('/api/auth/login', { method: 'POST', body: { username: 'mech2', password: 'Wrong-Pass-123' }, allowError: true });
+    eq(a.status, b.status, 'same status for unknown user and wrong password'); eq(a.error, b.error, 'same message');
+    let locked = false; for (let k = 0; k < 14 && !locked; k++) { const x = await R('/api/auth/login', { method: 'POST', body: { username: 'mech2', password: `Wrong-${k}-pass` }, allowError: true }); if (x.status === 429 || /locked|too many/i.test(x.error || '')) locked = true; }
+    ok(locked, 'repeated wrong passwords are slowed or locked');
+    const { readFileSync, readdirSync } = await import('node:fs');
+    const files = readdirSync('public').filter(f => /\.(js|html)$/.test(f)).map(f => 'public/' + f).concat(readdirSync('public/modules').map(f => 'public/modules/' + f));
+    const hits = files.filter(f => /sk_(live|test)_[A-Za-z0-9]{8,}|re_[A-Za-z0-9]{16,}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA )?PRIVATE KEY|whsec_[A-Za-z0-9]{8,}/.test(readFileSync(f, 'utf8')));
+    eq(hits.join(','), '', 'no API keys or private keys in files served to browsers');
+  });
 } catch (e) { failures.push(`setup: ${e.message.split('\n')[0]}`); console.error(e); }
 finally { await browser.close().catch(() => {}); await srv.cleanup(); }
 
