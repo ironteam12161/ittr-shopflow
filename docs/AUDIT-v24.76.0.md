@@ -9,7 +9,7 @@
 - No real email, SMS, payment or AI provider was called.
 - The audit-only instrumentation in draft PR #79 was **not** merged or copied.
 
-**New suite:** `audit_v24_76_test.mjs`, 41 scenarios, now part of `npm run check`. The reproduction table below covers A1–A10; A11–A21 and V2–V7 cover the investigation items, the later improvements and the verification areas.
+**New suite:** `audit_v24_76_test.mjs`, 46 scenario results (A1–A21, V2–V7), now part of `npm run check`. The reproduction table below covers A1–A10; A11–A21 and V2–V7 cover the investigation items, the later improvements and the verification areas.
 
 ## Reproduction evidence
 
