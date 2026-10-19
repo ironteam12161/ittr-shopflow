@@ -12,7 +12,7 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:16
@@ -54,6 +54,8 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Run ITTR production checks
         run: npm run check
+      - name: Explore website controls on disposable data
+        run: node audit_controls_20261019.mjs
       - name: Report which suites ran
         if: always()
         run: |
