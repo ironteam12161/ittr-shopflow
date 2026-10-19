@@ -64,6 +64,16 @@ try {
     ok(v.invoices.some(i => i.balance === 900), 'the old unpaid invoice is listed');
   });
 
+  await scenario('portal latest service ignores debt-first display and invoice history limits', async () => {
+    const id=await cust('Service Date Fleet');
+    await db.query("INSERT INTO customer_units(customer_id,customer_name,unit_number) VALUES($1,'Service Date Fleet',' RECENT-1 ')",[id]);
+    const old=await invoice(id,'Service Date Fleet',{date:'2024-01-01',due:'2024-02-01',total:100,balance:100});
+    const latest=await invoice(id,'Service Date Fleet',{date:'2026-10-01',due:'2026-10-01',total:100,balance:0});
+    await db.query("UPDATE customer_invoices SET unit_number=' RECENT-1 ' WHERE id=ANY($1::bigint[])",[[old,latest]]);
+    const v=await R(`/api/public/link/${tokenOf((await portalFor(id)).url)}`);
+    eq(String(v.units.find(u=>u.unit.trim()==='RECENT-1').lastService).slice(0,10),'2026-10-01','latest visit even though unpaid invoice is first');
+  });
+
   await scenario('P1 an unlinked invoice is matched by name only when one customer has that name', async () => {
     const a = await cust('Same Name Trucking'); await cust('Same Name Trucking');
     await invoice(null, 'Same Name Trucking', { date: '2026-10-01', due: '2026-10-31', total: 777, balance: 777 });

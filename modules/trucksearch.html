@@ -11,13 +11,13 @@
       <input id="truckGlobalSearch" type="search" placeholder="Example: 123, air leak, brakes, PM service, future repair..." oninput="renderTruckSearch()">
     </div>
     <div class="truckSearchFilters">
-      <select id="truckSearchStatus" onchange="renderTruckSearch()">
+      <select id="truckSearchStatus" aria-label="Work order status" onchange="renderTruckSearch()">
         <option value="all">All work orders</option>
         <option value="active">Active / Open</option>
         <option value="completed">Completed</option>
         <option value="future">Future / Waiting</option>
       </select>
-      <select id="truckSearchScope" onchange="renderTruckSearch()">
+      <select id="truckSearchScope" aria-label="Search scope" onchange="renderTruckSearch()">
         <option value="all">Search everything</option>
         <option value="notes">Notes only</option>
         <option value="jobs">Jobs / repairs only</option>

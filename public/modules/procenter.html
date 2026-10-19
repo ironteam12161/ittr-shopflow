@@ -72,10 +72,10 @@
     <div class="card">
       <h2>Mileage Maintenance</h2>
       <div class="row">
-        <div class="field"><label>Unit #</label><input id="maintUnit"></div>
-        <div class="field"><label>Service</label><input id="maintService" placeholder="PM service, valve adjustment..."></div>
-        <div class="field"><label>Interval Miles</label><input id="maintInterval" type="number" min="1"></div>
-        <div class="field"><label>Last Service Mileage</label><input id="maintLastMileage" type="number" min="0"></div>
+        <div class="field"><label>Unit #</label><input id="maintUnit" aria-label="Unit #"></div>
+        <div class="field"><label>Service</label><input id="maintService" aria-label="Service" placeholder="PM service, valve adjustment..."></div>
+        <div class="field"><label>Interval Miles</label><input id="maintInterval" aria-label="Interval Miles" type="number" min="1"></div>
+        <div class="field"><label>Last Service Mileage</label><input id="maintLastMileage" aria-label="Last Service Mileage" type="number" min="0"></div>
       </div>
       <button onclick="addMaintenancePlan()">Add Maintenance Plan</button>
     </div>
@@ -155,7 +155,7 @@
     <div class="card"><h2>Part Number / Cross Reference Assistant</h2><div class="row"><div class="field"><label>VIN</label><input id="aiPartVin"></div><div class="field"><label>Part # / Description</label><input id="aiPartQuery"></div></div><button id="aiPartRun" class="aiRunButton" data-ai-action onclick="aiPartAssistant()">Research Part</button><div id="aiPartProcessing" class="aiProcessing hidden"><span class="aiSpinner"></span><span>⚡ AI Analyzing Part Cross-Reference...</span></div><div id="aiPartResult" class="aiResult"></div><div class="aiVerifyBanner">⚠️ AI suggestion only. Verify fitment in OEM catalog before ordering.</div></div>
   </div>
 
-<section class="card" id="samsaraFleetCard" style="margin-top:16px"><div class="sectionHead"><div><div class="eyebrow">FLEET TELEMATICS</div><h2>Samsara Fleet</h2><p class="muted">Read-only live vehicle, driver and GPS information from Samsara.</p></div><button class="secondary" onclick="loadSamsaraFleet()">Refresh Samsara</button></div><div id="samsaraStatus" class="muted">Not checked yet.</div><div class="field" style="max-width:430px;margin:10px 0"><label>Search fleet</label><input id="samsaraSearch" placeholder="Unit, VIN, driver, plate or location…" oninput="renderSamsaraFleet()"></div><div id="samsaraFleetResults"></div></section>
+<section class="card" id="samsaraFleetCard" style="margin-top:16px"><div class="sectionHead"><div><div class="eyebrow">FLEET TELEMATICS</div><h2>Samsara Fleet</h2><p class="muted">Read-only live vehicle, driver and GPS information from Samsara.</p></div><button class="secondary" onclick="loadSamsaraFleet()">Refresh Samsara</button></div><div id="samsaraStatus" class="muted">Not checked yet.</div><div class="field" style="max-width:430px;margin:10px 0"><label>Search fleet</label><input id="samsaraSearch" aria-label="Search fleet" placeholder="Unit, VIN, driver, plate or location…" oninput="renderSamsaraFleet()"></div><div id="samsaraFleetResults"></div></section>
 <section class="card" id="duplicateCustomerAuditCard" style="margin-top:16px"><div class="sectionHead"><div><div class="eyebrow">DATA QUALITY</div><h2>Duplicate Customer Audit</h2><p class="muted">Find likely duplicates such as Corp vs Corporation. Review first; nothing merges automatically.</p></div><button class="secondary" onclick="auditDuplicateCustomers()">Scan Customers</button></div><div id="duplicateCustomerResults" class="muted">Run the scan to review likely duplicates.</div></section>
 
 <section class="card" id="fullbayHistoryResetCard" style="margin-top:16px">

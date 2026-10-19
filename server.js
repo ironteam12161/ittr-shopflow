@@ -2341,7 +2341,7 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{
     const incomingById=new Map(incomingW.map(w=>[String(w?.id||''),w]));
     const ownedIds=new Set(currentW.filter(w=>mechanicOwnsWorkOrder(req.user,w)).map(w=>String(w?.id||'')));
     // v24.70.0: QC, blockers and pick-up belong to the office (Repair Board); a mechanic's save keeps them as they were.
-    const protectedKeys=['id','unit','customer','customerId','unitRecordId','vin','dotNumber','year','make','model','plate','mechanic','helpers','priority','parking','unitType','truckHere','date','time','createdAt','createdBy','createdVia','qc','blockers','releasedAt','releasedBy'];
+    const protectedKeys=['completedAt','completedBy','id','unit','customer','customerId','unitRecordId','vin','dotNumber','year','make','model','plate','mechanic','helpers','priority','parking','unitType','truckHere','date','time','createdAt','createdBy','createdVia','qc','blockers','releasedAt','releasedBy'];
     // v24.72.0: what a mechanic's whole-shop save may change is limited, so finished work cannot be rewritten through it:
     // a Completed/Invoiced/Closed work order is not changed at all; no existing job is removed; parts and job timers come
     // only from their own routes (stock and time records); a job finished by someone else stays as it is; a completed
@@ -2350,8 +2350,9 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{
     const taskPrint=t=>JSON.stringify([String(t?.uid||""),String(t?.t||""),!!t?.done,String(t?.taskOutcome||""),String(t?.outcomeNote||"")]);
     const woPrint=w=>JSON.stringify([String(w?.status||""),String(w?.notes||""),String(w?.completionNotes||""),String(w?.futureNotes||""),(Array.isArray(w?.tasks)?w.tasks:[]).map(taskPrint)]);
     const inspPrint=i=>JSON.stringify([String(i?.status||""),Object.entries(i?.results||{}).sort(([a],[b])=>a.localeCompare(b)).map(([k,r])=>[k,String(r?.status||""),String(r?.note||"")])]);
-    const kept=[];
-    const TASK_SERVER_KEYS=["uid","parts","startedAt","stoppedAt","elapsedMs","runningBy","sessions","pausedAt","pauseReason","timeAdjustments"];
+    const kept=[],now=new Date().toISOString();
+    const findingWritableIds=new Set(currentW.filter(w=>ownedIds.has(String(w?.id))&&!LOCKED_WO.has(String(w?.status))).map(w=>String(w.id)));
+    const TASK_SERVER_KEYS=["uid","parts","startedAt","stoppedAt","elapsedMs","runningBy","sessions","pausedAt","pauseReason","timeAdjustments","done","completedAt","completedBy","paused","pauseNote","addedBy","addedAt"];
     const workorders=currentW.map(old=>{
       if(!ownedIds.has(String(old?.id||''))){
        // v24.75.0: mechanics now see every work order; a change to one they are not assigned to is not saved and is reported.
@@ -2377,27 +2378,48 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{
         if(!t||typeof t!=="object")continue;const prior=t.uid?byUid.get(String(t.uid)):null;
         if(prior){if(seen.has(String(prior.uid)))continue;seen.add(String(prior.uid));
          if(finishedByOther(prior)){if(taskPrint(t)!==taskPrint(prior))notApplied.push({workOrderId:String(old.id),taskUid:String(prior.uid),reason:"finished_by_other"});out.push(prior);continue}
-         const x={...t};for(const k of TASK_SERVER_KEYS)if(k in prior)x[k]=prior[k];else delete x[k];out.push(x)}
-        else{const x={...t};delete x.sessions;x.parts=[];if(x.uid&&!/^[A-Za-z0-9_.:-]{1,80}$/.test(String(x.uid)))delete x.uid;out.push(x)}
+         const x={...t};for(const k of TASK_SERVER_KEYS)if(k in prior)x[k]=prior[k];else delete x[k];
+         // A completed timer outcome is immutable here; non-timer decisions still use the mechanic form.
+         const outcome=String(t.taskOutcome||""),previous=String(prior.taskOutcome||"");
+         if(prior.done||previous==="completed"||taskRunning(prior)||!["","not_completed","next_visit"].includes(outcome)||(outcome&&!String(t.outcomeNote||"").trim())){
+          for(const k of ["taskOutcome","outcomeNote","outcomeAt","outcomeBy"])if(k in prior)x[k]=prior[k];else delete x[k];
+          if(outcome!==previous||!!t.done!==!!prior.done)notApplied.push({workOrderId:String(old.id),taskUid:String(prior.uid),reason:"task_server_fields"});
+         }else if(outcome!==previous||String(t.outcomeNote||"")!==String(prior.outcomeNote||"")){
+          x.outcomeAt=outcome?now:"";x.outcomeBy=outcome?req.user.username:"";
+         }else{ x.outcomeAt=prior.outcomeAt||"";x.outcomeBy=prior.outcomeBy||""; }
+         out.push(x)}
+        else{
+         if(t.uid&&(!/^[A-Za-z0-9_.:-]{1,80}$/.test(String(t.uid))||seen.has(String(t.uid)))){notApplied.push({workOrderId:String(old.id),reason:"task_server_fields"});continue}
+         const uid=t.uid||`wo-${old.id}-task-${crypto.randomBytes(8).toString("hex")}`;seen.add(String(uid));
+         const outcome=["not_completed","next_visit"].includes(t.taskOutcome)&&String(t.outcomeNote||"").trim()?t.taskOutcome:"";
+         if(t.done||t.startedAt||t.stoppedAt||t.runningBy||Number(t.elapsedMs)||t.completedAt||t.completedBy||t.taskOutcome==="completed"||(t.sessions||[]).length||(t.parts||[]).length)notApplied.push({workOrderId:String(old.id),taskUid:String(uid),reason:"task_server_fields"});
+         out.push({uid,t:String(t.t||"").trim(),parts:[],done:false,startedAt:"",stoppedAt:"",elapsedMs:0,runningBy:"",sessions:[],paused:false,pausedAt:"",pauseReason:"",pauseNote:"",completedAt:"",completedBy:"",taskOutcome:outcome,outcomeNote:outcome?String(t.outcomeNote):"",outcomeAt:outcome?now:"",outcomeBy:outcome?req.user.username:"",addedBy:req.user.username,addedAt:now,source:"mechanic"});
+        }
        }
        // Jobs without a permanent id (repaired at startup) are matched by nothing and follow the phone's list.
        for(const t of oldTasks)if(t?.uid&&!seen.has(String(t.uid))){out.push(t);kept.push({workOrderId:String(old.id),taskUid:String(t.uid)})}
        merged.tasks=out}
       const oldHistory=Array.isArray(old.history)?old.history:[],newHistory=Array.isArray(merged.history)?merged.history:[];
-      merged.history=[...oldHistory,...newHistory.slice(oldHistory.length).map(x=>clean(x))];
+      merged.history=[...oldHistory,...newHistory.slice(oldHistory.length).map(x=>({...clean(x),by:req.user.username,byDisplay:req.user.display_name||req.user.username,at:now}))];
       if(Array.isArray(merged.tasks)){const oldTasks=new Map((Array.isArray(old.tasks)?old.tasks:[]).map(t=>[String(t?.uid||''),t]));merged.tasks=merged.tasks.map(t=>{const prior=oldTasks.get(String(t?.uid||''));if(!prior||!prior.findingId)return t;return {...t,findingId:prior.findingId,source:prior.source,findingDecision:prior.findingDecision,approvalChangedAt:prior.approvalChangedAt,approvalChangedBy:prior.approvalChangedBy,cancelled:prior.cancelled,declinedAt:prior.declinedAt,declinedBy:prior.declinedBy}})}
+      // Validate the effective list, including jobs omitted by the phone and restored above.
+      if(String(proposed.status)==="Completed"){
+       const unresolved=merged.tasks.some(t=>taskRunning(t)||!["completed","not_completed","next_visit"].includes(String(t.taskOutcome||(t.done?"completed":""))));
+       if(unresolved){merged.status=old.status;notApplied.push({workOrderId:String(old.id),reason:"completion_required"})}
+       else{merged.status="Completed";merged.completedBy=req.user.username;merged.completedAt=now;merged.outcomeWorkflowVersion=1;}
+      }else if(![String(old.status),"Open","In Progress"].includes(String(merged.status))){merged.status=old.status;notApplied.push({workOrderId:String(old.id),reason:"completion_required"})}
       return merged;
     });
     const currentI=Array.isArray(current.issues)?current.issues:[],incomingI=Array.isArray(incoming.issues)?incoming.issues:[];
     const incomingIssues=new Map(incomingI.map(i=>[String(i?.id||''),i]));
     const existingIds=new Set(currentI.map(i=>String(i?.id||'')));
     const issues=currentI.map(old=>{
-      if(!ownedIds.has(String(old?.wo||''))){const p=incomingIssues.get(String(old?.id||''));if(p&&JSON.stringify([p.description,p.recommendation,p.severity])!==JSON.stringify([old.description,old.recommendation,old.severity]))notApplied.push({workOrderId:String(old.wo),findingId:String(old.id),reason:"not_assigned"});return old}const proposed=incomingIssues.get(String(old?.id||''));if(!proposed)return old;const x=clean(proposed);
+      if(!findingWritableIds.has(String(old?.wo||''))){const p=incomingIssues.get(String(old?.id||''));if(p&&JSON.stringify([p.description,p.recommendation,p.severity])!==JSON.stringify([old.description,old.recommendation,old.severity]))notApplied.push({workOrderId:String(old.wo),findingId:String(old.id),reason:ownedIds.has(String(old.wo))?"finding_completed":"not_assigned"});return old}const proposed=incomingIssues.get(String(old?.id||''));if(!proposed)return old;const x=clean(proposed);
       for(const k of ['id','wo','createdAt','created','mechanic','approval','adminNote','decisionAt','decisionBy','convertedToTask','officeReviewedAt','officeReviewedBy','sentAt','sentBy'])x[k]=old[k];return x;
     });
     // v24.70.0: a finding id from a phone is a plain token (the app uses a timestamp); anything else could break out of the
     // office page's markup, so it is not stored.
-    for(const proposed of incomingI){const id=String(proposed?.id||'');if(existingIds.has(id)||!ownedIds.has(String(proposed?.wo||''))||!/^[A-Za-z0-9_.-]{1,40}$/.test(id))continue;const x=clean(proposed);x.mechanic=req.user.username;x.approval='Waiting for Customer';x.adminNote='';x.decisionAt='';x.decisionBy='';x.convertedToTask=false;x.officeReviewedAt='';x.officeReviewedBy='';x.sentAt='';x.sentBy='';issues.push(x)}
+    for(const proposed of incomingI){const id=String(proposed?.id||'');if(existingIds.has(id))continue;if(!findingWritableIds.has(String(proposed?.wo||''))){notApplied.push({workOrderId:String(proposed?.wo||''),findingId:id,reason:ownedIds.has(String(proposed?.wo))?'finding_completed':'not_assigned'});continue}if(!/^[A-Za-z0-9_.-]{1,40}$/.test(id))continue;const x=clean(proposed);x.mechanic=req.user.username;x.approval='Waiting for Customer';x.adminNote='';x.decisionAt='';x.decisionBy='';x.convertedToTask=false;x.officeReviewedAt='';x.officeReviewedBy='';x.sentAt='';x.sentBy='';issues.push(x)}
     nextPayload={...current,workorders,issues};
     if(notApplied.length)res.locals.notApplied=notApplied.slice(0,50);
     if(notApplied.length||kept.length)await audit(req.user.username,"mechanic_save_not_applied",{items:notApplied.slice(0,50),jobsKept:kept.slice(0,50)});
@@ -2411,7 +2433,7 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{
   if(key==="shopflow")broadcastShopStatus("shopflow_changed",{by:req.user.username,version:Number(q.rows[0].version)});
   // v24.41.4: a mechanic who starts an inspection while clocked out is clocked in automatically, like starting a job timer.
   if(key==="shopflow"&&req.user?.role==="mechanic"){const me=String(req.user.username).toLowerCase();if((nextPayload?.workorders||[]).some(w=>w?.inspection?.status==="In Progress"&&String(w.inspection.startedBy||"").toLowerCase()===me&&Date.now()-new Date(w.inspection.startedAt||0).getTime()<10*60000))await autoClockInSafe(req.user,"inspection")}
-  db.release();res.json({ok:true,version:Number(q.rows[0].version),updatedAt:q.rows[0].updated_at,...(res.locals.notApplied?{notApplied:res.locals.notApplied}:{})});
+  db.release();res.json({ok:true,version:Number(q.rows[0].version),updatedAt:q.rows[0].updated_at,...(req.user?.role==="mechanic"?{payload:shopflowForUser(req.user,nextPayload)}:{}),...(res.locals.notApplied?{notApplied:res.locals.notApplied}:{})});
  }catch(e){try{await db.query('ROLLBACK')}catch(_){};db.release();next(e)}
 });
 

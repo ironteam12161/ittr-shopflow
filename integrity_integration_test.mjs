@@ -65,7 +65,7 @@ try {
     const r = await mechSave(p => { const w = p.workorders.find(x => x.id === 903); w.tasks[0].taskOutcome = 'next_visit'; w.tasks[0].outcomeNote = 'Needs compressor'; w.notes = 'Customer waiting'; w.tasks.push(T('q-new', 'Extra: cabin filter')); });
     eq(r.notApplied, undefined, 'nothing refused');
     let w = await wo(903); eq(w.tasks[0].taskOutcome, 'next_visit', 'outcome saved'); eq(w.notes, 'Customer waiting', 'notes saved'); ok(w.tasks.some(t => t.uid === 'q-new' && Array.isArray(t.parts) && !t.parts.length), 'new job added without parts');
-    await mechSave(p => { const x = p.workorders.find(y => y.id === 903); x.status = 'Completed'; x.completedAt = new Date().toISOString(); x.completionNotes = 'Done'; });
+    await mechSave(p => { const x = p.workorders.find(y => y.id === 903); x.tasks.find(t=>t.uid==='q-new').taskOutcome='next_visit';x.tasks.find(t=>t.uid==='q-new').outcomeNote='Customer deferred'; x.status = 'Completed'; x.completedAt = new Date().toISOString(); x.completionNotes = 'Done'; });
     w = await wo(903); eq(w.status, 'Completed', 'mechanic can still finish the work order');
     const unchanged = await mechSave(() => {}); eq(unchanged.notApplied, undefined, 'an unchanged save reports nothing');
   });

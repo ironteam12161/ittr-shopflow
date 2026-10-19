@@ -42,7 +42,7 @@ try {
   const o = await pg('owner', OWNER.password);
 
   await scenario('no office screen is wider than a 390 px phone; fields have accessible names', async () => {
-    for (const v of ['customers', 'invoices', 'parts', 'purchaseorders', 'bills', 'estimates', 'compliance', 'reports', 'board', 'workorders', 'approvals']) {
+    for (const v of ['customers', 'invoices', 'parts', 'purchaseorders', 'bills', 'estimates', 'compliance', 'reports', 'board', 'workorders', 'approvals', 'trucksearch', 'procenter']) {
       await o.page.evaluate(v => showView(v), v); await sleep(1200);
       eq(await o.page.evaluate(() => document.documentElement.scrollWidth), 390, `${v} fits the phone`);
       eq((await unnamed(o.page)).join(), '', `${v}: every visible field has a name`);
