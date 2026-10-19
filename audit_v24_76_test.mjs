@@ -488,6 +488,18 @@ try {
       ok(await page.evaluate(sel => !!document.querySelector(sel)?.offsetParent, box), `${label}: "Keep editing" keeps the form open`);
       eq(await field.inputValue(), `unsaved ${label} draft`, `${label}: the draft is still there`);
     }
+    // A payment dialog over an open invoice: Tab stays in it; Escape closes only the payment dialog.
+    const inv = await newInvoice(1); await R(`/api/invoices/${inv}/finalize`, { method: 'POST', token: owner, body: {} });
+    await page.click('.poModal [data-po="close"]'); await page.click('[data-discard-choice="discard"]'); // Cancel on the edited form asks first
+    ok(await until(() => page.evaluate(() => !document.querySelector('.poModal')), 3000), 'purchase order: "Discard changes" closes the form');
+    await page.evaluate(() => showView('invoices')); await sleep(600);
+    await page.evaluate(id => openInvoice(id, true), inv); await page.waitForSelector('#invoiceModal.open'); await sleep(400);
+    await page.evaluate(id => { recordInvoicePayment(id, 1); }, inv); await page.waitForSelector('.payDlg #payAmt');
+    for (let k = 0; k < 14; k++) await page.keyboard.press('Tab');
+    ok(await page.evaluate(() => !!document.activeElement?.closest('.payDlg')), 'payment dialog: Tab stays inside');
+    await page.keyboard.press('Escape'); await sleep(300);
+    ok(await page.evaluate(() => !document.querySelector('.payDlg')), 'Escape closes the payment dialog');
+    ok(await page.evaluate(() => document.getElementById('invoiceModal').classList.contains('open')), 'the invoice behind it stays open');
     eq(page.errs.join(' | '), '', 'no page errors');
     await ctx.close();
   });

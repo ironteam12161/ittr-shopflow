@@ -2126,7 +2126,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.76.0");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.76.1");
 // v24.76.1: the deployed commit (Railway sets RAILWAY_GIT_COMMIT_SHA), so a deploy check can compare exact code, not just
 // a version label that several fixes share. null when the host does not provide it.
 const ITTR_COMMIT=String(process.env.RAILWAY_GIT_COMMIT_SHA||process.env.SOURCE_COMMIT||process.env.GIT_COMMIT||"").replace(/[^0-9a-f]/gi,"").slice(0,40)||null;
