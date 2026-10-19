@@ -75,7 +75,8 @@ check('password reset revokes sessions',server.includes('DELETE FROM auth_sessio
 // v24.28.x mechanic language preference + deterministic switch
 check('self-service language preference endpoint exists',server.includes('app.patch("/api/auth/preferences",auth')&&server.includes('language_preference_changed'));
 check('language preference accepts only en/uk',server.includes('["en","uk"].includes(language)'));
-check('login session keeps account language',root.includes('language:d.user.language||localStorage.getItem("ittr_language")||"en"'));
+check('login session keeps account language',root.includes('language:u.language||localStorage.getItem("ittr_language")||"en"')&&root.includes('session=ittrSessionFromUser(d.user)'));
+check('login session keeps manager permissions',root.includes('permissions:u.role==="manager"&&u.permissions'));
 check('restore session keeps account language',root.includes('currentLanguage=session.language;localStorage.setItem("ittr_language",currentLanguage)'));
 check('role application prefers session language',root.includes('if(session?.language){\n   currentLanguage=session.language;'));
 check('language selector saves through self-service endpoint',root.includes('apiJSON("/api/auth/preferences",{method:"PATCH",body:{language:next}})'));

@@ -6,7 +6,7 @@
 <meta http-equiv="Expires" content="0">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="ittr-build" content="ITTR-24.75.3-MECHANIC-VIEW-20261017">
+<meta name="ittr-build" content="ITTR-24.76.0-AUDIT-FIXES-20261019">
 <meta name="theme-color" content="#111827">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -28,7 +28,7 @@
  P.removeItem=function(k){rm.call(this,k);if(this===sessionStorage&&keys[k])try{rm.call(localStorage,'ittr_app_'+k)}catch(e){}};
 }catch(e){}})();
 </script>
-<title>ITTR ShopFlow v24.75.3</title>
+<title>ITTR ShopFlow v24.76.0</title>
 <style>
 :root{
   --bg:#f4f6f8;--panel:#fff;--text:#17202a;--muted:#65717e;--line:#dfe4e8;
@@ -639,6 +639,7 @@ body.modalOpen{overflow:hidden}
 .partRow{display:grid;grid-template-columns:minmax(100px,.8fr) minmax(160px,1.8fr) 70px auto;gap:7px;align-items:center;padding:6px 0;border-bottom:1px dashed #e5e7eb;font-size:13px}
 .partAddGrid{display:grid;grid-template-columns:minmax(100px,.8fr) minmax(160px,1.8fr) 70px auto;gap:7px;margin-top:8px;align-items:end}
 .partAddGrid input{min-width:0}
+.partAddDetails{margin-top:8px}.partAddDetails>summary{display:inline-flex;align-items:center;min-height:44px;padding:0 14px;border:1px dashed #98a2b3;border-radius:10px;cursor:pointer;font-weight:700;list-style:none}.partAddDetails>summary::-webkit-details-marker{display:none}.partAddDetails[open]>summary{margin-bottom:4px}
 @media(max-width:700px){.partRow{grid-template-columns:1fr 58px auto}.partRow .partDesc{grid-column:1/-1}.partAddGrid{grid-template-columns:1fr 70px}.partAddGrid .partDescInput,.partAddGrid .partDescLabel{grid-column:1/-1}.partAddGrid button{grid-column:1/-1;width:100%}}
 .productivityToolbar{display:grid;grid-template-columns:180px 180px 1fr;gap:10px;align-items:end;margin-bottom:12px}.productivityQuick{display:flex;gap:7px;flex-wrap:wrap}.productivityTable{width:100%;border-collapse:collapse;font-size:13px}.productivityTable th,.productivityTable td{padding:9px 8px;border-bottom:1px solid #e5e7eb;text-align:left;vertical-align:top}.productivityTable th{font-size:11px;text-transform:uppercase;color:#667085;background:#f9fafb}.productivityDay{margin:14px 0}.productivityDay h3{margin:0 0 8px}.productivityDetail{background:#f9fafb;border:1px solid #eaecf0;border-radius:10px;padding:9px;margin-top:7px}.productivityDetailRow{display:grid;grid-template-columns:85px 1fr 90px;gap:8px;padding:5px 0;border-bottom:1px dashed #e5e7eb}.productivityDetailRow:last-child{border-bottom:0}.aiActionGrid{display:flex;gap:7px;flex-wrap:wrap}.aiResult{white-space:pre-wrap}.aiVerify{margin-top:8px;padding:9px 10px;border:1px solid #f0b429;background:#fffaeb;border-radius:9px;font-size:12px}.miniAiButton{margin-top:6px}.productivityLoading{padding:20px;text-align:center;color:#667085}
 @media(max-width:760px){.productivityToolbar{grid-template-columns:1fr}.productivityQuick{display:grid;grid-template-columns:1fr 1fr}.productivityQuick button{width:100%}.productivityTable{display:block;overflow-x:auto;white-space:nowrap}.productivityDetailRow{grid-template-columns:1fr}.aiActionGrid{display:grid;grid-template-columns:1fr}.aiActionGrid button{width:100%}}
@@ -835,7 +836,7 @@ button[data-shop-action="truck-here"],button[data-shop-action="start-activity"],
 #manualLibraryModal{z-index:710}.manualGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.manualListCard{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;border:1px solid #e2e8f0;border-radius:12px;padding:11px;margin:8px 0}.manualMeta{font-size:11px;color:#667085;margin-top:3px}
 @media(max-width:760px){#shopAiFab{right:12px!important;bottom:calc(var(--mobile-nav-height,64px) + 12px)!important;padding:11px 14px!important}#shopAiPanel{right:0!important;bottom:0!important;width:100vw!important;height:100dvh!important;border-radius:0!important}.aiWelcomeGrid{grid-template-columns:1fr}.aiCopilotHead{padding-top:max(12px,env(safe-area-inset-top))}.manualGrid{grid-template-columns:1fr}}
 </style>
-<link rel="stylesheet" href="/invoice-workspace.css?v=24.75.3">
+<link rel="stylesheet" href="/invoice-workspace.css?v=24.76.0">
 <style id="invoice-shell-emergency-layout">
 body.invoiceWorkspaceMode .invoiceGridHeader{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important}
 body.invoiceWorkspaceMode .invoiceServiceLaborRow{display:grid!important;grid-template-columns:72px minmax(260px,1fr) 70px 220px 60px 120px 90px 44px!important;gap:6px!important;align-items:center!important;padding:8px 10px!important}
@@ -852,13 +853,13 @@ body.invoiceWorkspaceMode .invoiceRateWrap{display:grid!important;grid-template-
 @media(max-width:900px){body.invoiceWorkspaceMode .invoiceGridHeader{display:none!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow{grid-template-columns:1fr 1fr!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceGridItemLabel,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLaborDescription{grid-column:1/-1!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceQtyUnit,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceTaxCell,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLineNet{grid-column:1!important}body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceLaborRateField,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceDiscountControl,body.invoiceWorkspaceMode .invoiceServiceLaborRow .invoiceRowActions{grid-column:2!important}}
 </style>
 <link rel="stylesheet" href="./inspection-workflow.css?v=3">
-<script src="./sync-merge.js?v=24.75.3"></script>
-<script src="./sync-queue.js?v=24.75.3"></script>
-<link rel="stylesheet" href="./design-system.css?v=24.75.3">
-<link rel="stylesheet" href="./app-shell.css?v=24.75.3">
-<script src="./icons.js?v=24.75.3"></script>
-<script src="./photo-viewer.js?v=24.75.3"></script>
-<script src="./photo-queue.js?v=24.75.3"></script>
+<script src="./sync-merge.js?v=24.76.0"></script>
+<script src="./sync-queue.js?v=24.76.0"></script>
+<link rel="stylesheet" href="./design-system.css?v=24.76.0">
+<link rel="stylesheet" href="./app-shell.css?v=24.76.0">
+<script src="./icons.js?v=24.76.0"></script>
+<script src="./photo-viewer.js?v=24.76.0"></script>
+<script src="./photo-queue.js?v=24.76.0"></script>
 <style id="ittrNavLayoutV2">
 /* v24.39.0 desktop navigation: one full-width tab strip grouped by workflow (Shop · Money · Records · Operations). */
 @media(min-width:761px){
@@ -1008,7 +1009,7 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
 </style>
 </head>
 <body class="loggedOut">
-<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.75.3 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
+<div id="onlineBetaBar" style="display:none;background:#0b5;color:white;text-align:center;padding:4px 10px;font:600 11px system-ui;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">ITTR v24.76.0 ONLINE · VEHICLE HISTORY · PURCHASING · CORES</div>
 <div id="toastRegion" class="toastRegion" role="status" aria-live="polite" aria-atomic="false"></div>
 <div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:999;background:#b42318;color:#fff;text-align:center;padding:6px;font-size:13px;font-weight:700">Offline — changes stay on this device until you reconnect.</div>
 
@@ -1432,7 +1433,14 @@ table td button{min-height:36px!important;padding:6px 14px!important;font-size:1
   </form>
 </div>
 </div>
-<div id="managerAccountModal" class="modal"><div class="modalbox" style="max-width:760px"><div class="modalhead"><div><h2 id="mgrModalTitle">Create Manager Account</h2><div class="muted">Choose exactly what this manager can access.</div></div><button class="x" onclick="closeModal('managerAccountModal')">✕</button></div><form id="managerAccountForm"><div class="row"><div class="field"><label>Name</label><input name="display" required></div><div class="field"><label>Username</label><input name="username" required></div><div class="field"><label>Email</label><input name="email" type="email"></div><div class="field" id="mgrPasswordField"><label>Temporary Password <span class="muted">(12+ characters)</span></label><input name="password" type="password" minlength="12" required autocomplete="new-password"></div></div><div class="card"><b>Permissions</b><div class="row" style="margin-top:10px"><label class="checkline"><input type="checkbox" name="invoices" checked> Invoices & payments</label><label class="checkline"><input type="checkbox" name="financials" checked> Financial totals</label><label class="checkline"><input type="checkbox" name="inventory" checked> Parts & inventory</label><label class="checkline"><input type="checkbox" name="customers" checked> Customers & vehicles</label><label class="checkline"><input type="checkbox" name="reports" checked> Reports</label><label class="checkline"><input type="checkbox" name="employees"> Manage employees</label></div></div><button type="submit" id="mgrSubmit">Create Manager</button></form></div></div>
+<div id="managerAccountModal" class="modal"><div class="modalbox" style="max-width:760px"><div class="modalhead"><div><h2 id="mgrModalTitle">Create Manager Account</h2><div class="muted">Choose exactly what this manager can access.</div></div><button class="x" onclick="closeModal('managerAccountModal')">✕</button></div><form id="managerAccountForm"><div class="row"><div class="field"><label>Name</label><input name="display" required></div><div class="field"><label>Username</label><input name="username" required></div><div class="field"><label>Email</label><input name="email" type="email"></div><div class="field" id="mgrPasswordField"><label>Temporary Password <span class="muted">(12+ characters)</span></label><input name="password" type="password" minlength="12" required autocomplete="new-password"></div></div><div class="card"><b>Permissions</b><div class="row" style="margin-top:10px"><label class="checkline"><input type="checkbox" name="invoices" checked> Invoices & payments</label><label class="checkline"><input type="checkbox" name="financials" checked> Financial totals</label><label class="checkline"><input type="checkbox" name="inventory" checked> Parts & inventory</label><label class="checkline"><input type="checkbox" name="customers" checked> Customers & vehicles</label><label class="checkline"><input type="checkbox" name="reports" checked> Reports</label><label class="checkline"><input type="checkbox" name="employees"> Manage employees</label><details class="permDeps" style="grid-column:1/-1;margin-top:6px"><summary>What each permission opens (and what needs two)</summary><ul class="muted" style="margin:6px 0 0 18px;padding:0;display:grid;gap:3px">
+<li><b>Invoices &amp; payments</b>: Invoices, Estimates, Bills, payment search, estimate approval links.</li>
+<li><b>Parts &amp; inventory</b>: Parts, Purchase orders, receiving and stock counts.</li>
+<li><b>Customers &amp; vehicles</b>: Customers, Truck search, Fleet maintenance / compliance.</li>
+<li><b>Reports</b>: Reports and team activity. The finance report also needs <b>Invoices &amp; payments</b>.</li>
+<li><b>Customer portal links</b> need both <b>Customers &amp; vehicles</b> and <b>Invoices &amp; payments</b> (the portal shows invoices and balances).</li>
+<li><b>Manage employees</b>: create and reset mechanic accounts. Work orders, the Repair Board and inspection links are open to every manager.</li>
+<li>The server checks every permission on each request; a change applies to requests at once; the manager's screens follow on their next action, when they reconnect or return to the tab.</li></ul></details></div></div><button type="submit" id="mgrSubmit">Create Manager</button></form></div></div>
 
 <div id="editModal" class="modal">
 <div class="modalbox">
@@ -1615,7 +1623,7 @@ function newTaskRecord(text,extra={}){
  };
 }
 
-const FRONTEND_VERSION='24.75.3';
+const FRONTEND_VERSION='24.76.0';
 let cloudToken=sessionStorage.getItem("ittr_cloud_token")||"";
 let cloudReady=false,cloudVersions={},cloudRefreshBusy=false;
 let ittrSessionGeneration=0;
@@ -1690,6 +1698,7 @@ async function apiJSON(url,options={}){
   // Check before processing even an old 401: it must not sign out a newer account.
   if(!ittrSessionCurrent(generation,token))throw ittrSessionCancelled();
   if(r.status===401&&!url.includes("/api/auth/login")){ittrEndSession();cloudToken="";sessionStorage.removeItem("ittr_cloud_token");session=null;sessionStorage.removeItem("ittr_session");showLogin();throw Object.assign(new Error(d.error||"Session expired."),{status:401,code:d.code||""})}
+  if(r.status===403&&/Manager permission required/i.test(String(d.error||""))&&!url.includes("/api/auth/me"))setTimeout(()=>ittrRefreshPermissions(true),0);
   if(!r.ok)throw Object.assign(new Error(d.error||`Server error ${r.status}`),{status:r.status,code:d.code||""});
   if(d&&d.stockWarning){try{typeof showToast==="function"?showToast(d.stockWarning):alert(d.stockWarning)}catch(_){}}
   return d;
@@ -2034,7 +2043,7 @@ let session=JSON.parse(sessionStorage.getItem("ittr_session")||"null");
 
 
 
-const ROUTE_MODULE_VERSION="24.75.3";
+const ROUTE_MODULE_VERSION="24.76.0";
 const routeAsset=(path)=>`${path}?v=${encodeURIComponent(ROUTE_MODULE_VERSION)}`;
 const ROUTE_MODULES={
  invoices:{html:routeAsset("/modules/invoices.html"),js:routeAsset("/modules/invoices.js")},
@@ -2117,7 +2126,32 @@ let viewHistory=[];
 // v24.70.0: the office work-order page (#wo/<id>/<tab>) — see public/shop-workspace.js.
 var woWs={id:null,tab:"jobs"};
 
+function ittrCurrentUsername(){return String(session?.username||"")}
 function managerCan(permission){return session?.role!=="manager" || session?.permissions?.[permission]===true}
+// v24.76.0: the session kept in the page is built from the server's account record in ONE place, permissions included.
+// Before, login and the session restore after a reload dropped "permissions", so every manager lost every
+// permission-controlled page (the server still enforced them; only the screens were wrong).
+function ittrSessionFromUser(u){u=u||{};return {username:u.username,role:u.role,display:u.display,language:u.language||localStorage.getItem("ittr_language")||"en",permissions:u.role==="manager"&&u.permissions&&typeof u.permissions==="object"?{...u.permissions}:{}}}
+// The owner can change a manager's permissions while that manager is signed in. The server refuses at once; the
+// screens follow when the page learns of it: on a "permission required" answer, on reconnect and when the tab returns.
+let ittrPermCheckAt=0,ittrPermCheckBusy=null;
+async function ittrRefreshPermissions(force=false){
+ if(!session||session.role!=="manager"||!cloudToken)return false;
+ if(!force&&Date.now()-ittrPermCheckAt<15000)return false;
+ if(ittrPermCheckBusy)return ittrPermCheckBusy;
+ ittrPermCheckAt=Date.now();
+ const who=session.username;
+ ittrPermCheckBusy=(async()=>{try{
+  const d=await apiJSON("/api/auth/me");if(!session||session.username!==who||!d?.user)return false;
+  const next=ittrSessionFromUser(d.user);if(JSON.stringify(next.permissions)===JSON.stringify(session.permissions||{}))return false;
+  session={...session,permissions:next.permissions};sessionStorage.setItem("ittr_session",JSON.stringify(session));
+  try{applyRole();render()}catch(_){}
+  if(currentView&&!allowedViewForRole(currentView)){try{showView(defaultViewForRole(),{replace:true})}catch(_){}}
+  try{showToast(currentLanguage==="uk"?"Ваші права доступу змінено.":"Your access was changed by the owner.","info",6000)}catch(_){}
+  return true}catch(_){return false}finally{ittrPermCheckBusy=null}})();
+ return ittrPermCheckBusy;
+}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")ittrRefreshPermissions()});
 function managerViewAllowed(view){
  const map={invoices:"invoices",estimates:"invoices",bills:"invoices",purchaseorders:"inventory",reports:"reports",compliance:"customers",customers:"customers",trucksearch:"customers",parts:"inventory",activityhistory:"reports",accounts:"employees"};
  const key=map[view];return !key||managerCan(key);
@@ -2178,6 +2212,8 @@ async function showView(view,{push=true,replace=false}={}){
  if(!view)return;
  const token=++routeTransitionToken;
  const previous=currentView;
+ // v24.76.0: a module that already loaded its data while mounting is not loaded a second time by afterShow().
+ const freshMount=isLazyRouteModule(view)&&!routeModuleInstances.has(view);
 
  try{await mountRouteModule(view)}catch(e){
   if(token!==routeTransitionToken)return;
@@ -2198,7 +2234,10 @@ async function showView(view,{push=true,replace=false}={}){
  // v24.71.0: the tab title changes together with the page, not after a module's (possibly slow) afterShow.
  ittrSetTabTitle(view);
  const instance=routeModuleInstances.get(view);
- if(instance&&typeof instance.module.afterShow==="function")await instance.module.afterShow(instance.scope);
+ if(instance&&typeof instance.module.afterShow==="function"&&!(freshMount&&instance.module.loadsOnMount===true))await instance.module.afterShow(instance.scope);
+ // v24.76.0: a newer navigation started while this page was loading: only that one commits the address, title,
+ // scroll position and cleanup (before, a slow Parts load finishing late put #parts and "Parts" on the Customers page).
+ if(token!==routeTransitionToken)return;
 
  const state={ittr:true,view,...(view==='wo'?{woId:woWs.id,woTab:woWs.tab}:{})};
  // v24.66.0: the page is kept in the address (#invoices), so a reload or a bookmark opens the same page, and the tab shows its name.
@@ -2209,7 +2248,7 @@ async function showView(view,{push=true,replace=false}={}){
  window.scrollTo(0,0);updateMobileBackButton();
 
  // Heavy route DOM is removed after navigation. Module-level listeners are aborted first.
- if(previous&&previous!==view&&isLazyRouteModule(previous))await unmountRouteModule(previous);
+ if(previous&&previous!==view&&isLazyRouteModule(previous)&&previous!==currentView)await unmountRouteModule(previous);
 }
 
 function mobileGoBack(){
@@ -2272,13 +2311,68 @@ function ittrStaleNote(view){
  let n=document.getElementById("ittrStaleNote");
  if(!n){n=document.createElement("div");n.id="ittrStaleNote";n.className="ittrStaleNote";n.setAttribute("role","status");document.body.appendChild(n)}
  n.innerHTML=`<span>${esc(currentLanguage==="uk"?"Оновлено на іншому пристрої.":"Updated on another device.")}</span> <button type="button" class="secondary">${esc(currentLanguage==="uk"?"Оновити":"Refresh")}</button> <button type="button" class="ghost" aria-label="Close">×</button>`;
- const [refresh,close]=n.querySelectorAll("button");refresh.onclick=()=>{n.remove();ittrRefreshModuleView(view)};close.onclick=()=>n.remove();
+ const [refresh,close]=n.querySelectorAll("button");refresh.onclick=()=>{n.remove();ittrStaleRefresh(view)};close.onclick=()=>n.remove();
 }
+// v24.76.0: Refresh reloads what is actually open. With the invoice editor open that is the invoice itself (before,
+// only the list behind it reloaded and the editor kept the old copy). Unsaved changes are never replaced silently:
+// the person chooses to keep editing or to load the newer version.
+function ittrInvoiceEditorValues(){return JSON.stringify([...document.querySelectorAll("#invoiceEditor input,#invoiceEditor select,#invoiceEditor textarea")].filter(e=>e.type!=="file").map(e=>e.type==="checkbox"||e.type==="radio"?e.checked:e.value))}
+let ittrInvoiceEditorBase="";
+function ittrInvoiceEditorDirty(){const st=document.getElementById("invoiceDraftState")?.dataset.state;return ["dirty","saving","error"].includes(st)||(!!ittrInvoiceEditorBase&&ittrInvoiceEditorValues()!==ittrInvoiceEditorBase)}
+async function ittrStaleRefresh(view){
+ const editorOpen=document.getElementById("invoiceModal")?.classList.contains("open")&&activeInvoice?.invoice?.id;
+ if(!editorOpen){ittrRefreshModuleView(view);return}
+ const id=activeInvoice.invoice.id;
+ if(ittrInvoiceEditorDirty()){
+  const choice=await ittrChoose(currentLanguage==="uk"?"Цей рахунок змінено на іншому пристрої, а у вас є незбережені зміни.":"This invoice changed on another device and you have unsaved changes.",[["keep",currentLanguage==="uk"?"Залишити мої зміни":"Keep my changes"],["reload",currentLanguage==="uk"?"Завантажити новішу версію (мої зміни буде втрачено)":"Load the newer version (discard mine)"]],"stale");
+  if(choice!=="reload")return;
+ }
+ await openInvoice(id,document.body.classList.contains("invoiceWorkspaceMode"));
+ ittrRefreshModuleView(view);
+}
+// A small accessible choice dialog (buttons carry data-<kind>-choice="<value>"); resolves to the chosen value or null.
+function ittrChoose(message,choices,kind="choice"){
+ return new Promise(resolve=>{
+  const back=document.activeElement,m=document.createElement("div");m.className="ittrChoice";m.setAttribute("role","alertdialog");m.setAttribute("aria-modal","true");
+  const msgId=`ittrChoiceMsg${Date.now()}`;m.setAttribute("aria-labelledby",msgId);
+  m.innerHTML=`<div class="ittrChoiceBox"><p id="${msgId}">${esc(message)}</p><div class="ittrChoiceActs">${choices.map(([v,l],i)=>`<button type="button" class="${i?"secondary":""}" data-${kind}-choice="${esc(v)}">${esc(l)}</button>`).join("")}</div></div>`;
+  document.body.appendChild(m);
+  const btns=[...m.querySelectorAll("button")],done=v=>{m.remove();document.removeEventListener("keydown",key,true);try{back?.focus?.()}catch(_){}resolve(v)};
+  const key=e=>{if(e.key==="Escape"){e.preventDefault();e.stopPropagation();done(null)}else if(e.key==="Tab"){const i=btns.indexOf(document.activeElement);e.preventDefault();btns[(i+(e.shiftKey?btns.length-1:1))%btns.length].focus()}};
+  document.addEventListener("keydown",key,true);btns.forEach(b=>b.onclick=()=>done(b.getAttribute(`data-${kind}-choice`)));btns[0].focus();
+ });
+}
+// v24.76.0: each area (invoices, bills, inventory, customers) has a revision on the server. The page remembers the
+// revisions it has seen; when the live socket (re)connects, any area whose revision moved while disconnected is
+// treated as changed (once, coalesced with everything else), so screens loaded on their own catch up without a
+// reload. The first connection after sign-in only records the revisions (the screens just loaded).
+let ittrDataRevs=null;
+function ittrNoteDataRevision(msg){if(!msg||!msg.domain||msg.rev==null)return;if(!ittrDataRevs||ittrDataRevs.boot!==msg.boot)return;ittrDataRevs.revisions[msg.domain]=Number(msg.rev)}
+function ittrReconcileDataRevisions(msg){
+ if(!msg||!msg.revisions||!["admin","manager"].includes(session?.role))return [];
+ const prev=ittrDataRevs;ittrDataRevs={boot:msg.boot,revisions:{...msg.revisions}};
+ if(!prev)return [];
+ const missed=Object.keys(msg.revisions).filter(d=>prev.boot!==msg.boot||Number(prev.revisions[d]??-1)!==Number(msg.revisions[d]));
+ for(const d of missed)ittrDataChanged({domain:d,reconnect:true});
+ return missed;
+}
+const ittrDataChangedOthers=new Set();
+// Last time the person typed in the invoice editor (focus alone is not typing: dialogs focus a field on open).
+let ittrInvoiceInputAt=0;document.addEventListener("input",e=>{if(e.target?.closest?.("#invoiceModal"))ittrInvoiceInputAt=Date.now()},true);
 function ittrDataChanged(msg){
  if(!["admin","manager"].includes(session?.role))return;
  ittrDataChangedPending.add(String(msg.domain||""));clearTimeout(ittrDataChangedTimer);
+ // Who made the change: a change only this account made (its own autosave) never reloads its own open editor.
+ const by=Array.isArray(msg.by)?msg.by.map(String):[];if(!by.length||by.some(u=>u!==session?.username))ittrDataChangedOthers.add(String(msg.domain||""));
  ittrDataChangedTimer=setTimeout(()=>{
   const domains=[...ittrDataChangedPending];ittrDataChangedPending.clear();
+  const fromOthers=new Set(ittrDataChangedOthers);ittrDataChangedOthers.clear();
+  // v24.76.0: an open invoice editor with nothing unsaved reloads by itself when another device changed invoices;
+  // with unsaved changes (or while typing in it) the note with Refresh appears instead.
+  const invOpen=document.getElementById("invoiceModal")?.classList.contains("open")&&activeInvoice?.invoice?.id;
+  if(invOpen&&fromOthers.has("invoices")){const typing=Date.now()-ittrInvoiceInputAt<3000;
+   if(!ittrInvoiceEditorDirty()&&!typing){ittrStaleRefresh("invoices");return}}
+  else if(invOpen&&!fromOthers.size)return;
   if(domains.includes("inventory")&&window.ittrOpenPOs){window.ittrOpenPOs.at=0;try{if(["board","wo"].includes(currentView))window.ittrWsAfterShow?.(currentView)}catch(_){}}
   const views=new Set(domains.flatMap(d=>ITTR_DOMAIN_VIEWS[d]||[]));
   if(!views.has(currentView))return;
@@ -2287,7 +2381,7 @@ function ittrDataChanged(msg){
   if(editing)ittrStaleNote(currentView);else ittrRefreshModuleView(currentView);
  },400);
 }
-function connectLiveStatusSocket(){if(!cloudToken||!navigator.onLine)return;if(liveSocket&&[WebSocket.OPEN,WebSocket.CONNECTING].includes(liveSocket.readyState))return;liveSocketStopped=false;setLiveStatus("reconnecting",liveReconnectAttempt?"Reconnecting":"Connecting");const proto=location.protocol==="https:"?"wss":"ws";const ws=new WebSocket(`${proto}://${location.host}/ws/shop-status`);liveSocket=ws;ws.onopen=()=>{try{ws.send(JSON.stringify({type:"auth",token:cloudToken}))}catch(_){}};ws.onmessage=e=>{try{const msg=JSON.parse(e.data);if(msg.type==="connected"){liveReconnectAttempt=0;setLiveStatus("connected","Live");refreshCloudStateSilently()}if(["shopflow_changed","task_changed","work_order_created"].includes(msg.type))refreshCloudStateSilently();if(msg.type==="data_changed")ittrDataChanged(msg);if(msg.type==="parts_arrived"&&["admin","manager"].includes(session?.role)&&msg.by!==session?.username)showToast((currentLanguage==="uk"?`Запчастини прибули для замовлення #${msg.workOrderId}`:`Parts arrived for WO #${msg.workOrderId}`)+(msg.unit?` · Unit ${msg.unit}`:"")+(msg.complete?"":(currentLanguage==="uk"?" (частково)":" (partial)"))+(currentLanguage==="uk"?". Механік продовжить роботу, коли ви підтвердите.":". Confirm on the Repair Board when the truck can continue."),"success",12000);if(msg.type==="customer_decision"&&session?.role!=="mechanic")window.dispatchEvent(new CustomEvent("ittr:customer-decision",{detail:msg}));if(msg.type==="sms_received"&&session?.role!=="mechanic")window.dispatchEvent(new CustomEvent("ittr:sms",{detail:msg}))}catch(_){}};ws.onclose=()=>{liveSocket=null;if(liveSocketStopped||!navigator.onLine)return;liveReconnectAttempt++;const delay=Math.min(30000,1000*(2**Math.min(5,liveReconnectAttempt-1)))+Math.floor(Math.random()*500);setLiveStatus("reconnecting","Reconnecting");clearTimeout(liveReconnectTimer);liveReconnectTimer=setTimeout(connectLiveStatusSocket,delay)};ws.onerror=()=>{try{ws.close()}catch(_){}}}
+function connectLiveStatusSocket(){if(!cloudToken||!navigator.onLine)return;if(liveSocket&&[WebSocket.OPEN,WebSocket.CONNECTING].includes(liveSocket.readyState))return;liveSocketStopped=false;setLiveStatus("reconnecting",liveReconnectAttempt?"Reconnecting":"Connecting");const proto=location.protocol==="https:"?"wss":"ws";const ws=new WebSocket(`${proto}://${location.host}/ws/shop-status`);liveSocket=ws;ws.onopen=()=>{try{ws.send(JSON.stringify({type:"auth",token:cloudToken}))}catch(_){}};ws.onmessage=e=>{try{const msg=JSON.parse(e.data);if(msg.type==="connected"){liveReconnectAttempt=0;setLiveStatus("connected","Live");refreshCloudStateSilently();ittrRefreshPermissions();ittrReconcileDataRevisions(msg)}if(["shopflow_changed","task_changed","work_order_created"].includes(msg.type))refreshCloudStateSilently();if(msg.type==="data_changed"){ittrNoteDataRevision(msg);ittrDataChanged(msg)}if(msg.type==="parts_arrived"&&["admin","manager"].includes(session?.role)&&msg.by!==session?.username)showToast((currentLanguage==="uk"?`Запчастини прибули для замовлення #${msg.workOrderId}`:`Parts arrived for WO #${msg.workOrderId}`)+(msg.unit?` · Unit ${msg.unit}`:"")+(msg.complete?"":(currentLanguage==="uk"?" (частково)":" (partial)"))+(currentLanguage==="uk"?". Механік продовжить роботу, коли ви підтвердите.":". Confirm on the Repair Board when the truck can continue."),"success",12000);if(msg.type==="customer_decision"&&session?.role!=="mechanic")window.dispatchEvent(new CustomEvent("ittr:customer-decision",{detail:msg}));if(msg.type==="sms_received"&&session?.role!=="mechanic")window.dispatchEvent(new CustomEvent("ittr:sms",{detail:msg}))}catch(_){}};ws.onclose=()=>{liveSocket=null;if(liveSocketStopped||!navigator.onLine)return;liveReconnectAttempt++;const delay=Math.min(30000,1000*(2**Math.min(5,liveReconnectAttempt-1)))+Math.floor(Math.random()*500);setLiveStatus("reconnecting","Reconnecting");clearTimeout(liveReconnectTimer);liveReconnectTimer=setTimeout(connectLiveStatusSocket,delay)};ws.onerror=()=>{try{ws.close()}catch(_){}}}
 function updateOnlineState(){
  const b=document.getElementById("offlineBanner");
  if(b)b.style.display=navigator.onLine?"none":"block";
@@ -2357,7 +2451,7 @@ document.getElementById("loginForm").onsubmit=async e=>{
     if(d.recoveryLeft!=null)setTimeout(()=>showToast(`${tr("Recovery code used.")} ${d.recoveryLeft} ${tr("left. Make new ones in 🔒 Password.")}`,"warning",9000),800);
     if(d.user?.mfaRecommended&&!d.user?.mfa)setTimeout(()=>showToast(tr("Protect your account: turn on 2-step login in 🔒 Password."),"warning",9000),1500);
     ittrEndSession();window.__ittrSigningOut=false;cloudToken=d.token;sessionStorage.setItem("ittr_cloud_token",cloudToken);
-    session={username:d.user.username,role:d.user.role,display:d.user.display,language:d.user.language||localStorage.getItem("ittr_language")||"en"};
+    session=ittrSessionFromUser(d.user);
     currentLanguage=session.language;localStorage.setItem("ittr_language",currentLanguage);
     sessionStorage.setItem("ittr_session",JSON.stringify(session));
     await loadCloudStateAfterLogin();
@@ -2445,7 +2539,31 @@ function ittrClearReadCaches(){
  try{if(typeof aiTranslationCache==="object"&&aiTranslationCache)for(const k of Object.keys(aiTranslationCache))delete aiTranslationCache[k]}catch(_){}
  try{for(const id of ["detailBody","dashboard","workorders","completed","approvals","mycompleted","activityhistory","mechanic","board","wo"]){const el=document.getElementById(id);if(el&&id==="detailBody")el.innerHTML=""}document.querySelectorAll(".modal.open").forEach(m=>m.classList.remove("open"))}catch(_){}
 }
-function ittrEndSession(){window.__ittrSigningOut=true;ittrSessionGeneration++;for(const c of ittrSessionRequests)c.abort();ittrSessionRequests.clear();cloudRefreshBusy=false;cloudRefreshAgain=false;try{clearTimeout(aiTranslationTimer);aiQueue.clear();aiInFlight.clear();aiRejected.clear();aiOutputs.clear();aiTranslationBusy=0}catch(_){}try{ittrSync.reset()}catch(_){}try{window.ittrPhotoQueue?.signedOut()}catch(_){}try{shopAiEndSession()}catch(_){}cloudReady=false;ittrClearReadCaches()}
+// v24.76.0: signing out (also offline, where the page cannot reload) removes what screens of their own were holding:
+// the open invoice and its editor, profile and directory caches, search results, every lazily loaded page and the
+// values typed into fields. Before, an offline sign-out left the customer's invoice in memory and in the hidden
+// editor. Unsent edits are not touched: they stay in this device's queue, bound to their own account.
+function ittrClearPrivateViews(){
+ const blank=(name,v)=>{try{window[name]=v}catch(_){}};
+ try{activeInvoice=null;invoiceItems=[]}catch(_){}
+ try{customerDirectoryCache=[];customerProfileCache=null;unitSuggestionCache=[];vehicleProfileCache=null}catch(_){}
+ try{shopAiImportDraft=null}catch(_){}
+ try{fmcsaCustomerLookupCache=null}catch(_){}
+ blank("ittrOpenPOs",null);
+ try{ittrInvoiceEditorBase=""}catch(_){}
+ for(const k of Object.keys(ittrSearchGen||{}))try{ittrSearchCancel(k)}catch(_){}
+ for(const id of ["invoiceEditor","detailBody","globalSmartSearchResults","smartDirectoryResults","customerProfileBody","vehicleProfileBody","invoiceLookupResults"]){const el=document.getElementById(id);if(el)el.replaceChildren()}
+ document.querySelectorAll("#ittrStaleNote,.ittrChoice").forEach(n=>n.remove());
+ document.querySelectorAll(".modal.open").forEach(m=>m.classList.remove("open"));
+ document.body.classList.remove("invoiceWorkspaceMode");
+ // Screens drawn from the shop record (work-order tables, mechanic lists, findings, calendar) are emptied too; they are
+ // drawn again from the next account's data after sign-in. (Not redrawn now: that could start requests mid-sign-out.)
+ document.querySelectorAll("section tbody,section .jobs,#issues,#findingsCenter,#approvalsList,#calendarGrid,#mechanicLiveStatus").forEach(el=>el.replaceChildren());
+ document.querySelectorAll("form").forEach(f=>{if(f.id!=="loginForm")try{f.reset()}catch(_){}});
+ document.querySelectorAll("input,textarea").forEach(e=>{if(["loginUser","loginPass"].includes(e.id)||["checkbox","radio","button","submit","hidden","file","range","color"].includes(e.type))return;e.value=""});
+ for(const v of [...routeModuleInstances.keys()])try{unmountRouteModule(v)}catch(_){}
+}
+function ittrEndSession(){window.__ittrSigningOut=true;ittrDataRevs=null;try{ittrClearPrivateViews()}catch(e){console.warn("Sign-out cleanup:",e)}ittrSessionGeneration++;for(const c of ittrSessionRequests)c.abort();ittrSessionRequests.clear();cloudRefreshBusy=false;cloudRefreshAgain=false;try{clearTimeout(aiTranslationTimer);aiQueue.clear();aiInFlight.clear();aiRejected.clear();aiOutputs.clear();aiTranslationBusy=0}catch(_){}try{ittrSync.reset()}catch(_){}try{window.ittrPhotoQueue?.signedOut()}catch(_){}try{shopAiEndSession()}catch(_){}cloudReady=false;ittrClearReadCaches()}
 async function logout(){
   // Send what is still queued before signing out; anything left stays on this device for this account only.
   try{if(navigator.onLine&&cloudToken&&ittrSync.status().pending)await Promise.race([ittrSync.syncAll(),new Promise(r=>setTimeout(r,4000))])}catch(_){}
@@ -2523,6 +2641,13 @@ const UI_TRANSLATIONS={
  "No trucks ready to work on.":"Немає траків, готових до роботи.",
  "My Completed Work":"Мої завершені роботи",
  "All shop work":"Уся робота цеху",
+ "+ Add part":"+ Додати запчастину",
+ "Documents for this work order":"Документи цього замовлення",
+ "No estimate or invoice is linked to this work order yet.":"До цього замовлення ще не прив'язано кошторис чи рахунок.",
+ "Estimate":"Кошторис",
+ "Invoice":"Рахунок",
+ "balance":"борг",
+ "Not started":"Не розпочато",
  "My assigned work":"Моя призначена робота",
  "Assigned to you":"Призначено вам",
  "View only":"Лише перегляд",
@@ -4204,20 +4329,27 @@ function renderTruckSearch(){
 
 // v24 Unified Smart Search
 let globalSmartTimer=null,smartDirectoryTimer=null;
+// v24.76.0: a search answer is shown only if it belongs to the newest query of that search box. Each new query (and
+// clearing the box) starts a new generation and cancels the request still in flight, so a slow answer for an older
+// query can no longer replace the results of a newer one (success or error path).
+const ittrSearchGen={};
+function ittrSearchStart(key){const cur=ittrSearchGen[key]||{n:0};try{cur.ctl?.abort()}catch(_){}const next={n:cur.n+1,ctl:new AbortController()};ittrSearchGen[key]=next;return {signal:next.ctl.signal,current:()=>ittrSearchGen[key]===next}}
+function ittrSearchCancel(key){const cur=ittrSearchGen[key];if(!cur)return;try{cur.ctl?.abort()}catch(_){}ittrSearchGen[key]={n:cur.n+1,ctl:null}}
 function smartResultMeta(parts){return parts.map(cleanImportedDisplayText).filter(Boolean).join(" · ")}
 function hideGlobalSmartSearch(){const b=document.getElementById("globalSmartSearchResults");if(b){b.classList.add("hidden");b.innerHTML=""}}
-function scheduleGlobalSmartSearch(value){clearTimeout(globalSmartTimer);const q=String(value||"").trim();if(q.length<2){hideGlobalSmartSearch();return}globalSmartTimer=setTimeout(()=>runGlobalSmartSearch(q),180)}
+function scheduleGlobalSmartSearch(value){clearTimeout(globalSmartTimer);const q=String(value||"").trim();if(q.length<2){ittrSearchCancel("global");hideGlobalSmartSearch();return}globalSmartTimer=setTimeout(()=>runGlobalSmartSearch(q),180)}
 async function runGlobalSmartSearch(q){
  const box=document.getElementById("globalSmartSearchResults");if(!box)return;
+ const gen=ittrSearchStart("global");
  try{
-  const d=await apiJSON(`/api/smart-search?q=${encodeURIComponent(q)}&limit=6`),rows=[];
+  const d=await apiJSON(`/api/smart-search?q=${encodeURIComponent(q)}&limit=6`,{signal:gen.signal}),rows=[];if(!gen.current())return;
   (d.customers||[]).forEach(x=>rows.push(`<button class="smartResult" onclick="smartOpenCustomer(${Number(x.id)})"><div class="smartResultType">Customer</div><div class="smartResultTitle">${esc(cleanImportedDisplayText(x.customer_name)||"")}</div><div class="smartResultMeta">${esc(smartResultMeta([x.dot_number?`DOT ${cleanVehicleMeta(x.dot_number)}`:"",x.phone||"",[x.city,x.state].map(cleanImportedDisplayText).filter(Boolean).join(", ")]))}</div></button>`));
   (d.units||[]).forEach(x=>rows.push(`<button class="smartResult" onclick="smartOpenUnit(${Number(x.id)})"><div class="smartResultType">Vehicle</div><div class="smartResultTitle">Unit ${esc(cleanVehicleMeta(x.unit_number)||"—")} · ${esc(vehicleDisplayName(x))}</div><div class="smartResultMeta">${esc(smartResultMeta([x.customer_name||"",cleanVehicleMeta(x.vin)||"",x.plate?`Plate ${cleanVehicleMeta(x.plate)}`:""]))}</div></button>`));
   (d.workorders||[]).forEach(x=>rows.push(`<button class="smartResult" data-act="smartOpenService" data-args="${attrArgs(x.source==="fullbay"?"fullbay":"ittr",x.customer_id?Number(x.customer_id):null,encodeURIComponent(String(x.id||"")),encodeURIComponent(String(x.unit||"")))}"><div class="smartResultType">${x.source==="fullbay"?"Service Order":"Work Order"}</div><div class="smartResultTitle">${x.source==="fullbay"?`SO #${esc(cleanVehicleMeta(x.id))}`:`WO #${esc(cleanVehicleMeta(x.id))}`} · Unit ${esc(cleanVehicleMeta(x.unit)||"—")}</div><div class="smartResultMeta">${esc(smartResultMeta([x.completedAt?fmtShortDate(x.completedAt):"",x.customer||"",x.summary||""]))}</div></button>`));
   (d.parts||[]).forEach(x=>{const avail=Number(x.quantity||0)-Number(x.allocated||0);rows.push(`<button class="smartResult" onclick="showView('parts');setTimeout(()=>openPartDetail(${Number(x.id)}),150)"><div class="smartResultType">Part</div><div class="smartResultTitle">${esc(cleanPartField(x.part_number))} · ${esc(cleanPartField(x.description))}</div><div class="smartResultMeta">${esc(smartResultMeta([`${avail} available`,Number(x.allocated||0)?`${Number(x.allocated)} reserved`:"",x.location?`Shelf ${x.location}`:""]))}</div></button>`)});
   (d.invoices||[]).forEach(x=>rows.push(`<button class="smartResult" onclick="showView('invoices');setTimeout(()=>openInvoice(${Number(x.id)}),150)"><div class="smartResultType">Invoice</div><div class="smartResultTitle">${esc(x.invoice_number)} · ${esc(x.customer_name||"")}${x.unit_number?` · Unit ${esc(x.unit_number)}`:""}</div><div class="smartResultMeta">${esc(smartResultMeta([x.invoice_date?fmtShortDate(x.invoice_date):"",String(x.status||""),Number(x.balance_due||0)>0?`${money(x.balance_due)} due`:money(x.total||0)]))}</div></button>`));
   box.innerHTML=rows.length?rows.slice(0,18).join(""):`<div class="smartResultMeta" style="padding:12px">No matches. Tip: ask the ✦ Workshop AI a full question, e.g. "when was the last PM on 6600?"</div>`;box.classList.remove("hidden");
- }catch(e){box.innerHTML=`<div class="smartResultMeta" style="padding:12px">Search unavailable: ${esc(e.message||"")}</div>`;box.classList.remove("hidden")}
+ }catch(e){if(!gen.current()||e?.name==="AbortError")return;box.innerHTML=`<div class="smartResultMeta" style="padding:12px">Search unavailable: ${esc(e.message||"")}</div>`;box.classList.remove("hidden")}
 }
 async function smartOpenCustomer(id){hideGlobalSmartSearch();await showView("customers");openCustomerProfile(id)}
 async function smartOpenUnit(unitId){hideGlobalSmartSearch();await showView("customers");openVehicleProfile(unitId)}
@@ -4226,16 +4358,17 @@ document.addEventListener("click",e=>{if(!e.target.closest(".smartHeaderSearch")
 function debouncedSmartDirectory(){clearTimeout(smartDirectoryTimer);smartDirectoryTimer=setTimeout(renderSmartDirectory,180)}
 async function renderSmartDirectory(){
  const q=String(document.getElementById("customerDirectorySearch")?.value||"").trim(),results=document.getElementById("smartDirectoryResults"),table=document.getElementById("customerDirectoryTableCard");if(!results||!table)return;
- if(q.length<2){results.classList.add("hidden");results.innerHTML="";table.classList.remove("hidden");await renderCustomerDirectory();return}
+ if(q.length<2){ittrSearchCancel("directory");results.classList.add("hidden");results.innerHTML="";table.classList.remove("hidden");await renderCustomerDirectory();return}
+ const gen=ittrSearchStart("directory");
  table.classList.add("hidden");results.classList.remove("hidden");results.innerHTML='<div class="card">Searching customers, vehicles and service history…</div>';
  try{
-  const d=await apiJSON(`/api/smart-search?q=${encodeURIComponent(q)}&limit=30`),customers=d.customers||[],units=d.units||[],workorders=d.workorders||[];
+  const d=await apiJSON(`/api/smart-search?q=${encodeURIComponent(q)}&limit=30`,{signal:gen.signal}),customers=d.customers||[],units=d.units||[],workorders=d.workorders||[];if(!gen.current())return;
   const group=(title,body)=>`<div class="smartGroup"><div class="smartGroupTitle">${esc(title)}</div>${body||'<div class="smartGroupItem"><span class="muted">No matches</span></div>'}</div>`;
   const c=customers.map(x=>`<div class="smartGroupItem"><div><div class="smartPrimary">${esc(cleanImportedDisplayText(x.customer_name)||"")}</div><div class="smartMeta">${esc(smartResultMeta([x.dot_number?`DOT ${cleanVehicleMeta(x.dot_number)}`:"",x.phone||"",[x.city,x.state,x.postal_code].map(cleanImportedDisplayText).filter(Boolean).join(", ")]))}</div></div><div class="smartActions"><button class="secondary" onclick="openCustomerProfile(${Number(x.id)})">Open Customer</button></div></div>`).join("");
   const u=units.map(x=>`<div class="smartGroupItem"><div><div class="smartPrimary">Unit ${esc(cleanVehicleMeta(x.unit_number)||"—")} · ${esc(vehicleDisplayName(x))}</div><div class="smartMeta">${esc(smartResultMeta([x.customer_name||"",cleanVehicleMeta(x.vin)||"",x.plate?`Plate ${cleanVehicleMeta(x.plate)}`:"",x.mileage!=null?`${Number(x.mileage).toLocaleString()} mi`:""]))}</div></div><div class="smartActions">${x.customer_id?`<button class="secondary" onclick="openVehicleProfile(${Number(x.id)})">Open Vehicle</button>`:""}</div></div>`).join("");
   const w=workorders.map(x=>`<div class="smartGroupItem"><div><div class="smartPrimary">${x.source==="fullbay"?`Fullbay SO #${esc(cleanVehicleMeta(x.id))}`:`WO #${esc(cleanVehicleMeta(x.id))}`} · Unit ${esc(cleanVehicleMeta(x.unit)||"—")}</div><div class="smartMeta">${esc(smartResultMeta([x.customer||"",x.status||"",x.summary||""]))}</div></div><div class="smartActions"><button class="secondary" data-act="smartOpenService" data-args="${attrArgs(x.source==="fullbay"?"fullbay":"ittr",x.customer_id?Number(x.customer_id):null,encodeURIComponent(String(x.id||"")),encodeURIComponent(String(x.unit||"")))}">${x.source==="fullbay"?"Open Service Order":"Open Work Order"}</button></div></div>`).join("");
   results.innerHTML=group(`Customers (${customers.length})`,c)+group(`Vehicles (${units.length})`,u)+group(`Service / Work Orders (${workorders.length})`,w);
- }catch(e){results.innerHTML=`<div class="notice"><b>Search unavailable</b><div class="muted">${esc(e.message||"")}</div></div>`}
+ }catch(e){if(!gen.current()||e?.name==="AbortError")return;results.innerHTML=`<div class="notice"><b>Search unavailable</b><div class="muted">${esc(e.message||"")}</div></div>`}
 }
 
 function fmtShortDate(v){if(!v)return "—";const d=new Date(v);if(!Number.isFinite(d.getTime()))return String(v||"—");return d.toLocaleDateString("en-US",{month:"2-digit",day:"2-digit",year:"numeric"})}
@@ -4475,7 +4608,7 @@ async function loadCloudStateAfterLogin({restored=false}={}){
 async function restoreCloudSession(){
  if(!cloudToken||!session)return false;
  const generation=ittrSessionGeneration,token=cloudToken;
- try{const d=await apiJSON("/api/auth/me");if(!ittrSessionCurrent(generation,token))return false;session={username:d.user.username,role:d.user.role,display:d.user.display,language:d.user.language||localStorage.getItem("ittr_language")||"en"};currentLanguage=session.language;localStorage.setItem("ittr_language",currentLanguage);sessionStorage.setItem("ittr_session",JSON.stringify(session));await loadCloudStateAfterLogin({restored:true});return true}catch(_){return false}
+ try{const d=await apiJSON("/api/auth/me");if(!ittrSessionCurrent(generation,token))return false;session=ittrSessionFromUser(d.user);currentLanguage=session.language;localStorage.setItem("ittr_language",currentLanguage);sessionStorage.setItem("ittr_session",JSON.stringify(session));await loadCloudStateAfterLogin({restored:true});return true}catch(_){return false}
 }
 
 function audit(action,details="",unit=""){
@@ -5381,8 +5514,62 @@ function closeModal(id){
  if(modal) modal.querySelectorAll('input[type="password"]').forEach(i=>{i.value=""});
  updateMobileBackButton();
 }
+// v24.76.0: one dialog behaviour for every .modal (New Work Order, work-order detail, helper picker, invoices, …):
+// role="dialog" + aria-modal with the dialog's heading as its name; focus moves into the dialog and returns to what
+// opened it; Tab / Shift+Tab stay inside the top dialog (nested dialogs: the newest one); Escape or × on a dialog
+// whose fields were changed asks "Keep editing / Discard changes" instead of throwing the typing away.
+const ittrDialogs=[];
+const ittrFocusable=m=>[...m.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])')].filter(e=>e.offsetParent!==null&&!e.closest("[hidden]"));
+const ittrDialogValues=m=>JSON.stringify([...m.querySelectorAll("input,select,textarea")].filter(e=>!["hidden","file","button","submit","password"].includes(e.type)).map(e=>e.type==="checkbox"||e.type==="radio"?e.checked:e.value));
+function ittrDialogPrepare(m){
+ if(!m.getAttribute("role"))m.setAttribute("role","dialog");m.setAttribute("aria-modal","true");if(!m.hasAttribute("tabindex"))m.setAttribute("tabindex","-1");
+ if(!m.getAttribute("aria-label")&&!m.getAttribute("aria-labelledby")){const h=m.querySelector("h1,h2,h3");if(h){if(!h.id)h.id=`${m.id||"ittrDialog"}Title`;m.setAttribute("aria-labelledby",h.id)}else m.setAttribute("aria-label",m.dataset.title||"Dialog")}
+ m.querySelectorAll("button.x,.modalhead .x").forEach(x=>{if(!x.getAttribute("aria-label"))x.setAttribute("aria-label","Close")});
+}
+function ittrDialogOpened(m){
+ if(ittrDialogs.some(d=>d.m===m))return;ittrDialogPrepare(m);
+ const entry={m,back:document.activeElement,base:ittrDialogValues(m),touched:false};ittrDialogs.push(entry);
+ const mark=()=>{entry.touched=true};m.addEventListener("input",mark,{once:true});m.addEventListener("change",mark,{once:true});
+ // The opener may still be filling the form right after showing it; take the baseline again then, unless the person
+ // has already typed.
+ setTimeout(()=>{if(!ittrDialogs.includes(entry))return;if(!entry.touched)entry.base=ittrDialogValues(m);if(!m.contains(document.activeElement)){const f=ittrFocusable(m),first=f.find(e=>!e.matches(".x,.modalhead .x"))||f[0]||m;try{first.focus({preventScroll:true})}catch(_){}}},60);
+}
+function ittrDialogClosed(m){
+ const i=ittrDialogs.findIndex(d=>d.m===m);if(i<0)return;const [entry]=ittrDialogs.splice(i,1);
+ setTimeout(()=>{const top=ittrDialogs.at(-1)?.m;const back=entry.back;
+  if(back&&document.contains(back)&&back.offsetParent!==null&&(!top||top.contains(back))){try{back.focus({preventScroll:true})}catch(_){}}
+  else if(top){const f=ittrFocusable(top)[0]||top;try{f.focus({preventScroll:true})}catch(_){}}},0);
+}
+function ittrDialogDirty(m){const d=ittrDialogs.find(x=>x.m===m);return !!d&&d.base!=null&&ittrDialogValues(m)!==d.base}
+new MutationObserver(list=>{for(const r of list){const el=r.target;if(!(el instanceof HTMLElement)||!el.classList.contains("modal"))continue;if(el.classList.contains("open"))ittrDialogOpened(el);else ittrDialogClosed(el)}})
+ .observe(document.body,{subtree:true,attributes:true,attributeFilter:["class"]});
+document.querySelectorAll(".modal.open").forEach(ittrDialogOpened);
+const ittrDialogTop=()=>{const m=getTopOpenModal();return m&&m.classList.contains("open")?m:null};
+const ittrOverlayOpen=()=>document.querySelector(".pv,.ittrChoice");
 document.addEventListener("keydown",e=>{
- if(e.key==="Escape") closeTopOpenModal();
+ if(e.key!=="Tab"||ittrOverlayOpen())return;const m=ittrDialogTop();if(!m||document.activeElement?.closest?.("#shopAiPanel,#ittrStaleNote,#toastRegion"))return;
+ const f=ittrFocusable(m);if(!f.length){e.preventDefault();m.focus();return}
+ const i=f.indexOf(document.activeElement);e.preventDefault();
+ f[i<0?(e.shiftKey?f.length-1:0):(i+(e.shiftKey?f.length-1:1))%f.length].focus();
+},true);
+document.addEventListener("focusin",e=>{if(ittrOverlayOpen())return;const m=ittrDialogTop();if(!m||m.contains(e.target)||e.target.closest?.("#ittrStaleNote,#toastRegion,#shopAiPanel,#shopAiFab,.ittrChoice,.pv"))return;const f=ittrFocusable(m)[0]||m;try{f.focus({preventScroll:true})}catch(_){}});
+let ittrDialogBypass=false;
+async function ittrConfirmDiscard(m){
+ if(!ittrDialogDirty(m))return true;
+ const c=await ittrChoose(currentLanguage==="uk"?"Є незбережені зміни. Закрити без збереження?":"You have unsaved changes. Close without saving?",[["keep",currentLanguage==="uk"?"Продовжити редагування":"Keep editing"],["discard",currentLanguage==="uk"?"Відкинути зміни":"Discard changes"]],"discard");
+ if(c==="discard"){const d=ittrDialogs.find(x=>x.m===m);if(d)d.base=ittrDialogValues(m);return true}
+ try{(ittrFocusable(m)[0]||m).focus()}catch(_){}return false;
+}
+document.addEventListener("click",async e=>{
+ if(ittrDialogBypass)return;const x=e.target.closest?.(".modal.open .x,.modal.open [data-close-modal]");if(!x)return;const m=x.closest(".modal");
+ if(!ittrDialogDirty(m))return;e.preventDefault();e.stopImmediatePropagation();
+ if(await ittrConfirmDiscard(m)){ittrDialogBypass=true;try{x.click()}finally{ittrDialogBypass=false}}
+},true);
+document.addEventListener("keydown",async e=>{
+ if(e.key!=="Escape"||ittrOverlayOpen())return;
+ const m=ittrDialogTop();
+ if(m&&ittrDialogDirty(m)){e.preventDefault();if(await ittrConfirmDiscard(m))closeTopOpenModal();return}
+ closeTopOpenModal();
 });
 document.querySelectorAll(".modal").forEach(m=>{
  m.addEventListener("click",e=>{
@@ -5787,7 +5974,8 @@ async function loadPartsCenter(){setTimeout(()=>{try{refreshCoresBadge()}catch(_
  try{const v=sessionStorage.getItem('ittr_parts_view');if(v&&!loadPartsCenter.viewLoaded){partsView=v}}catch(_){}loadPartsCenter.viewLoaded=true;
  if(partsView==='bills')partsView='instock';
  const q=document.getElementById("partsSearch")?.value?.trim()||"";list.innerHTML='<div class="muted">Loading inventory…</div>';
- try{const sum=await apiJSON('/api/parts/summary');const need=Number(sum.low_stock||0)+Number(sum.out_of_stock||0);
+ const gen=ittrSearchStart("parts");
+ try{const sum=await apiJSON('/api/parts/summary',{signal:gen.signal});if(!gen.current())return;const need=Number(sum.low_stock||0)+Number(sum.out_of_stock||0);
   ['partsNavBadge','mobilePartsNavBadge'].forEach(id=>{const e=document.getElementById(id);if(e){e.textContent=String(need);e.title=`${need} parts to reorder: ${Number(sum.out_of_stock||0)} out of stock, ${Number(sum.low_stock||0)} low stock`;e.setAttribute('aria-label',e.title);e.style.display=need?'inline-flex':'none'}});
   const ab=document.getElementById('partsLowAlert');if(ab)ab.innerHTML=need&&partsView!=='need'?`<div class="partsAlert"><div><strong>⚠ ${need} stocked part${need===1?'':'s'} need${need===1?'s':''} ordering</strong><div class="muted">${Number(sum.out_of_stock||0)} out of stock · ${Number(sum.low_stock||0)} at or below the reorder level.</div></div><button class="secondary" onclick="setPartsView('need')">See what to order</button></div>`:'';
   const stats=document.getElementById("partsStats");if(stats)stats.innerHTML=`<div class="partsStat"><span class="muted">Items in stock</span><b>${Number(sum.in_stock||0).toLocaleString()}</b></div>${partsIsMech()?'':`<div class="partsStat"><span class="muted">Stock value</span><b>${money(sum.inventory_value)}</b></div>`}<div class="partsStat"><span class="muted">Need to order</span><b class="${need?'stockWarn':''}">${need.toLocaleString()}</b></div><div class="partsStat"><span class="muted">On order</span><b>${Number(sum.on_order||0).toLocaleString()}</b></div><div class="partsStat"><span class="muted">In catalog, never stocked</span><b>${Number(sum.never_stocked||0).toLocaleString()}</b></div>`;
@@ -5797,13 +5985,13 @@ async function loadPartsCenter(){setTimeout(()=>{try{refreshCoresBadge()}catch(_
   paintPartsSelBar();
   if(partsView==='bills')return partsVendorBills(list,q);
   const filter=partsView==='need'?'low':partsView,sort=partsView==='need'?'qty':partsSort;
-  const d=await apiJSON(`/api/parts?q=${encodeURIComponent(q)}&filter=${encodeURIComponent(filter)}&sort=${encodeURIComponent(sort)}&limit=${['instock','fluids'].includes(filter)?2000:150}`),items=d.items||[];
+  const d=await apiJSON(`/api/parts?q=${encodeURIComponent(q)}&filter=${encodeURIComponent(filter)}&sort=${encodeURIComponent(sort)}&limit=${['instock','fluids'].includes(filter)?2000:150}`,{signal:gen.signal}),items=d.items||[];if(!gen.current())return;
   if(partsView==='fluids'){list.innerHTML=fluidCards(items);return}
   if(partsView==='need'){list.innerHTML=needToOrderTable(items);return}
   if(partsView==='noprice'){list.innerHTML=noPriceView(items,q);return}
   if(!items.length){list.innerHTML=`<div class="ledgerEmpty">${q?'No parts match this search.':partsView==='instock'?'Nothing in stock yet. Enter the parts invoice in Bills → Parts invoice to add parts.':'No parts here.'}</div>`;return}
   list.innerHTML=partsView==='instock'&&!q&&partsSort==='name'?partsGrouped(items):`<table class="partsTable partsTableV2">${partsTableHead()}<tbody>${items.map(x=>partRow(x)).join('')}</tbody></table>${partsView==='all'&&items.length>=150?'<div class="muted" style="margin-top:8px">Showing the first 150. Search to narrow down.</div>':''}`;
- }catch(e){list.innerHTML=`<div class="error">${esc(e.message||'Unable to load parts.')}</div>`}}
+ }catch(e){if(!gen.current()||e?.name==="AbortError")return;list.innerHTML=`<div class="error">${esc(e.message||'Unable to load parts.')}</div>`}}
 // v24.59.0: stocked parts with no sell price. Open one to type its price, or price all of them from cost + markup.
 const fullbayCompareBtn='<button type="button" class="secondary" onclick="openFullbayPriceCheck()">Compare with Fullbay prices</button>';
 function noPriceView(items,q){if(!items.length)return `<div class="ledgerEmpty">${q?'No unpriced parts match this search.':'Every part you stock has a sell price. 👍'}<div style="margin-top:10px">${fullbayCompareBtn}</div></div>`;const withCost=items.filter(x=>Number(x.cost||x.last_purchase_cost||0)>0).length;
@@ -6035,7 +6223,7 @@ async function lookupScannedPart(codeOverride=''){const inp=document.getElementB
  try{const d=await apiJSON(`/api/parts/scan/${encodeURIComponent(code)}`),x=d.item;if(out)out.innerHTML=`<div class="card"><b>${esc(cleanPartField(x.part_number))}</b><div>${esc(cleanPartField(x.description))}</div><div class="${partStockClass(x)}">Available: ${Number(x.available||0).toLocaleString()} ${esc(cleanImportedDisplayText(x.uom)||'')}</div><div class="muted">${esc(cleanPartField(x.location,'No location'))} · ${esc(x.internal_barcode||'')}</div><div class="actions">${partsScannerContext.mode==='workorder'?`<div class="row" style="margin-top:10px"><div class="field"><label>Quantity</label><input id="partsScanQty" type="number" min="0.01" step="any" value="1" inputmode="decimal"></div>${isGallonUom(x.uom)?`<div class="field"><label>Unit</label>${fluidUnitSelect('partsScanUnit')}</div>`:''}<div class="field" style="align-self:end"><button style="width:100%" data-act="confirmScannedPart" data-args="${attrArgs(Number(x.id),encodeURIComponent(cleanPartField(x.part_number,'')),encodeURIComponent(cleanPartField(x.description,'')))}">Add to This Job</button></div></div>`:`<button onclick="closePartsScanner();showView('parts').then(()=>openPartDetail(${Number(x.id)}))">Open Part</button>`}</div></div>`;stopPartsCamera()}catch(e){if(out)out.innerHTML=`<div class="error">${esc(e.message||'Barcode not found.')}</div>`}}
 async function confirmScannedPart(id,pn,desc){const {workOrderId,taskIndex}=partsScannerContext,w=state.workorders.find(x=>String(x.id)===String(workOrderId)),t=w?.tasks?.[taskIndex];if(!t?.uid)return alert('Task not found.');const qty=Number(document.getElementById('partsScanQty')?.value||1);if(!qty||qty<=0)return alert('Enter a valid quantity.');try{const d=await apiJSON(`/api/work-orders/${encodeURIComponent(workOrderId)}/tasks/by-uid/${encodeURIComponent(t.uid)}/parts`,{method:'POST',body:JSON.stringify({inventoryPartId:id,partNumber:decodeURIComponent(pn),description:decodeURIComponent(desc),qty,unit:document.getElementById('partsScanUnit')?.value||undefined,method:'barcode_scan'})});if(d?.shopflow)ittrAdoptServerShopflow(d.shopflow,d.version);else if(d?.version!=null)ittrNoteShopflowVersion(d.version);closePartsScanner();render();openDetail(workOrderId)}catch(e){alert(e.message||'Unable to add scanned part.')}}
 async function startPartsCamera(){stopPartsCamera();const view=document.getElementById('scannerViewport'),video=document.getElementById('partsScannerVideo');if(!navigator.mediaDevices?.getUserMedia)return alert('Camera scanning is not available in this browser. Use a USB/Bluetooth scanner or type the barcode.');try{if('BarcodeDetector' in window){const formats=await BarcodeDetector.getSupportedFormats(),wanted=['code_128','ean_13','ean_8','upc_a','upc_e','code_39','itf','codabar','qr_code'].filter(x=>formats.includes(x)),det=new BarcodeDetector(wanted.length?{formats:wanted}:undefined);partsScannerStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}});const track=partsScannerStream.getVideoTracks()[0];try{const caps=track.getCapabilities?.()||{};const advanced=[];if(caps.focusMode?.includes?.('continuous'))advanced.push({focusMode:'continuous'});if(caps.exposureMode?.includes?.('continuous'))advanced.push({exposureMode:'continuous'});if(advanced.length)await track.applyConstraints({advanced})}catch{}video.srcObject=partsScannerStream;await video.play();view.classList.remove('hidden');let busy=false;partsScannerTimer=setInterval(async()=>{if(busy||video.readyState<2)return;busy=true;try{const found=await det.detect(video),code=String(found?.[0]?.rawValue||'').trim();if(code){const now=Date.now();if(code===partsScannerLastCode&&now-partsScannerLastAt<1200)return;partsScannerLastCode=code;partsScannerLastAt=now;document.getElementById('partsScanInput').value=code;await lookupScannedPart(code)}}catch{}finally{busy=false}},120);return}if(window.Html5Qrcode){view.classList.remove('hidden');video.style.display='none';let mount=document.getElementById('html5PartsReader');if(!mount){mount=document.createElement('div');mount.id='html5PartsReader';view.appendChild(mount)}partsHtml5Scanner=new Html5Qrcode('html5PartsReader');await partsHtml5Scanner.start({facingMode:'environment'},{fps:15,qrbox:{width:320,height:160},aspectRatio:1.777778},async decoded=>{const code=String(decoded||'').trim(),now=Date.now();if(!code||(code===partsScannerLastCode&&now-partsScannerLastAt<1200))return;partsScannerLastCode=code;partsScannerLastAt=now;document.getElementById('partsScanInput').value=code;await lookupScannedPart(code)});return}alert('Live camera scanning is unavailable. Use a USB/Bluetooth scanner or type the barcode.')}catch(e){stopPartsCamera();alert('Unable to start camera: '+(e.message||e))}}
-function stopPartsCamera(){if(partsScannerTimer){clearInterval(partsScannerTimer);partsScannerTimer=null}if(partsScannerStream){partsScannerStream.getTracks().forEach(t=>t.stop());partsScannerStream=null}if(partsHtml5Scanner){const x=partsHtml5Scanner;partsHtml5Scanner=null;Promise.resolve(x.stop()).catch(()=>{}).finally(()=>{try{x.clear()}catch{}})}const v=document.getElementById('partsScannerVideo');if(v){v.srcObject=null;v.style.display=''}const mount=document.getElementById('html5PartsReader');if(mount)mount.remove();document.getElementById('scannerViewport')?.classList.add('hidden')}
+function stopPartsCamera(){if(partsScannerTimer){clearInterval(partsScannerTimer);partsScannerTimer=null}if(partsScannerStream){partsScannerStream.getTracks().forEach(t=>t.stop());partsScannerStream=null}if(partsHtml5Scanner){const x=partsHtml5Scanner;partsHtml5Scanner=null;/* v24.76.0: stop() throws synchronously when the scanner is not running yet ("Cannot stop, scanner is not running or paused"); new Promise() turns that into the rejection handled here */new Promise(r=>r(x.stop())).catch(()=>{}).finally(()=>{try{x.clear()}catch{}})}const v=document.getElementById('partsScannerVideo');if(v){v.srcObject=null;v.style.display=''}const mount=document.getElementById('html5PartsReader');if(mount)mount.remove();document.getElementById('scannerViewport')?.classList.add('hidden')}
 
 async function openInventoryCount(){if(!requireAdmin())return;const m=document.getElementById('inventoryCountModal');m?.classList.add('open');syncModalState();updateMobileBackButton();const body=document.getElementById('inventoryCountBody');if(body)body.innerHTML='<div class="muted">Checking for an open inventory count…</div>';try{const d=await apiJSON('/api/parts/inventory-count/current');inventoryCountSession=d.session||null;if(!inventoryCountSession){if(body)body.innerHTML=`<div class="partPanel"><h3>Start Physical Inventory</h3><p class="muted">Choose how you want to count. Nothing changes stock until you review and complete the session.</p><div class="row"><div class="card"><b>Scan Each Item</b><div class="muted">Best for individual boxed parts. Every successful scan adds 1 to the physical count.</div><button style="margin-top:10px" onclick="startInventoryCount('each')">Start Item-by-Item Count</button></div><div class="card"><b>Scan Shelf / Bin</b><div class="muted">Scan one barcode, then type the physical quantity you counted on the shelf.</div><button style="margin-top:10px" onclick="startInventoryCount('shelf')">Start Shelf Count</button></div></div><div class="notice" style="margin-top:12px">Unscanned parts are left unchanged. Only reviewed parts in this session are adjusted when you complete the count.</div>${session?.role==='admin'?`<div class="card" style="margin-top:12px;border-color:#fda29b"><b>Start from zero</b><div class="muted">Sets every part's on-hand quantity to 0 so a full physical count starts clean (for example, after importing from Fullbay). Each change is saved in the part's history. Parts already reserved on work orders stay reserved.</div><button class="danger" style="margin-top:10px" onclick="resetInventoryToZero()">Reset all stock to 0</button></div><div class="card" style="margin-top:12px"><b>Repair stock from old bugs</b><div class="muted">Finds parts sold on invoices that were deleted but never returned to stock, and reservations still held by work orders that are already invoiced. Shows you the list first.</div><button class="secondary" style="margin-top:10px" onclick="previewInventoryRepair()">Check stock</button><div id="inventoryRepairResult" style="margin-top:10px"></div></div>`:''}</div>`;return}await refreshInventoryCountBody()}catch(e){if(body)body.innerHTML=`<div class="error">${esc(e.message||'Unable to open inventory count.')}</div>`}}
 function closeInventoryCount(){document.getElementById('inventoryCountModal')?.classList.remove('open');syncModalState();updateMobileBackButton()}
@@ -6058,13 +6246,16 @@ function taskPartsHTML(w,t,i){
    <div>Qty ${esc(String(p.qty||1))}${p.unit?` ${fluidUnitLabel(p.unit,p.qty)}`:''}</div>
    ${(["admin","manager"].includes(session?.role)||String(p.addedBy||"").toLowerCase()===String(session?.username||"").toLowerCase())&&w.status!=="Completed"?`<button type="button" class="danger" data-act="removeTaskPart" data-args="${attrArgs(w.id,String(t.uid||""),String(p.id||""))}">×</button>`:""}
  </div>`).join(""):`<div class="muted">No parts recorded for this job.</div>`;
- const add=((session?.role==="mechanic"&&visibleToCurrentMechanic(w))||["admin","manager"].includes(session?.role))&&w.status!=="Completed"?`<div class="partAddGrid">
+ // v24.76.0: the add-part form folds behind "+ Add part" (open while this job's timer runs, and kept open after adding
+ // a part until it is closed), so job details are not a long column of empty fields.
+ const formKey=`${w.id}:${t.uid||i}`,formOpen=ittrPartFormOpen.has(formKey)||!!(t.startedAt&&!t.stoppedAt&&!t.done);
+ const add=((session?.role==="mechanic"&&visibleToCurrentMechanic(w))||["admin","manager"].includes(session?.role))&&w.status!=="Completed"?`<details class="partAddDetails" data-part-form="${esc(formKey)}" ${formOpen?"open":""}><summary>${esc(tr("+ Add part"))}</summary><div class="partAddGrid">
    <label class="miniField"><span>Part #</span><input id="partNo_${w.id}_${i}" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" placeholder="Part Number" oninput="fullbayPartSuggest(this,${jsArg(w.id)},${i},'number')" onkeydown="partSuggestKey(event,${jsArg(w.id)},${i})" onblur="hidePartSuggest(${jsArg(w.id)},${i})"></label>
    <label class="miniField partDescLabel"><span>Description</span><input class="partDescInput" id="partDesc_${w.id}_${i}" autocomplete="off" spellcheck="false" placeholder="Part Description" oninput="fullbayPartSuggest(this,${jsArg(w.id)},${i},'description')" onkeydown="partSuggestKey(event,${jsArg(w.id)},${i})" onblur="hidePartSuggest(${jsArg(w.id)},${i})"></label>
    <label class="miniField"><span>Qty</span><input id="partQty_${w.id}_${i}" type="number" min="0.01" step="0.01" value="1" placeholder="Qty"></label>
    <label class="miniField partUnitHidden" id="partUnitWrap_${w.id}_${i}"><span>Unit</span>${fluidUnitSelect(`partUnit_${w.id}_${i}`)}</label>
    <button type="button" class="secondary" onclick="addTaskPart(${jsArg(w.id)},${i})">Add Part</button><button type="button" class="secondary" data-act="openStockPicker" data-args="${attrArgs(w.id,String(t.uid||''))}" title="Pick a part that is on the shelf (fluids in gallons or quarts)">📦 From stock</button><button type="button" class="partScanBtn" onclick="openPartsScanner('workorder',${jsArg(w.id)},${i})">▥ Scan Part</button>
- </div>`:"";
+ </div></details>`:"";
  return `<div class="taskParts"><b>Parts Used</b>${rows}${add}</div>`;
 }
 // v24.43.0 fluids: parts stocked in gallons can be used/billed in gallons or quarts (1 qt = 0.25 gal).
@@ -6098,6 +6289,8 @@ async function removeTaskPart(workOrderId,taskUid,partId){
  }catch(e){alert(e.message||"Unable to remove part.")}
 }
 
+const ittrPartFormOpen=new Set();
+document.addEventListener("toggle",e=>{const d=e.target;if(!(d instanceof HTMLDetailsElement)||!d.dataset.partForm)return;if(d.open)ittrPartFormOpen.add(d.dataset.partForm);else ittrPartFormOpen.delete(d.dataset.partForm)},true);
 function taskTimerRow(w,t,i){
  const isMechanic=session?.role==="mechanic" && visibleToCurrentMechanic(w) && w.status!=="Completed";
  const running=!!(t.startedAt && !t.stoppedAt && !t.done);
@@ -6137,11 +6330,11 @@ function taskTimerRow(w,t,i){
      <div><b>${esc(t.t)}</b>${t.source==="inspection"?` <span class="badge b-approved">Approved Finding</span>`:""}</div>
      <div class="taskcontrols">${controls}</div>
    </div>
-   <div class="timerinfo">
+   ${t.startedAt||t.stoppedAt||Number(t.elapsedMs||0)>0?`<div class="timerinfo">
      <b>${t.startedAt?"Latest Start":"Started"}:</b> ${fmtDateTime(t.startedAt)}
      &nbsp; | &nbsp; <b>${t.stoppedAt?"Latest Stop":"Stopped"}:</b> ${fmtDateTime(t.stoppedAt)}
      &nbsp; | &nbsp; <b>Total Labor:</b> ${fmtDuration(taskElapsed(t))}
-   </div>
+   </div>`:`<div class="timerinfo muted">${esc(tr("Not started"))}</div>`}
    <div data-task-timeline-wo="${esc(String(w.id))}" data-task-timeline-index="${i}" data-task-timeline-uid="${esc(String(t.uid||""))}"></div>
    ${isMechanic&&t.uid?`<div class="taskReport"><button type="button" class="ds-btn ds-btn-secondary ds-btn-sm" data-act="reportProblemOnTask" data-args="${attrArgs(w.id,String(t.uid))}">${typeof ittrIcon==="function"?ittrIcon("camera","sm"):""}<span>${esc(tr("Report a problem on this job"))}</span></button></div>`:""}
    ${t.findingDecision==="Do Not Proceed"?`<div class="outcomeNoteBox"><b>DECLINED — DO NOT PROCEED</b><div class="muted">Decision changed by Admin${t.approvalChangedAt?` · ${fmtDateTime(t.approvalChangedAt)}`:""}</div></div>`:""}
@@ -6631,7 +6824,7 @@ async function activateInvoiceWorkspaceFromURL(){
   document.title=`Invoice Workspace · ITTR ShopFlow`;
   try{await showView('invoices',{push:false,replace:true});await openInvoice(id,true)}catch(e){invoiceWorkspaceActivated=false;showToast?.(e.message||'Unable to open invoice workspace.','error',8000)}
 }
-async function openInvoice(id,workspaceMode=false){try{const r=await ittrSessionFetch(`/api/invoices/${id}`,{headers:authHeaders(),cache:'no-store'}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to load invoice');activeInvoice=d;renderInvoiceEditor();document.getElementById('invoiceModal').classList.add('open');syncModalState()}catch(e){alert(e.message)}}
+async function openInvoice(id,workspaceMode=false){try{const r=await ittrSessionFetch(`/api/invoices/${id}`,{headers:authHeaders(),cache:'no-store'}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to load invoice');activeInvoice=d;renderInvoiceEditor();document.getElementById('invoiceModal').classList.add('open');syncModalState();ittrInvoiceEditorBase=ittrInvoiceEditorValues()}catch(e){alert(e.message)}}
 function invoiceGroupName(l){return String(l?.job_name||'Service').trim()||'Service'}
 function invoiceLineTypeLabel(t){return t==='labor'?'Labor':t==='part'?'Part':t==='sublet'?'Sublet':t==='fee'?'Fee':'Other'}
 function invoiceChildrenForLabor(lines,labor){const direct=lines.filter(x=>x.line_type!=='labor'&&String(x.parent_line_id||'')===String(labor.id));if(direct.length)return direct;return lines.filter(x=>x.line_type!=='labor'&&!x.parent_line_id&&((x.job_uid&&labor.job_uid&&String(x.job_uid)===String(labor.job_uid))||invoiceGroupName(x).toLowerCase()===invoiceGroupName(labor).toLowerCase()))}
@@ -6841,6 +7034,7 @@ function renderInvoiceEditor(){
    <div class="invoiceSignatureGrid"><span>Customer Signature: ______________________________</span><span>Printed Name: ______________________________</span><span>Date: ______________</span></div>
  </section>`;
  window.InvoiceUX?.attachEditor?.(activeInvoice);
+ ittrInvoiceEditorBase=ittrInvoiceEditorValues();
 }
 async function persistInvoiceLine(id){const i=activeInvoice.invoice,b=invoiceLinePayload(id);if(!b)return {ok:true};const r=await ittrSessionFetch(`/api/invoices/${i.id}/lines/${id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(b)}),d=await r.json();if(!r.ok)throw new Error(d.error||'Line save failed');return d}
 async function saveAllInvoiceLines(){for(const l of (activeInvoice?.lines||[])){if(document.querySelector(`[data-invoice-line="${l.id}"]`))await persistInvoiceLine(l.id)}}
@@ -6855,20 +7049,33 @@ function scheduleInvoiceHeaderAutosave(){
   clearTimeout(invoiceHeaderAutosaveTimer);
   invoiceHeaderAutosaveTimer=setTimeout(()=>flushInvoiceHeaderAutosave(),700);
 }
+let invoiceHeaderConflictOpen=false;
 async function flushInvoiceHeaderAutosave(){
   clearTimeout(invoiceHeaderAutosaveTimer);invoiceHeaderAutosaveTimer=null;
   const i=activeInvoice?.invoice;
   if(!i||['paid','void'].includes(i.status)||invoiceHeaderAutosaveBusy)return true;
+  // One conflict question at a time: the question takes focus, and that blur would otherwise autosave (and ask) again.
+  if(invoiceHeaderConflictOpen)return false;
   invoiceHeaderAutosaveBusy=true;
   try{
     invoiceSetSaveState('saving','Saving…');
+    // v24.76.0: the autosave carries the header fingerprint it started from; if another device changed the header in
+    // the meantime the server refuses, and the person chooses: keep their changes (saved over the other) or load the newer.
     const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{
       method:'PUT',
       headers:authHeaders({'Content-Type':'application/json'}),
-      body:JSON.stringify(invoiceHeaderPayload())
+      body:JSON.stringify({...invoiceHeaderPayload(),...(activeInvoice?.headerPrint?{expectedHeaderPrint:activeInvoice.headerPrint}:{})})
     });
     const d=await r.json().catch(()=>({}));
+    if(r.status===409&&d.code==='INVOICE_HEADER_CHANGED'){
+      invoiceHeaderAutosaveBusy=false;invoiceSetSaveState('dirty','Changed on another device');
+      invoiceHeaderConflictOpen=true;let c;try{c=await ittrChoose(currentLanguage==="uk"?"Цей рахунок змінено на іншому пристрої.":"This invoice was changed on another device.",[["keep",currentLanguage==="uk"?"Зберегти мої зміни поверх":"Keep my changes (save over theirs)"],["reload",currentLanguage==="uk"?"Завантажити новішу версію":"Load the newer version"]],"header")}finally{invoiceHeaderConflictOpen=false}
+      if(c==="keep"){if(activeInvoice)delete activeInvoice.headerPrint;return flushInvoiceHeaderAutosave()}
+      if(c==="reload"){await openInvoice(i.id,document.body.classList.contains("invoiceWorkspaceMode"));return false}
+      return false;
+    }
     if(!r.ok)throw new Error(d.error||'Autosave failed');
+    if(d.headerPrint&&activeInvoice)activeInvoice.headerPrint=d.headerPrint;
     if(activeInvoice?.invoice)Object.assign(activeInvoice.invoice,invoiceHeaderPayload());
     invoiceSetSaveState('saved','All changes saved');
     return true;
@@ -6887,7 +7094,7 @@ async function persistInvoiceDraftBeforeStructureChange(label='Saving draft'){
  invoiceDraftSaveBusy=true;invoiceSetSaveState('saving',label+'…');
  try{
    await saveAllInvoiceLines();
-   const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(invoiceHeaderPayload())}),d=await r.json();
+   const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(invoiceHeaderPayload())}),d=await r.json();if(r.ok&&d?.headerPrint&&activeInvoice)activeInvoice.headerPrint=d.headerPrint;
    if(!r.ok)throw new Error(d.error||'Draft save failed');
    invoiceSetSaveState('saved','Draft saved');
    return true;
@@ -6955,8 +7162,8 @@ async function checkInvoiceNow(id){
   }catch(err){b.disabled=false;if(a==='ai')b.textContent='Suggest wording';showToast(err.message,'error')}});
 }
 window.checkInvoiceNow=checkInvoiceNow;
-async function saveInvoiceHeader(){const i=activeInvoice.invoice;try{invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(invoiceHeaderPayload())}),d=await r.json();if(!r.ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);await loadInvoices();invoiceSetSaveState('saved','All changes saved');showToast?.('Invoice saved.','success',2200);return true}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message,'error',7000)||alert(e.message);return false}}
-async function saveInvoiceLine(id){try{const i=activeInvoice.invoice;invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(invoiceHeaderPayload())}),d=await r.json();if(!r.ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);invoiceSetSaveState('saved','All changes saved')}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message||'Save failed','error',7000)}}
+async function saveInvoiceHeader(){const i=activeInvoice.invoice;try{invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(invoiceHeaderPayload())}),d=await r.json();if(r.ok&&d?.headerPrint&&activeInvoice)activeInvoice.headerPrint=d.headerPrint;if(!r.ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);await loadInvoices();invoiceSetSaveState('saved','All changes saved');showToast?.('Invoice saved.','success',2200);return true}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message,'error',7000)||alert(e.message);return false}}
+async function saveInvoiceLine(id){try{const i=activeInvoice.invoice;invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(invoiceHeaderPayload())}),d=await r.json();if(r.ok&&d?.headerPrint&&activeInvoice)activeInvoice.headerPrint=d.headerPrint;if(!r.ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);invoiceSetSaveState('saved','All changes saved')}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message||'Save failed','error',7000)}}
 async function deleteInvoiceLine(lineId){if(!confirm('Remove this line? If this is a labor operation, its attached parts and charges will also be removed.'))return;if(!(await persistInvoiceDraftBeforeStructureChange('Preserving your invoice')))return;const i=activeInvoice.invoice,r=await ittrSessionFetch(`/api/invoices/${i.id}/lines/${lineId}`,{method:'DELETE',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to remove line');await openInvoice(i.id)}
 async function finalizeInvoice(id){if(!confirm('Finalize this invoice and mark it sent/open? Review prices, tax and customer PO first.'))return;if(!(await saveInvoiceHeader()))return;const r=await ittrSessionFetch(`/api/invoices/${id}/finalize`,{method:'POST',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to finalize');if(Array.isArray(d.warnings)&&d.warnings.length)showToast?.('Inventory warning: '+d.warnings.join(' · '),'warning',12000);await openInvoice(id);await loadInvoices()}
 // v24.41.2 payment dialog: one form with the payment type and its transaction ID (check #, Zelle confirmation, ACH trace…).
@@ -7255,10 +7462,10 @@ if(manualLibraryFormEl)manualLibraryFormEl.onsubmit=async e=>{
 <script src="./finance-shared.js?v=24.47.3"></script>
 <script src="./inspection-checklist.js?v=3"></script>
 <script src="./inspection-workflow.js?v=8"></script>
-<script src="./canned-jobs.js?v=24.75.3"></script>
-<script src="./share-links.js?v=24.75.3"></script>
-<script src="./sms.js?v=24.75.3"></script>
-<script src="./shop-workspace.js?v=24.75.3"></script>
+<script src="./canned-jobs.js?v=24.76.0"></script>
+<script src="./share-links.js?v=24.76.0"></script>
+<script src="./sms.js?v=24.76.0"></script>
+<script src="./shop-workspace.js?v=24.76.0"></script>
 <script>
 /* v24.46.2: Start a Truck keeps what the mechanic typed until the work order is created.
    Saved on this phone (localStorage) while typing and when the screen locks; restored when the wizard is opened

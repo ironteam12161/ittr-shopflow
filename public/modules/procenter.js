@@ -8,19 +8,51 @@ window.startVoiceNote=function(){const SR=window.SpeechRecognition||window.webki
 window.aiProfessionalNote=async function(mode="professional"){const el=document.getElementById("aiShopText"),out=document.getElementById("aiShopResult"),text=el?.value.trim();if(!text)return window.showToast?.("Enter or dictate a mechanic note first.","warning");try{const x=await aiCall("/api/ai/note",{text,mode},"aiShopProcessing");if(out)out.textContent=x||""}catch(e){if(out)out.textContent=e.message;window.showToast?.(e.message,"error",7000)}};
 window.aiDiagnosticAssistant=async function(){const el=document.getElementById("aiDiagnosticInput"),out=document.getElementById("aiDiagnosticResult"),text=el?.value.trim();if(!text)return window.showToast?.("Enter symptoms or fault codes first.","warning");try{const x=await aiCall("/api/ai/diagnostic",{text},"aiDiagnosticProcessing");if(out)out.textContent=x||""}catch(e){if(out)out.textContent=e.message;window.showToast?.(e.message,"error",7000)}};
 window.aiPartAssistant=async function(){const q=document.getElementById("aiPartQuery")?.value.trim(),vin=document.getElementById("aiPartVin")?.value.trim(),out=document.getElementById("aiPartResult");if(!q)return window.showToast?.("Enter a part number or description first.","warning");try{const x=await aiCall("/api/ai/part",{vin,query:q},"aiPartProcessing");if(out)out.textContent=x||""}catch(e){if(out)out.textContent=e.message;window.showToast?.(e.message,"error",7000)}};
-export async function mount(scope){localAbort=new AbortController();scope.on(scope.host,"ittr:module-refresh",()=>window.renderProCenter?.(),{passive:true});await window.renderProCenter?.();setTimeout(()=>window.checkAIConnection?.(),0)}
+// v24.76.0: mount() already loads this page, so showView() skips the first afterShow() (no double request).
+export const loadsOnMount=true;
+// v24.76.0: the tool buttons can be searched and starred. Favorites are kept per account on this device and shown in
+// their own group at the top; the open panel's button is marked as current.
+function toolId(b){return (b.querySelector('b')?.textContent||b.textContent||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')}
+const favKey=()=>`ittr.opsFav.${String(window.ittrCurrentUsername?.()||'').toLowerCase()}`;
+function readFavs(){try{return new Set(JSON.parse(localStorage.getItem(favKey())||'[]'))}catch(_){return new Set()}}
+function writeFavs(set){try{localStorage.setItem(favKey(),JSON.stringify([...set]))}catch(_){}}
+function enhanceTools(host,signal){
+ const groups=[...host.querySelectorAll('.opsGroup:not(.opsFavs) .opsBtns')];
+ for(const list of groups)for(const b of [...list.children].filter(x=>x.tagName==='BUTTON')){
+  const id=toolId(b),wrap=document.createElement('div');wrap.className='opsTool';wrap.dataset.tool=id;
+  b.parentNode.insertBefore(wrap,b);wrap.appendChild(b);
+  const star=document.createElement('button');star.type='button';star.className='opsStar';star.dataset.star=id;
+  star.setAttribute('aria-label',`Add ${(b.querySelector('b')?.textContent||'tool').trim()} to favorites`);star.textContent='☆';wrap.appendChild(star);
+ }
+ const paintFavs=()=>{const favs=readFavs(),box=host.querySelector('#opsFavList');if(!box)return;
+  host.querySelectorAll('.opsStar').forEach(s=>{const on=favs.has(s.dataset.star);s.setAttribute('aria-pressed',String(on));s.textContent=on?'★':'☆';const name=s.previousElementSibling?.querySelector('b')?.textContent?.trim()||'tool';s.setAttribute('aria-label',`${on?'Remove':'Add'} ${name} ${on?'from':'to'} favorites`)});
+  box.replaceChildren();const picked=[...host.querySelectorAll('.opsGroup:not(.opsFavs) .opsTool')].filter(t=>favs.has(t.dataset.tool));
+  if(!picked.length){box.innerHTML='<div class="opsEmpty">Tap ☆ next to a tool to keep it here.</div>';return}
+  for(const t of picked){const b=t.querySelector('button').cloneNode(true);b.removeAttribute('id');b.addEventListener('click',()=>t.querySelector('button').click(),{signal});box.appendChild(b)}};
+ host.addEventListener('click',e=>{const s=e.target.closest('.opsStar');if(s){const f=readFavs();f.has(s.dataset.star)?f.delete(s.dataset.star):f.add(s.dataset.star);writeFavs(f);paintFavs();return}
+  const tool=e.target.closest('.opsGroup:not(.opsFavs) .opsTool > button:first-child');if(tool){host.querySelectorAll('.opsBtns button[aria-current]').forEach(x=>x.removeAttribute('aria-current'));tool.setAttribute('aria-current','true')}},{signal});
+ const search=host.querySelector('#opsToolSearch'),count=host.querySelector('#opsToolCount');
+ search?.addEventListener('input',()=>{const q=search.value.trim().toLowerCase();let n=0;
+  host.querySelectorAll('.opsGroup:not(.opsFavs)').forEach(g=>{let shown=0;g.querySelectorAll('.opsTool').forEach(t=>{const hit=!q||t.textContent.toLowerCase().includes(q);t.hidden=!hit;if(hit)shown++});g.hidden=!!q&&!shown;n+=shown});
+  if(count)count.textContent=q?`${n} tool${n===1?'':'s'}`:''},{signal});
+ paintFavs();
+}
+export async function mount(scope){localAbort=new AbortController();try{enhanceTools(scope.host,localAbort.signal)}catch(e){console.warn('Operations tools:',e)}scope.on(scope.host,"ittr:module-refresh",()=>window.renderProCenter?.(),{passive:true});await window.renderProCenter?.();setTimeout(()=>window.checkAIConnection?.(),0)}
 export async function afterShow(){await window.renderProCenter?.()}
 export function unmount(){localAbort?.abort();localAbort=null;if(voiceRecognition){try{voiceRecognition.stop()}catch{}voiceRecognition=null}}
 
+// v24.76.0: the button calls this from an inline handler, so it must be on window (it was module-only and threw
+// "reconcileFullbayHistory is not defined"). A failure is shown in the status line and as a toast.
 async function reconcileFullbayHistory(){
- if(!requireAdmin())return;
+ if(!window.requireAdmin?.())return;
  const box=document.getElementById("fullbayImportStatus");if(box)box.textContent="Auditing customer/unit/history links…";
  try{
-  const d=await apiJSON("/api/fullbay/history/reconcile",{method:"POST",body:"{}"}),r=d.report||{};
+  const d=await window.apiJSON("/api/fullbay/history/reconcile",{method:"POST",body:"{}"}),r=d.report||{};
   alert(`History audit complete.\n\nCustomer links repaired: ${r.customerLinks||0}\nUnit links repaired: ${r.unitLinks||0}\nMetadata backfilled: ${r.metadataBackfill||0}\nHistory rows still without a unit: ${r.orphanHistory||0}\nUnits with non-standard/short VIN or serial: ${r.invalidVinUnits||0}\nDuplicate customer + unit-number groups: ${r.duplicateCustomerUnits||0}\n\nNo records were deleted.`);
-  await renderFullbayImportStatus();
- }catch(e){alert(e.message||"History audit failed.");if(box)box.textContent=e.message||"History audit failed."}
+  await window.renderFullbayImportStatus?.();
+ }catch(e){const msg=e.message||"History audit failed.";window.showToast?.(msg,"error",8000);if(box)box.textContent=`History audit failed: ${msg}`}
 }
+window.reconcileFullbayHistory=reconcileFullbayHistory;
 
 let samsaraFleetCache=[];
 async function loadSamsaraFleet(){const status=document.getElementById('samsaraStatus'),out=document.getElementById('samsaraFleetResults');if(status)status.textContent='Connecting to Samsara…';try{const s=await apiJSON('/api/samsara/status');if(!s.configured){status.innerHTML='<b>Samsara is ready but the token is not configured.</b> Add SAMSARA_API_TOKEN in Railway Variables.';if(out)out.innerHTML='';return}if(!s.connected)throw new Error(s.error||'Samsara connection failed.');const d=await apiJSON('/api/samsara/fleet');samsaraFleetCache=d.items||[];status.textContent=`Connected · ${samsaraFleetCache.length} vehicles · Updated ${fmtDateTime(d.updatedAt)}`;renderSamsaraFleet()}catch(e){if(status)status.innerHTML=`<span class="error">${esc(e.message||'Samsara unavailable.')}</span>`}}

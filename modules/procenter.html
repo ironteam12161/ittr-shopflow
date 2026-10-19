@@ -8,13 +8,24 @@
 .opsGroup{background:#fff;border:1px solid #e4e7ec;border-radius:14px;padding:12px}.opsGroup h3{margin:0 0 8px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#667085}
 .opsBtns{display:grid;gap:6px}.opsBtns button{display:flex;flex-direction:column;align-items:flex-start;text-align:left;background:#f8fafc;color:#101828;border:1px solid #e4e7ec;border-radius:10px;padding:9px 12px;min-height:auto;font-weight:700}
 .opsBtns button span{font-size:12px;font-weight:500;color:#667085}.opsBtns button:hover{border-color:#2563eb;background:#eff6ff}
-@media(max-width:900px){.opsGroups{grid-template-columns:1fr}}
+@media(max-width:900px){.opsGroups{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.opsGroups{grid-template-columns:1fr}}
+/* v24.76.0: search, favorites and a denser tablet layout for the Operations tools. */
+.opsFind{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0 12px}.opsFind input{flex:1 1 260px;min-height:44px}
+.opsTool{display:grid;grid-template-columns:1fr auto;gap:4px;align-items:stretch}.opsTool>button:first-child{width:100%}
+.opsStar{min-width:44px;min-height:44px;border-radius:10px;border:1px solid #e4e7ec;background:#fff;color:#98a2b3;font-size:18px;line-height:1;padding:0}
+.opsStar[aria-pressed="true"]{color:#b54708;border-color:#fedf89;background:#fffaeb}
+.opsBtns button[aria-current="true"]{border-color:#2563eb;background:#eff6ff}
+.opsGroup.opsFavs{border-color:#fedf89;background:#fffcf5}.opsEmpty{color:#667085;font-size:13px;padding:4px 2px}
+@media(min-width:601px) and (max-width:1100px){.opsBtns button{padding:7px 10px}.opsBtns button span{font-size:11.5px}}
 </style>
 <div class="toolbar"><div>
     <h1>Operations</h1>
     <div class="muted">Team, shop tools, data imports and integrations. Money reports live in Reports; customers and trucks in Customers &amp; Vehicles.</div>
   </div></div>
+  <div class="opsFind"><input type="search" id="opsToolSearch" aria-label="Find an Operations tool" placeholder="Find a tool: imports, audit log, maintenance, AI…"><span class="muted" id="opsToolCount" aria-live="polite"></span></div>
   <div class="opsGroups">
+   <section class="opsGroup opsFavs" id="opsFavGroup"><h3>★ Favorites</h3><div class="opsBtns" id="opsFavList"><div class="opsEmpty">Tap ☆ next to a tool to keep it here.</div></div></section>
    <section class="opsGroup"><h3>Team</h3><div class="opsBtns">
     <button type="button" onclick="try{sessionStorage.setItem('ittr_reports_tab','mech')}catch(_){};showView('reports')"><b>Mechanic productivity</b><span>Repair vs idle time, timelines</span></button>
     <button type="button" data-view="accounts" onclick="showView('accounts')"><b>Mechanic accounts</b><span>Logins, passwords, access</span></button>

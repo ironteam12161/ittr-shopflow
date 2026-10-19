@@ -253,11 +253,14 @@ function onKey(ev){
  if(ev.key==='Escape'&&!$('#estEditor')?.classList.contains('hidden')){ev.preventDefault();closeEditor()}
  if(ev.key==='Enter'&&ev.target.id==='estNewJob'){ev.preventDefault();S.scope.host.querySelector('[data-est="add-job"]')?.click()}
 }
+// v24.76.0: mount() already loads this page, so showView() skips the first afterShow() (no double request).
+export const loadsOnMount=true;
 export async function mount(scope){
  S={...S,scope,cur:null};
  scope.on(scope.host,'click',onClick);scope.on(scope.host,'change',onChange);scope.on(scope.host,'input',onInput);scope.on(document,'keydown',onKey);
  scope.on(scope.host,'ittr:module-refresh',()=>loadList(),{passive:true});
+ window.ittrOpenEstimate=id=>openEstimate(id); // v24.76.0: opened directly from a work order's Billing tab
  await loadList();
 }
 export async function afterShow(){await loadList()}
-export function unmount(){document.body.classList.remove('modalOpen');S.cur=null;S.scope=null}
+export function unmount(){document.body.classList.remove('modalOpen');S.cur=null;S.scope=null;if(window.ittrOpenEstimate)delete window.ittrOpenEstimate}

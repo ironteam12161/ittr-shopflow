@@ -137,8 +137,26 @@
       <p class="muted">${E(T('Totals, tax and payments stay in Invoices; this page only links to them.'))}</p>
       <div class="wsActions">${done ? (w.unitType === 'equipment' ? `<span class="muted">${E(T('In-house repair — not billed.'))}</span>` : `<button type="button" class="ds-btn ds-btn-primary" onclick="createServiceOrderFromWO(${Number(w.id)})">${E(T('Review Service Order / Invoice'))}</button>`) : `<span class="muted">${E(T('The invoice is made when the work order is completed.'))}</span>`}
       <button type="button" class="ds-btn ds-btn-secondary" onclick="showView('estimates')">${E(T('Open Estimates'))}</button><button type="button" class="ds-btn ds-btn-secondary" onclick="showView('invoices')">${E(T('Open Invoices'))}</button>
-      ${done ? `<button type="button" class="ds-btn ds-btn-secondary" onclick="downloadWorkOrderPDF(${Number(w.id)})">${E(T('Download Work Order PDF'))}</button>` : ''}</div></div>`;
+      ${done ? `<button type="button" class="ds-btn ds-btn-secondary" onclick="downloadWorkOrderPDF(${Number(w.id)})">${E(T('Download Work Order PDF'))}</button>` : ''}</div>
+      <h3 style="margin:14px 0 6px">${E(T('Documents for this work order'))}</h3><div class="wsBillingLinks" data-billing-links="${E(String(w.id))}"><div class="muted">${E(T('Loading…'))}</div></div></div>`;
   }
+  // v24.76.0: the estimates and invoices made for this work order, each opening directly.
+  async function loadBillingLinks(w) {
+    const box = document.querySelector(`[data-billing-links="${CSS.escape(String(w.id))}"]`); if (!box) return;
+    try {
+      const d = await window.apiJSON(`/api/work-orders/${encodeURIComponent(w.id)}/billing-links`);
+      if (!box.isConnected) return;
+      const money = n => `$${Number(n || 0).toFixed(2)}`;
+      const rows = [...(d.estimates || []).map(e => `<li><button type="button" class="ds-btn ds-btn-secondary ds-btn-sm" data-ws-open-estimate="${Number(e.id)}">${E(T('Estimate'))} ${E(e.estimate_number)}</button> <span class="muted">${E(e.status)} · ${money(e.total)}</span></li>`),
+        ...(d.invoices || []).map(i => `<li><button type="button" class="ds-btn ds-btn-secondary ds-btn-sm" data-ws-open-invoice="${Number(i.id)}">${E(T('Invoice'))} ${E(i.invoice_number)}</button> <span class="muted">${E(i.status)} · ${money(i.total)}${Number(i.balance_due) > 0.004 ? ` · ${E(T('balance'))} ${money(i.balance_due)}` : ''}</span></li>`)];
+      box.innerHTML = rows.length ? `<ul class="wsDocList">${rows.join('')}</ul>` : `<div class="muted">${E(T('No estimate or invoice is linked to this work order yet.'))}</div>`;
+    } catch (e) { if (box.isConnected) box.innerHTML = `<div class="muted">${E(e.message || T('Could not load the linked documents.'))}</div>`; }
+  }
+  document.addEventListener('click', async e => {
+    const inv = e.target.closest?.('[data-ws-open-invoice]'), est = e.target.closest?.('[data-ws-open-estimate]');
+    if (inv) { const id = Number(inv.dataset.wsOpenInvoice); await window.showView('invoices'); window.openInvoice?.(id); }
+    else if (est) { const id = Number(est.dataset.wsOpenEstimate); await window.showView('estimates'); window.ittrOpenEstimate?.(id); }
+  });
   function inspectionHtml(w) {
     const card = typeof window.inspectionCardMarkup === 'function' && w.inspection?.required ? window.inspectionCardMarkup(w) : '';
     const repairs = typeof window.inspectionRepairsMarkup === 'function' && w.inspection?.required ? window.inspectionRepairsMarkup(w) : '';
@@ -171,6 +189,7 @@
     { const tl = box.querySelector('.wsTabs'), at = tl?.querySelector('.wsTab.active'); if (tl && at) { const l = at.offsetLeft - tl.offsetLeft; if (l < tl.scrollLeft || l + at.offsetWidth > tl.scrollLeft + tl.clientWidth) tl.scrollLeft = Math.max(0, l - 16); } }
     panel.innerHTML = tab === 'jobs' ? `<div class="card wsJobs">${workOrderDetailHtml(w)}</div>` : tab === 'findings' ? findingsHtml(w) : tab === 'photos' ? woPhotosHtml(w) : tab === 'inspection' ? inspectionHtml(w) : tab === 'time' ? timeHtml(w) : billingHtml(w);
     if (tab === 'jobs' || tab === 'time') try { loadWorkOrderTaskSessions(w.id); } catch (_) {}
+    if (tab === 'billing' && managerCan('invoices')) loadBillingLinks(w);
     try { hydrateFindingPhotos(); } catch (_) {}
     try { applyTranslations?.(); } catch (_) {}
     try { window.ittrRefreshTables?.(box); } catch (_) {}

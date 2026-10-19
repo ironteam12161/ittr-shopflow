@@ -211,3 +211,13 @@ body.modalOpen #shopAiFab,body.invoiceWorkspaceMode #shopAiFab{display:none!impo
  #dashboard .calendarCellEmpty .calendarCellHeader{margin-bottom:0}
  #dashboard .calendarCellEmpty .calendarEmpty{display:none}
 }
+
+/* v24.76.0: the "Updated on another device" note sits above dialogs and the invoice workspace (z-index 1200–1400),
+   so its Refresh button can be clicked; the choice dialog (keep / discard) above everything except the photo viewer. */
+.ittrStaleNote{z-index:2500}
+.ittrChoice{position:fixed;inset:0;z-index:4000;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:16px}
+.ittrChoiceBox{background:var(--card,#fff);color:inherit;border-radius:14px;max-width:440px;width:100%;padding:18px;box-shadow:0 18px 50px rgba(0,0,0,.25);display:grid;gap:14px}
+.ittrChoiceBox p{margin:0;font-weight:600;line-height:1.4}
+.ittrChoiceActs{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
+.ittrChoiceActs button{min-height:44px}
+.modal:focus{outline:none}

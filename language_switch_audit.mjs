@@ -30,7 +30,8 @@ pass('failed preference save rolls back language/session state');
 if(fn.includes('saveUsers()')||fn.includes('queueCloudState("users"'))fail('mechanic language path touches shared users state');
 pass('language switch does not write shared users state');
 
-if(!html.includes('language:d.user.language||localStorage.getItem("ittr_language")||"en"'))fail('login language hydration missing');
+// v24.76.0: the session is built from the account record in ittrSessionFromUser(d.user) (language and permissions).
+if(!html.includes('language:u.language||localStorage.getItem("ittr_language")||"en"')||!html.includes('session=ittrSessionFromUser(d.user)'))fail('login language hydration missing');
 if(!html.includes('ITTR_LANGUAGE_ACCOUNT_AUTHORITATIVE'))fail('account-authoritative language application missing');
 pass('login/role initialization uses authenticated account language');
 
