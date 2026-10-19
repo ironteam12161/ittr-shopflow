@@ -491,6 +491,13 @@ try {
     eq(page.errs.join(' | '), '', 'no page errors');
     await ctx.close();
   });
+  await scenario('A32 server: refused or malformed requests keep their 4xx status; backup is one snapshot; build names its commit', async () => {
+    const bad = await R('/api/invoices', { method: 'POST', token: owner, raw: '{not json', allowError: true });
+    eq(bad.status, 400, 'malformed JSON answers 400, not 500'); ok(/valid JSON/.test(bad.error || ''), `with a clear message (${bad.error})`);
+    const b = await fetch(srv.base() + '/api/admin/backup', { headers: { Authorization: `Bearer ${owner}` } }); const j = await b.json();
+    eq(b.status, 200, 'backup downloads'); eq(j.consistentSnapshot, true, 'all tables from one snapshot'); ok(j.tables && j.rowCounts, 'tables and counts present');
+    ok('commit' in (await R('/api/build')), 'build reports the deployed commit field');
+  });
   await scenario('A17 work-order Billing tab links to its estimate and invoice', async () => {
     const st = await R('/api/state', { token: owner }), sf = st.shopflow.payload;
     sf.workorders = [...sf.workorders.filter(w => w.id !== 9501), { id: 9501, unit: 'BILL-1', customer: 'Private Audit Fleet LLC', status: 'Completed', mechanic: 'mech1', helpers: [], unitType: 'customer', truckHere: true, tasks: [] }];

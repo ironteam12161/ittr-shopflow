@@ -2127,7 +2127,10 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
 });
 // ITTR v24.28.4 runtime identity hardening
 const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.76.0");
-app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
+// v24.76.1: the deployed commit (Railway sets RAILWAY_GIT_COMMIT_SHA), so a deploy check can compare exact code, not just
+// a version label that several fixes share. null when the host does not provide it.
+const ITTR_COMMIT=String(process.env.RAILWAY_GIT_COMMIT_SHA||process.env.SOURCE_COMMIT||process.env.GIT_COMMIT||"").replace(/[^0-9a-f]/gi,"").slice(0,40)||null;
+app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`,commit:ITTR_COMMIT}));
 // v24.71.0: liveness and readiness are separate. /api/health/live only says the process answers (never restart the
 // app because the database or an optional service such as AI is down). /api/health (= /api/health/ready, Railway's
 // deploy check) answers 503 unless the database answers and the shop schema is in place, so a deploy whose database
@@ -3340,23 +3343,29 @@ app.get("/api/admin/productivity",auth,managerPermission("reports"),async(req,re
 // table so a large shop does not need the whole database in memory.
 const BACKUP_SKIP_TABLES=new Set(["auth_sessions","gmail_oauth_states","ai_translation_cache","workshop_manual_pages"]);
 const BACKUP_SECRET_COLUMNS={auth_users:["password_hash","totp_secret","totp_pending_secret","totp_recovery"],gmail_accounts:["refresh_token_enc","access_token_enc"],email_sender:["refresh_token_enc","access_token_enc"]};
-app.get("/api/admin/backup",auth,ownerOnly,async(req,res,next)=>{let started=false;try{
+app.get("/api/admin/backup",auth,ownerOnly,async(req,res,next)=>{let started=false,snap=null;try{
   const db=requireDb();
   const tables=(await db.query("SELECT table_name FROM information_schema.tables WHERE table_schema=current_schema() AND table_type='BASE TABLE' ORDER BY table_name")).rows.map(r=>r.table_name).filter(t=>!BACKUP_SKIP_TABLES.has(t));
   await db.query("INSERT INTO data_exports(created_by,note) VALUES($1,$2)",[req.user.username,`full JSON backup (${tables.length} tables)`]);
   res.setHeader("Content-Type","application/json; charset=utf-8");
   res.setHeader("Content-Disposition",`attachment; filename="ittr-backup-${new Date().toISOString().slice(0,10)}.json"`);
-  res.write(`{"exportedAt":${JSON.stringify(new Date().toISOString())},"appVersion":${JSON.stringify(ITTR_APP_VERSION)},"format":"ittr-full-backup-v2","skipped":${JSON.stringify([...BACKUP_SKIP_TABLES])},"secretsRemoved":${JSON.stringify(BACKUP_SECRET_COLUMNS)},"tables":{`);started=true;
+  // v24.76.1: every table is read in one read-only REPEATABLE READ transaction, so the backup is one moment in time
+  // (before, each table was read separately and a backup taken during work could hold an invoice without its newest
+  // lines or a payment without the matching balance).
+  snap=await db.connect();await snap.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+  res.write(`{"exportedAt":${JSON.stringify(new Date().toISOString())},"appVersion":${JSON.stringify(ITTR_APP_VERSION)},"format":"ittr-full-backup-v2","consistentSnapshot":true,"skipped":${JSON.stringify([...BACKUP_SKIP_TABLES])},"secretsRemoved":${JSON.stringify(BACKUP_SECRET_COLUMNS)},"tables":{`);started=true;
   const counts={};
   for(const [n,t] of tables.entries()){
    const drop=new Set(BACKUP_SECRET_COLUMNS[t]||[]);
-   const rows=(await db.query(`SELECT * FROM "${t.replace(/"/g,'')}"`)).rows;counts[t]=rows.length;
+   const rows=(await snap.query(`SELECT * FROM "${t.replace(/"/g,'')}"`)).rows;counts[t]=rows.length;
    res.write(`${n?",":""}${JSON.stringify(t)}:[`);
    for(let k=0;k<rows.length;k++){const r=rows[k];for(const c of drop)if(c in r)r[c]="[removed]";res.write((k?",":"")+JSON.stringify(r))}
    res.write("]");
   }
+  await snap.query("COMMIT");
   res.end(`},"rowCounts":${JSON.stringify(counts)}}`);
-}catch(e){if(started){console.error("[backup]",e?.message);res.end()}else next(e)}});
+}catch(e){if(started){console.error("[backup]",e?.message);res.end()}else next(e)}
+finally{if(snap){try{await snap.query("ROLLBACK")}catch(_){}snap.release()}}});
 
 app.get("/api/admin/data-safety",auth,adminOnly,async(req,res,next)=>{try{
   const [h,sess,mig]=await Promise.all([
@@ -5353,6 +5362,9 @@ app.use((err,req,res,next)=>{
  if(err?.code==="LIMIT_FILE_SIZE")return res.status(413).json({error:"Photo is too large. Maximum original file size is 25 MB.",incident});
  if(err?.code==="PHOTO_TYPE"||err?.code==="PHOTO_PROCESSING")return res.status(415).json({error:err.message,code:err.code,incident});
  const safe=String(err?.message||"Server error").replace(/OPENROUTER_API_KEY|OPENAI_API_KEY|R2_SECRET_ACCESS_KEY/gi,'server credential');
+ // v24.76.1: an error raised on purpose with a 4xx status (a refused action, a malformed or too large request) keeps that
+ // status and its message. Before, every error answered 500 "unexpected server error" in production.
+ if(status>=400&&status<500){const msg=err?.type==="entity.parse.failed"?"The request was not valid JSON.":err?.type==="entity.too.large"?"The request is too large.":safe;return res.status(status).json({error:msg,...(err?.code&&typeof err.code==="string"?{code:err.code}:{}),incident})}
  res.status(500).json({error:isProd?"An unexpected server error occurred.":safe,incident});
 });
 app.get("*splat",(req,res)=>{
