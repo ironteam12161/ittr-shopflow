@@ -37,6 +37,31 @@ await R('/api/purchase-orders',{method:'POST',token,body:{vendor:'Audit Vendor',
 const link=await R('/api/customer-links',{method:'POST',token,body:{kind:'portal',refId:String(cid)}});
 const portalPath=new URL(link.url).pathname;
 browser=await chromium.launch({headless:true,args:['--no-sandbox']});
+// Focused cross-module/live/reconnect checks before exercising generic controls.
+{
+ const ctx=await browser.newContext({viewport:{width:1440,height:900},serviceWorkers:'block'}),p=await ctx.newPage(),stockResponses=[],messages=[];
+ p.on('dialog',d=>d.dismiss());p.on('response',async r=>{try{if(new URL(r.url()).pathname==='/api/parts'){const d=await r.json();stockResponses.push({at:Date.now(),qty:d.items?.find(x=>Number(x.id)===Number(part))?.quantity})}}catch{}});
+ p.on('websocket',ws=>ws.on('framereceived',e=>{try{messages.push(JSON.parse(String(e.payload)))}catch{}}));
+ try{
+  await p.goto(base);await p.fill('#loginUser',OWNER.username);await p.fill('#loginPass',OWNER.password);await p.click('#loginForm button[type=submit]');await p.waitForFunction(()=>cloudReady);await p.evaluate(()=>showView('parts'));await sleep(600);
+  const n0=stockResponses.length,m0=messages.length,before=stockResponses.at(-1)?.qty;
+  await R(`/api/invoices/${inv.id}/finalize`,{method:'POST',token});await sleep(1400);
+  const actual=(await R(`/api/parts/${part}`,{token})).item.quantity;
+  observations.push({kind:'invoice-stock-live-refresh',before,serverAfter:actual,displayedAfter:stockResponses.at(-1)?.qty,partsFetches:stockResponses.length-n0,domains:messages.slice(m0).filter(m=>m.type==='data_changed').map(m=>m.domain)});
+  await p.evaluate(()=>loadPartsCenter());await sleep(200);
+  await p.evaluate(()=>stopLiveStatusSocket());await sleep(150);
+  const n1=stockResponses.length,offlineBefore=stockResponses.at(-1)?.qty;
+  await R(`/api/parts/${part}/transaction`,{method:'POST',token,body:{type:'adjust_add',qty:3,reason:'Audit reconnect check'}});await sleep(700);
+  await p.evaluate(()=>connectLiveStatusSocket());await p.waitForFunction(()=>document.getElementById('liveStatusBadge')?.dataset.state==='connected');await sleep(1400);
+  observations.push({kind:'reconnect-stock-live-refresh',before:offlineBefore,serverAfter:(await R(`/api/parts/${part}`,{token})).item.quantity,displayedAfter:stockResponses.at(-1)?.qty,partsFetches:stockResponses.length-n1});
+  await p.evaluate(async id=>{await showView('invoices');await openInvoice(id,true)},inv.id);await sleep(200);
+  const current=await R(`/api/invoices/${inv.id}`,{token}),line=current.lines.find(l=>l.line_type==='labor'),newDescription='REMOTE CHANGED LABOR DESCRIPTION';
+  await R(`/api/invoices/${inv.id}/lines/${line.id}`,{method:'PUT',token,body:{lineType:'labor',description:newDescription,quantity:Number(line.quantity),unitPrice:Number(line.unit_price),taxable:false,jobName:line.job_name}});
+  await p.waitForSelector('#ittrStaleNote',{timeout:5000});await p.locator('#ittrStaleNote button').first().click();await sleep(600);
+  observations.push({kind:'invoice-editor-refresh',remoteDescription:newDescription,editorDescription:await p.evaluate(id=>activeInvoice?.lines?.find(l=>String(l.id)===String(id))?.description,line.id),noteStillVisible:await p.locator('#ittrStaleNote').count()});
+ }catch(e){observations.push({kind:'focused-check-error',error:e.stack||String(e)})}
+ await ctx.close();console.log('AUDIT_FOCUSED '+JSON.stringify(observations));
+}
 const officeViews=['dashboard','board','workorders','approvals','customers','compliance','parts','purchaseorders','estimates','invoices','bills','reports','procenter','completed','accounts','activityhistory','trucksearch'];
 const selectors='button,a,[role=button],[onclick]';const exercised=new Map(),modalSpecs=new Map();
 for(const role of ['auditowner','managerall','managerlimited','mechanic1','mechanic2'])for(const width of role==='auditowner'?[1440,900,390]:[1440,390]){
