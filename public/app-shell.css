@@ -94,7 +94,7 @@
 
 /* ------------------------------------------------------------ desktop sidebar (office accounts, wide screens) */
 @media(min-width:1280px){
-  body.officeShell:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav{position:fixed!important;left:0!important;top:var(--ittr-header-h,64px)!important;bottom:0!important;width:232px!important;max-width:none!important;margin:0!important;padding:10px 10px 24px!important;display:flex!important;flex-direction:column!important;flex-wrap:nowrap!important;gap:2px!important;overflow-y:auto!important;overflow-x:hidden!important;background:var(--ds-nav)!important;border-top:0!important;border-right:1px solid rgba(255,255,255,.08)!important;z-index:9!important;box-sizing:border-box!important}
+  body.officeShell:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav{position:fixed!important;left:0!important;top:var(--ittr-header-bottom,var(--ittr-header-h,64px))!important;bottom:0!important;width:232px!important;max-width:none!important;margin:0!important;padding:10px 10px 24px!important;display:flex!important;flex-direction:column!important;flex-wrap:nowrap!important;gap:2px!important;overflow-y:auto!important;overflow-x:hidden!important;background:var(--ds-nav)!important;border-top:0!important;border-right:1px solid rgba(255,255,255,.08)!important;z-index:9!important;box-sizing:border-box!important}
   body.officeShell:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav .navGroup{display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:2px!important;padding:8px 0 4px!important;border-left:0!important;margin:0!important}
   body.officeShell:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav .navGroup+.navGroup{border-top:1px solid rgba(255,255,255,.08)!important;padding-left:0!important}
   body.officeShell:not(.loggedOut):not(.invoiceWorkspaceMode) header>nav .navGroupEnd{margin-left:0!important;margin-top:auto!important}
@@ -114,7 +114,7 @@
   body.officeShell.navCollapsed:not(.loggedOut):not(.invoiceWorkspaceMode) .navCollapse .navIco{transform:rotate(180deg)}
   body.officeShell.navCollapsed:not(.loggedOut):not(.invoiceWorkspaceMode) main{margin-left:64px!important}
   /* Docked AI panel: it takes a column on the right and the page gets narrower, so nothing is hidden behind it. */
-  body.aiChatOpen:not(.loggedOut):not(.invoiceWorkspaceMode) #shopAiPanel{top:var(--ittr-header-h,64px)!important;right:0!important;bottom:0!important;left:auto!important;width:420px!important;height:auto!important;max-height:none!important;border-radius:0!important;border-left:1px solid var(--ds-line)!important;box-shadow:-8px 0 24px rgba(16,24,40,.08)!important}
+  body.aiChatOpen:not(.loggedOut):not(.invoiceWorkspaceMode) #shopAiPanel{top:var(--ittr-header-bottom,var(--ittr-header-h,64px))!important;right:0!important;bottom:0!important;left:auto!important;width:420px!important;height:auto!important;max-height:none!important;border-radius:0!important;border-left:1px solid var(--ds-line)!important;box-shadow:-8px 0 24px rgba(16,24,40,.08)!important}
   body.aiChatOpen:not(.loggedOut):not(.invoiceWorkspaceMode) main{margin-right:420px!important}
   body.aiChatOpen:not(.loggedOut):not(.invoiceWorkspaceMode) #toastRegion{right:436px!important}
 }
