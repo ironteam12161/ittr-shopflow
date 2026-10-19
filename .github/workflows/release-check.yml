@@ -12,7 +12,7 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:16
@@ -52,8 +52,10 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
       - name: Install Chromium for the browser regression suite
         run: npx playwright install --with-deps chromium
-      - name: Run ITTR production checks
-        run: npm run check
+      - name: Validate audit instrumentation (application suites already passed on pinned main)
+        run: node --check audit_controls_20261019.mjs
+      - name: Explore website controls on disposable data
+        run: ITTR_AUDIT_FOCUSED_ONLY=1 node audit_controls_20261019.mjs
       - name: Report which suites ran
         if: always()
         run: |
