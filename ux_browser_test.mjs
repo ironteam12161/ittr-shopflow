@@ -65,6 +65,21 @@ try {
     }
     await o.page.setViewportSize({width:390,height:844});
   });
+  await scenario('header logo is clear of the sidebar with the version bar visible, scrolling and collapse', async () => {
+    await o.page.setViewportSize({width:1440,height:900});
+    await o.page.evaluate(()=>{showView('dashboard');window.scrollTo(0,0);document.getElementById('onlineBetaBar').style.display='block';localStorage.setItem('ittr_nav_collapsed','0');ittrSyncShell()});
+    const aligned=()=>o.page.waitForFunction(()=>{const h=document.querySelector('header').getBoundingClientRect(),nav=document.querySelector('header>nav').getBoundingClientRect();return Math.abs(nav.top-h.bottom)<=1;});
+    await aligned();
+    ok(await o.page.evaluate(()=>document.querySelector('.brand').getBoundingClientRect().bottom<=document.querySelector('header>nav').getBoundingClientRect().top),'sidebar does not cover logo or subtitle');
+    await o.page.click('.navCollapse');await aligned();
+    eq(Math.round((await rect(o.page,'header>nav')).w),64,'collapsed menu keeps the same top alignment');
+    await o.page.click('.navCollapse');
+    await o.page.evaluate(()=>{document.querySelector('main').style.minHeight='2000px';window.scrollTo(0,150)});await aligned();
+    await o.page.evaluate(()=>window.scrollTo(0,0));await aligned();
+    await o.page.evaluate(()=>{document.getElementById('onlineBetaBar').style.display='none'});await aligned();
+    await o.page.evaluate(()=>{document.querySelector('main').style.minHeight='';document.getElementById('onlineBetaBar').style.display='block'});await aligned();
+    await o.page.setViewportSize({width:390,height:844});
+  });
   await scenario('no office screen is wider than a 390 px phone; fields have accessible names', async () => {
     for (const v of ['customers', 'invoices', 'parts', 'purchaseorders', 'bills', 'estimates', 'compliance', 'reports', 'board', 'workorders', 'approvals', 'trucksearch', 'procenter']) {
       await o.page.evaluate(v => showView(v), v); await sleep(1200);
