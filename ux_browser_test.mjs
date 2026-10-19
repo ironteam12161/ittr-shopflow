@@ -41,6 +41,30 @@ try {
   await srv.request('/api/timeclock/punch', { method: 'POST', token: await srv.login('mech1', 'Mechanic-Pass-1'), body: { action: 'in' } });
   const o = await pg('owner', OWNER.password);
 
+  await scenario('dashboard cards have consistent stages, identities, filters and keyboard navigation', async () => {
+    await o.page.evaluate(() => { showView('dashboard'); calendarDate=new Date(2026,9,17);setCalendarMode('week'); });
+    const card=o.page.locator('#shopCalendar button.calJob').first();
+    ok((await card.innerText()).includes('Fleet · WO #501'), 'customer and order identify the visit');
+    eq(await card.locator('.calStage').innerText(), 'Paused / waiting', 'computed stage matches the orange legend');
+    await o.page.fill('#calendarSearch','no matching visit');
+    eq(await o.page.locator('#shopCalendar .calJob').count(),0,'calendar filter applies');
+    await o.page.fill('#calendarSearch','Brakes');
+    eq(await o.page.locator('#shopCalendar .calJob').count(),1,'job search finds the visit');
+    await card.focus(); await o.page.keyboard.press('Enter');
+    await o.page.waitForFunction(()=>location.hash.includes('501'));
+    await o.page.evaluate(()=>showView('dashboard'));
+    await o.page.fill('#calendarSearch','');
+  });
+  await scenario('dashboard fits phone, tablet and desktop with current mechanic status before the calendar', async () => {
+    for(const width of [390,900,1440]) {
+      await o.page.setViewportSize({width,height:900});
+      await o.page.evaluate(()=>{showView('dashboard');setCalendarMode('week')});
+      eq(await o.page.evaluate(()=>document.documentElement.scrollWidth),width,`dashboard fits ${width}px`);
+      ok(await o.page.evaluate(()=>document.getElementById('mechanicLiveStatus').getBoundingClientRect().top<document.getElementById('shopCalendar').getBoundingClientRect().top),'mechanic status comes first');
+      if(width===1440)ok(await o.page.evaluate(()=>[...document.querySelectorAll('.calendarWeek .calendarCellEmpty')].every(e=>e.getBoundingClientRect().height<160)),'empty days stay compact');
+    }
+    await o.page.setViewportSize({width:390,height:844});
+  });
   await scenario('no office screen is wider than a 390 px phone; fields have accessible names', async () => {
     for (const v of ['customers', 'invoices', 'parts', 'purchaseorders', 'bills', 'estimates', 'compliance', 'reports', 'board', 'workorders', 'approvals', 'trucksearch', 'procenter']) {
       await o.page.evaluate(v => showView(v), v); await sleep(1200);
