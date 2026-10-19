@@ -492,6 +492,24 @@ try {
     ok((await R('/api/state', { token: tokens.mech1 })).shopflow.payload.workorders.some(w => w.id === 9401), 'mech1 sees mech2 work');
     eq((await R('/api/work-orders/9401/tasks/by-uid/m2t/action', { method: 'POST', token: tokens.mech1, body: { action: 'start' }, allowError: true })).status, 403, 'mech1 cannot start a timer on it');
   });
+  await scenario('A24 server checks the area permission on Compliance, texting, productivity and service orders', async () => {
+    const doc = (await db.query(`INSERT INTO inspection_documents(template,fields,unit_number,created_by) VALUES('annual','{}'::jsonb,'DOC-1','owner') RETURNING id`)).rows[0].id;
+    // mgrmix has Invoices + Inventory but not Customers; mgrcust has only Customers.
+    const cases = [
+      ['GET', '/api/annual-inspections/units', 'mgrmix', 403], ['GET', `/api/inspection-docs/${doc}`, 'mgrmix', 403], ['DELETE', `/api/inspection-docs/${doc}`, 'mgrmix', 403],
+      ['PUT', '/api/fleet-maintenance/customers/1/reminders', 'mgrmix', 403], ['GET', '/api/fleet-maintenance/summary', 'mgrmix', 403], ['GET', '/api/inspection-docs', 'mgrmix', 403],
+      ['GET', '/api/sms/threads', 'mgrmix', 403], ['GET', '/api/sms/config', 'mgrmix', 403],
+      ['GET', '/api/admin/productivity', 'mgrcust', 403], ['GET', '/api/service-orders/1', 'mgrcust', 403],
+      ['GET', '/api/inspection-docs', 'mgrcust', 200], ['GET', '/api/fleet-maintenance/summary', 'mgrcust', 200], ['GET', `/api/inspection-docs/${doc}`, 'mgrcust', 200],
+      ['GET', '/api/inspection-docs', 'mech1', 403],
+    ], bad = [];
+    for (const [method, path, who, want] of cases) {
+      const st = (await R(path, { method, token: tokens[who], body: method === 'PUT' ? { enabled: false } : undefined, allowError: true })).status ?? 200;
+      if ((want === 200) !== (st >= 200 && st < 300) || (want === 403 && st !== 403)) bad.push(`${who} ${method} ${path}: ${st}`);
+    }
+    eq(bad.join(' | '), '', 'every call answers as its permission says');
+    eq((await db.query('SELECT count(*)::int n FROM inspection_documents WHERE id=$1', [doc])).rows[0].n, 1, 'the refused delete removed nothing');
+  });
   for (const [who, pass] of [['owner', OWNER.password], ['mgrfull', MPASS], ['mgrcust', MPASS], ['mech1', KPASS], ['mech2', KPASS]]) for (const w of [390, 820, 1280])
     await scenario(`A15 ${who} at ${w}px: every allowed page opens without errors or sideways scrolling`, async () => {
       const { ctx, page } = await newPage(w); await signIn(page, who, pass);
