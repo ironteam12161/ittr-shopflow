@@ -584,11 +584,11 @@ try {
   });
   await scenario('A37 phone (touch, mobile viewport): a mechanic taps Start and Complete on a job', async () => {
     const st = await R('/api/state', { token: owner }), sf = st.shopflow.payload;
-    sf.workorders = [...sf.workorders.filter(w => w.id !== 9901), { id: 9901, unit: 'TAP-1', customer: 'Private Audit Fleet LLC', status: 'In Progress', mechanic: 'mech1', helpers: [], unitType: 'customer', truckHere: true, tasks: [{ uid: 't1', t: 'Grease chassis', done: false, parts: [] }] }];
+    sf.workorders = [...sf.workorders.filter(w => w.id !== 9901), { id: 9901, unit: 'TAP-1', customer: 'Private Audit Fleet LLC', status: 'In Progress', mechanic: 'mech2', helpers: [], unitType: 'customer', truckHere: true, tasks: [{ uid: 't1', t: 'Grease chassis', done: false, parts: [] }] }];
     await R('/api/state/shopflow', { method: 'PUT', token: owner, body: { payload: sf, expectedVersion: st.shopflow.version } });
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3, serviceWorkers: 'block' });
     const page = await ctx.newPage(); page.setDefaultTimeout(8000); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept().catch(() => {}));
-    await signIn(page, 'mech1', KPASS);
+    await signIn(page, 'mech2', KPASS); // mech2 has no job running (one job at a time per mechanic)
     await page.evaluate(() => openDetail(9901)); await page.waitForSelector('#detailModal.open');
     await page.locator('#detailBody button', { hasText: 'Start Task' }).first().tap();
     ok(await until(async () => !!(await R('/api/state', { token: owner })).shopflow.payload.workorders.find(w => w.id === 9901)?.tasks[0]?.startedAt, 8000), 'the tap started the job on the server');
