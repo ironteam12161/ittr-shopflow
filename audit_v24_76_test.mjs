@@ -357,6 +357,61 @@ try {
     eq(page.errs.join(' | '), '', 'no page errors');
     await ctx.close();
   });
+  await scenario('A25 a stale invoice editor never writes old line text over a newer line', async () => {
+    const inv = await newInvoice(1);
+    const lab = await R(`/api/invoices/${inv}/lines`, { method: 'POST', token: owner, body: { lineType: 'labor', description: 'ORIGINAL LABOR', quantity: 1, unitPrice: 50, taxable: false, jobName: 'J' } });
+    let lineId = null; const lineOf = async () => (await R(`/api/invoices/${inv}`, { token: owner })).lines.find(l => lineId ? l.id === lineId : l.description === 'ORIGINAL LABOR');
+    const L = await lineOf(); ok(L.print, 'lines carry a fingerprint'); lineId = L.id;
+    const body = d => ({ lineType: 'labor', description: d, quantity: 1, unitPrice: 50, taxable: false, jobName: 'J' });
+    const stale = await R(`/api/invoices/${inv}/lines/${L.id}`, { method: 'PUT', token: owner, body: { ...body('X'), expectedPrint: 'not-the-current-one' }, allowError: true });
+    eq(stale.status, 409, 'a stale line save is refused'); eq(stale.code, 'INVOICE_LINE_CHANGED', 'with a code');
+    const { ctx, page } = await newPage(); await signIn(page, 'mgrfull', MPASS);
+    await page.evaluate(() => showView('invoices')); await sleep(800);
+    await page.evaluate(id => openInvoice(id, true), inv); await page.waitForSelector('#invoiceModal.open'); await sleep(500);
+    await page.evaluate(() => stopLiveStatusSocket()); await sleep(1200); // this editor now stays stale
+    await R(`/api/invoices/${inv}/lines/${L.id}`, { method: 'PUT', token: owner, body: body('REMOTE CORRECTED LABOR') });
+    // 1) Saving the header with the line untouched leaves the other device's line alone.
+    await page.fill('#invCustomerNote', 'header only'); await page.evaluate(() => saveInvoiceHeader()); await sleep(800);
+    eq((await lineOf()).description, 'REMOTE CORRECTED LABOR', 'an untouched line is not written back');
+    // 2) Editing that same line asks; "Load the newer version" keeps the other device's text.
+    await page.evaluate(() => stopLiveStatusSocket()); await sleep(300);
+    await R(`/api/invoices/${inv}/lines/${L.id}`, { method: 'PUT', token: owner, body: body('REMOTE SECOND') });
+    const desc = page.locator(`[data-invoice-line="${L.id}"] .ilDesc`); await desc.fill('MY LABOR');
+    const p = page.evaluate(() => saveInvoiceHeader());
+    await page.waitForSelector('[data-line-choice="reload"]', { timeout: 6000 }); await page.click('[data-line-choice="reload"]'); await p;
+    eq((await lineOf()).description, 'REMOTE SECOND', 'the other device\'s line is kept');
+    ok(await until(() => page.evaluate(() => activeInvoice.lines.some(l => l.description === 'REMOTE SECOND')), 5000), 'the editor shows the newer line');
+    // 3) "Keep my changes" saves this device's text on purpose.
+    await page.evaluate(() => stopLiveStatusSocket()); await sleep(300);
+    await R(`/api/invoices/${inv}/lines/${L.id}`, { method: 'PUT', token: owner, body: body('REMOTE THIRD') });
+    await page.locator(`[data-invoice-line="${L.id}"] .ilDesc`).fill('MINE ON PURPOSE');
+    const p2 = page.evaluate(() => saveInvoiceHeader());
+    await page.waitForSelector('[data-line-choice="keep"]', { timeout: 6000 }); await page.click('[data-line-choice="keep"]'); await p2;
+    eq((await lineOf()).description, 'MINE ON PURPOSE', 'keeping my change saves it');
+    // 4) A header conflict answered with "load newer" leaves no line change behind.
+    await page.evaluate(() => stopLiveStatusSocket()); await sleep(300);
+    await R(`/api/invoices/${inv}`, { method: 'PUT', token: owner, body: { customerNote: 'remote header' } });
+    await page.locator(`[data-invoice-line="${L.id}"] .ilDesc`).fill('SHOULD NOT SAVE');
+    const p3 = page.evaluate(() => saveInvoiceHeader());
+    await page.waitForSelector('[data-header-choice="reload"]', { timeout: 6000 }); await page.click('[data-header-choice="reload"]'); await p3;
+    eq((await lineOf()).description, 'MINE ON PURPOSE', 'no line was written when the header question stopped the save');
+    eq(page.errs.join(' | '), '', 'no page errors');
+    await ctx.close();
+  });
+  await scenario('A26 a saved note leaves the invoice clean; an unsaved line stays unsaved', async () => {
+    const inv = await newInvoice(1);
+    const { ctx, page } = await newPage(); await signIn(page, 'mgrfull', MPASS);
+    await page.evaluate(() => showView('invoices')); await sleep(800);
+    await page.evaluate(id => openInvoice(id, true), inv); await page.waitForSelector('#invoiceModal.open'); await sleep(500);
+    await page.focus('#invCustomerNote'); await page.keyboard.type(' saved');
+    ok(await until(() => page.evaluate(() => document.getElementById('invoiceDraftState')?.dataset.state === 'saved'), 5000), 'the note autosaved');
+    eq(await page.evaluate(() => ittrInvoiceEditorDirty()), false, 'nothing unsaved after the autosave');
+    await page.locator('#invoiceEditor .ilDesc').first().fill('typed, not saved');
+    await page.focus('#invCustomerNote'); await page.keyboard.type('!');
+    ok(await until(() => page.evaluate(() => document.getElementById('invoiceDraftState')?.dataset.state === 'saved'), 5000), 'the note autosaved again');
+    eq(await page.evaluate(() => ittrInvoiceEditorDirty()), true, 'the unsaved line still counts as unsaved');
+    await ctx.close();
+  });
   await scenario('A17 work-order Billing tab links to its estimate and invoice', async () => {
     const st = await R('/api/state', { token: owner }), sf = st.shopflow.payload;
     sf.workorders = [...sf.workorders.filter(w => w.id !== 9501), { id: 9501, unit: 'BILL-1', customer: 'Private Audit Fleet LLC', status: 'Completed', mechanic: 'mech1', helpers: [], unitType: 'customer', truckHere: true, tasks: [] }];

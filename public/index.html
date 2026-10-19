@@ -2323,7 +2323,16 @@ function ittrStaleNote(view){
 // the person chooses to keep editing or to load the newer version.
 function ittrInvoiceEditorValues(){return JSON.stringify([...document.querySelectorAll("#invoiceEditor input,#invoiceEditor select,#invoiceEditor textarea")].filter(e=>e.type!=="file").map(e=>e.type==="checkbox"||e.type==="radio"?e.checked:e.value))}
 let ittrInvoiceEditorBase="";
-function ittrInvoiceEditorDirty(){const st=document.getElementById("invoiceDraftState")?.dataset.state;return ["dirty","saving","error"].includes(st)||(!!ittrInvoiceEditorBase&&ittrInvoiceEditorValues()!==ittrInvoiceEditorBase)}
+// v24.76.1: what was last loaded or saved, kept separately for the header, each line and the editor's other fields. A
+// successful save advances only what it saved, so a saved note no longer leaves the editor "unsaved", and an unsaved
+// line stays unsaved when the header saves.
+let ittrHeaderBase="",ittrLineBase=new Map(),ittrOtherBase="";
+const ittrHeaderField=e=>/InvoiceHeaderAutosave/.test((e.getAttribute("oninput")||"")+(e.getAttribute("onblur")||"")+(e.getAttribute("onchange")||""));
+function ittrOtherEditorValues(){return JSON.stringify([...document.querySelectorAll("#invoiceEditor input,#invoiceEditor select,#invoiceEditor textarea")].filter(e=>e.type!=="file"&&!e.closest("[data-invoice-line]")&&!ittrHeaderField(e)).map(e=>e.type==="checkbox"||e.type==="radio"?e.checked:e.value))}
+function ittrSnapshotInvoiceEditor(){ittrHeaderBase=JSON.stringify(invoiceHeaderPayload());ittrLineBase=new Map((activeInvoice?.lines||[]).map(l=>[String(l.id),JSON.stringify(invoiceLinePayload(l.id))]));ittrOtherBase=ittrOtherEditorValues()}
+function ittrInvoiceLineChanged(id){const p=invoiceLinePayload(id);return !!p&&JSON.stringify(p)!==ittrLineBase.get(String(id))}
+function ittrInvoiceEditorDirty(){const st=document.getElementById("invoiceDraftState")?.dataset.state;if(["dirty","saving","error"].includes(st))return true;if(!ittrHeaderBase)return false;
+ return JSON.stringify(invoiceHeaderPayload())!==ittrHeaderBase||(activeInvoice?.lines||[]).some(l=>ittrInvoiceLineChanged(l.id))||ittrOtherEditorValues()!==ittrOtherBase}
 async function ittrStaleRefresh(view){
  const editorOpen=document.getElementById("invoiceModal")?.classList.contains("open")&&activeInvoice?.invoice?.id;
  if(!editorOpen){ittrRefreshModuleView(view);return}
@@ -2555,7 +2564,7 @@ function ittrClearPrivateViews(){
  try{shopAiImportDraft=null}catch(_){}
  try{fmcsaCustomerLookupCache=null}catch(_){}
  blank("ittrOpenPOs",null);
- try{ittrInvoiceEditorBase=""}catch(_){}
+ try{ittrInvoiceEditorBase="";ittrHeaderBase="";ittrLineBase=new Map();ittrOtherBase=""}catch(_){}
  for(const k of Object.keys(ittrSearchGen||{}))try{ittrSearchCancel(k)}catch(_){}
  for(const id of ["invoiceEditor","detailBody","globalSmartSearchResults","smartDirectoryResults","customerProfileBody","vehicleProfileBody","invoiceLookupResults"]){const el=document.getElementById(id);if(el)el.replaceChildren()}
  document.querySelectorAll("#ittrStaleNote,.ittrChoice").forEach(n=>n.remove());
@@ -7044,10 +7053,30 @@ function renderInvoiceEditor(){
    <div class="invoiceSignatureGrid"><span>Customer Signature: ______________________________</span><span>Printed Name: ______________________________</span><span>Date: ______________</span></div>
  </section>`;
  window.InvoiceUX?.attachEditor?.(activeInvoice);
- ittrInvoiceEditorBase=ittrInvoiceEditorValues();
+ ittrInvoiceEditorBase=ittrInvoiceEditorValues();ittrSnapshotInvoiceEditor();
 }
-async function persistInvoiceLine(id){const i=activeInvoice.invoice,b=invoiceLinePayload(id);if(!b)return {ok:true};const r=await ittrSessionFetch(`/api/invoices/${i.id}/lines/${id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify(b)}),d=await r.json();if(!r.ok)throw new Error(d.error||'Line save failed');return d}
-async function saveAllInvoiceLines(){for(const l of (activeInvoice?.lines||[])){if(document.querySelector(`[data-invoice-line="${l.id}"]`))await persistInvoiceLine(l.id)}}
+// v24.76.1: a line save carries the fingerprint the line was loaded with; when another device changed that line the
+// server refuses and the person chooses: keep their version (saved over the other) or load the newer invoice. Throws
+// {stopped:true} when nothing more should be saved.
+async function persistInvoiceLine(id){const i=activeInvoice.invoice,b=invoiceLinePayload(id);if(!b)return {ok:true};
+ const l=(activeInvoice.lines||[]).find(x=>String(x.id)===String(id)),sent=JSON.stringify(b);
+ for(let attempt=0;attempt<2;attempt++){
+  const print=attempt?null:l?.print;
+  const r=await ittrSessionFetch(`/api/invoices/${i.id}/lines/${id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({...b,...(print?{expectedPrint:print}:{})})}),d=await r.json().catch(()=>({}));
+  if(r.status===409&&d.code==='INVOICE_LINE_CHANGED'){
+   invoiceSetSaveState('dirty','Changed on another device');
+   const what=String(b.description||l?.description||'').slice(0,60);
+   const c=await ittrChoose(currentLanguage==="uk"?`Рядок «${what}» змінено на іншому пристрої.`:`The line "${what}" was changed on another device.`,[["keep",currentLanguage==="uk"?"Зберегти мої зміни поверх":"Keep my changes (save over theirs)"],["reload",currentLanguage==="uk"?"Завантажити новішу версію":"Load the newer version"]],"line");
+   if(c==="keep")continue;
+   if(c==="reload")await openInvoice(i.id,document.body.classList.contains("invoiceWorkspaceMode"));
+   throw Object.assign(new Error('Not saved: the line changed on another device.'),{stopped:true});
+  }
+  if(!r.ok)throw new Error(d.error||'Line save failed');
+  if(l&&d.print)l.print=d.print;ittrLineBase.set(String(id),sent);return d;
+ }
+}
+// Only lines the person changed are saved (untouched lines are never written back over a newer copy).
+async function saveAllInvoiceLines(){for(const l of [...(activeInvoice?.lines||[])]){if(document.querySelector(`[data-invoice-line="${l.id}"]`)&&ittrInvoiceLineChanged(l.id))await persistInvoiceLine(l.id)}}
 function invoiceHeaderPayload(){
  const i=activeInvoice?.invoice||{},customerSelect=document.getElementById('invCustomerSelect'),unitSelect=document.getElementById('invUnitSelect');
  return {customerId:Number(document.getElementById('invCustomerId')?.value||0)||null,customerName:document.getElementById('invCustomer')?.value||customerSelect?.selectedOptions?.[0]?.textContent||i.customer_name||'',unitId:Number(document.getElementById('invUnitId')?.value||0)||null,unitNumber:document.getElementById('invUnit')?.value||unitSelect?.selectedOptions?.[0]?.textContent||'',vin:document.getElementById('invVin')?.value||'',dotNumber:document.getElementById('invDot')?.value||'',poNumber:document.getElementById('invPo')?.value||'',mileage:Number(document.getElementById('invMileage')?.value||0),invoiceDate:document.getElementById('invDate')?.value||'',dueDate:document.getElementById('invDue')?.value||'',terms:document.getElementById('invTerms')?.value||'Due on Receipt',taxRate:Number(document.getElementById('invTaxRate')?.value||0),shopSupplies:Number(document.getElementById('invShopSupplies')?.value||0),environmentalFee:Number(document.getElementById('invEnvFee')?.value||0),discountType:document.getElementById('invDiscountType')?.value||'fixed',discountValue:Number(document.getElementById('invDiscountValue')?.value||0),customerNote:document.getElementById('invCustomerNote')?.value||'',internalNote:document.getElementById('invInternalNote')?.value||'',fleetTier:document.getElementById('invFleetTier')?.value||i.fleet_tier||'retail'};
@@ -7066,8 +7095,8 @@ let invoiceHeaderConflictOpen=false;
 // {ok:false,stopped:true} when nothing was saved (newer version loaded, question dismissed, or already being asked).
 async function ittrPutInvoiceHeader(i){
   for(let attempt=0;attempt<2;attempt++){
-    const print=attempt?null:activeInvoice?.headerPrint;
-    const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({...invoiceHeaderPayload(),...(print?{expectedHeaderPrint:print}:{})})});
+    const print=attempt?null:activeInvoice?.headerPrint,payload=invoiceHeaderPayload();
+    const r=await ittrSessionFetch(`/api/invoices/${i.id}`,{method:'PUT',headers:authHeaders({'Content-Type':'application/json'}),body:JSON.stringify({...payload,...(print?{expectedHeaderPrint:print}:{})})});
     const d=await r.json().catch(()=>({}));
     if(r.status===409&&d.code==='INVOICE_HEADER_CHANGED'){
       // One question at a time: the question takes focus, and that blur would otherwise save (and ask) again.
@@ -7079,6 +7108,7 @@ async function ittrPutInvoiceHeader(i){
       return {ok:false,stopped:true,d};
     }
     if(r.ok&&d?.headerPrint&&activeInvoice?.invoice?.id===i.id)activeInvoice.headerPrint=d.headerPrint;
+    if(r.ok&&activeInvoice?.invoice?.id===i.id)ittrHeaderBase=JSON.stringify(payload);
     return {ok:r.ok,d};
   }
 }
@@ -7110,12 +7140,13 @@ async function persistInvoiceDraftBeforeStructureChange(label='Saving draft'){
  const i=activeInvoice?.invoice;if(!i||['paid','void'].includes(i.status))return true;
  invoiceDraftSaveBusy=true;invoiceSetSaveState('saving',label+'…');
  try{
-   await saveAllInvoiceLines();
+   // Header first: if its conflict question stops the save, no line has been written yet.
    const {ok,d,stopped}=await ittrPutInvoiceHeader(i);if(stopped)return false;
    if(!ok)throw new Error(d.error||'Draft save failed');
+   await saveAllInvoiceLines();
    invoiceSetSaveState('saved','Draft saved');
    return true;
- }catch(e){invoiceSetSaveState('error','Draft not saved');showToast?.(e.message||'Unable to preserve invoice changes.','error',7000);return false}
+ }catch(e){if(e?.stopped)return false;invoiceSetSaveState('error','Draft not saved');showToast?.(e.message||'Unable to preserve invoice changes.','error',7000);return false}
  finally{invoiceDraftSaveBusy=false}
 }
 function invoiceSetSaveState(state,text){const el=document.getElementById('invoiceDraftState');if(!el)return;el.dataset.state=state||'';el.textContent=text||''}
@@ -7179,8 +7210,8 @@ async function checkInvoiceNow(id){
   }catch(err){b.disabled=false;if(a==='ai')b.textContent='Suggest wording';showToast(err.message,'error')}});
 }
 window.checkInvoiceNow=checkInvoiceNow;
-async function saveInvoiceHeader(){const i=activeInvoice.invoice;try{invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const {ok,d,stopped}=await ittrPutInvoiceHeader(i);if(stopped)return false;if(!ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);await loadInvoices();invoiceSetSaveState('saved','All changes saved');showToast?.('Invoice saved.','success',2200);return true}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message,'error',7000)||alert(e.message);return false}}
-async function saveInvoiceLine(id){try{const i=activeInvoice.invoice;invoiceSetSaveState('saving','Saving…');await saveAllInvoiceLines();const {ok,d,stopped}=await ittrPutInvoiceHeader(i);if(stopped)return;if(!ok)throw new Error(d.error||'Save failed');await openInvoice(i.id);invoiceSetSaveState('saved','All changes saved')}catch(e){invoiceSetSaveState('error','Save failed');showToast?.(e.message||'Save failed','error',7000)}}
+async function saveInvoiceHeader(){const i=activeInvoice.invoice;try{invoiceSetSaveState('saving','Saving…');const {ok,d,stopped}=await ittrPutInvoiceHeader(i);if(stopped)return false;if(!ok)throw new Error(d.error||'Save failed');await saveAllInvoiceLines();await openInvoice(i.id);await loadInvoices();invoiceSetSaveState('saved','All changes saved');showToast?.('Invoice saved.','success',2200);return true}catch(e){if(e?.stopped)return false;invoiceSetSaveState('error','Save failed');showToast?.(e.message,'error',7000)||alert(e.message);return false}}
+async function saveInvoiceLine(id){try{const i=activeInvoice.invoice;invoiceSetSaveState('saving','Saving…');const {ok,d,stopped}=await ittrPutInvoiceHeader(i);if(stopped)return;if(!ok)throw new Error(d.error||'Save failed');await saveAllInvoiceLines();await openInvoice(i.id);invoiceSetSaveState('saved','All changes saved')}catch(e){if(e?.stopped)return;invoiceSetSaveState('error','Save failed');showToast?.(e.message||'Save failed','error',7000)}}
 async function deleteInvoiceLine(lineId){if(!confirm('Remove this line? If this is a labor operation, its attached parts and charges will also be removed.'))return;if(!(await persistInvoiceDraftBeforeStructureChange('Preserving your invoice')))return;const i=activeInvoice.invoice,r=await ittrSessionFetch(`/api/invoices/${i.id}/lines/${lineId}`,{method:'DELETE',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to remove line');await openInvoice(i.id)}
 async function finalizeInvoice(id){if(!confirm('Finalize this invoice and mark it sent/open? Review prices, tax and customer PO first.'))return;if(!(await saveInvoiceHeader()))return;const r=await ittrSessionFetch(`/api/invoices/${id}/finalize`,{method:'POST',headers:authHeaders()}),d=await r.json();if(!r.ok)return alert(d.error||'Unable to finalize');if(Array.isArray(d.warnings)&&d.warnings.length)showToast?.('Inventory warning: '+d.warnings.join(' · '),'warning',12000);await openInvoice(id);await loadInvoices()}
 // v24.41.2 payment dialog: one form with the payment type and its transaction ID (check #, Zelle confirmation, ACH trace…).
