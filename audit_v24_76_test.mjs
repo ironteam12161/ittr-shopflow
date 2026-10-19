@@ -510,6 +510,12 @@ try {
     eq(b.status, 200, 'backup downloads'); eq(j.consistentSnapshot, true, 'all tables from one snapshot'); ok(j.tables && j.rowCounts, 'tables and counts present');
     ok('commit' in (await R('/api/build')), 'build reports the deployed commit field');
   });
+  await scenario('A33 signed-in account checks from the shop network never block someone else\'s sign-in', async () => {
+    let limited = 0;
+    for (let k = 0; k < 110; k++) if ((await R('/api/auth/me', { token: owner, allowError: true })).status === 429) limited++;
+    eq(limited, 0, '110 signed-in checks in a row are not refused');
+    ok(await srv.login('mech1', KPASS), 'a mechanic can still sign in from the same address');
+  });
   await scenario('A17 work-order Billing tab links to its estimate and invoice', async () => {
     const st = await R('/api/state', { token: owner }), sf = st.shopflow.payload;
     sf.workorders = [...sf.workorders.filter(w => w.id !== 9501), { id: 9501, unit: 'BILL-1', customer: 'Private Audit Fleet LLC', status: 'Completed', mechanic: 'mech1', helpers: [], unitType: 'customer', truckHere: true, tasks: [] }];

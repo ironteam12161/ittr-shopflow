@@ -265,7 +265,12 @@ app.use(express.static(publicDir,{
  }
 }));
 
-const authLimiter=rateLimit({windowMs:15*60*1000,max:100,standardHeaders:true,legacyHeaders:false});
+// v24.76.1: signed-in calls (/api/auth/me, sessions, preferences) and signed-out calls (sign-in) are counted in separate
+// buckets per IP. Before, every /api/auth call from the shop's one Wi-Fi address shared 100 per 15 minutes, so managers'
+// pages checking their permissions could use it up and block a mechanic's sign-in. Failed sign-ins are still limited
+// separately (loginLimiter). A made-up token only reaches the signed-in bucket of its own IP.
+const authSignedIn=req=>/^Bearer\s+\S/i.test(String(req.headers.authorization||""));
+const authLimiter=rateLimit({windowMs:15*60*1000,limit:req=>authSignedIn(req)?600:100,keyGenerator:req=>`${ipKeyGenerator(req.ip||"")}|${authSignedIn(req)?"in":"out"}`,standardHeaders:true,legacyHeaders:false});
 const loginLimiter=rateLimit({
  windowMs:15*60*1000,
  max:10,
