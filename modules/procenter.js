@@ -8,19 +8,24 @@ window.startVoiceNote=function(){const SR=window.SpeechRecognition||window.webki
 window.aiProfessionalNote=async function(mode="professional"){const el=document.getElementById("aiShopText"),out=document.getElementById("aiShopResult"),text=el?.value.trim();if(!text)return window.showToast?.("Enter or dictate a mechanic note first.","warning");try{const x=await aiCall("/api/ai/note",{text,mode},"aiShopProcessing");if(out)out.textContent=x||""}catch(e){if(out)out.textContent=e.message;window.showToast?.(e.message,"error",7000)}};
 window.aiDiagnosticAssistant=async function(){const el=document.getElementById("aiDiagnosticInput"),out=document.getElementById("aiDiagnosticResult"),text=el?.value.trim();if(!text)return window.showToast?.("Enter symptoms or fault codes first.","warning");try{const x=await aiCall("/api/ai/diagnostic",{text},"aiDiagnosticProcessing");if(out)out.textContent=x||""}catch(e){if(out)out.textContent=e.message;window.showToast?.(e.message,"error",7000)}};
 window.aiPartAssistant=async function(){const q=document.getElementById("aiPartQuery")?.value.trim(),vin=document.getElementById("aiPartVin")?.value.trim(),out=document.getElementById("aiPartResult");if(!q)return window.showToast?.("Enter a part number or description first.","warning");try{const x=await aiCall("/api/ai/part",{vin,query:q},"aiPartProcessing");if(out)out.textContent=x||""}catch(e){if(out)out.textContent=e.message;window.showToast?.(e.message,"error",7000)}};
+// v24.76.0: mount() already loads this page, so showView() skips the first afterShow() (no double request).
+export const loadsOnMount=true;
 export async function mount(scope){localAbort=new AbortController();scope.on(scope.host,"ittr:module-refresh",()=>window.renderProCenter?.(),{passive:true});await window.renderProCenter?.();setTimeout(()=>window.checkAIConnection?.(),0)}
 export async function afterShow(){await window.renderProCenter?.()}
 export function unmount(){localAbort?.abort();localAbort=null;if(voiceRecognition){try{voiceRecognition.stop()}catch{}voiceRecognition=null}}
 
+// v24.76.0: the button calls this from an inline handler, so it must be on window (it was module-only and threw
+// "reconcileFullbayHistory is not defined"). A failure is shown in the status line and as a toast.
 async function reconcileFullbayHistory(){
- if(!requireAdmin())return;
+ if(!window.requireAdmin?.())return;
  const box=document.getElementById("fullbayImportStatus");if(box)box.textContent="Auditing customer/unit/history links…";
  try{
-  const d=await apiJSON("/api/fullbay/history/reconcile",{method:"POST",body:"{}"}),r=d.report||{};
+  const d=await window.apiJSON("/api/fullbay/history/reconcile",{method:"POST",body:"{}"}),r=d.report||{};
   alert(`History audit complete.\n\nCustomer links repaired: ${r.customerLinks||0}\nUnit links repaired: ${r.unitLinks||0}\nMetadata backfilled: ${r.metadataBackfill||0}\nHistory rows still without a unit: ${r.orphanHistory||0}\nUnits with non-standard/short VIN or serial: ${r.invalidVinUnits||0}\nDuplicate customer + unit-number groups: ${r.duplicateCustomerUnits||0}\n\nNo records were deleted.`);
-  await renderFullbayImportStatus();
- }catch(e){alert(e.message||"History audit failed.");if(box)box.textContent=e.message||"History audit failed."}
+  await window.renderFullbayImportStatus?.();
+ }catch(e){const msg=e.message||"History audit failed.";window.showToast?.(msg,"error",8000);if(box)box.textContent=`History audit failed: ${msg}`}
 }
+window.reconcileFullbayHistory=reconcileFullbayHistory;
 
 let samsaraFleetCache=[];
 async function loadSamsaraFleet(){const status=document.getElementById('samsaraStatus'),out=document.getElementById('samsaraFleetResults');if(status)status.textContent='Connecting to Samsara…';try{const s=await apiJSON('/api/samsara/status');if(!s.configured){status.innerHTML='<b>Samsara is ready but the token is not configured.</b> Add SAMSARA_API_TOKEN in Railway Variables.';if(out)out.innerHTML='';return}if(!s.connected)throw new Error(s.error||'Samsara connection failed.');const d=await apiJSON('/api/samsara/fleet');samsaraFleetCache=d.items||[];status.textContent=`Connected · ${samsaraFleetCache.length} vehicles · Updated ${fmtDateTime(d.updatedAt)}`;renderSamsaraFleet()}catch(e){if(status)status.innerHTML=`<span class="error">${esc(e.message||'Samsara unavailable.')}</span>`}}

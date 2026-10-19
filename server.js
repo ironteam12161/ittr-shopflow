@@ -881,9 +881,19 @@ function broadcastShopStatus(type,payload={}){
  for(const ws of liveClients){if(ws.readyState!==WebSocket.OPEN)continue;const msg=liveMessageFor(ws.ittrUser,type,base,full,payload.domain);if(msg)try{ws.send(msg)}catch(_){}}
 }
 // One place for every module: a successful change under these routes announces its area (coalesced per 300 ms).
-const pendingDomains=new Map();
-app.use((req,res,next)=>{if(req.method==="GET"||req.method==="HEAD"||req.method==="OPTIONS")return next();const hit=DATA_DOMAINS.find(([re])=>re.test(req.path));if(!hit)return next();
- res.on("finish",()=>{if(res.statusCode>=400)return;const d=hit[1],by=String(req.user?.username||"");const cur=pendingDomains.get(d);if(cur){cur.by.add(by);return}const entry={by:new Set([by])};pendingDomains.set(d,entry);setTimeout(()=>{pendingDomains.delete(d);broadcastShopStatus("data_changed",{domain:d,by:[...entry.by].filter(Boolean).slice(0,5)})},300).unref?.()});next()});
+// v24.76.0: a change also announces every OTHER area it touched. Code that moves stock, balances or bills calls
+// touchDataDomain(...) inside the request (any route: invoices, work orders, receiving, purchase orders), and the
+// announcement goes out only after the response succeeded. Before, finalizing an invoice announced only "invoices",
+// so an open Parts screen kept the old quantity. Each area also has a revision number; a socket that reconnects gets
+// the current revisions and the page refreshes the areas it missed while disconnected.
+const pendingDomains=new Map(),DATA_REVISIONS={invoices:0,bills:0,inventory:0,customers:0},DATA_BOOT=crypto.randomBytes(6).toString("hex");
+function touchDataDomain(...domains){const req=aiContext.getStore()?.req;if(!req)return;req.ittrDomains=req.ittrDomains||new Set();for(const d of domains)if(d in DATA_REVISIONS)req.ittrDomains.add(d)}
+// Balances shown on customer screens change with these invoice actions.
+const CUSTOMER_BALANCE_RE=/^\/api\/invoices\/[^/]+\/(finalize|void|payments|reopen)(\/|$)|^\/api\/customers\/[^/]+\/(receive-payment|apply-credit)$|^\/api\/(customer-payments|payments)(\/|$)/;
+function announceDataDomain(d,by){DATA_REVISIONS[d]=(DATA_REVISIONS[d]||0)+1;const cur=pendingDomains.get(d);if(cur){cur.by.add(by);return}const entry={by:new Set([by])};pendingDomains.set(d,entry);setTimeout(()=>{pendingDomains.delete(d);broadcastShopStatus("data_changed",{domain:d,rev:DATA_REVISIONS[d],boot:DATA_BOOT,by:[...entry.by].filter(Boolean).slice(0,5)})},300).unref?.()}
+function dataRevisionsFor(u){const out={};for(const d of Object.keys(DATA_REVISIONS)){const perm=DATA_DOMAIN_PERM[d];if(u?.role==="admin"||(u?.role==="manager"&&u.permissions?.[perm]===true))out[d]=DATA_REVISIONS[d]}return {boot:DATA_BOOT,revisions:out}}
+app.use((req,res,next)=>{if(req.method==="GET"||req.method==="HEAD"||req.method==="OPTIONS")return next();const hit=DATA_DOMAINS.find(([re])=>re.test(req.path));
+ res.on("finish",()=>{if(res.statusCode>=400)return;const ds=new Set(req.ittrDomains||[]);if(hit)ds.add(hit[1]);if(CUSTOMER_BALANCE_RE.test(req.path)||(req.method==="DELETE"&&/^\/api\/invoices\/[^/]+$/.test(req.path)))ds.add("customers");if(!ds.size)return;const by=String(req.user?.username||"");for(const d of ds)announceDataDomain(d,by)});next()});
 // The sign-in token arrives in the first message ({type:"auth",token}), not in the web address, where proxies and
 // server logs could record it. The old ?token= form (app copies before v24.58.1) is off unless ITTR_LEGACY_WS_TOKEN=1.
 const LIVE_SESSION_SQL=`SELECT s.id session_id,s.expires_at,u.id user_id,u.username,u.display_name,u.role,u.permissions FROM auth_sessions s JOIN auth_users u ON u.id=s.user_id WHERE s.expires_at>now() AND u.active=true`;
@@ -896,7 +906,7 @@ function admitLiveSocket(ws,user){
  ws.ittrUser=user;ws.isAlive=true;ws.on("pong",()=>{ws.isAlive=true});liveClients.add(ws);
  const left=new Date(user.expires_at).getTime()-Date.now();if(Number.isFinite(left))ws.ittrExpiry=setTimeout(()=>closeLiveSocket(ws,"Session expired"),Math.max(0,Math.min(left,2147483000)));
  ws.on("message",()=>{});// the client sends nothing after auth; any later frame is ignored (size-limited by maxPayload)
- ws.send(JSON.stringify({type:"connected",at:new Date().toISOString()}));ws.on("close",()=>{liveClients.delete(ws);clearTimeout(ws.ittrExpiry)})
+ ws.send(JSON.stringify({type:"connected",at:new Date().toISOString(),...(["admin","manager"].includes(user.role)?dataRevisionsFor(user):{})}));ws.on("close",()=>{liveClients.delete(ws);clearTimeout(ws.ittrExpiry)})
 }
 let liveRevalidating=null,liveRevalidateAgain=false;
 async function revalidateLiveSockets(){
@@ -1435,7 +1445,7 @@ async function inventoryRepairPlan(db){
  return {deletedInvoiceSales:sales,stuckReservations:stuck,sf};
 }
 app.get("/api/inventory/repair/preview",auth,ownerOnly,async(req,res,next)=>{try{const {deletedInvoiceSales,stuckReservations}=await inventoryRepairPlan(requireDb());res.json({deletedInvoiceSales,stuckReservations})}catch(e){next(e)}});
-app.post("/api/inventory/repair/apply",auth,ownerOnly,async(req,res,next)=>{const db=await requireDb().connect();try{
+app.post("/api/inventory/repair/apply",auth,ownerOnly,async(req,res,next)=>{touchDataDomain("inventory");const db=await requireDb().connect();try{
  await db.query("BEGIN");await db.query("SELECT pg_advisory_xact_lock($1::bigint)",[24330]);
  const plan=await inventoryRepairPlan(db);let returned=0,released=0;
  for(const r of plan.deletedInvoiceSales){const pr=await db.query("SELECT quantity,cost FROM fullbay_import_parts WHERE id=$1 FOR UPDATE",[r.partId]);if(!pr.rowCount)continue;const before=stockNum(pr.rows[0].quantity),after=before+r.qty;
@@ -2090,7 +2100,9 @@ app.get('/api/fullbay/history/import-audit',auth,ownerOnly,async(req,res,next)=>
   const db=requireDb();
   const imported=Number((await db.query(`SELECT count(*)::int n FROM fullbay_service_history WHERE coalesce(source_key,'') LIKE 'fullbay:%'`)).rows[0]?.n||0);
   const aiHistory=Number((await db.query(`SELECT count(*)::int n FROM fullbay_service_history WHERE coalesce(source_key,'') LIKE 'ai-history:%'`)).rows[0]?.n||0);
-  const incomplete=Number((await db.query(`SELECT count(*)::int n FROM fullbay_service_history WHERE coalesce(source_key,'') LIKE 'fullbay:%' AND (coalesce(trim(correction),'')='' OR coalesce(parts_amount,0)=0)`)).rows[0]?.n||0);
+  // v24.76.0: the canonical columns are actual_correction / part_amount (the query used correction / parts_amount and
+  // answered 500 on every call).
+  const incomplete=Number((await db.query(`SELECT count(*)::int n FROM fullbay_service_history WHERE coalesce(source_key,'') LIKE 'fullbay:%' AND (coalesce(trim(actual_correction),'')='' OR coalesce(part_amount,0)=0)`)).rows[0]?.n||0);
   res.json({ok:true,imported,aiHistory,incomplete,scope:'Imported Fullbay service-history rows only.'});
  }catch(e){next(e)}
 });
@@ -2104,7 +2116,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.75.3");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.76.0");
 app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`}));
 // v24.71.0: liveness and readiness are separate. /api/health/live only says the process answers (never restart the
 // app because the database or an optional service such as AI is down). /api/health (= /api/health/ready, Railway's
@@ -2923,7 +2935,7 @@ app.delete("/api/work-orders/:id/helpers/:username",auth,async(req,res,next)=>{
 
 
 // ITTR_INVENTORY_RESERVE_FINALIZE_V1_WO_ADD
-app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/parts",auth,async(req,res,next)=>{
+app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/parts",auth,async(req,res,next)=>{touchDataDomain("inventory");
  const db=await requireDb().connect();
  try{
   const workOrderId=String(req.params.id),uid=String(req.params.taskUid||"");
@@ -2970,7 +2982,7 @@ app.post("/api/work-orders/:id/tasks/by-uid/:taskUid/parts",auth,async(req,res,n
  }catch(e){try{await db.query("ROLLBACK")}catch(_){}next(e)}finally{db.release()}
 });
 // ITTR_INVENTORY_RESERVE_FINALIZE_V1_WO_REMOVE
-app.delete("/api/work-orders/:id/tasks/by-uid/:taskUid/parts/:partId",auth,async(req,res,next)=>{
+app.delete("/api/work-orders/:id/tasks/by-uid/:taskUid/parts/:partId",auth,async(req,res,next)=>{touchDataDomain("inventory");
  const db=await requireDb().connect();
  try{
   const workOrderId=String(req.params.id),uid=String(req.params.taskUid||""),partId=String(req.params.partId||"");
@@ -4021,7 +4033,7 @@ app.post("/api/parts/receiving/match",auth,managerPermission("inventory"),async(
  const lines=(Array.isArray(req.body?.lines)?req.body.lines:[]).slice(0,100).map(l=>({partNumber:String(l?.partNumber||'').trim().slice(0,80),description:String(l?.description||'').trim().slice(0,300),quantity:Number(l?.quantity)||0}));
  await matchInvoiceLines(requireDb(),lines);res.json({lines});
 }catch(e){next(e)}});
-app.post("/api/parts/receiving/receive",auth,managerPermission("inventory"),async(req,res,next)=>{const db=await requireDb().connect();let stage="validate";try{
+app.post("/api/parts/receiving/receive",auth,managerPermission("inventory"),async(req,res,next)=>{touchDataDomain("inventory","bills");const db=await requireDb().connect();let stage="validate";try{
  const inv=req.body?.invoice||{},lines=Array.isArray(req.body?.lines)?req.body.lines:[];
  if(!String(inv.vendor||'').trim())return res.status(400).json({error:'Vendor is required so purchase history and cores are owed to the correct company.'});if(isOwnShopName(inv.vendor))return res.status(400).json({error:'The vendor is the company you bought from — not your own shop. Check the letterhead at the top of the bill.'});
  if(!lines.length)return res.status(400).json({error:'No invoice lines to receive.'});
@@ -4213,7 +4225,7 @@ async function lineUnitMeta(db,meta,unit,inventoryPartId){
   const un=FLUID_UNITS[unit]?unit:(FLUID_UNITS[meta.unit]?meta.unit:'gal');meta.unit=un;meta.stockPerUnit=FLUID_UNITS[un]}
  else if(meta.unit&&FLUID_UNITS[meta.unit]){delete meta.unit;if(Number(meta.stockPerUnit)===0.25||Number(meta.stockPerUnit)===1)delete meta.stockPerUnit}
  return meta}
-async function postInvoiceLineStock(db,inv,line,username,warnings=[],targetQty=null,reason='Invoice stock posting'){
+async function postInvoiceLineStock(db,inv,line,username,warnings=[],targetQty=null,reason='Invoice stock posting'){touchDataDomain("inventory");
  if(!line?.inventory_part_id)return {posted:false};
  // v24.43.0: a line billed in quarts moves 0.25 gal per quart (metadata.stockPerUnit); other lines move their quantity.
  const spu=Number(invoiceMeta(line?.metadata).stockPerUnit)>0?Number(invoiceMeta(line.metadata).stockPerUnit):1;
@@ -4240,7 +4252,7 @@ async function postInvoiceLineStock(db,inv,line,username,warnings=[],targetQty=n
  if(after<0)warnings.push(`${p.part_number||p.description||'Part'}: on hand is ${after} after invoice ${inv?.invoice_number||''}.`);
  return {posted:true,delta,after};
 }
-async function releaseInvoiceReservations(db,inv,lines,username){
+async function releaseInvoiceReservations(db,inv,lines,username){touchDataDomain("inventory");
  if(!inv?.work_order_id)return {released:0,version:null};
  const linked=(lines||[]).filter(l=>l?.inventory_part_id&&invoiceMeta(l.metadata).sourcePartId);
  if(!linked.length)return {released:0,version:null};
@@ -5234,7 +5246,7 @@ registerCustomerLinkRoutes(app,customerLinkDeps);
 registerSmsRoutes(app,{auth,adminOnly,requireDb,audit,broadcastShopStatus,publicLimiter,formParser:express.urlencoded({extended:false,limit:"64kb"})});
 // v24.58.1: put parts on the shelf from a purchase order with the same cost rules as a manual receive (weighted
 // average cost, last/previous purchase cost, purchase history). Runs inside the caller's transaction.
-async function receivePartStock(db,{partId,qty,unitCost,vendor,reference,username,note}){
+async function receivePartStock(db,{partId,qty,unitCost,vendor,reference,username,note}){touchDataDomain("inventory");
  const r=(await db.query("SELECT * FROM fullbay_import_parts WHERE id=$1 FOR UPDATE",[partId])).rows[0];if(!r)throw Object.assign(new Error("A part on this order was deleted from stock."),{status:409});
  const before=Number(r.quantity||0),after=before+qty,oldCost=Number(r.cost||0),newCost=after>0?((Math.max(0,before)*oldCost)+(qty*unitCost))/Math.max(after,qty):unitCost;
  const vc=await resolveVendorPurchaseContext(db,vendor,"");

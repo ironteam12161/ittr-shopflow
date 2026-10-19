@@ -231,11 +231,20 @@ export function registerCustomerLinkRoutes(app, deps) {
     await audit(req.user.username, 'customer_link_emailed', { kind, refId, linkId: link.id, to: list });
     res.json({ ok: true, to: list });
   } catch (e) { next(e); } });
+  // v24.76.0: listing and turning off links follow the same permissions as creating them (estimate: Invoices;
+  // portal: Customers and Invoices; inspection: any manager, like work orders). Before, any manager could list every
+  // link (customer ids, who signed) and turn off portals or estimate links outside their permissions.
+  const linkKindAllowed = (u, kind) => u?.role === 'admin' || (u?.role === 'manager' && (kind === 'inspection' || (kind === 'estimate' && u.permissions?.invoices === true) || (kind === 'portal' && u.permissions?.customers === true && u.permissions?.invoices === true)));
   app.get('/api/customer-links', auth, adminOnly, async (req, res, next) => { try {
-    const r = await requireDb().query(`SELECT id,kind,ref_id,created_by,created_at,expires_at,revoked_at,view_count,last_viewed_at,decided_at,meta->>'name' signed_name FROM customer_links WHERE ($1='' OR kind=$1) AND ($2='' OR ref_id=$2) ORDER BY created_at DESC LIMIT 50`, [str(req.query.kind, 20), str(req.query.refId, 60)]);
+    const kind = str(req.query.kind, 20);
+    if (kind && !linkKindAllowed(req.user, kind)) return res.status(403).json({ error: 'You do not have permission to see these links.' });
+    const kinds = ['estimate', 'inspection', 'portal'].filter(k => linkKindAllowed(req.user, k));
+    const r = await requireDb().query(`SELECT id,kind,ref_id,created_by,created_at,expires_at,revoked_at,view_count,last_viewed_at,decided_at,meta->>'name' signed_name FROM customer_links WHERE ($1='' OR kind=$1) AND ($2='' OR ref_id=$2) AND kind = ANY($3::text[]) ORDER BY created_at DESC LIMIT 50`, [kind, str(req.query.refId, 60), kinds]);
     res.json({ items: r.rows });
   } catch (e) { next(e); } });
   app.delete('/api/customer-links/:id', auth, adminOnly, async (req, res, next) => { try {
+    const cur = (await requireDb().query('SELECT kind FROM customer_links WHERE id=$1::bigint', [req.params.id])).rows[0];
+    if (cur && !linkKindAllowed(req.user, cur.kind)) return res.status(403).json({ error: 'You do not have permission to turn off this link.' });
     const r = await requireDb().query('UPDATE customer_links SET revoked_at=now(),revoked_by=$2 WHERE id=$1::bigint AND revoked_at IS NULL RETURNING kind,ref_id', [req.params.id, req.user.username]);
     if (!r.rowCount) return res.status(404).json({ error: 'Link not found or already off.' });
     await audit(req.user.username, 'customer_link_revoked', { linkId: req.params.id, ...r.rows[0] }); res.json({ ok: true });

@@ -37,7 +37,7 @@
   ${V.findings.length?`<div class="card"><h2>Recommended repairs</h2>${can?'<div class="muted">Approve the repairs you want done. Anything you decline will not be done or charged.</div>':''}</div>`:''}
   ${V.findings.map(f=>{const st=f.canDecide?(pick[f.id]==='approve'?'approved':pick[f.id]==='decline'?'declined':''):f.decision;
    return `<div class="job ${st}"><div class="jobHead"><b>${esc(f.title||'Repair')}</b>${f.severity?`<span class="tag wait">${esc(f.severity)}</span>`:''}</div>${f.detail?`<div class="muted">${esc(f.detail)}</div>`:''}
-   ${f.photos.length?`<div class="photos">${f.photos.map(u=>`<img src="${esc(u)}" alt="Photo of ${esc(f.title)}" loading="lazy" data-zoom>`).join('')}</div>`:''}
+   ${f.photos.length?`<div class="photos">${f.photos.map((u,n)=>`<button type="button" class="photoBtn" data-photo-finding="${esc(f.id)}" data-photo-index="${n}" aria-label="Open photo ${n+1} of ${f.photos.length}: ${esc(f.title||'Repair')}"><img src="${esc(u)}" alt="" loading="lazy"></button>`).join('')}</div>`:''}
    ${f.canDecide?choice(f.id,pick[f.id]):tag(f.decision)}</div>`}).join('')}
   ${i.flagged.length?`<div class="card"><h2>Inspection notes</h2>${i.flagged.map(x=>`<div class="flag"><b>${esc(x.label)}</b>${x.note?`<span class="muted">${esc(x.note)}</span>`:''}</div>`).join('')}</div>`:''}
   ${can?signBox('I authorize the approved repairs. The shop will call me before doing anything else.'):''}${foot(V.shop)}`}
@@ -65,10 +65,20 @@
  function restoreDraft(d){const g=id=>document.getElementById(id);
   if(d.name!=null&&g('signName'))g('signName').value=d.name;if(d.note!=null&&g('signNote'))g('signNote').value=d.note;if(d.agree!=null&&g('signAgree'))g('signAgree').checked=d.agree;
   if(d.focus){const f=app.querySelector(d.focus);if(f)try{f.focus({preventScroll:true})}catch{}}}
+ function openPhotos(btn){
+  const f=(V?.findings||[]).find(x=>String(x.id)===btn.dataset.photoFinding);if(!f||!f.photos?.length)return;
+  const fid=btn.dataset.photoFinding,idx=Number(btn.dataset.photoIndex)||0;
+  const items=f.photos.map((u,n)=>({id:`${fid}-${n}`,load:async()=>u,caption:f.title||'',meta:{finding:f.title||''},marks:[],editable:false}));
+  const opener=()=>app.querySelector(`[data-photo-finding="${CSS.escape(fid)}"][data-photo-index="${idx}"]`);
+  if(window.ITTRPhotoViewer)window.ITTRPhotoViewer.open({items,index:idx,opener});
+  else window.open(f.photos[idx],'_blank','noopener');
+ }
  function render(){if(!V)return;const d=draftOf();V.kind==='estimate'?renderEstimate():V.kind==='inspection'?renderInspection():renderPortal();restoreDraft(d)}
  function done(msg){app.innerHTML=`${shopHead(V.shop)}<div class="card done"><div class="big" aria-hidden="true">✓</div><h1>Thank you</h1><p>${esc(msg)}</p><p class="muted">The shop got your answer right away. You can close this page.</p></div>${foot(V.shop)}`}
  app.addEventListener('click',async e=>{
-  const z=e.target.closest('[data-zoom]');if(z){const d=document.createElement('div');d.className='zoom';d.innerHTML=`<img src="${esc(z.src)}" alt="">`;d.onclick=()=>d.remove();document.body.appendChild(d);return}
+  // v24.76.0: photos open in the shop's accessible viewer (dialog with Close, Escape, zoom, keyboard, focus back on
+  // the thumbnail). Before, thumbnails were plain images and the overlay could only be closed with a mouse/tap.
+  const pb=e.target.closest('[data-photo-finding]');if(pb){openPhotos(pb);return}
   const b=e.target.closest('.choice button');if(b){pick[b.dataset.k]=b.dataset.v;const y=window.scrollY;render();window.scrollTo(0,y);return}
   if(e.target.id!=='submitBtn')return;
   const err=document.getElementById('err'),btn=e.target,name=document.getElementById('signName').value.trim(),agree=document.getElementById('signAgree').checked,note=document.getElementById('signNote').value.trim();

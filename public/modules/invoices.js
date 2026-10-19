@@ -93,6 +93,8 @@ export function attachEditor(active){
 }
 
 window.InvoiceUX={attachEditor,previewTotals,syncDueDate,preferredLaborRate};
+// v24.76.0: mount() already loads this page, so showView() skips the first afterShow() (no double request).
+export const loadsOnMount=true;
 export async function mount(scope){localAbort=new AbortController();scope.on(scope.host,'ittr:module-refresh',()=>window.loadInvoices?.(),{passive:true});document.body.classList.add('invoice-module-mounted');await window.loadInvoices?.()}
 export async function afterShow(){await window.loadInvoices?.()}
 export function unmount(){editorAbort?.abort();editorAbort=null;localAbort?.abort();localAbort=null;document.body.classList.remove('invoice-module-mounted')}

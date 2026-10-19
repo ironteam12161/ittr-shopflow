@@ -39,7 +39,7 @@ input[type=text],textarea{width:100%;font:16px inherit;padding:12px;border-radiu
 .submit{min-height:52px;border:0;border-radius:12px;background:var(--accent);color:var(--accent-ink);font:700 17px inherit;cursor:pointer}
 .submit:disabled{opacity:.55;cursor:default}
 .err{color:var(--no);font-weight:600;font-size:14px}.muted{color:var(--mut);font-size:14px}
-.photos{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}.photos img{height:110px;border-radius:8px;cursor:zoom-in;flex-shrink:0}
+.photos{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}.photos img{height:110px;border-radius:8px;flex-shrink:0;display:block}.photoBtn{padding:0;border:2px solid transparent;border-radius:10px;background:none;cursor:zoom-in;flex-shrink:0;min-height:44px}.photoBtn:focus-visible{border-color:var(--accent)}
 .flag{display:grid;gap:2px;padding:8px 0;border-top:1px solid var(--line);font-size:14px}.flag:first-child{border-top:0}
 .done{text-align:center;padding:28px 16px}.done .big{font-size:44px}
 .zoom{position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:12px;z-index:9}.zoom img{max-width:100%;max-height:100%;border-radius:8px}
@@ -49,6 +49,8 @@ footer{color:var(--mut);font-size:13px;text-align:center}
 </head>
 <body>
 <div class="wrap" id="app"><div class="card"><div class="muted">Loading…</div></div></div>
-<script src="/customer.js?v=24.74.0"></script>
+<script src="/icons.js?v=24.76.0"></script>
+<script src="/photo-viewer.js?v=24.76.0"></script>
+<script src="/customer.js?v=24.76.0"></script>
 </body>
 </html>

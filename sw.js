@@ -1,5 +1,5 @@
-// ITTR ShopFlow v24.75.3 production PWA service worker
-const CACHE='ittr-shopflow-v24.75.3';
+// ITTR ShopFlow v24.76.0 production PWA service worker
+const CACHE='ittr-shopflow-v24.76.0';
 const SHELL=['/','/index.html','/manifest.webmanifest','/invoice-workspace.css','/modules/invoices.html','/modules/invoices.js','/modules/parts.html','/modules/parts.js','/modules/procenter.html','/modules/procenter.js','/modules/customers.html','/modules/customers.js','/modules/trucksearch.html','/modules/trucksearch.js','/modules/estimates.html','/modules/estimates.js','/modules/reports.html','/modules/reports.js','/modules/compliance.html','/modules/compliance.js','/modules/bills.html','/modules/bills.js','/modules/purchaseorders.html','/modules/purchaseorders.js','/finance-shared.js','/canned-jobs.js','/share-links.js','/sms.js','/inspection-workflow.css','/inspection-workflow.js','/inspection-checklist.js','/assets/iron-team-logo.png','/favicon.svg','/favicon.ico','/sync-merge.js','/sync-queue.js','/design-system.css','/icons.js','/photo-viewer.js','/photo-queue.js','/app-shell.css','/shop-workspace.js'];
 
 self.addEventListener('install',event=>event.waitUntil(

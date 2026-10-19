@@ -13,7 +13,7 @@ const $=sel=>S.modal?.querySelector(sel);
 async function load(){const body=S.scope?.host.querySelector('#poRows');if(!body)return;
  try{S.items=(await api(`/api/purchase-orders?status=${S.status}&q=${encodeURIComponent(S.q)}`)).items||[]}catch(e){body.innerHTML=`<tr><td colspan="7" class="poEmpty">${h(e.message)}</td></tr>`;return}
  body.innerHTML=S.items.length?S.items.map(o=>{const pct=num(o.qty_ordered)?Math.min(100,Math.round(num(o.qty_received)/num(o.qty_ordered)*100)):0;
-  return `<tr data-open="${Number(o.id)}"><td><b>${h(o.po_number)}</b>${o.work_order_id?`<div class="muted">WO #${h(o.work_order_id)}</div>`:''}</td><td>${h(o.vendor)}</td><td>${day(o.created_at)}</td><td>${day(o.expected_date)}</td>
+  return `<tr data-open="${Number(o.id)}"><td><button type="button" class="poOpenBtn" aria-label="Open purchase order ${h(o.po_number)}"><b>${h(o.po_number)}</b></button>${o.work_order_id?`<div class="muted">WO #${h(o.work_order_id)}</div>`:''}</td><td>${h(o.vendor)}</td><td>${day(o.created_at)}</td><td>${day(o.expected_date)}</td>
    <td><div class="poBar" title="${num(o.qty_received)} of ${num(o.qty_ordered)}"><i style="width:${pct}%"></i></div><span class="muted">${num(o.qty_received)}/${num(o.qty_ordered)}</span></td><td class="n">${usd(o.total)}</td><td><span class="poPill ${h(o.status)}">${h(LABEL[o.status]||o.status)}</span></td></tr>`}).join('')
   :`<tr><td colspan="7" class="poEmpty">${S.q||S.status?'Nothing matches.':'No purchase orders yet. Start one with “+ New purchase order”, or let “Low-stock reorder” fill it from parts that are running low.'}</td></tr>`}
 
