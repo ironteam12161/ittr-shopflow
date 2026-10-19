@@ -54,7 +54,7 @@ import { fileURLToPath } from "url";
 dotenv.config();
 const {Pool}=pg;
 const FMCSA_WEBKEY=String(process.env.FMCSA_WEBKEY||"").trim();
-const FMCSA_API_BASE="https://mobile.fmcsa.dot.gov/qc/services";
+const FMCSA_API_BASE=String(process.env.FMCSA_API_BASE_URL||"https://mobile.fmcsa.dot.gov/qc/services").replace(/\/+$/,"");
 const fmcsaCache=new Map();
 const NHTSA_VPIC_BASE="https://vpic.nhtsa.dot.gov/api/vehicles";
 const vinDecodeCache=new Map();
@@ -1639,37 +1639,48 @@ function normalizeFmcsaCarrier(raw,dot){
   entityType:String(pick("carrierOperation","entityType")||""),mcs150Date:String(pick("mcs150UpdateDate","mcs150Date")||""),raw
  };
 }
+// v24.76.1: FMCSA's QCMobile service is often slow. Each attempt waits up to 15 s (FMCSA_TIMEOUT_MS) and an attempt that
+// times out, fails on the network or gets a 5xx is tried once more. If FMCSA still does not answer, a record looked up for
+// the same USDOT in the last 24 hours is used (marked stale) instead of failing. Before: one 10 s attempt.
+const FMCSA_TIMEOUT_MS=Math.max(200,Number(process.env.FMCSA_TIMEOUT_MS)||15000),FMCSA_STALE_MS=24*60*60*1000;
+async function fmcsaFetch(url){
+ let last=null;
+ for(let attempt=0;attempt<2;attempt++){
+  const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),FMCSA_TIMEOUT_MS);
+  try{const r=await fetch(url,{headers:{Accept:"application/json","User-Agent":"ITTR-ShopFlow/24.76"},signal:ctl.signal});
+   if(r.status>=500&&attempt===0){last=r;await new Promise(x=>setTimeout(x,800));continue}
+   const data=await r.json().catch(()=>null);return {status:r.status,ok:r.ok,data};
+  }catch(e){last=e;if(attempt===0){await new Promise(x=>setTimeout(x,800));continue}}
+  finally{clearTimeout(timer)}
+ }
+ if(last&&typeof last.status==="number")return {status:last.status,ok:false,data:null};
+ throw Object.assign(new Error("FMCSA did not answer (their service is slow at times). Try again in a minute, or type the carrier details in."),{status:504,code:"FMCSA_TIMEOUT"});
+}
 async function lookupFmcsaCarrier(dot){
  const usdot=cleanUsdot(dot);if(!usdot)throw Object.assign(new Error("Enter a valid USDOT number."),{status:400});
  if(!FMCSA_WEBKEY)throw Object.assign(new Error("FMCSA integration is not configured. Add FMCSA_WEBKEY in Railway Variables."),{status:503,code:"FMCSA_NOT_CONFIGURED"});
  const cached=fmcsaCache.get(usdot);if(cached&&Date.now()-cached.at<15*60*1000)return cached.data;
- const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
- try{
-  const url=`${FMCSA_API_BASE}/carriers/${encodeURIComponent(usdot)}?webKey=${encodeURIComponent(FMCSA_WEBKEY)}`;
-  const r=await fetch(url,{headers:{Accept:"application/json","User-Agent":"ITTR-ShopFlow/23.10"},signal:ctl.signal});
-  let data=null;try{data=await r.json()}catch{}
-  if(r.status===404)throw Object.assign(new Error(`No FMCSA carrier found for USDOT ${usdot}.`),{status:404,code:"FMCSA_NOT_FOUND"});
-  if(r.status===401||r.status===403)throw Object.assign(new Error("FMCSA rejected the WebKey. Check FMCSA_WEBKEY in Railway."),{status:502,code:"FMCSA_AUTH"});
-  if(!r.ok)throw Object.assign(new Error(`FMCSA service returned ${r.status}. Try again shortly.`),{status:502,code:"FMCSA_UPSTREAM"});
-  const carrier=fmcsaCarrierFromPayload(data),normalized=normalizeFmcsaCarrier(carrier,usdot);
-  if(!normalized||(!normalized.legalName&&!normalized.dotNumber))throw Object.assign(new Error(`FMCSA returned no carrier record for USDOT ${usdot}.`),{status:404,code:"FMCSA_EMPTY"});
-  fmcsaCache.set(usdot,{at:Date.now(),data:normalized});return normalized;
- }catch(e){if(e?.name==="AbortError")throw Object.assign(new Error("FMCSA lookup timed out. Try again."),{status:504,code:"FMCSA_TIMEOUT"});throw e}finally{clearTimeout(timer)}
+ let r;
+ try{r=await fmcsaFetch(`${FMCSA_API_BASE}/carriers/${encodeURIComponent(usdot)}?webKey=${encodeURIComponent(FMCSA_WEBKEY)}`)}
+ catch(e){if(e?.code==="FMCSA_TIMEOUT"&&cached&&Date.now()-cached.at<FMCSA_STALE_MS)return {...cached.data,stale:true,staleCheckedAt:new Date(cached.at).toISOString()};throw e}
+ if(r.status===404)throw Object.assign(new Error(`No FMCSA carrier found for USDOT ${usdot}.`),{status:404,code:"FMCSA_NOT_FOUND"});
+ if(r.status===401||r.status===403)throw Object.assign(new Error("FMCSA rejected the WebKey. Check FMCSA_WEBKEY in Railway."),{status:502,code:"FMCSA_AUTH"});
+ if(!r.ok){if(cached&&Date.now()-cached.at<FMCSA_STALE_MS)return {...cached.data,stale:true,staleCheckedAt:new Date(cached.at).toISOString()};throw Object.assign(new Error(`FMCSA service returned ${r.status}. Try again shortly.`),{status:502,code:"FMCSA_UPSTREAM"})}
+ const carrier=fmcsaCarrierFromPayload(r.data),normalized=normalizeFmcsaCarrier(carrier,usdot);
+ if(!normalized||(!normalized.legalName&&!normalized.dotNumber))throw Object.assign(new Error(`FMCSA returned no carrier record for USDOT ${usdot}.`),{status:404,code:"FMCSA_EMPTY"});
+ fmcsaCache.set(usdot,{at:Date.now(),data:normalized});return normalized;
 }
 // v24.40.1: FMCSA carrier search by company name (annual inspection carrier lookup).
 async function searchFmcsaCarriersByName(name){
  const q=String(name||"").trim().slice(0,80);if(q.length<3)return [];
  if(!FMCSA_WEBKEY)throw Object.assign(new Error("FMCSA name search needs FMCSA_WEBKEY in Railway Variables."),{status:503,code:"FMCSA_NOT_CONFIGURED"});
  const key=`name:${q.toLowerCase()}`,cached=fmcsaCache.get(key);if(cached&&Date.now()-cached.at<15*60*1000)return cached.data;
- const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),10000);
- try{
-  const r=await fetch(`${FMCSA_API_BASE}/carriers/name/${encodeURIComponent(q)}?webKey=${encodeURIComponent(FMCSA_WEBKEY)}&size=10`,{headers:{Accept:"application/json","User-Agent":"ITTR-ShopFlow/24.40"},signal:ctl.signal});
-  if(r.status===404)return [];
-  if(!r.ok)throw Object.assign(new Error(`FMCSA service returned ${r.status}.`),{status:502});
-  const data=await r.json().catch(()=>null),rows=Array.isArray(data?.content)?data.content:[];
-  const list=rows.map(x=>normalizeFmcsaCarrier(x?.carrier||x,"")).filter(c=>c&&(c.legalName||c.dbaName)).slice(0,8);
-  fmcsaCache.set(key,{at:Date.now(),data:list});return list;
- }catch(e){if(e?.name==="AbortError")throw Object.assign(new Error("FMCSA lookup timed out."),{status:504});throw e}finally{clearTimeout(timer)}
+ const r=await fmcsaFetch(`${FMCSA_API_BASE}/carriers/name/${encodeURIComponent(q)}?webKey=${encodeURIComponent(FMCSA_WEBKEY)}&size=10`);
+ if(r.status===404)return [];
+ if(!r.ok)throw Object.assign(new Error(`FMCSA service returned ${r.status}.`),{status:502});
+ const rows=Array.isArray(r.data?.content)?r.data.content:[];
+ const list=rows.map(x=>normalizeFmcsaCarrier(x?.carrier||x,"")).filter(c=>c&&(c.legalName||c.dbaName)).slice(0,8);
+ fmcsaCache.set(key,{at:Date.now(),data:list});return list;
 }
 app.get("/api/fmcsa/status",auth,managerPermission("customers"),(req,res)=>res.json({configured:Boolean(FMCSA_WEBKEY),provider:"FMCSA QCMobile / SAFER",official:true}));
 app.get("/api/fmcsa/carriers/:dotNumber",auth,managerPermission("customers"),async(req,res)=>{try{const item=await lookupFmcsaCarrier(req.params.dotNumber);res.json({item,source:"FMCSA QCMobile API",official:true,checkedAt:new Date().toISOString()})}catch(e){res.status(e.status||500).json({error:e.message||"FMCSA lookup failed.",code:e.code||"FMCSA_LOOKUP"})}});

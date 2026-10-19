@@ -62,6 +62,8 @@
 | E7 | All `/api/auth` calls from one IP shared 100 per 15 minutes. That includes managers' pages checking their permissions (`/api/auth/me`, added in v24.76.0) and everyone's sign-ins. On shared shop Wi-Fi, managers switching tabs could use up the allowance and block a mechanic's sign-in for up to 15 minutes. | P2 (availability) | **Fixed**: signed-in and signed-out calls are counted in separate buckets per IP (600 and 100). Failed sign-ins are still limited separately, and the login-throttling check V4 still passes. | A33 (14 of 110 signed-in checks were refused) |
 | E6 | In a payment dialog over an open invoice, Tab moved into the invoice behind it, and Escape acted on the invoice instead of the payment dialog. | P2 (keyboard, risk of closing the wrong record) | **Fixed** by the dialog-layer change above, plus "an Escape already used by a dialog does not also close the one behind it". | A31 |
 
+| E8 | The FMCSA carrier lookup made one 10-second attempt with no retry. FMCSA's QCMobile service is often slow, so the customer form showed "FMCSA lookup timed out" (reported from production for USDOT 3729465). | P2 (daily use) | **Fixed**: each attempt waits up to 15 s, and a timed-out, failed or 5xx attempt is retried once. If FMCSA still does not answer, the last result for that USDOT from the past 24 hours is shown with a note; otherwise the message says FMCSA is slow and suggests typing the details in. The name search uses the same rules. | A38 (stand-in FMCSA: slow first answer → retried and found; never answers → two tries, then the clear message) |
+
 **Checked and found sound (no change needed):**
 - **Interpolated SQL fragments:** all are fixed column or table names. Request values always go through parameters.
 - **Routes with sign-in but no role middleware:** each checks the role inside (for example inventory reset is owner-only), or is meant for every role.
@@ -72,8 +74,20 @@
 
 ## Coverage (what the evidence supports)
 
+**Control sweep (`npm run sweep`, `control_sweep_test.mjs`).**
+- **What it does:** signs in as the owner, a full manager, a Customers-only manager and a mechanic (phone width). On every page each account may use, it clicks every visible safe control. When a click opens a dialog, it also clicks the safe controls inside it. It also opens the draft and sent invoice editors, the estimate editor and the mechanic's work-order detail, and sweeps inside them.
+- **Result:** **893 controls clicked on 56 role/page combinations**, with no page errors, server 5xx answers, failed requests, sign-outs or sideways scrolling.
+- **Skipped:** 151 controls, on purpose. These are actions that delete, void, finalize, send email/SMS/links, pay, reset, sign out, connect outside services, import, print or download. Browser confirm questions were dismissed, never accepted.
+- **Limits:** the sweep checks that each control works without errors. It does not check every control's business result on the server; the A- and V-scenarios do that for the flows they name.
+
+**Two-device and device scenarios added:**
+- **A34:** the mechanic starts and completes a job on the phone, and the office sees it live. The work order is completed and invoiced, and the Billing tab links to the invoice.
+- **A35:** a finding reported on the phone is approved in the office and appears on the phone as a job, which the mechanic starts.
+- **A36:** a device that loses the network catches up when it comes back.
+- **A37:** on a touch phone (mobile viewport, `isMobile`, `hasTouch`), the mechanic taps Start and Complete.
+
 - **Full check:** `npm run check` with PostgreSQL 16 and Chromium, `ITTR_REQUIRE_DB_SUITES=1 ITTR_REQUIRE_BROWSER_SUITE=1`. The result is in the pull request.
-- **New scenarios:** A22–A33 in `audit_v24_76_test.mjs`.
+- **New scenarios:** A22–A38 in `audit_v24_76_test.mjs`.
 - **Not tested:**
   - production
   - Roman's and Ivan's live accounts
@@ -82,7 +96,7 @@
   - screen readers and contrast measurement
   - multiple server instances
   - a real backup restore drill
-  - clicking every control and checking the server result
+  - checking every control's server result (the control sweep checks that each one works without errors)
 - **This is not a full security review or penetration test**, and it does not show the platform is fully secure.
 
 ## Remaining risks
