@@ -646,6 +646,22 @@ try {
     await text('SMb2', 'STOP'); eq(await out(), false, 'a repeated old STOP does not undo the later START');
     eq(await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Twilio-Signature': 'bad' }, body: new URLSearchParams({ From: phone, Body: 'STOP', MessageSid: 'SMx' }) }).then(r => r.status), 403, 'an unsigned text is refused');
   });
+  await scenario('A40 a text arriving in the open conversation keeps the reply being typed', async () => {
+    const url = srv.base() + '/api/sms/inbound', phone = '+13125558888';
+    const text = (sid, Body) => { const params = { From: phone, Body, MessageSid: sid }; return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Twilio-Signature': twilioSignature('twilio-audit-secret', url, params) }, body: new URLSearchParams(params) }); };
+    await text('SMd1', 'Is the truck ready?');
+    const { ctx, page } = await newPage(1280); await signIn(page, OWNER.username, OWNER.password);
+    await page.evaluate(p => window.ITTR_SMS.compose({ phone: p }), phone); await page.waitForSelector('#smsBody');
+    await page.click('#smsBody'); await page.keyboard.type('Unsent repair estimate explanation');
+    await page.evaluate(() => { const t = document.getElementById('smsBody'); t.setSelectionRange(6, 6); });
+    await text('SMd2', 'Also check the brakes please');
+    await page.evaluate(p => window.dispatchEvent(new CustomEvent('ittr:sms', { detail: { phone: p, preview: 'Also check the brakes please' } })), phone);
+    ok(await until(() => page.evaluate(() => /Also check the brakes/.test(document.getElementById('smsBubbles')?.textContent || '')), 6000), 'the new text appears');
+    eq(await page.inputValue('#smsBody'), 'Unsent repair estimate explanation', 'the unsent reply is kept');
+    eq(await page.evaluate(() => JSON.stringify([document.activeElement?.id, document.activeElement?.selectionStart])), JSON.stringify(['smsBody', 6]), 'focus and cursor stay where they were');
+    eq(page.errs.join(' | '), '', 'no page errors');
+    await ctx.close();
+  });
   await scenario('A17 work-order Billing tab links to its estimate and invoice', async () => {
     const st = await R('/api/state', { token: owner }), sf = st.shopflow.payload;
     sf.workorders = [...sf.workorders.filter(w => w.id !== 9501), { id: 9501, unit: 'BILL-1', customer: 'Private Audit Fleet LLC', status: 'Completed', mechanic: 'mech1', helpers: [], unitType: 'customer', truckHere: true, tasks: [] }];
