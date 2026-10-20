@@ -28,7 +28,7 @@ function renderList(){
 // text, focus returns to the opener).
 function openEditor(html){const ed=$('#estEditor'),box=$('#estEditorBox');if(!ed||!box)return;box.innerHTML=html;ed.classList.remove('hidden');document.body.classList.add('modalOpen');
  box.querySelectorAll('[data-est="close"]').forEach(b=>b.setAttribute('data-overlay-close',''));window.ittrOverlayOpened?.(box,{close:closeEditor})}
-function closeEditor(){window.ittrOverlayClosed?.($('#estEditorBox'));$('#estEditor')?.classList.add('hidden');document.body.classList.remove('modalOpen');S.cur=null;loadList()}
+function closeEditor(){openGen++;window.ittrOverlayClosed?.($('#estEditorBox'));$('#estEditor')?.classList.add('hidden');document.body.classList.remove('modalOpen');S.cur=null;loadList()}
 function startNew(){
  S.cur=null;
  openEditor(`<div class="estHead"><div><h2>New estimate</h2><div class="muted">Find the truck or customer, or type a customer name.</div></div><div class="estHeadActions"><button class="secondary" data-est="close">Close</button></div></div>
@@ -60,10 +60,35 @@ async function createEstimate(btn){
  try{const d=await api('/api/estimates',{method:'POST',body:{customerName:v('#estNewCustomer'),customerId:v('#estNewCustomerId')||null,unitId:v('#estNewUnitId')||null,unitNumber:v('#estNewUnit'),vin:v('#estNewVin'),customerEmail:v('#estNewEmail'),mileage:v('#estNewMiles'),validDays:v('#estNewDays'),taxRate:v('#estNewTax')}});await openEstimate(d.id)}
  catch(e){btn.disabled=false;toast(e.message,'error')}
 }
-async function openEstimate(id){
- try{S.cur=await api(`/api/estimates/${id}`);renderEditor()}catch(e){toast(e.message,'error')}
+// v24.76.2: a save redraws the editor. Keep what is being typed in other fields, and the cursor, across the redraw, and
+// never let an older answer replace a newer one (or reopen an estimate that was closed or switched meanwhile).
+let openGen=0;
+async function openEstimate(id,sent){
+ const my=++openGen;
+ try{const d=await api(`/api/estimates/${id}`);if(my!==openGen)return;
+  const kept=S.cur&&String(S.cur.estimate.id)===String(id)?keepTyping(sent):null;S.cur=d;renderEditor();if(kept)putBackTyping(kept)}
+ catch(e){if(my===openGen)toast(e.message,'error')}
 }
-async function reload(){if(S.cur)await openEstimate(S.cur.estimate.id)}
+async function reload(sent){if(S.cur)await openEstimate(S.cur.estimate.id,sent)}
+const fieldKey=el=>el.dataset.h?`h:${el.dataset.h}`:el.dataset.f?`l:${el.closest('.estRow[data-line]')?.dataset.line}:${el.dataset.f}`:el.dataset.estInput==='part'?`p:${el.dataset.parent}`:el.id?`#${el.id}`:'';
+const fieldVal=el=>el.type==='checkbox'?el.checked:el.value;
+const typedIn=el=>el.type==='checkbox'?el.checked!==el.defaultChecked:el.tagName==='SELECT'?[...el.options].some(o=>o.selected!==o.defaultSelected):el.value!==el.defaultValue;
+// `sent` maps field keys to the values just saved: those now come from the server, unless they were changed again since.
+function keepTyping(sent={}){
+ const box=$('#estEditorBox');if(!box)return null;const typed=new Map(),a=document.activeElement;
+ box.querySelectorAll('input,textarea,select').forEach(el=>{const k=fieldKey(el);if(!k||!typedIn(el))return;const v=fieldVal(el);if(sent&&k in sent&&String(sent[k])===String(v))return;typed.set(k,v)});
+ let focus=null;if(a&&a!==box&&box.contains(a)){focus={k:fieldKey(a),est:a.dataset.est||'',id:a.dataset.id||''};try{focus.s=a.selectionStart;focus.e=a.selectionEnd;focus.d=a.selectionDirection}catch(_){}}
+ return {typed,focus};
+}
+function putBackTyping({typed,focus}){
+ const box=$('#estEditorBox');if(!box)return;const byKey=new Map();
+ box.querySelectorAll('input,textarea,select').forEach(el=>{const k=fieldKey(el);if(k&&!byKey.has(k))byKey.set(k,el)});
+ typed.forEach((v,k)=>{const el=byKey.get(k);if(!el||el.disabled)return;if(el.type==='checkbox')el.checked=!!v;else el.value=v});
+ if(!focus)return;
+ const el=focus.k?byKey.get(focus.k):focus.est?[...box.querySelectorAll(`[data-est="${focus.est}"]`)].find(b=>(b.dataset.id||'')===focus.id):null;
+ if(!el||el.disabled)return;try{el.focus({preventScroll:true})}catch(_){}
+ if(focus.s!=null)try{el.setSelectionRange(focus.s,focus.e,focus.d||'none')}catch(_){}
+}
 
 // v24.68.0: part lines show the buy price (with the markup under it) next to the sell price, like the invoice (staff only; the
 // customer PDF and approval page show only the sell price).
@@ -142,14 +167,15 @@ function partsProfit(lines){
 }
 async function saveHeader(input){
  if(!S.cur)return;const key=input.dataset.h;let val=input.type==='checkbox'?input.checked:input.value;
- try{await api(`/api/estimates/${S.cur.estimate.id}`,{method:'PUT',body:{[key]:val}});await reload()}catch(e){toast(e.message,'error')}
+ try{await api(`/api/estimates/${S.cur.estimate.id}`,{method:'PUT',body:{[key]:val}});await reload({[`h:${key}`]:val})}catch(e){toast(e.message,'error')}
 }
 async function saveLine(row){
  if(!S.cur)return;const id=row.dataset.line,l=S.cur.lines.find(x=>String(x.id)===String(id));if(!l)return;
  const v=f=>row.querySelector(`[data-f="${f}"]`);
  const body={lineType:l.line_type,description:v('description')?.value??l.description,partNumber:v('partNumber')?.value??l.part_number,quantity:v('quantity')?.value??l.quantity,unitPrice:v('unitPrice')?.value??l.unit_price,unit:v('unit')?.value||undefined,
   taxable:v('taxable')?v('taxable').checked:!!l.taxable,unitCost:v('unitCost')?.value??l.unit_cost,inventoryPartId:l.inventory_part_id,parentLineId:l.parent_line_id,discount:l.discount};
- try{await api(`/api/estimates/${S.cur.estimate.id}/lines/${id}`,{method:'PUT',body});await reload()}catch(e){toast(e.message,'error')}
+ const sent={};row.querySelectorAll('[data-f]').forEach(el=>{sent[`l:${id}:${el.dataset.f}`]=fieldVal(el)});
+ try{await api(`/api/estimates/${S.cur.estimate.id}/lines/${id}`,{method:'PUT',body});await reload(sent)}catch(e){toast(e.message,'error')}
 }
 async function addLine(body){try{await api(`/api/estimates/${S.cur.estimate.id}/lines`,{method:'POST',body});await reload()}catch(e){toast(e.message,'error')}}
 const gal=u=>/^\s*(gal|gallon|gallons)\s*$/i.test(String(u||''));

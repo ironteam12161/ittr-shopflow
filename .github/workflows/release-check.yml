@@ -12,7 +12,7 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 40 # v24.76.2: the real-pointer control sweep (about 8 minutes) now runs in npm run check
     services:
       postgres:
         image: postgres:16

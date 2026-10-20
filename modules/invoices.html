@@ -127,7 +127,12 @@
 .invoiceBottomActions button{min-height:44px!important;padding:10px 18px!important}
 .invoiceServiceEmpty{margin:10px 14px!important}
 .invoiceCustomerVehicleCard{padding:14px 16px!important}
-.invoiceHeaderGrid{grid-template-columns:minmax(280px,1.4fr) minmax(230px,1fr) minmax(220px,1.2fr) 150px 130px 150px!important}
+.invoiceHeaderGrid{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.2fr) minmax(0,.7fr) minmax(0,.6fr) minmax(0,.7fr)!important}
+/* v24.76.2: the billing fields follow the card's own width (the summary beside it takes room), not the window's, so no field runs under the summary. */
+.invoiceCustomerVehicleCard{container-type:inline-size}
+@container (max-width:980px){.invoiceCustomerVehicleCard .invoiceHeaderGrid{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
+@container (max-width:600px){.invoiceCustomerVehicleCard .invoiceHeaderGrid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@container (max-width:400px){.invoiceCustomerVehicleCard .invoiceHeaderGrid{grid-template-columns:minmax(0,1fr)!important}}
 .invoiceCustomerField,.invoiceUnitField{background:#fff;border:1px solid #e1e5ea;border-radius:9px;padding:10px;box-shadow:0 4px 14px rgba(16,24,40,.05)}
 .invoiceCustomerField{grid-column:span 1!important}.invoiceUnitField{grid-column:span 1!important}
 @media(max-width:1180px){

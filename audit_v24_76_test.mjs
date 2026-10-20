@@ -16,6 +16,7 @@
 import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
 import { dbSuiteGuard, reportSuite, startTestServer, ok, eq, sleep } from './test_harness.mjs';
+import { twilioSignature } from './customer_sms.mjs';
 const require = createRequire(import.meta.url);
 const { WebSocket } = require('ws');
 const NAME = 'audit v24.76';
@@ -37,7 +38,7 @@ const fmcsaMock = (await import('node:http')).createServer((req, res) => {
   setTimeout(() => { if (res.writableEnded || res.destroyed) return; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ content: { carrier: { dotNumber: Number(dot), legalName: `CARRIER ${dot} LLC`, phyCity: 'Dallas', phyState: 'TX', allowedToOperate: 'Y' } } })); }, slow ? 2000 : 20);
 });
 await new Promise(r => fmcsaMock.listen(0, '127.0.0.1', r));
-const srv = await startTestServer({ prefix: 'ittr_a76', admin: OWNER, env: { STRIPE_WEBHOOK_SECRET: 'whsec_test_ittr', FMCSA_WEBKEY: 'test-key', FMCSA_API_BASE_URL: `http://127.0.0.1:${fmcsaMock.address().port}/qc/services`, FMCSA_TIMEOUT_MS: '700' } });
+const srv = await startTestServer({ prefix: 'ittr_a76', admin: OWNER, env: { STRIPE_WEBHOOK_SECRET: 'whsec_test_ittr', FMCSA_WEBKEY: 'test-key', FMCSA_API_BASE_URL: `http://127.0.0.1:${fmcsaMock.address().port}/qc/services`, FMCSA_TIMEOUT_MS: '700', TWILIO_ACCOUNT_SID: 'ACaudit', TWILIO_AUTH_TOKEN: 'twilio-audit-secret', TWILIO_FROM: '+13125550100', TWILIO_API_BASE: `http://127.0.0.1:${fmcsaMock.address().port}`, ITTR_BACKUP_BATCH: '50' } });
 const R = srv.request, db = srv.db;
 const failures = [];
 // ITTR_AUDIT_ONLY=A16,A19 runs only those scenarios (local debugging); the full check always runs all of them.
@@ -519,6 +520,31 @@ try {
     eq(b.status, 200, 'backup downloads'); eq(j.consistentSnapshot, true, 'all tables from one snapshot'); ok(j.tables && j.rowCounts, 'tables and counts present');
     ok('commit' in (await R('/api/build')), 'build reports the deployed commit field');
   });
+  await scenario('A44 backup: complete file with matching counts; a slow download is paced; a failure mid-export breaks the download instead of leaving a finished-looking file', async () => {
+    await srv.db.query('CREATE TABLE zzy_backup_rows AS SELECT g AS id FROM generate_series(1, 137) g'); // more than two 50-row batches
+    const b = await fetch(srv.base() + '/api/admin/backup', { headers: { Authorization: `Bearer ${owner}` } }); const j = await b.json();
+    eq(j.complete, true, 'the file says it is complete');
+    for (const [t, n] of Object.entries(j.rowCounts)) eq(j.tables[t]?.length, n, `${t}: rows in the file match the count`);
+    ok(j.tables.auth_users.every(u => u.password_hash === '[removed]'), 'password hashes stay out');
+    eq(j.tables.zzy_backup_rows.map(r => r.id).join(), Array.from({ length: 137 }, (_, k) => k + 1).join(), 'a table larger than one batch is exported whole, in order');
+    await srv.db.query('DROP TABLE zzy_backup_rows');
+    // A large table, then a small one last. The reader stops reading; while the server waits for it, the last table is
+    // dropped, so the export fails part-way. Without pacing the server would already have finished the whole file.
+    await srv.db.query("CREATE TABLE zzz_backup_big AS SELECT g AS id, repeat('x', 900) AS pad FROM generate_series(1, 30000) g");
+    await srv.db.query('CREATE TABLE zzzz_backup_tail(id int)');
+    const http = await import('node:http');
+    const res = await new Promise((ok2, bad) => { const rq = http.get(srv.base() + '/api/admin/backup', { headers: { Authorization: `Bearer ${owner}` } }, ok2); rq.on('error', bad); });
+    res.pause(); await sleep(1500);
+    await srv.db.query('DROP TABLE zzzz_backup_tail');
+    let body = '', ended = false, broke = false;
+    await new Promise(done => { res.on('data', c => { body += c; }); res.on('end', () => { ended = true; done(); }); res.on('aborted', () => { broke = true; }); res.on('error', () => { broke = true; done(); }); res.on('close', done); res.resume(); });
+    ok(!body.includes('"complete":true'), 'the cut-off file does not claim to be complete');
+    ok(broke || !ended || res.complete === false, 'the download ends as failed, not as a finished file');
+    await srv.db.query('DROP TABLE zzz_backup_big');
+    // The server is fine afterwards and the database connection was given back.
+    const again = await (await fetch(srv.base() + '/api/admin/backup', { headers: { Authorization: `Bearer ${owner}` } })).json();
+    eq(again.complete, true, 'the next backup works');
+  });
   await scenario('A33 signed-in account checks from the shop network never block someone else\'s sign-in', async () => {
     let limited = 0;
     for (let k = 0; k < 110; k++) if ((await R('/api/auth/me', { token: owner, allowError: true })).status === 429) limited++;
@@ -616,6 +642,191 @@ try {
     ok(await until(() => page.evaluate(() => /CARRIER 1111111 LLC/.test(document.getElementById('fmcsaLookupCard')?.textContent || '')), 6000), 'the lookup card shows the carrier');
     eq(page.errs.join(' | '), '', 'no page errors');
     await ctx.close();
+  });
+  await scenario('A39 emailing a customer link follows the link permissions; a repeated text never undoes a later STOP', async () => {
+    await R('/api/admin/managers', { method: 'POST', token: owner, body: { username: 'mgrnone', display: 'mgrnone', password: MPASS, permissions: {} } }).catch(() => {});
+    await R('/api/admin/managers/mgrmix', { method: 'PUT', token: owner, body: { permissions: { invoices: true, inventory: true } } }); // A1 takes Invoices away
+    const e = await R('/api/estimates', { method: 'POST', token: owner, body: { customerName: 'Private Audit Fleet LLC' } });
+    const est = await R('/api/customer-links', { method: 'POST', token: owner, body: { kind: 'estimate', refId: String(e.id) } });
+    const por = await R('/api/customer-links', { method: 'POST', token: owner, body: { kind: 'portal', refId: String(cust.id) } });
+    const tok = { owner, mgrfull: await srv.login('mgrfull', MPASS), mgrcust: await srv.login('mgrcust', MPASS), mgrmix: await srv.login('mgrmix', MPASS), mgrnone: await srv.login('mgrnone', MPASS), mech1: await srv.login('mech1', KPASS) };
+    // estimate needs Invoices; portal needs Customers and Invoices (mgrmix has Invoices + Inventory, mgrcust only Customers).
+    const allowed = { estimate: ['owner', 'mgrfull', 'mgrmix'], portal: ['owner', 'mgrfull'] }, bad = [];
+    for (const [kind, link, refId] of [['estimate', est, String(e.id)], ['portal', por, String(cust.id)]]) for (const who of Object.keys(tok)) {
+      const before = (await db.query('SELECT meta FROM customer_links WHERE id=$1', [link.id])).rows[0].meta;
+      const r = await R('/api/customer-links/email', { method: 'POST', token: tok[who], body: { kind, refId, url: link.url, to: 'fleet@audit.test' }, allowError: true });
+      const ok403 = r.status === 403, should = allowed[kind].includes(who);
+      if (should === ok403) bad.push(`${who} ${kind}: ${r.status}`);
+      if (!should && JSON.stringify((await db.query('SELECT meta FROM customer_links WHERE id=$1', [link.id])).rows[0].meta) !== JSON.stringify(before)) bad.push(`${who} ${kind}: refused send changed the link`);
+    }
+    eq(bad.join(' | '), '', 'every role/kind answers as its permissions say, and refused sends change nothing');
+    // Signed inbound texts (test secret, local only): START(A) -> STOP(B) -> START(A) again must stay opted out.
+    const url = srv.base() + '/api/sms/inbound', phone = '+13125559999';
+    const text = (sid, Body) => { const params = { From: phone, Body, MessageSid: sid }; return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Twilio-Signature': twilioSignature('twilio-audit-secret', url, params) }, body: new URLSearchParams(params) }).then(r => r.status); };
+    const out = async () => (await db.query('SELECT 1 FROM sms_optouts WHERE phone=$1', [phone])).rowCount === 1;
+    eq(await text('SMa1', 'START'), 200, 'signed text accepted'); eq(await out(), false, 'opted in');
+    await text('SMb2', 'STOP'); eq(await out(), true, 'STOP opts out');
+    await text('SMa1', 'START'); eq(await out(), true, 'a repeated old START does not undo the later STOP');
+    eq((await db.query("SELECT count(*)::int n FROM sms_messages WHERE twilio_sid IN ('SMa1','SMb2')")).rows[0].n, 2, 'the repeat is stored once');
+    await text('SMc3', 'START'); eq(await out(), false, 'a new START opts back in');
+    await text('SMb2', 'STOP'); eq(await out(), false, 'a repeated old STOP does not undo the later START');
+    eq(await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Twilio-Signature': 'bad' }, body: new URLSearchParams({ From: phone, Body: 'STOP', MessageSid: 'SMx' }) }).then(r => r.status), 403, 'an unsigned text is refused');
+  });
+  await scenario('A40 a text arriving in the open conversation keeps the reply being typed', async () => {
+    const url = srv.base() + '/api/sms/inbound', phone = '+13125558888';
+    const text = (sid, Body) => { const params = { From: phone, Body, MessageSid: sid }; return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Twilio-Signature': twilioSignature('twilio-audit-secret', url, params) }, body: new URLSearchParams(params) }); };
+    await text('SMd1', 'Is the truck ready?');
+    const { ctx, page } = await newPage(1280); await signIn(page, OWNER.username, OWNER.password);
+    await page.evaluate(p => window.ITTR_SMS.compose({ phone: p }), phone); await page.waitForSelector('#smsBody');
+    await page.click('#smsBody'); await page.keyboard.type('Unsent repair estimate explanation');
+    await page.evaluate(() => { const t = document.getElementById('smsBody'); t.setSelectionRange(6, 6); });
+    await text('SMd2', 'Also check the brakes please');
+    await page.evaluate(p => window.dispatchEvent(new CustomEvent('ittr:sms', { detail: { phone: p, preview: 'Also check the brakes please' } })), phone);
+    ok(await until(() => page.evaluate(() => /Also check the brakes/.test(document.getElementById('smsBubbles')?.textContent || '')), 6000), 'the new text appears');
+    eq(await page.inputValue('#smsBody'), 'Unsent repair estimate explanation', 'the unsent reply is kept');
+    eq(await page.evaluate(() => JSON.stringify([document.activeElement?.id, document.activeElement?.selectionStart])), JSON.stringify(['smsBody', 6]), 'focus and cursor stay where they were');
+    eq(page.errs.join(' | '), '', 'no page errors');
+    await ctx.close();
+  });
+  await scenario('A41 invoice: an edit made during a slow save is saved too; a slow older invoice never replaces the newer one', async () => {
+    const inv = await newInvoice(1), other = await newInvoice(1);
+    const { ctx, page } = await newPage(1280); await signIn(page, 'mgrfull', MPASS);
+    await page.evaluate(() => showView('invoices')); await sleep(800);
+    await page.evaluate(id => openInvoice(id, true), inv); await page.waitForSelector('#invoiceModal.open'); await sleep(500);
+    await page.evaluate(() => stopLiveStatusSocket()); await sleep(300);
+    // Hold the first header save; type a newer note while it is on its way.
+    let release, held = new Promise(r => { release = r; }), puts = [];
+    await page.route(new RegExp(`/api/invoices/${inv}$`), async route => { if (route.request().method() !== 'PUT') return route.continue(); puts.push(JSON.parse(route.request().postData() || '{}').customerNote); if (puts.length === 1) await held; await route.continue().catch(() => {}); });
+    await page.fill('#invCustomerNote', 'First note'); await page.dispatchEvent('#invCustomerNote', 'input');
+    ok(await until(() => puts.length === 1, 4000), 'the first save left');
+    await page.fill('#invCustomerNote', 'Second note must persist'); await page.dispatchEvent('#invCustomerNote', 'input'); await sleep(1100);
+    const mid = await page.evaluate(() => [document.getElementById('invoiceDraftState')?.dataset.state, document.getElementById('invoiceDraftState')?.textContent]);
+    ok(mid[0] !== 'saved', `not "saved" while the newer note waits (${mid})`); ok(/Saving latest changes/.test(mid[1] || ''), `says it is saving the latest changes (${mid[1]})`);
+    release();
+    ok(await until(async () => (await R(`/api/invoices/${inv}`, { token: owner })).invoice.customer_note === 'Second note must persist', 6000), 'the newer note reaches the server without another action');
+    ok(await until(() => page.evaluate(() => document.getElementById('invoiceDraftState')?.dataset.state === 'saved'), 4000), '"All changes saved" only after that');
+    eq(puts.length, 2, 'exactly one follow-up save');
+    await page.unroute(new RegExp(`/api/invoices/${inv}$`));
+    // A slow load of invoice A must not replace invoice B opened after it.
+    let releaseA, heldA = new Promise(r => { releaseA = r; });
+    await page.route(new RegExp(`/api/invoices/${other}$`), async route => { if (route.request().method() === 'GET') await heldA; await route.continue().catch(() => {}); });
+    const pa = page.evaluate(id => openInvoice(id, true), other);
+    await sleep(200); await page.evaluate(id => openInvoice(id, true), inv); await sleep(400);
+    releaseA(); await pa.catch(() => {}); await sleep(500);
+    eq(await page.evaluate(() => activeInvoice?.invoice?.id), inv, 'the newer selection stays');
+    // Closing while a load is on its way keeps the editor closed.
+    heldA = new Promise(r => { releaseA = r; });
+    const pc = page.evaluate(id => openInvoice(id, true), other); await sleep(200);
+    await page.evaluate(() => closeModal('invoiceModal')); await sleep(200); releaseA(); await pc.catch(() => {}); await sleep(500);
+    eq(await page.evaluate(() => document.getElementById('invoiceModal').classList.contains('open')), false, 'a load that finishes after closing does not reopen the editor');
+    eq(page.errs.join(' | '), '', 'no page errors');
+    await page.unroute(new RegExp(`/api/invoices/${other}$`)); await ctx.close();
+  });
+  await scenario('A42 estimates: typing in the next field while a save is on its way keeps focus, cursor and every character', async () => {
+    const e = await R('/api/estimates', { method: 'POST', token: owner, body: { customerName: 'Private Audit Fleet LLC' } });
+    await R(`/api/estimates/${e.id}/lines`, { method: 'POST', token: owner, body: { lineType: 'labor', description: 'Audit labor', quantity: 1, unitPrice: 100 } });
+    const { ctx, page } = await newPage(1280); await signIn(page, 'mgrfull', MPASS);
+    await page.evaluate(() => showView('estimates')); await page.waitForSelector(`#estimates [data-open="${e.id}"] .estOpenBtn`, { timeout: 8000 });
+    await page.click(`#estimates [data-open="${e.id}"] .estOpenBtn`); await page.waitForSelector('#estEditor:not(.hidden) [data-h="poNumber"]');
+    // Hold the header save; meanwhile the person moves on (Tab) and types in Unit #.
+    let release, held = new Promise(r => { release = r; });
+    const rx = new RegExp(`/api/estimates/${e.id}$`);
+    await page.route(rx, async route => { if (route.request().method() === 'PUT') await held; await route.continue().catch(() => {}); });
+    await page.click('[data-h="poNumber"]'); await page.keyboard.type('PO-4411'); await page.keyboard.press('Tab');
+    await page.keyboard.type('U-77');
+    release(); await sleep(150);
+    await page.keyboard.type('8'); // keeps typing straight through the redraw
+    await until(async () => (await R(`/api/estimates/${e.id}`, { token: owner })).estimate.po_number === 'PO-4411', 5000); await sleep(700);
+    const st = await page.evaluate(() => { const a = document.activeElement; return { h: a?.dataset?.h || a?.tagName, v: a?.value, s: a?.selectionStart }; });
+    eq(st.h, 'unitNumber', 'focus stays in Unit # after the save redraws the editor');
+    eq(st.v, 'U-778', 'every character typed in Unit # is kept');
+    eq(st.s, 5, 'the cursor stays at the end of what was typed');
+    eq(await page.inputValue('[data-h="poNumber"]'), 'PO-4411', 'the saved field shows the saved value');
+    await page.keyboard.press('Tab');
+    ok(await until(async () => (await R(`/api/estimates/${e.id}`, { token: owner })).estimate.unit_number === 'U-778', 5000), 'leaving Unit # saves it');
+    await page.unroute(rx);
+    // The same on a line: save the description, keep typing the hours.
+    const lrx = new RegExp(`/api/estimates/${e.id}/lines/\\d+$`);
+    held = new Promise(r => { release = r; });
+    await page.route(lrx, async route => { if (route.request().method() === 'PUT') await held; await route.continue().catch(() => {}); });
+    await page.click('.estRow[data-line] [data-f="description"]'); await page.keyboard.press('End'); await page.keyboard.type(' plus'); await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab'); // part # column is empty for labor; next is hours
+    const target = await page.evaluate(() => document.activeElement?.dataset?.f);
+    await page.keyboard.press('Control+A'); await page.keyboard.type('2.5');
+    release(); await sleep(900);
+    const ls = await page.evaluate(() => { const a = document.activeElement; return { f: a?.dataset?.f, v: a?.value }; });
+    eq(ls.f, target, 'focus stays in the line field being typed in');
+    eq(ls.v, '2.5', 'the line value being typed is kept');
+    ok(/plus/.test(await page.inputValue('.estRow[data-line] [data-f="description"]')), 'the saved description shows');
+    // An older answer for an estimate that was closed never reopens it.
+    held = new Promise(r => { release = r; });
+    await page.unroute(lrx); await page.route(rx, async route => { if (route.request().method() === 'GET') await held; await route.continue().catch(() => {}); });
+    const pr = page.evaluate(id => window.ittrOpenEstimate(id), e.id); await sleep(200);
+    await page.evaluate(() => document.querySelector('#estEditorBox [data-est="close"]')?.click()); await sleep(200);
+    const dc = await page.$('[data-discard-choice="discard"]'); if (dc) await dc.click();
+    release(); await pr.catch(() => {}); await sleep(500);
+    ok(await page.evaluate(() => document.getElementById('estEditor').classList.contains('hidden')), 'a load that finishes after closing does not reopen the estimate');
+    eq(page.errs.join(' | '), '', 'no page errors');
+    await page.unroute(rx); await ctx.close();
+  });
+  await scenario('A43 invoice editor: every field and button can be reached by the pointer at 1280/1440 px and 125–200% zoom, with long names', async () => {
+    const long = 'Extremely Long Interstate Refrigerated Freight Logistics Holdings Incorporated';
+    const i = await R('/api/invoices', { method: 'POST', token: owner, body: { customerId: cust.id, customerName: cust.customer_name, unitNumber: 'AUD-LONG-UNIT-0000001', customerNote: 'n' } });
+    await R(`/api/invoices/${i.id}/lines`, { method: 'POST', token: owner, body: { lineType: 'labor', description: `${long} brake chamber replacement both axles`, quantity: 1.5, unitPrice: 150, jobName: long } });
+    await R(`/api/invoices/${i.id}/lines`, { method: 'POST', token: owner, body: { lineType: 'part', description: `${long} air brake chamber 30/30 long stroke`, partNumber: 'PART-NUMBER-THAT-IS-VERY-LONG-123456', quantity: 2, unitPrice: 89.5, unitCost: 40, jobName: long } });
+    // 1280 px at 125/150/200% zoom lays out like 1024/853/640 CSS px.
+    for (const w of [1440, 1280, 1024, 853, 640]) {
+      const { ctx, page } = await newPage(w); await signIn(page, OWNER.username, OWNER.password);
+      await page.evaluate(() => showView('invoices')); await sleep(600);
+      await page.evaluate(id => openInvoice(id, true), i.id); await page.waitForSelector('#invoiceModal.open #invMileage'); await sleep(600);
+      const bad = await page.evaluate(() => {
+        const root = document.getElementById('invoiceModal'), out = [];
+        root.querySelectorAll('details').forEach(d => { d.open = true; }); // folded sections (Additional fees) too
+        for (const el of root.querySelectorAll('input:not([type=hidden]),select,textarea,button')) {
+          if (!el.offsetParent || el.closest('.invoicePrintOnly') || !el.checkVisibility({ checkVisibilityCSS: true })) continue;
+          const r0 = el.getBoundingClientRect(); if (r0.width < 4 || r0.height < 4) continue;
+          el.scrollIntoView({ block: 'center', inline: 'nearest' }); const r = el.getBoundingClientRect(), y = r.top + r.height / 2;
+          for (const x of [r.left + 3, r.left + r.width / 2, r.right - 3]) {
+            const hit = document.elementFromPoint(x, y);
+            if (!(hit && (hit === el || el.contains(hit) || [...(el.labels || [])].some(l => l.contains(hit))))) { out.push(`${el.id || el.dataset.f || el.getAttribute('aria-label') || el.textContent.trim().slice(0, 24) || el.tagName}@${Math.round(x)},${Math.round(y)}→${hit ? (hit.id || String(hit.className).slice(0, 30) || hit.tagName) + ':' + (hit.textContent || '').trim().slice(0, 20) : 'nothing'}`); break; }
+          }
+        }
+        return out;
+      });
+      eq(bad.join(' | '), '', `${w}px: no control covered`);
+      eq(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, `${w}px: no sideways page scroll`);
+      eq(page.errs.join(' | '), '', `${w}px: no page errors`);
+      await ctx.close();
+    }
+  });
+  await scenario('A45 Escape closes the parts tool dialogs; on a phone the bottom menu never covers a control scrolled into view', async () => {
+    const { ctx, page } = await newPage(1280); await signIn(page, OWNER.username, OWNER.password);
+    for (const [label, open] of [['Fluids in gallons', 'openFluidsTool()'], ['Fullbay price check', 'openFullbayPriceCheck()']]) {
+      await page.evaluate(code => { (0, eval)(code); }, open); await page.waitForSelector('.payDlg', { timeout: 6000 }); await sleep(300);
+      await page.keyboard.press('Escape');
+      ok(await until(() => page.evaluate(() => !document.querySelector('.payDlg')), 3000), `${label}: Escape closes it`);
+      ok(await page.locator('#topNav button, nav button').first().isVisible().catch(() => true), `${label}: the page behind is usable again`);
+    }
+    // The estimate's "Create work order" box (it has no Escape of its own): Escape closes it and leaves the estimate open.
+    const e = await R('/api/estimates', { method: 'POST', token: owner, body: { customerName: 'Private Audit Fleet LLC' } });
+    await R(`/api/estimates/${e.id}/lines`, { method: 'POST', token: owner, body: { lineType: 'labor', description: 'Escape check', quantity: 1, unitPrice: 50 } });
+    await page.evaluate(() => showView('estimates')); await page.evaluate(id => window.ittrOpenEstimate(id), e.id); await page.waitForSelector('#estEditor:not(.hidden) [data-est="to-wo"]');
+    await page.click('[data-est="to-wo"]'); await page.waitForSelector('#estWoDlg', { timeout: 6000 }); await sleep(300);
+    await page.keyboard.press('Escape');
+    ok(await until(() => page.evaluate(() => !document.getElementById('estWoDlg')), 3000), 'Create work order: Escape closes it');
+    ok(await page.evaluate(() => !document.getElementById('estEditor').classList.contains('hidden')), 'the estimate behind it stays open');
+    eq(page.errs.join(' | '), '', 'no page errors'); await ctx.close();
+    // Phone: the mechanic's help line sits at the end of the page, right above the fixed bottom menu.
+    const pc = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3, serviceWorkers: 'block' });
+    const ph = await pc.newPage(); ph.setDefaultTimeout(8000); ph.errs = []; ph.on('pageerror', e => ph.errs.push(e.message));
+    await signIn(ph, 'mech2', KPASS); await ph.evaluate(() => showView('mechanic')); await sleep(800);
+    await ph.evaluate(() => window.scrollTo(0, 0));
+    await ph.locator('#mechanic .mechHelp summary').tap({ timeout: 4000 }); // fails if the bottom menu is on top of it
+    ok(await ph.evaluate(() => document.querySelector('#mechanic .mechHelp').open), 'the tap opened the help');
+    await ph.evaluate(() => { window.scrollTo(0, 0); document.querySelector('#mechanic .mechHelp summary').scrollIntoView({ block: 'nearest' }); }); await sleep(200);
+    const cov = await ph.evaluate(() => { const r = document.querySelector('#mechanic .mechHelp summary').getBoundingClientRect(), nav = document.getElementById('mobileBottomNav')?.getBoundingClientRect(); return { bottom: Math.round(r.bottom), navTop: Math.round(nav?.top ?? 1e9) }; });
+    ok(cov.bottom <= cov.navTop, `scrolled into view, it stops above the bottom menu (${cov.bottom} <= ${cov.navTop})`);
+    eq(ph.errs.join(' | '), '', 'phone: no page errors'); await pc.close();
   });
   await scenario('A17 work-order Billing tab links to its estimate and invoice', async () => {
     const st = await R('/api/state', { token: owner }), sf = st.shopflow.payload;

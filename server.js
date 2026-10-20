@@ -2142,7 +2142,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.76.1");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.76.2");
 // v24.76.1: the deployed commit (Railway sets RAILWAY_GIT_COMMIT_SHA), so a deploy check can compare exact code, not just
 // a version label that several fixes share. null when the host does not provide it.
 const ITTR_COMMIT=String(process.env.RAILWAY_GIT_COMMIT_SHA||process.env.SOURCE_COMMIT||process.env.GIT_COMMIT||"").replace(/[^0-9a-f]/gi,"").slice(0,40)||null;
@@ -3369,18 +3369,28 @@ app.get("/api/admin/backup",auth,ownerOnly,async(req,res,next)=>{let started=fal
   // (before, each table was read separately and a backup taken during work could hold an invoice without its newest
   // lines or a payment without the matching balance).
   snap=await db.connect();await snap.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
-  res.write(`{"exportedAt":${JSON.stringify(new Date().toISOString())},"appVersion":${JSON.stringify(ITTR_APP_VERSION)},"format":"ittr-full-backup-v2","consistentSnapshot":true,"skipped":${JSON.stringify([...BACKUP_SKIP_TABLES])},"secretsRemoved":${JSON.stringify(BACKUP_SECRET_COLUMNS)},"tables":{`);started=true;
-  const counts={};
+  // v24.76.2: rows are read through a cursor in batches and written only as fast as the download takes them, so a large
+  // table is never held in memory whole. A client that goes away stops the export. The file ends with "complete":true;
+  // if anything fails after the first byte the connection is broken off, so the download fails visibly instead of
+  // leaving a cut-off file that looks finished.
+  let gone=false;res.on("close",()=>{if(!res.writableFinished)gone=true});
+  const put=chunk=>{if(gone)throw Object.assign(new Error("backup download was closed"),{backupGone:true});
+   return res.write(chunk)?null:new Promise(ok=>{const done=()=>{res.off("drain",done);res.off("close",done);ok()};res.on("drain",done);res.on("close",done)})};
+  await put(`{"exportedAt":${JSON.stringify(new Date().toISOString())},"appVersion":${JSON.stringify(ITTR_APP_VERSION)},"format":"ittr-full-backup-v2","consistentSnapshot":true,"skipped":${JSON.stringify([...BACKUP_SKIP_TABLES])},"secretsRemoved":${JSON.stringify(BACKUP_SECRET_COLUMNS)},"tables":{`);started=true;
+  const counts={},BATCH=Math.max(1,Number(process.env.ITTR_BACKUP_BATCH)||500);
   for(const [n,t] of tables.entries()){
    const drop=new Set(BACKUP_SECRET_COLUMNS[t]||[]);
-   const rows=(await snap.query(`SELECT * FROM "${t.replace(/"/g,'')}"`)).rows;counts[t]=rows.length;
-   res.write(`${n?",":""}${JSON.stringify(t)}:[`);
-   for(let k=0;k<rows.length;k++){const r=rows[k];for(const c of drop)if(c in r)r[c]="[removed]";res.write((k?",":"")+JSON.stringify(r))}
-   res.write("]");
+   await snap.query(`DECLARE ittr_backup NO SCROLL CURSOR FOR SELECT * FROM "${t.replace(/"/g,'')}"`);
+   await put(`${n?",":""}${JSON.stringify(t)}:[`);let k=0;
+   for(;;){const rows=(await snap.query(`FETCH ${BATCH} FROM ittr_backup`)).rows;if(!rows.length)break;
+    let out="";for(const r of rows){for(const c of drop)if(c in r)r[c]="[removed]";out+=(k++?",":"")+JSON.stringify(r)}
+    await put(out)}
+   await snap.query("CLOSE ittr_backup");counts[t]=k;
+   await put("]");
   }
   await snap.query("COMMIT");
-  res.end(`},"rowCounts":${JSON.stringify(counts)}}`);
-}catch(e){if(started){console.error("[backup]",e?.message);res.end()}else next(e)}
+  res.end(`},"rowCounts":${JSON.stringify(counts)},"complete":true}`);
+}catch(e){if(started){if(!e?.backupGone)console.error("[backup]",e?.message);res.destroy()}else next(e)}
 finally{if(snap){try{await snap.query("ROLLBACK")}catch(_){}snap.release()}}});
 
 app.get("/api/admin/data-safety",auth,adminOnly,async(req,res,next)=>{try{

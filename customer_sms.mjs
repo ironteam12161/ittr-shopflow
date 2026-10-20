@@ -75,9 +75,18 @@ export function registerSmsRoutes(app, { auth, adminOnly, requireDb, audit, broa
     const db = requireDb(), phone = normalizePhone(p.From), body = String(p.Body || '').slice(0, 2000);
     if (!phone) return res.type('text/xml').send('<Response/>');
     const cust = await customerForPhone(db, phone);
-    await db.query(`INSERT INTO sms_messages(direction,phone,customer_id,body,status,twilio_sid) VALUES('in',$1,$2,$3,'received',$4) ON CONFLICT(twilio_sid) DO NOTHING`, [phone, cust?.id || null, body, p.MessageSid || null]);
-    if (STOP.test(body)) await db.query(`INSERT INTO sms_optouts(phone,source) VALUES($1,'reply') ON CONFLICT(phone) DO UPDATE SET opted_out_at=now()`, [phone]);
-    else if (START.test(body)) await db.query('DELETE FROM sms_optouts WHERE phone=$1', [phone]);
+    // v24.76.2: the message and its STOP/START effect are saved together, and only for a message not seen before. Twilio
+    // retries deliver the same MessageSid again; repeating its effect let an old START undo a later STOP.
+    const cx = await db.connect(); let fresh = false;
+    try {
+      await cx.query('BEGIN');
+      const ins = await cx.query(`INSERT INTO sms_messages(direction,phone,customer_id,body,status,twilio_sid) VALUES('in',$1,$2,$3,'received',$4) ON CONFLICT(twilio_sid) DO NOTHING RETURNING id`, [phone, cust?.id || null, body, p.MessageSid || null]);
+      fresh = ins.rowCount > 0;
+      if (fresh && STOP.test(body)) await cx.query(`INSERT INTO sms_optouts(phone,source) VALUES($1,'reply') ON CONFLICT(phone) DO UPDATE SET opted_out_at=now()`, [phone]);
+      else if (fresh && START.test(body)) await cx.query('DELETE FROM sms_optouts WHERE phone=$1', [phone]);
+      await cx.query('COMMIT');
+    } catch (e) { try { await cx.query('ROLLBACK'); } catch (_) {} throw e; } finally { cx.release(); }
+    if (!fresh) return res.type('text/xml').send('<Response/>'); // a repeated delivery: already handled
     broadcastShopStatus('sms_received', { phone, customer: cust?.customer_name || '', preview: body.slice(0, 80) });
     res.type('text/xml').send('<Response/>');
   } catch (e) { next(e); } });
