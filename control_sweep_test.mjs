@@ -4,7 +4,7 @@
 // many controls were clicked and which were skipped.
 //
 // Skipped on purpose (never clicked): anything that deletes, voids, finalizes, sends (email/SMS/links), pays, resets,
-// signs out, connects outside services or imports. Browser confirm/prompt questions are always DISMISSED, so a guarded
+// signs out, connects outside services or imports. Browser confirm/prompt questions are DISMISSED (only "close without saving" is accepted), so a guarded
 // action never runs. Synthetic data on a throw-away database only; no provider is configured, nothing leaves the machine.
 import { existsSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -25,7 +25,7 @@ const R = srv.request;
 const SKIP = /delete|remove|void|\bsend\b|send |e-?mail|text (the )?customer|\bsms\b|\btext\b|\bpay\b|payment|charge|refund|reset|sign out|log ?out|finali[sz]e|disconnect|connect|import|sync|restore|archive|merge|deactivate|start fresh|reconcile|repair|wipe|purge|revoke|turn off|logout|check email|run (all|now)|send now|apply credit|receive|record payment|approve|decline|copy link|print|download|export|csv|pdf|open .*in new|camera|scan|upload|photo|voice|mic/i;
 const SKIP_ATTR = /del|void|send|email|sms|pay|reset|logout|finalize|import|sync|revoke|print|pdf|csv|download|upload|scan/i;
 const results = [], problems = [];
-const DIALOGS = '.modal.open,.poModal .box,#estEditor:not(.hidden) #estEditorBox,.payDlg,.blModal,.repModal,.cmpModal,.estWoDlg,.tfBackdrop';
+const DIALOGS = '.modal.open,.poModal .box,#estEditor:not(.hidden) #estEditorBox,.payDlg,.blModal,.repModal,.cmpModal,.estWoDlg,.tfBackdrop,.cfmDlg';
 // Controls of a container, identified by tag + text + attributes (so a re-rendered control is found again).
 const CONTROLS_JS = `(root, seen) => { const out = []; for (const e of root.querySelectorAll('button,[role="button"],a[href^="#"],summary,input[type="checkbox"],select')) { if (!e.offsetParent || e.disabled || e.closest('[hidden]')) continue;
   const label = (e.getAttribute('aria-label') || e.textContent || e.value || e.name || '').trim().replace(/\\s+/g, ' ').slice(0, 60);
@@ -79,7 +79,9 @@ async function sweepDialog(page, who, where, opener) {
 async function newPage(width) {
   const ctx = await browser.newContext({ viewport: { width, height: 900 }, serviceWorkers: 'block', acceptDownloads: false });
   const page = await ctx.newPage(); page.setDefaultTimeout(6000);
-  page.on('dialog', d => d.dismiss().catch(() => {}));
+  // Every browser question is dismissed (nothing guarded ever runs), except "close without saving": accepting that only
+  // throws away what the sweep itself typed, and dismissing it would leave the form over the page.
+  page.on('dialog', d => (/close without saving|discard (your )?changes|unsaved/i.test(d.message()) ? d.accept() : d.dismiss()).catch(() => {}));
   ctx.on('page', p => p.close().catch(() => {})); // pop-up windows (PDF previews)
   return { ctx, page };
 }
