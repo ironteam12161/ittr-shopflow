@@ -662,6 +662,40 @@ try {
     eq(page.errs.join(' | '), '', 'no page errors');
     await ctx.close();
   });
+  await scenario('A41 invoice: an edit made during a slow save is saved too; a slow older invoice never replaces the newer one', async () => {
+    const inv = await newInvoice(1), other = await newInvoice(1);
+    const { ctx, page } = await newPage(1280); await signIn(page, 'mgrfull', MPASS);
+    await page.evaluate(() => showView('invoices')); await sleep(800);
+    await page.evaluate(id => openInvoice(id, true), inv); await page.waitForSelector('#invoiceModal.open'); await sleep(500);
+    await page.evaluate(() => stopLiveStatusSocket()); await sleep(300);
+    // Hold the first header save; type a newer note while it is on its way.
+    let release, held = new Promise(r => { release = r; }), puts = [];
+    await page.route(new RegExp(`/api/invoices/${inv}$`), async route => { if (route.request().method() !== 'PUT') return route.continue(); puts.push(JSON.parse(route.request().postData() || '{}').customerNote); if (puts.length === 1) await held; await route.continue().catch(() => {}); });
+    await page.fill('#invCustomerNote', 'First note'); await page.dispatchEvent('#invCustomerNote', 'input');
+    ok(await until(() => puts.length === 1, 4000), 'the first save left');
+    await page.fill('#invCustomerNote', 'Second note must persist'); await page.dispatchEvent('#invCustomerNote', 'input'); await sleep(1100);
+    const mid = await page.evaluate(() => [document.getElementById('invoiceDraftState')?.dataset.state, document.getElementById('invoiceDraftState')?.textContent]);
+    ok(mid[0] !== 'saved', `not "saved" while the newer note waits (${mid})`); ok(/Saving latest changes/.test(mid[1] || ''), `says it is saving the latest changes (${mid[1]})`);
+    release();
+    ok(await until(async () => (await R(`/api/invoices/${inv}`, { token: owner })).invoice.customer_note === 'Second note must persist', 6000), 'the newer note reaches the server without another action');
+    ok(await until(() => page.evaluate(() => document.getElementById('invoiceDraftState')?.dataset.state === 'saved'), 4000), '"All changes saved" only after that');
+    eq(puts.length, 2, 'exactly one follow-up save');
+    await page.unroute(new RegExp(`/api/invoices/${inv}$`));
+    // A slow load of invoice A must not replace invoice B opened after it.
+    let releaseA, heldA = new Promise(r => { releaseA = r; });
+    await page.route(new RegExp(`/api/invoices/${other}$`), async route => { if (route.request().method() === 'GET') await heldA; await route.continue().catch(() => {}); });
+    const pa = page.evaluate(id => openInvoice(id, true), other);
+    await sleep(200); await page.evaluate(id => openInvoice(id, true), inv); await sleep(400);
+    releaseA(); await pa.catch(() => {}); await sleep(500);
+    eq(await page.evaluate(() => activeInvoice?.invoice?.id), inv, 'the newer selection stays');
+    // Closing while a load is on its way keeps the editor closed.
+    heldA = new Promise(r => { releaseA = r; });
+    const pc = page.evaluate(id => openInvoice(id, true), other); await sleep(200);
+    await page.evaluate(() => closeModal('invoiceModal')); await sleep(200); releaseA(); await pc.catch(() => {}); await sleep(500);
+    eq(await page.evaluate(() => document.getElementById('invoiceModal').classList.contains('open')), false, 'a load that finishes after closing does not reopen the editor');
+    eq(page.errs.join(' | '), '', 'no page errors');
+    await page.unroute(new RegExp(`/api/invoices/${other}$`)); await ctx.close();
+  });
   await scenario('A17 work-order Billing tab links to its estimate and invoice', async () => {
     const st = await R('/api/state', { token: owner }), sf = st.shopflow.payload;
     sf.workorders = [...sf.workorders.filter(w => w.id !== 9501), { id: 9501, unit: 'BILL-1', customer: 'Private Audit Fleet LLC', status: 'Completed', mechanic: 'mech1', helpers: [], unitType: 'customer', truckHere: true, tasks: [] }];

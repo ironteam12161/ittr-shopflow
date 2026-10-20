@@ -5548,6 +5548,7 @@ function ittrDialogOpened(m){
  setTimeout(()=>{if(!ittrDialogs.includes(entry))return;if(!entry.touched)entry.base=ittrDialogValues(m);if(!m.contains(document.activeElement)){const f=ittrFocusable(m),first=f.find(e=>!e.matches(".x,.modalhead .x"))||f[0]||m;try{first.focus({preventScroll:true})}catch(_){}}},60);
 }
 function ittrDialogClosed(m){
+ if(m?.id==="invoiceModal"&&typeof invoiceOpenGen==="number")invoiceOpenGen++; // a load still on its way must not reopen it
  const i=ittrDialogs.findIndex(d=>d.m===m);if(i<0)return;const [entry]=ittrDialogs.splice(i,1);
  setTimeout(()=>{const top=ittrDialogs.at(-1)?.m;const back=entry.back;
   if(back&&document.contains(back)&&back.offsetParent!==null&&(!top||top.contains(back))){try{back.focus({preventScroll:true})}catch(_){}}
@@ -6856,7 +6857,10 @@ async function activateInvoiceWorkspaceFromURL(){
   document.title=`Invoice Workspace · ITTR ShopFlow`;
   try{await showView('invoices',{push:false,replace:true});await openInvoice(id,true)}catch(e){invoiceWorkspaceActivated=false;showToast?.(e.message||'Unable to open invoice workspace.','error',8000)}
 }
-async function openInvoice(id,workspaceMode=false){try{const r=await ittrSessionFetch(`/api/invoices/${id}`,{headers:authHeaders(),cache:'no-store'}),d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to load invoice');activeInvoice=d;renderInvoiceEditor();document.getElementById('invoiceModal').classList.add('open');syncModalState();ittrInvoiceEditorBase=ittrInvoiceEditorValues()}catch(e){alert(e.message)}}
+// v24.76.2: only the newest request opens the editor. A slow answer for an invoice opened earlier, or one that arrives after
+// the editor was closed, is ignored (before, it replaced the invoice being worked on).
+let invoiceOpenGen=0;
+async function openInvoice(id,workspaceMode=false){const my=++invoiceOpenGen;try{const r=await ittrSessionFetch(`/api/invoices/${id}`,{headers:authHeaders(),cache:'no-store'}),d=await r.json();if(my!==invoiceOpenGen)return;if(!r.ok)throw new Error(d.error||'Unable to load invoice');activeInvoice=d;renderInvoiceEditor();document.getElementById('invoiceModal').classList.add('open');syncModalState();ittrInvoiceEditorBase=ittrInvoiceEditorValues()}catch(e){if(my===invoiceOpenGen&&e?.code!=='SESSION_CHANGED')alert(e.message)}}
 function invoiceGroupName(l){return String(l?.job_name||'Service').trim()||'Service'}
 function invoiceLineTypeLabel(t){return t==='labor'?'Labor':t==='part'?'Part':t==='sublet'?'Sublet':t==='fee'?'Fee':'Other'}
 function invoiceChildrenForLabor(lines,labor){const direct=lines.filter(x=>x.line_type!=='labor'&&String(x.parent_line_id||'')===String(labor.id));if(direct.length)return direct;return lines.filter(x=>x.line_type!=='labor'&&!x.parent_line_id&&((x.job_uid&&labor.job_uid&&String(x.job_uid)===String(labor.job_uid))||invoiceGroupName(x).toLowerCase()===invoiceGroupName(labor).toLowerCase()))}
@@ -7106,7 +7110,7 @@ function scheduleInvoiceHeaderAutosave(){
   clearTimeout(invoiceHeaderAutosaveTimer);
   invoiceHeaderAutosaveTimer=setTimeout(()=>flushInvoiceHeaderAutosave(),700);
 }
-let invoiceHeaderConflictOpen=false;
+let invoiceHeaderConflictOpen=false,invoiceHeaderAutosaveAgain=false,invoiceHeaderAutosaveRun=null;
 // v24.76.0: every header save (autosave, the save before adding/removing a line, Save buttons) carries the header
 // fingerprint it started from. If another device changed the header since, the server refuses (409) and the person
 // chooses: keep their changes (saved over the other device's) or load the newer version. Returns {ok,d} or
@@ -7130,27 +7134,38 @@ async function ittrPutInvoiceHeader(i){
     return {ok:r.ok,d};
   }
 }
+// v24.76.2: an edit made while a header save is on its way queues one more save (before, that later edit was never sent
+// while the screen said "All changes saved"). "All changes saved" shows only when the fields on screen are exactly
+// what the server last acknowledged; a caller waiting for the save gets the result once the queued save is done too.
 async function flushInvoiceHeaderAutosave(){
   clearTimeout(invoiceHeaderAutosaveTimer);invoiceHeaderAutosaveTimer=null;
   const i=activeInvoice?.invoice;
-  if(!i||['paid','void'].includes(i.status)||invoiceHeaderAutosaveBusy||invoiceEditorReplacing)return true;
+  if(!i||['paid','void'].includes(i.status)||invoiceEditorReplacing)return true;
   if(invoiceHeaderConflictOpen)return false;
+  if(invoiceHeaderAutosaveBusy){invoiceHeaderAutosaveAgain=true;invoiceSetSaveState('saving','Saving latest changes…');return invoiceHeaderAutosaveRun}
   invoiceHeaderAutosaveBusy=true;
-  try{
-    invoiceSetSaveState('saving','Saving…');
-    const {ok,d,stopped}=await ittrPutInvoiceHeader(i);
-    if(stopped)return false;
-    if(!ok)throw new Error(d.error||'Autosave failed');
-    if(activeInvoice?.invoice)Object.assign(activeInvoice.invoice,invoiceHeaderPayload());
-    invoiceSetSaveState('saved','All changes saved');
-    return true;
+  const same=()=>activeInvoice?.invoice?.id===i.id;
+  invoiceHeaderAutosaveRun=(async()=>{try{
+    do{
+      invoiceHeaderAutosaveAgain=false;
+      if(!same())return false; // another invoice was opened: nothing of this one is on screen to save
+      invoiceSetSaveState('saving','Saving…');
+      const {ok,d,stopped}=await ittrPutInvoiceHeader(activeInvoice.invoice);
+      if(stopped)return false;
+      if(!ok)throw new Error(d.error||'Autosave failed');
+      if(same()&&ittrHeaderBase)try{Object.assign(activeInvoice.invoice,JSON.parse(ittrHeaderBase))}catch(_){}
+    }while(invoiceHeaderAutosaveAgain&&same());
+    if(!same())return false;
+    if(JSON.stringify(invoiceHeaderPayload())===ittrHeaderBase){invoiceSetSaveState('saved','All changes saved');return true}
+    invoiceSetSaveState('dirty','Unsaved changes');if(!invoiceHeaderAutosaveTimer)invoiceHeaderAutosaveTimer=setTimeout(()=>flushInvoiceHeaderAutosave(),700);
+    return false;
   }catch(e){
-    invoiceSetSaveState('error','Autosave failed');
-    showToast?.(e.message||'Unable to autosave invoice notes.','error',7000);
+    if(same()){invoiceSetSaveState('error','Autosave failed');showToast?.(e.message||'Unable to autosave invoice notes.','error',7000)}
     return false;
   }finally{
-    invoiceHeaderAutosaveBusy=false;
-  }
+    invoiceHeaderAutosaveBusy=false;invoiceHeaderAutosaveRun=null;
+  }})();
+  return invoiceHeaderAutosaveRun;
 }
 let invoiceDraftSaveBusy=false;
 async function persistInvoiceDraftBeforeStructureChange(label='Saving draft'){
