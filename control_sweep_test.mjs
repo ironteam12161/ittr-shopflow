@@ -49,7 +49,7 @@ async function pointerClick(page, who, where, label) {
 }
 // Close what a click left open, down to `keep` dialogs: Escape (answering "Discard changes" when asked), several times, so a
 // dialog that appears only after it has loaded its data is closed too. One that never closes on Escape is a problem.
-const openCount = page => page.evaluate(DIALOGS => [...document.querySelectorAll(DIALOGS)].filter(d => d.offsetParent || d.classList.contains('open')).length, DIALOGS).catch(() => 0);
+const openCount = page => page.evaluate(DIALOGS => [...document.querySelectorAll(DIALOGS)].filter(d => d.getClientRects().length || d.classList.contains('open')).length, DIALOGS).catch(() => 0);
 async function closeAll(page, who, where, label, keep = 0) {
   for (let k = 0; k < 8; k++) {
     await page.evaluate(() => document.querySelectorAll('.ittrChoice').forEach(c => (c.querySelector('[data-discard-choice="discard"]') || c.querySelector('button:last-child'))?.click())).catch(() => {});
@@ -62,11 +62,11 @@ async function closeAll(page, who, where, label, keep = 0) {
 async function sweepDialog(page, who, where, opener) {
   let clicked = 0; const seen = new Set();
   for (let guard = 0; guard < 30; guard++) {
-    const next = await page.evaluate(({ DIALOGS, CONTROLS_JS, seen }) => { const list = [...document.querySelectorAll(DIALOGS)].filter(d => d.offsetParent || d.classList.contains('open')); const d = list.at(-1); if (!d) return null;
+    const next = await page.evaluate(({ DIALOGS, CONTROLS_JS, seen }) => { const list = [...document.querySelectorAll(DIALOGS)].filter(d => d.getClientRects().length || d.classList.contains('open')); const d = list.at(-1); if (!d) return null;
       const controls = (0, eval)(CONTROLS_JS)(d); const c = controls.find(x => !seen.includes(x.key)); return c ? { key: c.key, label: c.label, attrs: c.attrs } : null; }, { DIALOGS, CONTROLS_JS, seen: [...seen] }).catch(() => null);
     if (!next) break; seen.add(next.key);
     if (SKIP.test(next.label) || SKIP_ATTR.test(next.attrs) || /^(×|✕|x|close|cancel|back|done)$/i.test(next.label)) continue;
-    const ok = await page.evaluate(({ DIALOGS, CONTROLS_JS, key }) => { const d = [...document.querySelectorAll(DIALOGS)].filter(x => x.offsetParent || x.classList.contains('open')).at(-1); if (!d) return false;
+    const ok = await page.evaluate(({ DIALOGS, CONTROLS_JS, key }) => { const d = [...document.querySelectorAll(DIALOGS)].filter(x => x.getClientRects().length || x.classList.contains('open')).at(-1); if (!d) return false;
       const c = (0, eval)(CONTROLS_JS)(d).find(x => x.key === key); if (!c) return false; c.el.setAttribute('data-sweep-click', '1'); return true; }, { DIALOGS, CONTROLS_JS, key: next.key }).catch(() => false);
     if (!ok || !(await pointerClick(page, who, `${where} > "${opener}"`, next.label))) continue; clicked++; await sleep(400);
     // Anything this opened on top (a second dialog, a choice question) is closed again; the first dialog stays.
@@ -156,7 +156,7 @@ try {
         }, { view, key: next.key }).catch(() => false);
         if (!ok || !(await pointerClick(page, who, view, next.label))) continue; clicked++;
         await sleep(450);
-        if (await page.evaluate(DIALOGS => [...document.querySelectorAll(DIALOGS)].some(d => d.offsetParent || d.classList.contains('open')), DIALOGS).catch(() => false)) inner += await sweepDialog(page, who, view, next.label);
+        if (await page.evaluate(DIALOGS => [...document.querySelectorAll(DIALOGS)].some(d => d.getClientRects().length || d.classList.contains('open')), DIALOGS).catch(() => false)) inner += await sweepDialog(page, who, view, next.label);
         // Close whatever opened (dialogs answer Escape; choice questions return null = nothing done) and come back.
         await closeAll(page, who, view, next.label, 0);
         const state = await page.evaluate(v => ({ cur: currentView, signedIn: !!session, sw: document.documentElement.scrollWidth, vw: innerWidth }), view).catch(() => ({ cur: '', signedIn: false }));
