@@ -38,7 +38,7 @@ const fmcsaMock = (await import('node:http')).createServer((req, res) => {
   setTimeout(() => { if (res.writableEnded || res.destroyed) return; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ content: { carrier: { dotNumber: Number(dot), legalName: `CARRIER ${dot} LLC`, phyCity: 'Dallas', phyState: 'TX', allowedToOperate: 'Y' } } })); }, slow ? 2000 : 20);
 });
 await new Promise(r => fmcsaMock.listen(0, '127.0.0.1', r));
-const srv = await startTestServer({ prefix: 'ittr_a76', admin: OWNER, env: { STRIPE_WEBHOOK_SECRET: 'whsec_test_ittr', FMCSA_WEBKEY: 'test-key', FMCSA_API_BASE_URL: `http://127.0.0.1:${fmcsaMock.address().port}/qc/services`, FMCSA_TIMEOUT_MS: '700', TWILIO_ACCOUNT_SID: 'ACaudit', TWILIO_AUTH_TOKEN: 'twilio-audit-secret', TWILIO_FROM: '+13125550100', TWILIO_API_BASE: `http://127.0.0.1:${fmcsaMock.address().port}` } });
+const srv = await startTestServer({ prefix: 'ittr_a76', admin: OWNER, env: { STRIPE_WEBHOOK_SECRET: 'whsec_test_ittr', FMCSA_WEBKEY: 'test-key', FMCSA_API_BASE_URL: `http://127.0.0.1:${fmcsaMock.address().port}/qc/services`, FMCSA_TIMEOUT_MS: '700', TWILIO_ACCOUNT_SID: 'ACaudit', TWILIO_AUTH_TOKEN: 'twilio-audit-secret', TWILIO_FROM: '+13125550100', TWILIO_API_BASE: `http://127.0.0.1:${fmcsaMock.address().port}`, ITTR_BACKUP_BATCH: '50' } });
 const R = srv.request, db = srv.db;
 const failures = [];
 // ITTR_AUDIT_ONLY=A16,A19 runs only those scenarios (local debugging); the full check always runs all of them.
@@ -519,6 +519,31 @@ try {
     const b = await fetch(srv.base() + '/api/admin/backup', { headers: { Authorization: `Bearer ${owner}` } }); const j = await b.json();
     eq(b.status, 200, 'backup downloads'); eq(j.consistentSnapshot, true, 'all tables from one snapshot'); ok(j.tables && j.rowCounts, 'tables and counts present');
     ok('commit' in (await R('/api/build')), 'build reports the deployed commit field');
+  });
+  await scenario('A44 backup: complete file with matching counts; a slow download is paced; a failure mid-export breaks the download instead of leaving a finished-looking file', async () => {
+    await srv.db.query('CREATE TABLE zzy_backup_rows AS SELECT g AS id FROM generate_series(1, 137) g'); // more than two 50-row batches
+    const b = await fetch(srv.base() + '/api/admin/backup', { headers: { Authorization: `Bearer ${owner}` } }); const j = await b.json();
+    eq(j.complete, true, 'the file says it is complete');
+    for (const [t, n] of Object.entries(j.rowCounts)) eq(j.tables[t]?.length, n, `${t}: rows in the file match the count`);
+    ok(j.tables.auth_users.every(u => u.password_hash === '[removed]'), 'password hashes stay out');
+    eq(j.tables.zzy_backup_rows.map(r => r.id).join(), Array.from({ length: 137 }, (_, k) => k + 1).join(), 'a table larger than one batch is exported whole, in order');
+    await srv.db.query('DROP TABLE zzy_backup_rows');
+    // A large table, then a small one last. The reader stops reading; while the server waits for it, the last table is
+    // dropped, so the export fails part-way. Without pacing the server would already have finished the whole file.
+    await srv.db.query("CREATE TABLE zzz_backup_big AS SELECT g AS id, repeat('x', 900) AS pad FROM generate_series(1, 30000) g");
+    await srv.db.query('CREATE TABLE zzzz_backup_tail(id int)');
+    const http = await import('node:http');
+    const res = await new Promise((ok2, bad) => { const rq = http.get(srv.base() + '/api/admin/backup', { headers: { Authorization: `Bearer ${owner}` } }, ok2); rq.on('error', bad); });
+    res.pause(); await sleep(1500);
+    await srv.db.query('DROP TABLE zzzz_backup_tail');
+    let body = '', ended = false, broke = false;
+    await new Promise(done => { res.on('data', c => { body += c; }); res.on('end', () => { ended = true; done(); }); res.on('aborted', () => { broke = true; }); res.on('error', () => { broke = true; done(); }); res.on('close', done); res.resume(); });
+    ok(!body.includes('"complete":true'), 'the cut-off file does not claim to be complete');
+    ok(broke || !ended || res.complete === false, 'the download ends as failed, not as a finished file');
+    await srv.db.query('DROP TABLE zzz_backup_big');
+    // The server is fine afterwards and the database connection was given back.
+    const again = await (await fetch(srv.base() + '/api/admin/backup', { headers: { Authorization: `Bearer ${owner}` } })).json();
+    eq(again.complete, true, 'the next backup works');
   });
   await scenario('A33 signed-in account checks from the shop network never block someone else\'s sign-in', async () => {
     let limited = 0;

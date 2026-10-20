@@ -31,6 +31,22 @@ const CONTROLS_JS = `(root, seen) => { const out = []; for (const e of root.quer
   const label = (e.getAttribute('aria-label') || e.textContent || e.value || e.name || '').trim().replace(/\\s+/g, ' ').slice(0, 60);
   const attrs = [...e.attributes].filter(a => /^(data-|onclick|id|class)/.test(a.name)).map(a => a.name + '=' + a.value).join(' ').slice(0, 200);
   out.push({ key: e.tagName + '|' + label + '|' + attrs, label, attrs, el: e }); } return out; }`;
+// v24.76.2: every control is operated by a real pointer (Playwright moves the mouse to it and checks that nothing covers
+// it), not a DOM .click(). A control another element covers, or that cannot be scrolled into the window, is a problem.
+// The page marks the control with data-sweep-click first; the mark is removed again before the next control is looked up.
+let covered = 0;
+async function pointerClick(page, who, where, label) {
+  const loc = page.locator('[data-sweep-click]').first();
+  try {
+    if (await loc.evaluate(e => e.tagName === 'SELECT')) { const v = await loc.evaluate(e => [...e.options].find(x => x.index !== e.selectedIndex)?.value ?? null); if (v === null) return false; await loc.selectOption(v, { timeout: 2500 }); }
+    else await loc.click({ timeout: 2500 });
+    return true;
+  } catch (e) {
+    const m = String(e?.message || e), hit = m.match(/<[^\n]*?>[^\n]*?intercepts pointer events/);
+    if (hit || /outside of the viewport/.test(m)) { covered++; problems.push(`${who} ${where}: "${label}" cannot be reached by the pointer${hit ? ` (${hit[0].slice(0, 160)})` : ' (outside the window)'}`); }
+    return false;
+  } finally { await page.evaluate(() => document.querySelectorAll('[data-sweep-click]').forEach(e => e.removeAttribute('data-sweep-click'))).catch(() => {}); }
+}
 // Inside a dialog that a click opened: click its safe controls once each (one level deep), then close it.
 async function sweepDialog(page, who, where, opener) {
   let clicked = 0; const seen = new Set();
@@ -40,10 +56,8 @@ async function sweepDialog(page, who, where, opener) {
     if (!next) break; seen.add(next.key);
     if (SKIP.test(next.label) || SKIP_ATTR.test(next.attrs) || /^(×|✕|x|close|cancel|back|done)$/i.test(next.label)) continue;
     const ok = await page.evaluate(({ DIALOGS, CONTROLS_JS, key }) => { const d = [...document.querySelectorAll(DIALOGS)].filter(x => x.offsetParent || x.classList.contains('open')).at(-1); if (!d) return false;
-      const c = (0, eval)(CONTROLS_JS)(d).find(x => x.key === key); if (!c) return false; const e = c.el;
-      if (e.tagName === 'SELECT') { const o = [...e.options].find(x => x.index !== e.selectedIndex); if (o) { e.value = o.value; e.dispatchEvent(new Event('change', { bubbles: true })); } return true; }
-      e.click(); return true; }, { DIALOGS, CONTROLS_JS, key: next.key }).catch(() => false);
-    if (!ok) continue; clicked++; await sleep(400);
+      const c = (0, eval)(CONTROLS_JS)(d).find(x => x.key === key); if (!c) return false; c.el.setAttribute('data-sweep-click', '1'); return true; }, { DIALOGS, CONTROLS_JS, key: next.key }).catch(() => false);
+    if (!ok || !(await pointerClick(page, who, `${where} > "${opener}"`, next.label))) continue; clicked++; await sleep(400);
     // Anything this opened on top (a second dialog, a choice question) is closed again; the first dialog stays.
     const depth = await page.evaluate(DIALOGS => [...document.querySelectorAll(DIALOGS)].filter(d => d.offsetParent || d.classList.contains('open')).length, DIALOGS).catch(() => 0);
     if (depth > 1) { await page.keyboard.press('Escape').catch(() => {}); await sleep(150); }
@@ -119,8 +133,7 @@ try {
         if (!next) break; seen.add(next.key);
         await page.evaluate(() => { const t = document.querySelector('[data-sweep-target]'); if (t) t.removeAttribute('data-sweep-target'); });
         if (SKIP.test(next.label) || SKIP_ATTR.test(next.attrs)) { skipped++; continue; }
-        const loc = page.locator(`#${view}`).locator(next.tag === 'SELECT' ? 'select' : '*').filter({ hasText: next.label || undefined });
-        // Click through the page's own element (found again by key) so dynamic re-renders do not click a stale node.
+        // Find the page's own element again by key (so a re-render never clicks a stale node), then click it with the pointer.
         const ok = await page.evaluate(({ view, key }) => {
           const host = document.getElementById(view); if (!host) return false;
           const els = [...host.querySelectorAll('button,[role="button"],a[href^="#"],summary,input[type="checkbox"],select')].filter(e => e.offsetParent && !e.disabled);
@@ -128,13 +141,11 @@ try {
             const label = (e.getAttribute('aria-label') || e.textContent || e.value || e.name || '').trim().replace(/\s+/g, ' ').slice(0, 60);
             const attrs = [...e.attributes].filter(a => /^(data-|onclick|id|class)/.test(a.name)).map(a => `${a.name}=${a.value}`).join(' ').slice(0, 200);
             if (`${e.tagName}|${label}|${attrs}` !== key) continue;
-            if (e.tagName === 'SELECT') { const o = [...e.options].find(x => x.index !== e.selectedIndex); if (o) { e.value = o.value; e.dispatchEvent(new Event('change', { bubbles: true })); } return true; }
-            e.click(); return true;
+            e.setAttribute('data-sweep-click', '1'); return true;
           }
           return false;
         }, { view, key: next.key }).catch(() => false);
-        void loc;
-        if (!ok) continue; clicked++;
+        if (!ok || !(await pointerClick(page, who, view, next.label))) continue; clicked++;
         await sleep(450);
         if (await page.evaluate(DIALOGS => [...document.querySelectorAll(DIALOGS)].some(d => d.offsetParent || d.classList.contains('open')), DIALOGS).catch(() => false)) inner += await sweepDialog(page, who, view, next.label);
         // Close whatever opened (dialogs answer Escape; choice questions return null = nothing done) and come back.
@@ -167,5 +178,5 @@ try {
   const total = results.reduce((s, r) => s + r.clicked + r.inner, 0), skipped = results.reduce((s, r) => s + r.skipped, 0);
   const uniq = [...new Set(problems)];
   if (uniq.length) { for (const p of uniq) console.error(`  problem: ${p}`); reportSuite(NAME, 'FAILED', `${uniq.length} problem(s)`); console.error(`FAIL ${NAME}: ${uniq.length} problem(s) in ${total} clicks`); process.exitCode = 1; }
-  else { reportSuite(NAME, 'PASSED', `${total} clicks, ${skipped} skipped, ${results.length} pages`); console.log(`PASS ${NAME}: ${total} controls clicked on ${results.length} role/page combinations (${skipped} skipped as destructive/outbound), no page errors, 5xx, failed requests or sideways scrolling`); }
+  else { reportSuite(NAME, 'PASSED', `${total} pointer clicks, ${skipped} skipped, ${results.length} pages`); console.log(`PASS ${NAME}: ${total} controls clicked with the pointer on ${results.length} role/page combinations (${skipped} skipped as destructive/outbound), none covered, no page errors, 5xx, failed requests or sideways scrolling`); }
 } finally { await browser.close().catch(() => {}); await srv.cleanup(); }
