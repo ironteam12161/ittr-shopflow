@@ -5570,7 +5570,7 @@ window.ittrOverlayOpened=(el,{close}={})=>{if(!el)return;ittrCustomOverlays.set(
 window.ittrOverlayClosed=el=>{if(!el||!ittrCustomOverlays.delete(el))return;ittrDialogClosed(el)};
 // Other self-drawn dialogs (payment, confirm, Bills, Reports, Compliance, estimate email / work-order boxes) are picked up
 // when they are added to the page: name, focus kept inside and focus return. Their own Escape/Cancel handling stays.
-const ITTR_AUTO_OVERLAYS=".payDlg,.cfmDlg,.blModal,.repModal,.cmpModal,.estWoDlg,#estEmailBox";
+const ITTR_AUTO_OVERLAYS=".payDlg,.tfBackdrop,.cfmDlg,.blModal,.repModal,.cmpModal,.estWoDlg,#estEmailBox";
 new MutationObserver(list=>{let removed=false;for(const r of list){removed||=r.removedNodes.length>0;for(const n of r.addedNodes){if(!(n instanceof HTMLElement))continue;const o=n.matches(ITTR_AUTO_OVERLAYS)?n:null;if(!o)continue;
   const box=o.querySelector('[role="dialog"],[role="alertdialog"]')||o.firstElementChild||o;if(!ittrCustomOverlays.has(box))window.ittrOverlayOpened(box,{})}}
  if(removed)for(const el of [...ittrCustomOverlays.keys()])if(!el.isConnected)window.ittrOverlayClosed(el)}).observe(document.body,{childList:true,subtree:true});

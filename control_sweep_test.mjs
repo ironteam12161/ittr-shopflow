@@ -25,7 +25,7 @@ const R = srv.request;
 const SKIP = /delete|remove|void|\bsend\b|send |e-?mail|text (the )?customer|\bsms\b|\btext\b|\bpay\b|payment|charge|refund|reset|sign out|log ?out|finali[sz]e|disconnect|connect|import|sync|restore|archive|merge|deactivate|start fresh|reconcile|repair|wipe|purge|revoke|turn off|logout|check email|run (all|now)|send now|apply credit|receive|record payment|approve|decline|copy link|print|download|export|csv|pdf|open .*in new|camera|scan|upload|photo|voice|mic/i;
 const SKIP_ATTR = /del|void|send|email|sms|pay|reset|logout|finalize|import|sync|revoke|print|pdf|csv|download|upload|scan/i;
 const results = [], problems = [];
-const DIALOGS = '.modal.open,.poModal .box,#estEditor:not(.hidden) #estEditorBox,.payDlg,.blModal,.repModal,.cmpModal,.estWoDlg';
+const DIALOGS = '.modal.open,.poModal .box,#estEditor:not(.hidden) #estEditorBox,.payDlg,.blModal,.repModal,.cmpModal,.estWoDlg,.tfBackdrop';
 // Controls of a container, identified by tag + text + attributes (so a re-rendered control is found again).
 const CONTROLS_JS = `(root, seen) => { const out = []; for (const e of root.querySelectorAll('button,[role="button"],a[href^="#"],summary,input[type="checkbox"],select')) { if (!e.offsetParent || e.disabled || e.closest('[hidden]')) continue;
   const label = (e.getAttribute('aria-label') || e.textContent || e.value || e.name || '').trim().replace(/\\s+/g, ' ').slice(0, 60);
@@ -47,6 +47,17 @@ async function pointerClick(page, who, where, label) {
     return false;
   } finally { await page.evaluate(() => document.querySelectorAll('[data-sweep-click]').forEach(e => e.removeAttribute('data-sweep-click'))).catch(() => {}); }
 }
+// Close what a click left open, down to `keep` dialogs: Escape (answering "Discard changes" when asked), several times, so a
+// dialog that appears only after it has loaded its data is closed too. One that never closes on Escape is a problem.
+const openCount = page => page.evaluate(DIALOGS => [...document.querySelectorAll(DIALOGS)].filter(d => d.offsetParent || d.classList.contains('open')).length, DIALOGS).catch(() => 0);
+async function closeAll(page, who, where, label, keep = 0) {
+  for (let k = 0; k < 8; k++) {
+    await page.evaluate(() => document.querySelectorAll('.ittrChoice').forEach(c => (c.querySelector('[data-discard-choice="discard"]') || c.querySelector('button:last-child'))?.click())).catch(() => {});
+    if (await openCount(page) <= keep) return;
+    await page.keyboard.press('Escape').catch(() => {}); await sleep(300);
+  }
+  if (await openCount(page) > keep) problems.push(`${who} ${where}: a dialog left open by "${label}" does not close on Escape`);
+}
 // Inside a dialog that a click opened: click its safe controls once each (one level deep), then close it.
 async function sweepDialog(page, who, where, opener) {
   let clicked = 0; const seen = new Set();
@@ -59,9 +70,7 @@ async function sweepDialog(page, who, where, opener) {
       const c = (0, eval)(CONTROLS_JS)(d).find(x => x.key === key); if (!c) return false; c.el.setAttribute('data-sweep-click', '1'); return true; }, { DIALOGS, CONTROLS_JS, key: next.key }).catch(() => false);
     if (!ok || !(await pointerClick(page, who, `${where} > "${opener}"`, next.label))) continue; clicked++; await sleep(400);
     // Anything this opened on top (a second dialog, a choice question) is closed again; the first dialog stays.
-    const depth = await page.evaluate(DIALOGS => [...document.querySelectorAll(DIALOGS)].filter(d => d.offsetParent || d.classList.contains('open')).length, DIALOGS).catch(() => 0);
-    if (depth > 1) { await page.keyboard.press('Escape').catch(() => {}); await sleep(150); }
-    await page.evaluate(() => document.querySelectorAll('.ittrChoice').forEach(c => c.querySelector('button:last-child')?.click())).catch(() => {});
+    await sleep(300); await closeAll(page, who, where, next.label, 1);
     if (!(await page.evaluate(() => !!session).catch(() => false))) { problems.push(`${who} ${where} > "${opener}": "${next.label}" signed the account out`); break; }
   }
   return clicked;
@@ -149,8 +158,7 @@ try {
         await sleep(450);
         if (await page.evaluate(DIALOGS => [...document.querySelectorAll(DIALOGS)].some(d => d.offsetParent || d.classList.contains('open')), DIALOGS).catch(() => false)) inner += await sweepDialog(page, who, view, next.label);
         // Close whatever opened (dialogs answer Escape; choice questions return null = nothing done) and come back.
-        for (let k = 0; k < 3; k++) { await page.keyboard.press('Escape').catch(() => {}); await sleep(120); }
-        await page.evaluate(() => { document.querySelectorAll('.ittrChoice').forEach(c => c.querySelector('button:last-child')?.click()); }).catch(() => {});
+        await closeAll(page, who, view, next.label, 0);
         const state = await page.evaluate(v => ({ cur: currentView, signedIn: !!session, sw: document.documentElement.scrollWidth, vw: innerWidth }), view).catch(() => ({ cur: '', signedIn: false }));
         if (!state.signedIn) { problems.push(`${who} ${view}: "${next.label}" signed the account out`); await signIn(page, who, pass); }
         if (state.sw > state.vw + 1) problems.push(`${who} ${view}: sideways scrolling after "${next.label}" (${state.sw}px > ${state.vw}px)`);
@@ -168,8 +176,7 @@ try {
       await page.evaluate(v => showView(v), view).catch(() => {}); await sleep(700);
       await page.evaluate(code => { try { return (0, eval)(code); } catch (e) { return String(e); } }, open).catch(() => {}); await sleep(900);
       const inner = await sweepDialog(page, who, view, label);
-      for (let k = 0; k < 3; k++) { await page.keyboard.press('Escape').catch(() => {}); await sleep(150); }
-      await page.evaluate(() => document.querySelectorAll('.ittrChoice').forEach(c => c.querySelector('button:last-child')?.click())).catch(() => {});
+      await closeAll(page, who, view, label, 0);
       results.push({ who, view: label, clicked: 0, skipped: 0, inner });
       console.log(`  ${who.padEnd(7)} ${label.padEnd(16)} in editor ${String(inner).padStart(3)}`);
     }
