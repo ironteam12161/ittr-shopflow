@@ -807,6 +807,14 @@ try {
       ok(await until(() => page.evaluate(() => !document.querySelector('.payDlg')), 3000), `${label}: Escape closes it`);
       ok(await page.locator('#topNav button, nav button').first().isVisible().catch(() => true), `${label}: the page behind is usable again`);
     }
+    // The estimate's "Create work order" box (it has no Escape of its own): Escape closes it and leaves the estimate open.
+    const e = await R('/api/estimates', { method: 'POST', token: owner, body: { customerName: 'Private Audit Fleet LLC' } });
+    await R(`/api/estimates/${e.id}/lines`, { method: 'POST', token: owner, body: { lineType: 'labor', description: 'Escape check', quantity: 1, unitPrice: 50 } });
+    await page.evaluate(() => showView('estimates')); await page.evaluate(id => window.ittrOpenEstimate(id), e.id); await page.waitForSelector('#estEditor:not(.hidden) [data-est="to-wo"]');
+    await page.click('[data-est="to-wo"]'); await page.waitForSelector('#estWoDlg', { timeout: 6000 }); await sleep(300);
+    await page.keyboard.press('Escape');
+    ok(await until(() => page.evaluate(() => !document.getElementById('estWoDlg')), 3000), 'Create work order: Escape closes it');
+    ok(await page.evaluate(() => !document.getElementById('estEditor').classList.contains('hidden')), 'the estimate behind it stays open');
     eq(page.errs.join(' | '), '', 'no page errors'); await ctx.close();
     // Phone: the mechanic's help line sits at the end of the page, right above the fixed bottom menu.
     const pc = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3, serviceWorkers: 'block' });

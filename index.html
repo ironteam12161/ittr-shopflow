@@ -5601,6 +5601,12 @@ document.addEventListener("keydown",async e=>{
  // dialog behind it (an open invoice under a payment dialog) stays open.
  if(e.target instanceof Node&&e.target!==document&&e.target!==document.body&&!e.target.isConnected)return;
  const m=ittrDialogTop();
+ // v24.76.2: a self-drawn dialog with no close of its own registered: let its own Escape handler run first; if it is
+ // still open after that, Escape does what its Close/Cancel button does (asking first when something was typed), so a
+ // dialog can never be left stuck over the page.
+ if(m&&ittrCustomOverlays.has(m)&&!ittrCustomOverlays.get(m)?.close){const root=m.closest(ITTR_AUTO_OVERLAYS)||m;setTimeout(async()=>{if(!root.isConnected||ittrDialogTop()!==m)return;
+  const b=root.querySelector('[data-overlay-close],.payDlgX,[aria-label="Close"]')||[...root.querySelectorAll('button')].find(x=>/^(cancel|close|×|✕)$/i.test(x.textContent.trim()));
+  if(b&&!b.disabled&&await ittrConfirmDiscard(m))b.click()},0);return}
  if(m&&ittrCustomOverlays.has(m)){const o=ittrCustomOverlays.get(m);if(!o?.close)return;e.preventDefault();e.stopImmediatePropagation();if(await ittrConfirmDiscard(m))o.close();return}
  if(m&&ittrDialogDirty(m)){e.preventDefault();if(await ittrConfirmDiscard(m))closeTopOpenModal();return}
  closeTopOpenModal();
