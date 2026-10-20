@@ -16,6 +16,7 @@
 import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
 import { dbSuiteGuard, reportSuite, startTestServer, ok, eq, sleep } from './test_harness.mjs';
+import { twilioSignature } from './customer_sms.mjs';
 const require = createRequire(import.meta.url);
 const { WebSocket } = require('ws');
 const NAME = 'audit v24.76';
@@ -37,7 +38,7 @@ const fmcsaMock = (await import('node:http')).createServer((req, res) => {
   setTimeout(() => { if (res.writableEnded || res.destroyed) return; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ content: { carrier: { dotNumber: Number(dot), legalName: `CARRIER ${dot} LLC`, phyCity: 'Dallas', phyState: 'TX', allowedToOperate: 'Y' } } })); }, slow ? 2000 : 20);
 });
 await new Promise(r => fmcsaMock.listen(0, '127.0.0.1', r));
-const srv = await startTestServer({ prefix: 'ittr_a76', admin: OWNER, env: { STRIPE_WEBHOOK_SECRET: 'whsec_test_ittr', FMCSA_WEBKEY: 'test-key', FMCSA_API_BASE_URL: `http://127.0.0.1:${fmcsaMock.address().port}/qc/services`, FMCSA_TIMEOUT_MS: '700' } });
+const srv = await startTestServer({ prefix: 'ittr_a76', admin: OWNER, env: { STRIPE_WEBHOOK_SECRET: 'whsec_test_ittr', FMCSA_WEBKEY: 'test-key', FMCSA_API_BASE_URL: `http://127.0.0.1:${fmcsaMock.address().port}/qc/services`, FMCSA_TIMEOUT_MS: '700', TWILIO_ACCOUNT_SID: 'ACaudit', TWILIO_AUTH_TOKEN: 'twilio-audit-secret', TWILIO_FROM: '+13125550100', TWILIO_API_BASE: `http://127.0.0.1:${fmcsaMock.address().port}` } });
 const R = srv.request, db = srv.db;
 const failures = [];
 // ITTR_AUDIT_ONLY=A16,A19 runs only those scenarios (local debugging); the full check always runs all of them.
@@ -616,6 +617,34 @@ try {
     ok(await until(() => page.evaluate(() => /CARRIER 1111111 LLC/.test(document.getElementById('fmcsaLookupCard')?.textContent || '')), 6000), 'the lookup card shows the carrier');
     eq(page.errs.join(' | '), '', 'no page errors');
     await ctx.close();
+  });
+  await scenario('A39 emailing a customer link follows the link permissions; a repeated text never undoes a later STOP', async () => {
+    await R('/api/admin/managers', { method: 'POST', token: owner, body: { username: 'mgrnone', display: 'mgrnone', password: MPASS, permissions: {} } }).catch(() => {});
+    const e = await R('/api/estimates', { method: 'POST', token: owner, body: { customerName: 'Private Audit Fleet LLC' } });
+    const est = await R('/api/customer-links', { method: 'POST', token: owner, body: { kind: 'estimate', refId: String(e.id) } });
+    const por = await R('/api/customer-links', { method: 'POST', token: owner, body: { kind: 'portal', refId: String(cust.id) } });
+    const tok = { owner, mgrfull: await srv.login('mgrfull', MPASS), mgrcust: await srv.login('mgrcust', MPASS), mgrmix: await srv.login('mgrmix', MPASS), mgrnone: await srv.login('mgrnone', MPASS), mech1: await srv.login('mech1', KPASS) };
+    // estimate needs Invoices; portal needs Customers and Invoices (mgrmix has Invoices + Inventory, mgrcust only Customers).
+    const allowed = { estimate: ['owner', 'mgrfull', 'mgrmix'], portal: ['owner', 'mgrfull'] }, bad = [];
+    for (const [kind, link, refId] of [['estimate', est, String(e.id)], ['portal', por, String(cust.id)]]) for (const who of Object.keys(tok)) {
+      const before = (await db.query('SELECT meta FROM customer_links WHERE id=$1', [link.id])).rows[0].meta;
+      const r = await R('/api/customer-links/email', { method: 'POST', token: tok[who], body: { kind, refId, url: link.url, to: 'fleet@audit.test' }, allowError: true });
+      const ok403 = r.status === 403, should = allowed[kind].includes(who);
+      if (should === ok403) bad.push(`${who} ${kind}: ${r.status}`);
+      if (!should && JSON.stringify((await db.query('SELECT meta FROM customer_links WHERE id=$1', [link.id])).rows[0].meta) !== JSON.stringify(before)) bad.push(`${who} ${kind}: refused send changed the link`);
+    }
+    eq(bad.join(' | '), '', 'every role/kind answers as its permissions say, and refused sends change nothing');
+    // Signed inbound texts (test secret, local only): START(A) -> STOP(B) -> START(A) again must stay opted out.
+    const url = srv.base() + '/api/sms/inbound', phone = '+13125559999';
+    const text = (sid, Body) => { const params = { From: phone, Body, MessageSid: sid }; return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Twilio-Signature': twilioSignature('twilio-audit-secret', url, params) }, body: new URLSearchParams(params) }).then(r => r.status); };
+    const out = async () => (await db.query('SELECT 1 FROM sms_optouts WHERE phone=$1', [phone])).rowCount === 1;
+    eq(await text('SMa1', 'START'), 200, 'signed text accepted'); eq(await out(), false, 'opted in');
+    await text('SMb2', 'STOP'); eq(await out(), true, 'STOP opts out');
+    await text('SMa1', 'START'); eq(await out(), true, 'a repeated old START does not undo the later STOP');
+    eq((await db.query("SELECT count(*)::int n FROM sms_messages WHERE twilio_sid IN ('SMa1','SMb2')")).rows[0].n, 2, 'the repeat is stored once');
+    await text('SMc3', 'START'); eq(await out(), false, 'a new START opts back in');
+    await text('SMb2', 'STOP'); eq(await out(), false, 'a repeated old STOP does not undo the later START');
+    eq(await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Twilio-Signature': 'bad' }, body: new URLSearchParams({ From: phone, Body: 'STOP', MessageSid: 'SMx' }) }).then(r => r.status), 403, 'an unsigned text is refused');
   });
   await scenario('A17 work-order Billing tab links to its estimate and invoice', async () => {
     const st = await R('/api/state', { token: owner }), sf = st.shopflow.payload;

@@ -209,9 +209,14 @@ export function registerCustomerLinkRoutes(app, deps) {
     return { suggestedEmail: cust?.email || '', customerName: cust?.customer_name || '', subject: `Your ${shopProfile().name} account`, button: 'Open your account',
       intro: 'Here is your private page with your units, estimates and invoices. You can approve estimates and pay invoices online there.' };
   }
+  // v24.76.0: listing and turning off links follow the same permissions as creating them (estimate: Invoices;
+  // portal: Customers and Invoices; inspection: any manager, like work orders).
+  const linkKindAllowed = (u, kind) => u?.role === 'admin' || (u?.role === 'manager' && (kind === 'inspection' || (kind === 'estimate' && u.permissions?.invoices === true) || (kind === 'portal' && u.permissions?.customers === true && u.permissions?.invoices === true)));
   // Email a link that was just created. The link must be a live one for this estimate / work order / customer.
+  // v24.76.2: sending follows the same permissions as creating the link (checked before anything is read or sent).
   app.post('/api/customer-links/email', auth, adminOnly, async (req, res, next) => { try {
     const db = requireDb(), kind = String(req.body?.kind || ''), refId = str(req.body?.refId, 60), given = String(req.body?.url || '').trim();
+    if (!linkKindAllowed(req.user, kind)) return res.status(403).json({ error: 'You do not have permission to send this link.' });
     const token = (given.match(/\/c\/([A-Za-z0-9_-]{30,80})$/) || [])[1], link = token ? await findActiveLink(db, token) : null;
     if (!link || link.kind !== kind || String(link.ref_id) !== refId) return res.status(400).json({ error: 'Create a new link first, then email it.' });
     // v24.74.0: the button in the email always points at this shop's own address, built here; a link pasted with another
@@ -237,7 +242,6 @@ export function registerCustomerLinkRoutes(app, deps) {
   // v24.76.0: listing and turning off links follow the same permissions as creating them (estimate: Invoices;
   // portal: Customers and Invoices; inspection: any manager, like work orders). Before, any manager could list every
   // link (customer ids, who signed) and turn off portals or estimate links outside their permissions.
-  const linkKindAllowed = (u, kind) => u?.role === 'admin' || (u?.role === 'manager' && (kind === 'inspection' || (kind === 'estimate' && u.permissions?.invoices === true) || (kind === 'portal' && u.permissions?.customers === true && u.permissions?.invoices === true)));
   app.get('/api/customer-links', auth, adminOnly, async (req, res, next) => { try {
     const kind = str(req.query.kind, 20);
     if (kind && !linkKindAllowed(req.user, kind)) return res.status(403).json({ error: 'You do not have permission to see these links.' });
