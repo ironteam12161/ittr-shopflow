@@ -645,6 +645,7 @@ try {
   });
   await scenario('A39 emailing a customer link follows the link permissions; a repeated text never undoes a later STOP', async () => {
     await R('/api/admin/managers', { method: 'POST', token: owner, body: { username: 'mgrnone', display: 'mgrnone', password: MPASS, permissions: {} } }).catch(() => {});
+    await R('/api/admin/managers/mgrmix', { method: 'PUT', token: owner, body: { permissions: { invoices: true, inventory: true } } }); // A1 takes Invoices away
     const e = await R('/api/estimates', { method: 'POST', token: owner, body: { customerName: 'Private Audit Fleet LLC' } });
     const est = await R('/api/customer-links', { method: 'POST', token: owner, body: { kind: 'estimate', refId: String(e.id) } });
     const por = await R('/api/customer-links', { method: 'POST', token: owner, body: { kind: 'portal', refId: String(cust.id) } });
