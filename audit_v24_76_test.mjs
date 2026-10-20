@@ -798,6 +798,27 @@ try {
       await ctx.close();
     }
   });
+  await scenario('A45 Escape closes the parts tool dialogs; on a phone the bottom menu never covers a control scrolled into view', async () => {
+    const { ctx, page } = await newPage(1280); await signIn(page, OWNER.username, OWNER.password);
+    for (const [label, open] of [['Fluids in gallons', 'openFluidsTool()'], ['Fullbay price check', 'openFullbayPriceCheck()']]) {
+      await page.evaluate(code => { (0, eval)(code); }, open); await page.waitForSelector('.payDlg', { timeout: 6000 }); await sleep(300);
+      await page.keyboard.press('Escape');
+      ok(await until(() => page.evaluate(() => !document.querySelector('.payDlg')), 3000), `${label}: Escape closes it`);
+      ok(await page.locator('#topNav button, nav button').first().isVisible().catch(() => true), `${label}: the page behind is usable again`);
+    }
+    eq(page.errs.join(' | '), '', 'no page errors'); await ctx.close();
+    // Phone: the mechanic's help line sits at the end of the page, right above the fixed bottom menu.
+    const pc = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3, serviceWorkers: 'block' });
+    const ph = await pc.newPage(); ph.setDefaultTimeout(8000); ph.errs = []; ph.on('pageerror', e => ph.errs.push(e.message));
+    await signIn(ph, 'mech2', KPASS); await ph.evaluate(() => showView('mechanic')); await sleep(800);
+    await ph.evaluate(() => window.scrollTo(0, 0));
+    await ph.locator('#mechanic .mechHelp summary').tap({ timeout: 4000 }); // fails if the bottom menu is on top of it
+    ok(await ph.evaluate(() => document.querySelector('#mechanic .mechHelp').open), 'the tap opened the help');
+    await ph.evaluate(() => { window.scrollTo(0, 0); document.querySelector('#mechanic .mechHelp summary').scrollIntoView({ block: 'nearest' }); }); await sleep(200);
+    const cov = await ph.evaluate(() => { const r = document.querySelector('#mechanic .mechHelp summary').getBoundingClientRect(), nav = document.getElementById('mobileBottomNav')?.getBoundingClientRect(); return { bottom: Math.round(r.bottom), navTop: Math.round(nav?.top ?? 1e9) }; });
+    ok(cov.bottom <= cov.navTop, `scrolled into view, it stops above the bottom menu (${cov.bottom} <= ${cov.navTop})`);
+    eq(ph.errs.join(' | '), '', 'phone: no page errors'); await pc.close();
+  });
   await scenario('A17 work-order Billing tab links to its estimate and invoice', async () => {
     const st = await R('/api/state', { token: owner }), sf = st.shopflow.payload;
     sf.workorders = [...sf.workorders.filter(w => w.id !== 9501), { id: 9501, unit: 'BILL-1', customer: 'Private Audit Fleet LLC', status: 'Completed', mechanic: 'mech1', helpers: [], unitType: 'customer', truckHere: true, tasks: [] }];
