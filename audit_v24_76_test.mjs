@@ -696,6 +696,83 @@ try {
     eq(page.errs.join(' | '), '', 'no page errors');
     await page.unroute(new RegExp(`/api/invoices/${other}$`)); await ctx.close();
   });
+  await scenario('A42 estimates: typing in the next field while a save is on its way keeps focus, cursor and every character', async () => {
+    const e = await R('/api/estimates', { method: 'POST', token: owner, body: { customerName: 'Private Audit Fleet LLC' } });
+    await R(`/api/estimates/${e.id}/lines`, { method: 'POST', token: owner, body: { lineType: 'labor', description: 'Audit labor', quantity: 1, unitPrice: 100 } });
+    const { ctx, page } = await newPage(1280); await signIn(page, 'mgrfull', MPASS);
+    await page.evaluate(() => showView('estimates')); await page.waitForSelector(`#estimates [data-open="${e.id}"] .estOpenBtn`, { timeout: 8000 });
+    await page.click(`#estimates [data-open="${e.id}"] .estOpenBtn`); await page.waitForSelector('#estEditor:not(.hidden) [data-h="poNumber"]');
+    // Hold the header save; meanwhile the person moves on (Tab) and types in Unit #.
+    let release, held = new Promise(r => { release = r; });
+    const rx = new RegExp(`/api/estimates/${e.id}$`);
+    await page.route(rx, async route => { if (route.request().method() === 'PUT') await held; await route.continue().catch(() => {}); });
+    await page.click('[data-h="poNumber"]'); await page.keyboard.type('PO-4411'); await page.keyboard.press('Tab');
+    await page.keyboard.type('U-77');
+    release(); await sleep(150);
+    await page.keyboard.type('8'); // keeps typing straight through the redraw
+    await until(async () => (await R(`/api/estimates/${e.id}`, { token: owner })).estimate.po_number === 'PO-4411', 5000); await sleep(700);
+    const st = await page.evaluate(() => { const a = document.activeElement; return { h: a?.dataset?.h || a?.tagName, v: a?.value, s: a?.selectionStart }; });
+    eq(st.h, 'unitNumber', 'focus stays in Unit # after the save redraws the editor');
+    eq(st.v, 'U-778', 'every character typed in Unit # is kept');
+    eq(st.s, 5, 'the cursor stays at the end of what was typed');
+    eq(await page.inputValue('[data-h="poNumber"]'), 'PO-4411', 'the saved field shows the saved value');
+    await page.keyboard.press('Tab');
+    ok(await until(async () => (await R(`/api/estimates/${e.id}`, { token: owner })).estimate.unit_number === 'U-778', 5000), 'leaving Unit # saves it');
+    await page.unroute(rx);
+    // The same on a line: save the description, keep typing the hours.
+    const lrx = new RegExp(`/api/estimates/${e.id}/lines/\\d+$`);
+    held = new Promise(r => { release = r; });
+    await page.route(lrx, async route => { if (route.request().method() === 'PUT') await held; await route.continue().catch(() => {}); });
+    await page.click('.estRow[data-line] [data-f="description"]'); await page.keyboard.press('End'); await page.keyboard.type(' plus'); await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab'); // part # column is empty for labor; next is hours
+    const target = await page.evaluate(() => document.activeElement?.dataset?.f);
+    await page.keyboard.press('Control+A'); await page.keyboard.type('2.5');
+    release(); await sleep(900);
+    const ls = await page.evaluate(() => { const a = document.activeElement; return { f: a?.dataset?.f, v: a?.value }; });
+    eq(ls.f, target, 'focus stays in the line field being typed in');
+    eq(ls.v, '2.5', 'the line value being typed is kept');
+    ok(/plus/.test(await page.inputValue('.estRow[data-line] [data-f="description"]')), 'the saved description shows');
+    // An older answer for an estimate that was closed never reopens it.
+    held = new Promise(r => { release = r; });
+    await page.unroute(lrx); await page.route(rx, async route => { if (route.request().method() === 'GET') await held; await route.continue().catch(() => {}); });
+    const pr = page.evaluate(id => window.ittrOpenEstimate(id), e.id); await sleep(200);
+    await page.evaluate(() => document.querySelector('#estEditorBox [data-est="close"]')?.click()); await sleep(200);
+    const dc = await page.$('[data-discard-choice="discard"]'); if (dc) await dc.click();
+    release(); await pr.catch(() => {}); await sleep(500);
+    ok(await page.evaluate(() => document.getElementById('estEditor').classList.contains('hidden')), 'a load that finishes after closing does not reopen the estimate');
+    eq(page.errs.join(' | '), '', 'no page errors');
+    await page.unroute(rx); await ctx.close();
+  });
+  await scenario('A43 invoice editor: every field and button can be reached by the pointer at 1280/1440 px and 125–200% zoom, with long names', async () => {
+    const long = 'Extremely Long Interstate Refrigerated Freight Logistics Holdings Incorporated';
+    const i = await R('/api/invoices', { method: 'POST', token: owner, body: { customerId: cust.id, customerName: cust.customer_name, unitNumber: 'AUD-LONG-UNIT-0000001', customerNote: 'n' } });
+    await R(`/api/invoices/${i.id}/lines`, { method: 'POST', token: owner, body: { lineType: 'labor', description: `${long} brake chamber replacement both axles`, quantity: 1.5, unitPrice: 150, jobName: long } });
+    await R(`/api/invoices/${i.id}/lines`, { method: 'POST', token: owner, body: { lineType: 'part', description: `${long} air brake chamber 30/30 long stroke`, partNumber: 'PART-NUMBER-THAT-IS-VERY-LONG-123456', quantity: 2, unitPrice: 89.5, unitCost: 40, jobName: long } });
+    // 1280 px at 125/150/200% zoom lays out like 1024/853/640 CSS px.
+    for (const w of [1440, 1280, 1024, 853, 640]) {
+      const { ctx, page } = await newPage(w); await signIn(page, OWNER.username, OWNER.password);
+      await page.evaluate(() => showView('invoices')); await sleep(600);
+      await page.evaluate(id => openInvoice(id, true), i.id); await page.waitForSelector('#invoiceModal.open #invMileage'); await sleep(600);
+      const bad = await page.evaluate(() => {
+        const root = document.getElementById('invoiceModal'), out = [];
+        root.querySelectorAll('details').forEach(d => { d.open = true; }); // folded sections (Additional fees) too
+        for (const el of root.querySelectorAll('input:not([type=hidden]),select,textarea,button')) {
+          if (!el.offsetParent || el.closest('.invoicePrintOnly') || !el.checkVisibility({ checkVisibilityCSS: true })) continue;
+          const r0 = el.getBoundingClientRect(); if (r0.width < 4 || r0.height < 4) continue;
+          el.scrollIntoView({ block: 'center', inline: 'nearest' }); const r = el.getBoundingClientRect(), y = r.top + r.height / 2;
+          for (const x of [r.left + 3, r.left + r.width / 2, r.right - 3]) {
+            const hit = document.elementFromPoint(x, y);
+            if (!(hit && (hit === el || el.contains(hit) || [...(el.labels || [])].some(l => l.contains(hit))))) { out.push(`${el.id || el.dataset.f || el.getAttribute('aria-label') || el.textContent.trim().slice(0, 24) || el.tagName}@${Math.round(x)},${Math.round(y)}→${hit ? (hit.id || String(hit.className).slice(0, 30) || hit.tagName) + ':' + (hit.textContent || '').trim().slice(0, 20) : 'nothing'}`); break; }
+          }
+        }
+        return out;
+      });
+      eq(bad.join(' | '), '', `${w}px: no control covered`);
+      eq(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, `${w}px: no sideways page scroll`);
+      eq(page.errs.join(' | '), '', `${w}px: no page errors`);
+      await ctx.close();
+    }
+  });
   await scenario('A17 work-order Billing tab links to its estimate and invoice', async () => {
     const st = await R('/api/state', { token: owner }), sf = st.shopflow.payload;
     sf.workorders = [...sf.workorders.filter(w => w.id !== 9501), { id: 9501, unit: 'BILL-1', customer: 'Private Audit Fleet LLC', status: 'Completed', mechanic: 'mech1', helpers: [], unitType: 'customer', truckHere: true, tasks: [] }];
