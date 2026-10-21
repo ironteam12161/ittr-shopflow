@@ -840,7 +840,8 @@ try {
     await page.locator('#mechanic button[onclick*="mechanicMarkTruckHere(9951)"]').first().tap(); // "✓ Truck Is Here" on ARRIVE-1
     const here = async id => (await R('/api/state', { token: owner })).shopflow.payload.workorders.find(w => w.id === id)?.truckHere;
     ok(await until(async () => (await here(9951)) === true, 6000), 'the server keeps the mechanic\'s "Truck Is Here"');
-    ok(await until(() => page.evaluate(() => /Ready to Work \(1\)/.test(document.getElementById('mechanic').innerText)), 4000), 'the truck moves to Ready to Work on the phone');
+    const readySection = () => page.evaluate(() => { const t = document.getElementById('mechanic').innerText; return (t.split(/Ready to Work \(\d+\)/)[1] || '').split(/Upcoming \/ On the Way/)[0]; });
+    ok(await until(async () => /ARRIVE-1/.test(await readySection()), 4000), 'the truck moves to Ready to Work on the phone');
     // The same save path cannot take it back to "not here", and a mechanic cannot mark someone else's truck.
     const tok = await srv.login('mech2', KPASS), cur = await R('/api/state', { token: tok });
     const p2 = JSON.parse(JSON.stringify(cur.shopflow.payload)); for (const w of p2.workorders) if (w.id === 9951 || w.id === 9952) w.truckHere = w.id === 9952;
