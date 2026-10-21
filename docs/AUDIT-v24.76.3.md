@@ -51,6 +51,18 @@ Small cleanups:
   - `npm audit`: 0 vulnerabilities, production and all.
   - No secrets, keys or customer data files (CSV/XLSX) are tracked.
 
+## Full check
+
+`npm run check` was run with PostgreSQL 16 and Chromium (`ITTR_REQUIRE_DB_SUITES=1 ITTR_REQUIRE_BROWSER_SUITE=1`). Every required suite passed and none was skipped:
+- production audit 215/215
+- audit suite, all 72 scenarios including A46–A47
+- control sweep: 882 real-pointer clicks on 56 role/page combinations, none covered
+- smoke test, reporting v24.76.3
+
+Two test-only corrections were needed along the way:
+- The error-alert scenario now produces its server error with a real failure instead of a malformed id.
+- A46 looks for the truck by name, not by a count.
+
 ## Not tested (to be done by the shop; see `docs/GO-LIVE.md`)
 
 - the live Railway service, its variables, domain and replica count
