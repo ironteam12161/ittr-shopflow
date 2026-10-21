@@ -302,7 +302,8 @@ try {
     await thumb.focus(); await page.keyboard.press('Enter');
     await page.waitForSelector('[role="dialog"]'); const dlg = await page.$('[role="dialog"]');
     ok(await dlg.$('button[aria-label*="Close" i], button[data-a="close"]'), 'Close button'); ok(await dlg.$('button[aria-label*="Zoom in" i], [data-a="zoomin"], [data-a="in"]'), 'zoom control');
-    ok(await page.evaluate(() => document.querySelector('[role="dialog"]').contains(document.activeElement)), 'focus inside the viewer');
+    // The viewer moves focus to Close one tick after it opens (setTimeout 0); wait for it rather than checking that instant.
+    ok(await until(() => page.evaluate(() => !!document.querySelector('[role="dialog"]')?.contains(document.activeElement)), 2000), 'focus inside the viewer');
     for (let i = 0; i < 15; i++) { await page.keyboard.press('Tab'); ok(await page.evaluate(() => !!document.querySelector('[role="dialog"]')?.contains(document.activeElement)), 'Tab stays in the viewer'); }
     await page.keyboard.press('Escape'); await sleep(200);
     ok(!(await page.$('[role="dialog"]')), 'Escape closes'); ok(await page.evaluate(() => document.activeElement?.closest?.('.photos') != null), 'focus back on the thumbnail');
