@@ -48,6 +48,8 @@
 | U13 | **Wording on the mechanic's phone:**<br>• the subtitle under "My Work Orders" was a developer description ("Touch-first mechanic workspace")<br>• "Start Job" in the bottom bar was not translated into Ukrainian | P3 | • "Your jobs and all shop work" (UA: "Ваші роботи та вся робота майстерні")<br>• "Почати роботу"; "Ask AI" is "Запитати AI" | language switch audit |
 | U14 | **A test gap let U1 through.** A43 ("every invoice control can be reached by the pointer") passed while the controls were cut off: `scrollIntoView` scrolls a box with hidden overflow, which a person cannot do. | (test) | A43 now reports a control that only a script can scroll into view. A48 never scrolls sideways at all. | A43 fails on v24.76.3 |
 
+| U15 | **V4 depended on how many sign-ins came before it.** Every sign-in in the suite counts against one shared limit per address: 100 signed-out `/api/auth` calls per 15 minutes. V4 runs last and compares an unknown-user sign-in with a wrong-password one. With this release's four extra browser sign-ins, the first of the pair was call 100 (401) and the second call 101 (429), so the first full check failed. Reproduced on its own: 99 sign-ins, then the pair, gives 401 and 429. | (test) | V4's sign-ins come from their own address (the server trusts one proxy hop, as behind Railway's proxy), so its limiter buckets start empty. The scenario still checks the same things. The limit itself is unchanged. | reproduction script: 401/429 before, 401/401 after |
+
 Each new or strengthened scenario (A43, A48, A49, A50, A51) was run against v24.76.3's app code, with the tests kept and the app files put back. Each one failed, and each passes on this branch.
 
 ## Measured before and after

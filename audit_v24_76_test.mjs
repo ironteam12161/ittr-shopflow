@@ -1206,10 +1206,14 @@ try {
     const r = await fetch(srv.base() + '/'), h = Object.fromEntries(r.headers);
     ok(/default-src/.test(h['content-security-policy'] || ''), 'CSP'); eq(h['x-content-type-options'], 'nosniff', 'nosniff');
     ok(/frame-ancestors|DENY|SAMEORIGIN/i.test((h['content-security-policy'] || '') + (h['x-frame-options'] || '')), 'framing restricted');
-    const a = await R('/api/auth/login', { method: 'POST', body: { username: 'no-such-user-x', password: 'Wrong-Pass-123' }, allowError: true });
-    const b = await R('/api/auth/login', { method: 'POST', body: { username: 'mech2', password: 'Wrong-Pass-123' }, allowError: true });
+    // v24.76.4: these sign-ins come from their own address (the server trusts one proxy hop, as behind Railway's proxy), so
+    // the rate-limit buckets start empty. Before, the 100 signed-out /api/auth calls per 15 minutes that every earlier
+    // scenario's sign-ins share could run out between the two requests compared here (one answered 401, the next 429).
+    const login = async body => { const r = await fetch(srv.base() + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '203.0.113.44' }, body: JSON.stringify(body) }); return { status: r.status, ...(await r.json().catch(() => ({}))) }; };
+    const a = await login({ username: 'no-such-user-x', password: 'Wrong-Pass-123' });
+    const b = await login({ username: 'mech2', password: 'Wrong-Pass-123' });
     eq(a.status, b.status, 'same status for unknown user and wrong password'); eq(a.error, b.error, 'same message');
-    let locked = false; for (let k = 0; k < 14 && !locked; k++) { const x = await R('/api/auth/login', { method: 'POST', body: { username: 'mech2', password: `Wrong-${k}-pass` }, allowError: true }); if (x.status === 429 || /locked|too many/i.test(x.error || '')) locked = true; }
+    let locked = false; for (let k = 0; k < 14 && !locked; k++) { const x = await login({ username: 'mech2', password: `Wrong-${k}-pass` }); if (x.status === 429 || /locked|too many/i.test(x.error || '')) locked = true; }
     ok(locked, 'repeated wrong passwords are slowed or locked');
     const { readFileSync, readdirSync } = await import('node:fs');
     const files = readdirSync('public').filter(f => /\.(js|html)$/.test(f)).map(f => 'public/' + f).concat(readdirSync('public/modules').map(f => 'public/modules/' + f));
