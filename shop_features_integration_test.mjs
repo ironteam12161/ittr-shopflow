@@ -378,8 +378,12 @@ try{
  try{await db.query(`UPDATE pg_index SET indisvalid=false WHERE indexrelid=(SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relname='idx_fullbay_parts_vendor_trgm' AND n.nspname=current_schema())`)}catch(e){console.log('note: cannot mark an index invalid without superuser:',e.message)}
  Object.assign(process.env,{ALERT_WEBHOOK_URL:`http://127.0.0.1:${hook.address().port}/hook`,ALERT_WEBHOOK_ALLOW_HTTP:'1'});await stop();await start();
  eq(await waitIndexes(),'ready','indexes ready after restart');eq(await validTrgm(),5,'invalid index rebuilt');
- const boom=await request('/api/invoices/not-a-number',{token:owner,allowError:true});ok(boom.status>=500&&boom.incident,'a server error shows an incident number');
- await request('/api/invoices/not-a-number',{token:owner,allowError:true});await new Promise(r=>setTimeout(r,400));
+ // v24.76.3: a malformed id is the request's fault (400, no alert). A real server failure (the invoices table is gone for
+ // a moment) is the 500 that must show an incident number and raise one alert.
+ const bad=await request('/api/invoices/not-a-number',{token:owner,allowError:true});eq(bad.status,400,'a malformed id answers 400');ok(!bad.incident||!/unexpected/i.test(bad.error||''),'with a clear message');
+ await db.query('ALTER TABLE customer_invoices RENAME TO customer_invoices_away');let boom;
+ try{boom=await request('/api/invoices/1',{token:owner,allowError:true});await request('/api/invoices/1',{token:owner,allowError:true})}finally{await db.query('ALTER TABLE customer_invoices_away RENAME TO customer_invoices')}
+ ok(boom.status>=500&&boom.incident,'a server error shows an incident number');await new Promise(r=>setTimeout(r,400));
  ok(alerts.length===1&&alerts[0].text.includes(boom.incident)&&alerts[0].content===alerts[0].text,'one alert with the incident number (Slack and Discord format); the repeat is held back');
  eq((await request('/api/invoices/999999',{token:owner,allowError:true})).status,404,'normal not-found is not an alert');await new Promise(r=>setTimeout(r,200));eq(alerts.length,1,'no alert for a 404');
  hook.close();delete process.env.ALERT_WEBHOOK_URL;delete process.env.ALERT_WEBHOOK_ALLOW_HTTP;

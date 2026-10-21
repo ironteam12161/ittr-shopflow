@@ -302,7 +302,8 @@ try {
     await thumb.focus(); await page.keyboard.press('Enter');
     await page.waitForSelector('[role="dialog"]'); const dlg = await page.$('[role="dialog"]');
     ok(await dlg.$('button[aria-label*="Close" i], button[data-a="close"]'), 'Close button'); ok(await dlg.$('button[aria-label*="Zoom in" i], [data-a="zoomin"], [data-a="in"]'), 'zoom control');
-    ok(await page.evaluate(() => document.querySelector('[role="dialog"]').contains(document.activeElement)), 'focus inside the viewer');
+    // The viewer moves focus to Close one tick after it opens (setTimeout 0); wait for it rather than checking that instant.
+    ok(await until(() => page.evaluate(() => !!document.querySelector('[role="dialog"]')?.contains(document.activeElement)), 2000), 'focus inside the viewer');
     for (let i = 0; i < 15; i++) { await page.keyboard.press('Tab'); ok(await page.evaluate(() => !!document.querySelector('[role="dialog"]')?.contains(document.activeElement)), 'Tab stays in the viewer'); }
     await page.keyboard.press('Escape'); await sleep(200);
     ok(!(await page.$('[role="dialog"]')), 'Escape closes'); ok(await page.evaluate(() => document.activeElement?.closest?.('.photos') != null), 'focus back on the thumbnail');
@@ -827,6 +828,56 @@ try {
     const cov = await ph.evaluate(() => { const r = document.querySelector('#mechanic .mechHelp summary').getBoundingClientRect(), nav = document.getElementById('mobileBottomNav')?.getBoundingClientRect(); return { bottom: Math.round(r.bottom), navTop: Math.round(nav?.top ?? 1e9) }; });
     ok(cov.bottom <= cov.navTop, `scrolled into view, it stops above the bottom menu (${cov.bottom} <= ${cov.navTop})`);
     eq(ph.errs.join(' | '), '', 'phone: no page errors'); await pc.close();
+  });
+  await scenario('A46 phone: a mechanic\'s "Truck Is Here" is saved (assigned customer truck only, never back to "not here")', async () => {
+    const st = await R('/api/state', { token: owner }), sf = st.shopflow.payload;
+    sf.workorders = [...sf.workorders.filter(w => ![9951, 9952].includes(w.id)),
+      { id: 9951, unit: 'ARRIVE-1', customer: 'Private Audit Fleet LLC', status: 'Open', mechanic: 'mech2', helpers: [], unitType: 'customer', truckHere: false, tasks: [{ uid: 'a1', t: 'Inspect brakes', done: false, parts: [] }] },
+      { id: 9952, unit: 'ARRIVE-2', customer: 'Private Audit Fleet LLC', status: 'Open', mechanic: 'mech1', helpers: [], unitType: 'customer', truckHere: false, tasks: [{ uid: 'a2', t: 'Inspect lights', done: false, parts: [] }] }];
+    await R('/api/state/shopflow', { method: 'PUT', token: owner, body: { payload: sf, expectedVersion: st.shopflow.version } });
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'block' });
+    const page = await ctx.newPage(); page.setDefaultTimeout(8000); page.errs = []; page.on('pageerror', e => page.errs.push(e.message)); page.on('dialog', d => d.accept().catch(() => {}));
+    await signIn(page, 'mech2', KPASS); await page.evaluate(() => showView('mechanic')); await sleep(900);
+    await page.locator('#mechanic button[onclick*="mechanicMarkTruckHere(9951)"]').first().tap(); // "✓ Truck Is Here" on ARRIVE-1
+    const here = async id => (await R('/api/state', { token: owner })).shopflow.payload.workorders.find(w => w.id === id)?.truckHere;
+    ok(await until(async () => (await here(9951)) === true, 6000), 'the server keeps the mechanic\'s "Truck Is Here"');
+    const readySection = () => page.evaluate(() => { const t = document.getElementById('mechanic').innerText; return (t.split(/Ready to Work \(\d+\)/)[1] || '').split(/Upcoming \/ On the Way/)[0]; });
+    ok(await until(async () => /ARRIVE-1/.test(await readySection()), 4000), 'the truck moves to Ready to Work on the phone');
+    // The same save path cannot take it back to "not here", and a mechanic cannot mark someone else's truck.
+    const tok = await srv.login('mech2', KPASS), cur = await R('/api/state', { token: tok });
+    const p2 = JSON.parse(JSON.stringify(cur.shopflow.payload)); for (const w of p2.workorders) if (w.id === 9951 || w.id === 9952) w.truckHere = w.id === 9952;
+    for (const w of p2.workorders) if (w.id === 9951) w.truckHere = false;
+    await R('/api/state/shopflow', { method: 'PUT', token: tok, body: { payload: p2, expectedVersion: cur.shopflow.version }, allowError: true });
+    eq(await here(9951), true, 'a later save cannot set it back to "not here"');
+    eq(await here(9952), false, 'a truck assigned to another mechanic is not changed');
+    eq(page.errs.join(' | '), '', 'no page errors'); await ctx.close();
+  });
+  await scenario('A47 launch: a malformed id answers 400 (not 500); no "upload this browser" question on an empty database; new work orders get a time; invoice line fields are named', async () => {
+    for (const path of ['/api/invoices/null', '/api/invoices/abc/pdf', '/api/estimates/not-a-number']) {
+      const r = await R(path, { token: owner, allowError: true });
+      eq(r.status, 400, `${path} answers 400`); ok(!/unexpected server error/i.test(r.error || ''), `${path}: a clear message (${r.error})`);
+    }
+    const { ctx, page } = await newPage(1280); await signIn(page, OWNER.username, OWNER.password);
+    // A brand-new browser signing in to an empty online database: nothing to upload, so no question.
+    const asked = await page.evaluate(async () => {
+      const real = window.apiJSON, said = []; const realConfirm = window.confirm; window.confirm = m => { said.push(m); return false; };
+      window.apiJSON = async (url, o) => /^\/api\/state$/.test(url) ? { users: { payload: {} }, shopflow: { payload: { workorders: [], issues: [] } }, pro: { payload: {} } } : real(url, o);
+      const keep = [USERS, state, PRO]; USERS = {}; state = { workorders: [], issues: [] }; PRO = Object.assign({ vehicles: [], maintenance: [], audit: [], notifications: [], delays: [] });
+      try { await loadCloudStateAfterLogin(); } catch (_) {} finally { window.apiJSON = real; window.confirm = realConfirm; [USERS, state, PRO] = keep; }
+      return said;
+    });
+    eq(asked.filter(m => /database is empty/i.test(m)).length, 0, 'no "upload this browser\'s data" question when the browser has nothing');
+    await page.evaluate(() => showView('workorders')); await sleep(500);
+    await page.getByRole('button', { name: '+ New Work Order' }).first().click(); await sleep(500);
+    ok(/^\d\d:\d\d$/.test(await page.inputValue('#woForm [name=time]')), 'the scheduled time is filled in like the date');
+    await page.keyboard.press('Escape'); await sleep(300);
+    const inv = await newInvoice(1);
+    await R(`/api/invoices/${inv}/lines`, { method: 'POST', token: owner, body: { lineType: 'labor', description: 'Named labor', quantity: 1, unitPrice: 100, taxable: false, jobName: 'J' } });
+    await page.evaluate(() => showView('invoices')); await sleep(500);
+    await page.evaluate(id => openInvoice(id, true), inv); await page.waitForSelector('#invoiceModal.open'); await sleep(800);
+    const unnamed = await page.evaluate(() => [...document.querySelectorAll('#invoiceModal input:not([type=hidden]), #invoiceModal select, #invoiceModal textarea')].filter(e => e.offsetParent && !(e.getAttribute('aria-label') || e.title || (e.labels && [...e.labels].some(l => l.textContent.trim())) || e.placeholder)).map(e => e.className || e.id || e.tagName));
+    eq(unnamed.join(' | '), '', 'every invoice editor field has a name');
+    eq(page.errs.join(' | '), '', 'no page errors'); await ctx.close();
   });
   await scenario('A17 work-order Billing tab links to its estimate and invoice', async () => {
     const st = await R('/api/state', { token: owner }), sf = st.shopflow.payload;

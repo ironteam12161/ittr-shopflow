@@ -2142,11 +2142,11 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.76.2");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.76.3");
 // v24.76.1: the deployed commit (Railway sets RAILWAY_GIT_COMMIT_SHA), so a deploy check can compare exact code, not just
 // a version label that several fixes share. null when the host does not provide it.
 const ITTR_COMMIT=String(process.env.RAILWAY_GIT_COMMIT_SHA||process.env.SOURCE_COMMIT||process.env.GIT_COMMIT||"").replace(/[^0-9a-f]/gi,"").slice(0,40)||null;
-app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}-INSPSAVE-20261013`,commit:ITTR_COMMIT}));
+app.get("/api/build",(req,res)=>res.json({frontendExpected:ITTR_APP_VERSION,backend:ITTR_APP_VERSION,build:`ITTR-${ITTR_APP_VERSION}`,commit:ITTR_COMMIT}));
 // v24.71.0: liveness and readiness are separate. /api/health/live only says the process answers (never restart the
 // app because the database or an optional service such as AI is down). /api/health (= /api/health/ready, Railway's
 // deploy check) answers 503 unless the database answers and the shop schema is in place, so a deploy whose database
@@ -2404,6 +2404,9 @@ app.put("/api/state/:key",auth,async(req,res,next)=>{
       const proposed=incomingById.get(String(old?.id||''));if(!proposed)return old;
       if(LOCKED_WO.has(String(old?.status||""))){if(woPrint(proposed)!==woPrint(old))notApplied.push({workOrderId:String(old.id),reason:"completed"});return old}
       const merged=clean(proposed);for(const k of protectedKeys)merged[k]=old[k];
+      // v24.76.3: "✓ Truck Is Here" on the phone. The assigned mechanic may mark a customer truck as arrived (not back to
+      // "not here"); before, truckHere was protected and the tap was silently undone, so the truck never became ready.
+      if(old?.unitType==="customer"&&old?.truckHere!==true&&proposed?.truckHere===true)merged.truckHere=true;
       for(const k of MECHANIC_HIDDEN_WO_KEYS){if(k in old)merged[k]=old[k];else delete merged[k]}
       // v24.47.5: a whole-shop save from a phone holding an older copy never puts a finished inspection back to
       // "In Progress" (the mechanic then showed as inspecting all day) and never drops answers already saved.
@@ -5383,14 +5386,17 @@ process.on("uncaughtException",e=>{console.error("[uncaughtException]",e);sendAl
 app.use((err,req,res,next)=>{
  const incident=`ITTR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2,6).toUpperCase()}`;
  console.error(`[${incident}]`,err);
- const status=Number(err?.status||err?.statusCode||500);if(status>=500&&!["DB_NOT_CONFIGURED","R2_NOT_CONFIGURED"].includes(err?.code))sendAlert(`Server error ${incident} on ${req.method} ${req.path}: ${String(err?.message||err).slice(0,300)}`,{key:`500:${req.method}:${req.route?.path||req.path}:${String(err?.message||"").slice(0,80)}`});
+ // v24.76.3: a malformed value in the request (an id that is not a number, a bad date) makes PostgreSQL refuse the query
+ // with a 22xxx "invalid input" code. That is the request's fault: answer 400, not 500, and raise no server alert.
+ const badInput=!err?.status&&!err?.statusCode&&["22P02","22003","22007","22008"].includes(String(err?.code||""));
+ const status=badInput?400:Number(err?.status||err?.statusCode||500);if(status>=500&&!["DB_NOT_CONFIGURED","R2_NOT_CONFIGURED"].includes(err?.code))sendAlert(`Server error ${incident} on ${req.method} ${req.path}: ${String(err?.message||err).slice(0,300)}`,{key:`500:${req.method}:${req.route?.path||req.path}:${String(err?.message||"").slice(0,80)}`});
  if(err?.code==="DB_NOT_CONFIGURED"||err?.code==="R2_NOT_CONFIGURED")return res.status(503).json({error:err.message,code:err.code,incident});
  if(err?.code==="LIMIT_FILE_SIZE")return res.status(413).json({error:"Photo is too large. Maximum original file size is 25 MB.",incident});
  if(err?.code==="PHOTO_TYPE"||err?.code==="PHOTO_PROCESSING")return res.status(415).json({error:err.message,code:err.code,incident});
  const safe=String(err?.message||"Server error").replace(/OPENROUTER_API_KEY|OPENAI_API_KEY|R2_SECRET_ACCESS_KEY/gi,'server credential');
  // v24.76.1: an error raised on purpose with a 4xx status (a refused action, a malformed or too large request) keeps that
  // status and its message. Before, every error answered 500 "unexpected server error" in production.
- if(status>=400&&status<500){const msg=err?.type==="entity.parse.failed"?"The request was not valid JSON.":err?.type==="entity.too.large"?"The request is too large.":safe;return res.status(status).json({error:msg,...(err?.code&&typeof err.code==="string"?{code:err.code}:{}),incident})}
+ if(status>=400&&status<500){const msg=badInput?"A value in the request is not valid (for example a record number or a date).":err?.type==="entity.parse.failed"?"The request was not valid JSON.":err?.type==="entity.too.large"?"The request is too large.":safe;return res.status(status).json({error:msg,...(!badInput&&err?.code&&typeof err.code==="string"?{code:err.code}:{}),incident})}
  res.status(500).json({error:isProd?"An unexpected server error occurred.":safe,incident});
 });
 app.get("*splat",(req,res)=>{
