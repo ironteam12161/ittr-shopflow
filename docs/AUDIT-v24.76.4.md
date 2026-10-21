@@ -116,7 +116,13 @@ What will cost the most as the shop grows, in order:
 
 ## Full check
 
-<!-- full-check result is added after the run -->
+`npm run check` was run with PostgreSQL 16 and Chromium (`ITTR_REQUIRE_DB_SUITES=1 ITTR_REQUIRE_BROWSER_SUITE=1`). It exited 0. All 24 required suites passed and none was skipped:
+- production audit 215/215
+- audit suite: all 76 scenarios, including A43 and A48–A51
+- control sweep: 882 real-pointer clicks on 56 role/page combinations, none covered, no sideways scrolling
+- smoke test, reporting v24.76.4
+
+The first full run of this release failed in V4 (U15, a test problem). V4 was fixed, and the run above is a complete re-run from the start, not a partial one.
 
 ## Not tested
 
