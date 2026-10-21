@@ -44,10 +44,11 @@
 .estTotals div{display:flex;justify-content:space-between;padding:5px 0;font-variant-numeric:tabular-nums}
 .estTotals .grand{border-top:1px solid var(--est-line);margin-top:6px;padding-top:10px;font-size:20px;font-weight:800}
 .estSide .field{margin-bottom:8px}.estSide textarea{min-height:70px}
-.estAddJob{display:flex;gap:8px}.estAddJob input{flex:1;padding:10px;border:1px solid #cfd6dc;border-radius:9px;font:inherit}
+.estAddJob{display:flex;gap:8px;flex-wrap:wrap}.estAddJob input{flex:1 1 220px;min-width:0;padding:10px;border:1px solid #cfd6dc;border-radius:9px;font:inherit}
 .estLockNote{background:#f4f3ff;border:1px solid #d9d6fe;color:#5925dc;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:14px}
-@media(max-width:900px){.estStats{grid-template-columns:repeat(2,minmax(0,1fr))}.estBody{grid-template-columns:1fr}.estFields{grid-template-columns:1fr 1fr}
- .estRow{grid-template-columns:1fr 1fr 1fr 1fr;row-gap:4px}.estRow .desc{grid-column:2/-1}.estRowHead{display:none}.estEditor{padding:0}.estEditorBox{margin:0;border-radius:0;min-height:100%}}
+/* v24.76.4: minmax(0,1fr) so the columns can be narrower than an input's natural width; with 1fr the editor was 481px wide on a 390px phone and scrolled sideways. */
+@media(max-width:900px){.estStats{grid-template-columns:repeat(2,minmax(0,1fr))}.estBody{grid-template-columns:minmax(0,1fr)}.estFields{grid-template-columns:repeat(2,minmax(0,1fr))}.estFields input,.estFields select,.estRow input,.estRow select{min-width:0;max-width:100%;box-sizing:border-box}
+ .estRow{grid-template-columns:repeat(4,minmax(0,1fr));row-gap:4px}.estRow .desc{grid-column:2/-1}.estRowHead{display:none}.estEditor{padding:0}.estEditorBox{margin:0;border-radius:0;min-height:100%}}
 </style>
 <div class="estWrap">
  <div class="toolbar"><div><h1>Estimates</h1><div class="muted">Quote the job before the work starts. Approved estimates turn into a draft invoice in one click.</div></div><div><button data-est="new">+ New Estimate</button></div></div>

@@ -20,7 +20,7 @@ Work through this list in order. Steps marked **required** are needed before the
 
 4. **Domain:** add the custom domain in Railway and wait for its HTTPS certificate.
 5. **Check the deploy:**
-   - `https://<your address>/api/health` shows `"ready":true` and `"version":"24.76.3"`.
+   - `https://<your address>/api/health` shows `"ready":true` and `"version":"24.76.4"`.
    - `/api/build` shows the deployed commit.
    - If `BOOTSTRAP_ADMIN_PASSWORD` was missing or too short, the deploy log says `ITTR SETUP REQUIRED` and nobody can sign in. Set it and redeploy.
 

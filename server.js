@@ -5,6 +5,7 @@ import {WebSocketServer,WebSocket} from "ws";
 import OpenAI from "openai";
 import path from "path";
 import fs from "fs";
+import zlib from "zlib";
 import multer from "multer";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
@@ -247,22 +248,61 @@ app.use(express.json({limit:"3mb"}));
 // Only files inside /public are web-addressable. Server source, SQL, audit files,
 // package metadata and deployment files remain outside the static web root.
 // v24.46.0: phone app download page (Android APK + iPhone Add to Home Screen).
-app.get("/app",(req,res)=>res.sendFile(path.join(__dirname,"public","app.html")));
-app.get("/vendor/html5-qrcode.min.js",(req,res)=>res.sendFile(path.join(__dirname,"node_modules","html5-qrcode","html5-qrcode.min.js")));
+app.get("/app",(req,res,next)=>{const f=path.join(__dirname,"public","app.html");sendCompressedFile(req,res,f).then(done=>{if(!done)res.sendFile(f)},next)});
+app.get("/vendor/html5-qrcode.min.js",(req,res,next)=>{const f=path.join(__dirname,"node_modules","html5-qrcode","html5-qrcode.min.js");sendCompressedFile(req,res,f).then(done=>{if(!done)res.sendFile(f)},next)});
 const publicDir=path.join(__dirname,"public");
 const authoritativeIndex=path.join(publicDir,"index.html");
 console.log("ITTR public web root:",publicDir);
+const staticCacheHeaders=(res,filePath)=>{
+ if(filePath.endsWith("index.html") || filePath.endsWith("sw.js") || filePath.endsWith("manifest.webmanifest") || filePath.endsWith("invoice-workspace.css") || filePath.includes(`${path.sep}modules${path.sep}`)){
+  res.setHeader("Cache-Control","no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma","no-cache");
+  res.setHeader("Expires","0");
+ }
+};
+// v24.76.4: pages, scripts and styles are sent compressed (brotli, or gzip) with Node's own zlib when the browser accepts
+// it. index.html alone is about 940 KB and is fetched in full every time the app opens (it is never cached), so a phone
+// downloaded about 1.7 MB per open; compressed it is about a quarter of that. Each file is compressed once per version
+// (size + modified time) and kept in memory. Range requests and small files are sent as they are.
+const COMPRESSIBLE_FILE=/\.(html|js|mjs|css|json|svg|webmanifest|txt|map)$/i;
+const compressedFiles=new Map();
+const acceptedEncoding=req=>req.acceptsEncodings("br")==="br"?"br":req.acceptsEncodings("gzip")==="gzip"?"gzip":"";
+const brotliCompress=(buf,quality)=>new Promise((ok,no)=>zlib.brotliCompress(buf,{params:{[zlib.constants.BROTLI_PARAM_QUALITY]:quality,[zlib.constants.BROTLI_PARAM_SIZE_HINT]:buf.length}},(e,out)=>e?no(e):ok(out)));
+const gzipCompress=(buf,level)=>new Promise((ok,no)=>zlib.gzip(buf,{level},(e,out)=>e?no(e):ok(out)));
+async function sendCompressedFile(req,res,filePath){
+ if((req.method!=="GET"&&req.method!=="HEAD")||req.headers.range||!COMPRESSIBLE_FILE.test(filePath))return false;
+ const enc=acceptedEncoding(req);if(!enc)return false;
+ let st;try{st=await fs.promises.stat(filePath)}catch(_){return false}
+ if(!st.isFile()||st.size<1024)return false;
+ const key=`${filePath}|${enc}`;let hit=compressedFiles.get(key);
+ if(!hit||hit.size!==st.size||hit.mtimeMs!==st.mtimeMs){
+  const raw=await fs.promises.readFile(filePath);
+  hit={size:st.size,mtimeMs:st.mtimeMs,body:enc==="br"?await brotliCompress(raw,9):await gzipCompress(raw,9)};
+  compressedFiles.set(key,hit);
+ }
+ const etag=`W/"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}-${enc}"`;
+ res.vary("Accept-Encoding");staticCacheHeaders(res,filePath);
+ if(!res.getHeader("Cache-Control"))res.setHeader("Cache-Control","public, max-age=0");
+ res.setHeader("ETag",etag);res.setHeader("Last-Modified",st.mtime.toUTCString());
+ if(String(req.headers["if-none-match"]||"").split(/\s*,\s*/).includes(etag)){res.status(304).end();return true}
+ res.type(path.extname(filePath));res.setHeader("Content-Encoding",enc);res.setHeader("Content-Length",hit.body.length);
+ if(req.method==="HEAD")res.end();else res.end(hit.body);
+ return true;
+}
+// Only a plain file inside public/ (no dot-files, no "..") is looked up; anything else goes on to express.static as before.
+app.use((req,res,next)=>{
+ if((req.method!=="GET"&&req.method!=="HEAD")||req.path.startsWith("/api/"))return next();
+ let rel;try{rel=decodeURIComponent(req.path)}catch(_){return next()}
+ if(rel.includes("\0")||rel.split("/").some(s=>s.startsWith(".")))return next();
+ const filePath=path.join(publicDir,rel);
+ if(!filePath.startsWith(publicDir+path.sep))return next();
+ sendCompressedFile(req,res,filePath).then(done=>{if(!done)next()},next);
+});
 app.use(express.static(publicDir,{
  index:false,
  dotfiles:"deny",
  fallthrough:true,
- setHeaders:(res,filePath)=>{
-  if(filePath.endsWith("index.html") || filePath.endsWith("sw.js") || filePath.endsWith("manifest.webmanifest") || filePath.endsWith("invoice-workspace.css") || filePath.includes(`${path.sep}modules${path.sep}`)){
-   res.setHeader("Cache-Control","no-store, no-cache, must-revalidate, proxy-revalidate");
-   res.setHeader("Pragma","no-cache");
-   res.setHeader("Expires","0");
-  }
- }
+ setHeaders:staticCacheHeaders
 }));
 
 // v24.76.1: signed-in calls (/api/auth/me, sessions, preferences) and signed-out calls (sign-in) are counted in separate
@@ -2142,7 +2182,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.76.3");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.76.4");
 // v24.76.1: the deployed commit (Railway sets RAILWAY_GIT_COMMIT_SHA), so a deploy check can compare exact code, not just
 // a version label that several fixes share. null when the host does not provide it.
 const ITTR_COMMIT=String(process.env.RAILWAY_GIT_COMMIT_SHA||process.env.SOURCE_COMMIT||process.env.GIT_COMMIT||"").replace(/[^0-9a-f]/gi,"").slice(0,40)||null;
@@ -5399,10 +5439,11 @@ app.use((err,req,res,next)=>{
  if(status>=400&&status<500){const msg=badInput?"A value in the request is not valid (for example a record number or a date).":err?.type==="entity.parse.failed"?"The request was not valid JSON.":err?.type==="entity.too.large"?"The request is too large.":safe;return res.status(status).json({error:msg,...(!badInput&&err?.code&&typeof err.code==="string"?{code:err.code}:{}),incident})}
  res.status(500).json({error:isProd?"An unexpected server error occurred.":safe,incident});
 });
-app.get("*splat",(req,res)=>{
+app.get("*splat",async(req,res,next)=>{
  res.setHeader("Cache-Control","no-store, no-cache, must-revalidate, proxy-revalidate");
  res.setHeader("Pragma","no-cache");
  res.setHeader("Expires","0");
+ try{if(await sendCompressedFile(req,res,authoritativeIndex))return}catch(e){return next(e)}
  res.sendFile(authoritativeIndex);
 });
 
