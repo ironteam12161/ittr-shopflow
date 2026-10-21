@@ -25,6 +25,8 @@ export function dbSuiteGuard(name) {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function freePort() { return new Promise((resolve, reject) => { const s = net.createServer(); s.unref(); s.once('error', reject); s.listen({ host: '127.0.0.1', port: 0 }, () => { const p = s.address().port; s.close(e => e ? reject(e) : resolve(p)); }); }); }
 
+// v24.76.3: ITTR_TEST_NODE_ENV=production runs a suite against a production-mode server (production error answers,
+// background schedulers), still on its own throw-away schema.
 export async function startTestServer({ prefix = 'ittr_test', env = {}, admin = { username: 'opsadmin', password: 'CI-Ops-Admin-2026!' } } = {}) {
   const url = String(process.env.DATABASE_URL || '');
   const schema = `${prefix}_${process.pid}_${Date.now()}`.replace(/[^a-z0-9_]/g, '');
@@ -41,7 +43,7 @@ export async function startTestServer({ prefix = 'ittr_test', env = {}, admin = 
   }
   async function start() {
     port = await freePort();
-    child = spawn(process.execPath, ['server.js'], { env: { ...process.env, PGOPTIONS: `-c search_path=${schema}`, PORT: String(port), NODE_ENV: 'test', BOOTSTRAP_ADMIN_USERNAME: admin.username, BOOTSTRAP_ADMIN_PASSWORD: admin.password, OPENAI_API_KEY: '', OPENROUTER_API_KEY: '', SAMSARA_API_TOKEN: '', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    child = spawn(process.execPath, ['server.js'], { env: { ...process.env, PGOPTIONS: `-c search_path=${schema}`, PORT: String(port), NODE_ENV: process.env.ITTR_TEST_NODE_ENV || 'test', BOOTSTRAP_ADMIN_USERNAME: admin.username, BOOTSTRAP_ADMIN_PASSWORD: admin.password, OPENAI_API_KEY: '', OPENROUTER_API_KEY: '', SAMSARA_API_TOKEN: '', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.on('data', d => output += d); child.stderr.on('data', d => output += d);
     for (let i = 0; i < 200; i++) { if (child.exitCode != null) throw new Error(`server exited ${child.exitCode}\n${output}`); try { const h = await request('/api/health'); if (h.ok && h.db) return; } catch {} await sleep(100); }
     throw new Error(`server did not start\n${output}`);

@@ -4,7 +4,9 @@ Production shop-management PWA for **Iron Team Truck & Trailer Repair**.
 
 ## Current production line
 
-**v24.28.x** — Work orders, invoicing, customer/unit service history, parts and barcode inventory, Smart Vendor Receiving, mechanic workflows, AI assistance, Fullbay data tools, Samsara integration, offline/PWA support, multilingual mechanic UI, and role-based administration.
+**v24.76.x** — Work orders and the Repair Board, mechanic phone workflow with time clock, findings with photos, estimates with online customer approval, invoicing with payments (cash, check, Zelle, Stripe), bills and purchase orders, parts and barcode inventory, customer/unit service history and fleet portal, compliance (PM / CARB / annual inspections), reports, customer texting, AI assistance, Fullbay and Samsara tools, offline/PWA support, multilingual mechanic UI and role-based administration.
+
+**Starting the shop on it:** follow `docs/GO-LIVE.md`.
 
 ## Repository layout
 
@@ -28,7 +30,7 @@ Production shop-management PWA for **Iron Team Truck & Trailer Repair**.
 4. Do not reset or recreate the Railway PostgreSQL database during application deployments.
 5. Treat `public/modules/` as production UI code. Keep its required mirrored modules synchronized with `modules/`.
 6. Keep version identifiers consistent across frontend, backend `/api/build`, package metadata, PWA cache/version markers, and release audits.
-7. Use the normal startup command (`npm start`) so the required idempotent runtime preparation is applied before `server.js` starts.
+7. Use the normal startup command (`npm start`). On every start the server adds any missing tables and columns (safe to repeat, never destructive) before it accepts requests.
 
 ## Main product areas
 
@@ -54,7 +56,7 @@ Install dependencies, then run the same maintained release path used by CI:
 npm run check
 ```
 
-`npm run check` intentionally runs runtime preparation twice before validation so every runtime patch must remain safe to re-run.
+`npm run check` needs a throw-away PostgreSQL database (`DATABASE_URL`, plus `ITTR_LANGUAGE_TEST_DB=1`) and Chromium for the browser suites; each suite creates and drops its own schema. Never point it at the production database. `ITTR_TEST_NODE_ENV=production` runs the suites against a production-mode server.
 
 Older instructions may still reference:
 
@@ -72,7 +74,7 @@ Railway deploys the application with:
 npm start
 ```
 
-`npm start` runs the required runtime preparation and then launches `server.js`. Railway checks `/api/health` during deployment.
+`npm start` launches `server.js`, which prepares the database schema before it accepts requests. Railway checks `/api/health` during deployment (ready only when the database and schema are).
 
 ### Resend invoice email
 
