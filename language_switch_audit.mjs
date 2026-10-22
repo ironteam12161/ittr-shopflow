@@ -37,10 +37,10 @@ pass('login/role initialization uses authenticated account language');
 
 if(!html.includes('function applyMechanicLanguageSurface(){'))fail('deterministic mechanic translation surface missing');
 if(!html.includes('applyMechanicLanguageSurface();'))fail('translation surface is not executed by applyTranslations');
-for(const phrase of ['My Work Orders','Current Activity','Upcoming / On the Way','Ready to Work','Touch-first mechanic workspace','Start New Job','Inspection','Completed']){
+for(const phrase of ['My Work Orders','Current Activity','Upcoming / On the Way','Ready to Work','Your jobs and all shop work','Start New Job','Inspection','Completed']){
  if(!html.includes(`'${phrase}'`) && !html.includes(`"${phrase}"`))fail(`required mechanic source phrase missing from translation surface: ${phrase}`);
 }
-for(const translated of ['Мої наряди','Поточна діяльність','Очікуються / В дорозі','Готові до роботи','Робоче місце механіка з сенсорним керуванням','Розпочати нову роботу']){
+for(const translated of ['Мої наряди','Поточна діяльність','Очікуються / В дорозі','Готові до роботи','Ваші роботи та вся робота майстерні','Розпочати нову роботу']){
  if(!html.includes(translated))fail(`required Ukrainian mechanic translation missing: ${translated}`);
 }
 pass('screenshot-visible mechanic workspace phrases have deterministic Ukrainian translations');

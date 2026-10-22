@@ -970,3 +970,121 @@ body.invoiceWorkspaceMode textarea{box-sizing:border-box!important;max-width:100
   #invoiceModal{inset:0!important;margin:0!important;padding:0!important}
   #invoiceModal .modalbox{box-sizing:border-box!important;width:100%!important;min-height:100vh!important;margin:0!important;padding:.45in!important}
 }
+
+/* ===== v24.76.4 invoice lines follow the line-items card's own width =====
+   The one-line grid needed about 1,100px, but the card beside the summary is 660-1,000px wide on
+   laptop and tablet screens, so the line total and the ••• (remove line) button were cut off or ran
+   under the summary. The layout now depends on the card, in the editor dialog and the workspace tab:
+   one line with column headings (card 800px or wider), four columns (540-799px), two columns (narrower).
+   Screen only; the printed invoice keeps its own layout. */
+@media screen{
+  #invoiceModal .invoiceLineItemsCard{container:invlines / inline-size}
+  #invoiceModal .invoiceLaborDescription .ilDesc{width:100%!important;box-sizing:border-box!important}
+
+  @container invlines (min-width:800px){
+    #invoiceModal .invoiceGridHeader,
+    #invoiceModal .invoiceServicePartRow,
+    #invoiceModal .invoiceServiceLaborRow{
+      display:grid!important;
+      grid-template-columns:52px minmax(140px,1fr) 64px 70px 64px 76px 34px 100px 82px 38px!important;
+      column-gap:6px!important;row-gap:0!important;align-items:center!important;
+      padding-left:10px!important;padding-right:10px!important;box-sizing:border-box!important;min-width:0!important
+    }
+    #invoiceModal .invoiceGridHeader{font-size:10px!important;letter-spacing:.02em!important;line-height:1.2!important}
+    #invoiceModal .invoiceGridHeader>span{white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;min-width:0!important}
+    #invoiceModal .invoiceGridHeader>span:nth-child(n+3){text-align:right!important}
+    #invoiceModal .invoiceGridHeader>span:nth-child(7){text-align:center!important}
+    /* "Actions" does not fit over the ••• button; it stays in the page for screen readers. */
+    #invoiceModal .invoiceGridHeader>span:nth-child(10){font-size:0!important}
+
+    #invoiceModal .invoiceServicePartRow>.invoiceGridItemLabel,#invoiceModal .invoiceServiceLaborRow>.invoiceGridItemLabel{grid-column:1!important;grid-row:auto!important}
+    #invoiceModal .invoiceServicePartRow>.invoicePartDescription,#invoiceModal .invoiceServiceLaborRow>.invoiceLaborDescription{grid-column:2!important;grid-row:auto!important}
+    #invoiceModal .invoiceServicePartRow>.invoiceQtyUnit,#invoiceModal .invoiceServiceLaborRow>.invoiceQtyUnit{grid-column:3!important;grid-row:auto!important}
+    #invoiceModal .invoiceServicePartRow>.invoiceCostCell{grid-column:4!important;grid-row:auto!important}
+    #invoiceModal .invoiceServicePartRow>.invoiceMarkupCell{grid-column:5!important;grid-row:auto!important}
+    #invoiceModal .invoiceServicePartRow>.invoicePriceCell{grid-column:6!important;grid-row:auto!important}
+    #invoiceModal .invoiceServiceLaborRow>.invoiceLaborRateField{grid-column:4 / span 3!important;grid-row:auto!important}
+    #invoiceModal .invoiceServicePartRow>.invoiceTaxCell,#invoiceModal .invoiceServiceLaborRow>.invoiceTaxCell{grid-column:7!important;grid-row:auto!important;justify-content:center!important;font-size:0!important}
+    #invoiceModal .invoiceServicePartRow>.invoiceDiscountControl,#invoiceModal .invoiceServiceLaborRow>.invoiceDiscountControl{grid-column:8!important;grid-row:auto!important;display:grid!important;grid-template-columns:40px minmax(0,1fr)!important;gap:4px!important}
+    #invoiceModal .invoiceServicePartRow>.invoiceLineNet,#invoiceModal .invoiceServiceLaborRow>.invoiceLineNet{grid-column:9!important;grid-row:auto!important;align-items:flex-end!important;white-space:nowrap!important}
+    #invoiceModal .invoiceServicePartRow>.invoiceRowActions,#invoiceModal .invoiceServiceLaborRow>.invoiceRowActions{grid-column:10!important;grid-row:auto!important;width:auto!important;justify-content:flex-end!important}
+    #invoiceModal .invoiceRateWrap{display:grid!important;grid-template-columns:minmax(0,1fr) 72px!important}
+    #invoiceModal .invoicePartLookupWrap{grid-template-columns:minmax(0,.75fr) minmax(0,1.25fr)!important}
+    #invoiceModal .invoiceMarkupCell{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:3px!important;align-items:center!important}
+    #invoiceModal .invoiceQtyUnit:not(:has(.ilUnit)){display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:3px!important;align-items:center!important}
+    /* Compact boxes so every value reads in full; the heading row names the columns, so the Qty/Hrs suffix is not repeated.
+       The number spinners are hidden here because they covered the value; the arrow keys still step it. */
+    #invoiceModal .invoiceServicePartRow :is(input:not([type=checkbox]),select),
+    #invoiceModal .invoiceServiceLaborRow :is(input:not([type=checkbox]),select){font-size:13px!important;height:34px!important;min-height:34px!important;padding:4px 6px!important;line-height:1.2!important;box-sizing:border-box!important}
+    #invoiceModal .invoiceServicePartRow .invoiceDiscountControl select,#invoiceModal .invoiceServiceLaborRow .invoiceDiscountControl select{padding:0 0 0 5px!important}
+    #invoiceModal .invoiceServicePartRow input[type=number],#invoiceModal .invoiceServiceLaborRow input[type=number]{-moz-appearance:textfield;appearance:textfield}
+    #invoiceModal .invoiceServicePartRow input[type=number]::-webkit-inner-spin-button,#invoiceModal .invoiceServiceLaborRow input[type=number]::-webkit-inner-spin-button,
+    #invoiceModal .invoiceServicePartRow input[type=number]::-webkit-outer-spin-button,#invoiceModal .invoiceServiceLaborRow input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+    #invoiceModal .invoiceQtyUnit>span{display:none!important}
+  }
+
+  /* Four and two columns: no heading row, so each value carries its own label. */
+  @container invlines (max-width:799.98px){
+    #invoiceModal .invoiceGridHeader{display:none!important}
+    #invoiceModal .invoiceServicePartRow,
+    #invoiceModal .invoiceServiceLaborRow{
+      display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;
+      gap:8px!important;align-items:start!important;padding:10px!important;box-sizing:border-box!important;min-width:0!important;min-height:0!important
+    }
+    #invoiceModal .invoiceServicePartRow>*,#invoiceModal .invoiceServiceLaborRow>*{min-width:0!important;height:auto!important;min-height:0!important}
+    #invoiceModal .invoiceGridItemLabel{grid-column:1!important;grid-row:1!important;align-self:center!important;padding:0!important}
+    #invoiceModal .invoiceGridItemLabel.is-part{padding-left:14px!important}
+    #invoiceModal .invoicePartDescription,#invoiceModal .invoiceLaborDescription{grid-column:2 / -1!important;grid-row:1!important}
+    #invoiceModal .invoiceQtyUnit{grid-column:1!important;grid-row:2!important}
+    #invoiceModal .invoiceCostCell{grid-column:2!important;grid-row:2!important}
+    #invoiceModal .invoiceMarkupCell{grid-column:3!important;grid-row:2!important}
+    #invoiceModal .invoicePriceCell{grid-column:4!important;grid-row:2!important}
+    #invoiceModal .invoiceLaborRateField{grid-column:2 / -1!important;grid-row:2!important}
+    #invoiceModal .invoiceTaxCell{grid-column:1!important;grid-row:3!important;align-self:end!important;min-height:32px!important}
+    #invoiceModal .invoiceDiscountControl{grid-column:2!important;grid-row:3!important}
+    #invoiceModal .invoiceLineNet{grid-column:3!important;grid-row:3!important}
+    #invoiceModal .invoiceRowActions{grid-column:4!important;grid-row:3!important;align-self:end!important;justify-content:flex-end!important;width:auto!important}
+
+    #invoiceModal .invoiceQtyUnit,#invoiceModal .invoiceMarkupCell{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:3px 4px!important;align-items:center!important}
+    #invoiceModal .invoiceQtyUnit>span{display:none!important}
+    #invoiceModal .invoiceDiscountControl{display:grid!important;grid-template-columns:52px minmax(0,1fr)!important;gap:3px 4px!important}
+    #invoiceModal .invoiceCostCell,#invoiceModal .invoicePriceCell,#invoiceModal .invoiceLaborRateField{display:block!important}
+    #invoiceModal .invoiceRateWrap{display:grid!important;grid-template-columns:minmax(0,1fr) 88px!important}
+    #invoiceModal .invoiceLineNet{display:flex!important;flex-direction:column!important;align-items:flex-start!important;justify-content:flex-start!important;gap:3px!important}
+    #invoiceModal .invoiceLineNet b{font-size:15px!important;line-height:32px!important}
+    #invoiceModal .invoiceTaxCell{display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:6px!important;font-size:12px!important;font-weight:750!important;color:#344054!important}
+
+    #invoiceModal .invoiceQtyUnit::before,#invoiceModal .invoiceCostCell::before,#invoiceModal .invoiceMarkupCell::before,
+    #invoiceModal .invoicePriceCell::before,#invoiceModal .invoiceLaborRateField::before,#invoiceModal .invoiceDiscountControl::before,
+    #invoiceModal .invoiceLineNet::before{
+      display:block;grid-column:1 / -1;font-size:10px;font-weight:800;line-height:1.2;letter-spacing:.03em;text-transform:uppercase;color:#475467
+    }
+    #invoiceModal .invoiceQtyUnit::before{content:"Qty"}
+    #invoiceModal .invoiceServiceLaborRow .invoiceQtyUnit::before{content:"Hours"}
+    #invoiceModal .invoiceCostCell::before{content:"Buy"}
+    #invoiceModal .invoiceMarkupCell::before{content:"Markup"}
+    #invoiceModal .invoicePriceCell::before{content:"Sell"}
+    #invoiceModal .invoiceLaborRateField::before{content:"Rate"}
+    #invoiceModal .invoiceDiscountControl::before{content:"Discount"}
+    #invoiceModal .invoiceLineNet::before{content:"Line total"}
+    #invoiceModal .invoiceCostCell::before,#invoiceModal .invoicePriceCell::before,#invoiceModal .invoiceLaborRateField::before{margin-bottom:3px}
+  }
+
+  @container invlines (max-width:539.98px){
+    #invoiceModal .invoiceServicePartRow,
+    #invoiceModal .invoiceServiceLaborRow{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+    #invoiceModal .invoiceGridItemLabel{grid-column:1!important;grid-row:1!important}
+    #invoiceModal .invoiceRowActions{grid-column:2!important;grid-row:1!important;align-self:center!important}
+    #invoiceModal .invoicePartDescription,#invoiceModal .invoiceLaborDescription{grid-column:1 / -1!important;grid-row:2!important}
+    #invoiceModal .invoiceQtyUnit{grid-column:1!important;grid-row:3!important}
+    #invoiceModal .invoiceCostCell{grid-column:2!important;grid-row:3!important}
+    #invoiceModal .invoiceMarkupCell{grid-column:1!important;grid-row:4!important}
+    #invoiceModal .invoicePriceCell{grid-column:2!important;grid-row:4!important}
+    #invoiceModal .invoiceDiscountControl{grid-column:1!important;grid-row:5!important}
+    #invoiceModal .invoiceTaxCell{grid-column:2!important;grid-row:5!important}
+    #invoiceModal .invoiceServiceLaborRow .invoiceTaxCell{grid-column:2!important;grid-row:3!important}
+    #invoiceModal .invoiceLaborRateField{grid-column:1 / -1!important;grid-row:4!important}
+    #invoiceModal .invoiceServiceLaborRow .invoiceDiscountControl{grid-column:1 / -1!important;grid-row:5!important}
+    #invoiceModal .invoiceLineNet{grid-column:1 / -1!important;grid-row:6!important;flex-direction:row!important;align-items:center!important;justify-content:space-between!important;border-top:1px solid #eaecf0!important;padding-top:6px!important}
+  }
+}

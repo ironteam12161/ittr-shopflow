@@ -786,7 +786,11 @@ try {
         for (const el of root.querySelectorAll('input:not([type=hidden]),select,textarea,button')) {
           if (!el.offsetParent || el.closest('.invoicePrintOnly') || !el.checkVisibility({ checkVisibilityCSS: true })) continue;
           const r0 = el.getBoundingClientRect(); if (r0.width < 4 || r0.height < 4) continue;
-          el.scrollIntoView({ block: 'center', inline: 'nearest' }); const r = el.getBoundingClientRect(), y = r.top + r.height / 2;
+          el.scrollIntoView({ block: 'center', inline: 'nearest' });
+          // v24.76.4: a box with hidden overflow can be scrolled by a script but not by a person, so a control reached that way is cut off.
+          const hiddenScroll = (() => { for (let n = el.parentElement; n; n = n.parentElement) { const o = getComputedStyle(n).overflowX; if ((o === 'hidden' || o === 'clip') && n.scrollLeft > 0) { n.scrollLeft = 0; return true; } } return false; })();
+          if (hiddenScroll) { out.push(`${el.id || el.dataset.f || el.getAttribute('aria-label') || el.textContent.trim().slice(0, 24) || el.tagName} is cut off (only a script can scroll it into view)`); continue; }
+          const r = el.getBoundingClientRect(), y = r.top + r.height / 2;
           for (const x of [r.left + 3, r.left + r.width / 2, r.right - 3]) {
             const hit = document.elementFromPoint(x, y);
             if (!(hit && (hit === el || el.contains(hit) || [...(el.labels || [])].some(l => l.contains(hit))))) { out.push(`${el.id || el.dataset.f || el.getAttribute('aria-label') || el.textContent.trim().slice(0, 24) || el.tagName}@${Math.round(x)},${Math.round(y)}→${hit ? (hit.id || String(hit.className).slice(0, 30) || hit.tagName) + ':' + (hit.textContent || '').trim().slice(0, 20) : 'nothing'}`); break; }
@@ -877,6 +881,124 @@ try {
     await page.evaluate(id => openInvoice(id, true), inv); await page.waitForSelector('#invoiceModal.open'); await sleep(800);
     const unnamed = await page.evaluate(() => [...document.querySelectorAll('#invoiceModal input:not([type=hidden]), #invoiceModal select, #invoiceModal textarea')].filter(e => e.offsetParent && !(e.getAttribute('aria-label') || e.title || (e.labels && [...e.labels].some(l => l.textContent.trim())) || e.placeholder)).map(e => e.className || e.id || e.tagName));
     eq(unnamed.join(' | '), '', 'every invoice editor field has a name');
+    eq(page.errs.join(' | '), '', 'no page errors'); await ctx.close();
+  });
+  await scenario('A48 invoice lines at every screen width, in the editor and the workspace tab: line total and ••• inside the card, nothing overlapping or covered, values readable, no sideways scroll', async () => {
+    const i = await R('/api/invoices', { method: 'POST', token: owner, body: { customerId: cust.id, customerName: cust.customer_name, unitNumber: 'AUD-WIDE' } });
+    await R(`/api/invoices/${i.id}/lines`, { method: 'POST', token: owner, body: { lineType: 'labor', description: 'Reefer compressor replacement and recharge', quantity: 112.25, unitPrice: 215, jobName: 'Reefer', taxable: true, discountType: 'fixed', discountValue: 1250.5 } });
+    await R(`/api/invoices/${i.id}/lines`, { method: 'POST', token: owner, body: { lineType: 'part', description: 'Compressor assembly, remanufactured', partNumber: 'TK-102-1234', quantity: 12.5, unitPrice: 2345.67, unitCost: 1234.56, jobName: 'Reefer', taxable: true, discountType: 'percent', discountValue: 12.5 } });
+    await R(`/api/invoices/${i.id}/lines`, { method: 'POST', token: owner, body: { lineType: 'sublet', description: 'Alignment at partner shop', quantity: 1, unitPrice: 1450, jobName: 'Reefer', taxable: false } });
+    // Measured in place: rows are only scrolled up or down (never sideways), the way a person would reach them.
+    const check = () => {
+      const out = [], rows = [...document.querySelectorAll('#invoiceModal .invoiceGridHeader, #invoiceModal .invoiceServiceLaborRow, #invoiceModal .invoiceServicePartRow')].filter(r => r.getClientRects().length);
+      if (rows.filter(r => !r.matches('.invoiceGridHeader')).length < 3) out.push(`only ${rows.length} rows shown`);
+      for (const row of rows) {
+        const kind = row.matches('.invoiceGridHeader') ? 'heading' : row.matches('.invoiceServiceLaborRow') ? 'labor' : 'part';
+        for (let n = row.parentElement; n; n = n.parentElement) { const o = getComputedStyle(n).overflowY; if (n === document.documentElement || ((o === 'auto' || o === 'scroll') && n.scrollHeight > n.clientHeight)) { const nr = n === document.documentElement ? { top: 0, height: innerHeight } : n.getBoundingClientRect(), rr = row.getBoundingClientRect(); n.scrollTop += (rr.top + rr.height / 2) - (nr.top + nr.height / 2); break; } }
+        let L = 0, Rt = innerWidth; for (let n = row.parentElement; n; n = n.parentElement) { if (getComputedStyle(n).overflowX !== 'visible') { const nr = n.getBoundingClientRect(); L = Math.max(L, nr.left); Rt = Math.min(Rt, nr.right); } }
+        const cells = [...row.children].filter(c => c.getClientRects().length && c.getBoundingClientRect().width > 1 && c.getBoundingClientRect().height > 1);
+        for (let a = 0; a < cells.length; a++) for (let b = a + 1; b < cells.length; b++) { const A = cells[a].getBoundingClientRect(), B = cells[b].getBoundingClientRect(); if (Math.min(A.right, B.right) - Math.max(A.left, B.left) > 2 && Math.min(A.bottom, B.bottom) - Math.max(A.top, B.top) > 2) out.push(`${kind}: ${cells[a].className} overlaps ${cells[b].className}`); }
+        if (kind === 'heading') { for (const s of cells) if (s.scrollWidth > s.clientWidth + 1) out.push(`heading "${s.textContent.trim()}" cut`); if (new Set(cells.map(c => Math.round(c.getBoundingClientRect().top))).size > 1) out.push('heading wraps'); continue; }
+        for (const k of row.querySelectorAll('input:not([type=hidden]),select,button,.ilAmount')) {
+          if (!k.getClientRects().length) continue; const kr = k.getBoundingClientRect(), label = `${kind} ${k.getAttribute('aria-label') || k.className}`;
+          if (kr.width < 2) continue;
+          if (kr.left < L - 1 || kr.right > Rt + 1) { out.push(`${label} cut off (${Math.round(kr.left)}-${Math.round(kr.right)}, visible ${Math.round(L)}-${Math.round(Rt)})`); continue; }
+          const hit = document.elementFromPoint(kr.left + kr.width / 2, kr.top + kr.height / 2);
+          if (!(hit === k || k.contains(hit) || (hit?.tagName === 'LABEL' && hit.contains(k)))) out.push(`${label} covered by ${hit?.className || hit?.tagName}`);
+          if (k.matches('input:not([type=checkbox]):not(.ilDesc):not(.ilPart)') && k.value && k.scrollWidth > k.clientWidth + 1) out.push(`${label} shows "${k.value}" cut`);
+          if (k.matches('select:not(.ilRatePreset)')) { const cs = getComputedStyle(k), c = document.createElement('canvas').getContext('2d'); c.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`; if (c.measureText(k.options[k.selectedIndex]?.text || '').width > k.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - 16 + 1) out.push(`${label} choice cut`); }
+        }
+      }
+      const sideways = [document.documentElement, ...document.querySelectorAll('#invoiceModal, #invoiceModal *')].filter(n => { const o = getComputedStyle(n).overflowX; return (n === document.documentElement || o === 'auto' || o === 'scroll') && n.scrollWidth > n.clientWidth + 1; });
+      if (sideways.length) out.push(`scrolls sideways: ${sideways.map(n => n.id || n.className || n.tagName).join(',')}`);
+      return out;
+    };
+    const { ctx, page } = await newPage(1280); await signIn(page, OWNER.username, OWNER.password);
+    for (const mode of ['editor', 'workspace']) for (const w of [390, 820, 1024, 1180, 1280, 1366, 1440, 1920]) {
+      await page.setViewportSize({ width: w, height: 900 });
+      if (mode === 'workspace') { await page.goto(`${srv.base()}/?invoiceWorkspace=${i.id}`); await page.waitForFunction(() => document.body.classList.contains('invoiceWorkspaceMode') && document.querySelector('#invoiceModal.open .invoiceServiceLaborRow'), null, { timeout: 15000 }); }
+      else { await page.evaluate(async id => { closeModal('invoiceModal'); await showView('invoices'); await openInvoice(id); }, i.id); await page.waitForSelector('#invoiceModal.open .invoiceServiceLaborRow'); }
+      await sleep(400);
+      eq((await page.evaluate(check)).join(' | '), '', `${mode} at ${w}px`);
+    }
+    eq(await page.evaluate(() => [...document.querySelectorAll('#invoiceModal .invoiceRowDelete')].map(b => b.getAttribute('aria-label')).join(',')), 'Remove labor,Remove line,Remove line', 'the ••• buttons say what they do');
+    eq(page.errs.join(' | '), '', 'no page errors'); await ctx.close();
+  });
+  await scenario('A49 pages, scripts and styles are sent compressed when the browser accepts it, with the same content and cache rules; nothing outside public/ is reachable', async () => {
+    const { request: get } = await import('node:http'), zlib = await import('node:zlib'), { readFileSync } = await import('node:fs');
+    const raw = (path, headers = {}, method = 'GET') => new Promise((resolve, reject) => { const u = new URL(srv.base()); const q = get({ host: u.hostname, port: u.port, path, method, headers }, r => { const parts = []; r.on('data', d => parts.push(d)); r.on('end', () => resolve({ status: r.statusCode, h: r.headers, body: Buffer.concat(parts) })); }); q.on('error', reject); q.end(); });
+    const index = readFileSync(new URL('./public/index.html', import.meta.url));
+    const br = await raw('/', { 'accept-encoding': 'gzip, deflate, br, zstd' });
+    eq(br.status, 200, 'app page'); eq(br.h['content-encoding'], 'br', 'brotli when offered (as Chrome does)');
+    ok(br.body.length < index.length / 3, `compressed to under a third (${br.body.length} of ${index.length} bytes)`);
+    ok(zlib.brotliDecompressSync(br.body).equals(index), 'same bytes as public/index.html after decompressing');
+    ok(/no-store/.test(br.h['cache-control'] || ''), 'the app page is still never cached'); ok(/accept-encoding/i.test(br.h.vary || ''), 'Vary: Accept-Encoding');
+    eq(Number(br.h['content-length']), br.body.length, 'length of the compressed body');
+    const gz = await raw('/index.html', { 'accept-encoding': 'br;q=0, gzip' });
+    eq(gz.h['content-encoding'], 'gzip', 'gzip when brotli is refused'); ok(zlib.gunzipSync(gz.body).equals(index), 'gzip body decompresses to the file');
+    const plain = await raw('/');
+    eq(plain.h['content-encoding'], undefined, 'no Accept-Encoding: sent as it is'); ok(plain.body.equals(index), 'plain body is the file');
+    const head = await raw('/', { 'accept-encoding': 'br' }, 'HEAD');
+    eq(head.body.length, 0, 'HEAD has no body'); eq(head.h['content-length'], br.h['content-length'], 'HEAD gives the compressed length');
+    const again = await raw('/app-shell.css', { 'accept-encoding': 'br' });
+    eq(again.h['content-encoding'], 'br', 'stylesheet compressed'); eq(again.h['cache-control'], 'public, max-age=0', 'other files keep the usual cache rule');
+    eq((await raw('/app-shell.css', { 'accept-encoding': 'br', 'if-none-match': again.h.etag })).status, 304, 'unchanged file answers 304 to its ETag');
+    const mod = await raw('/modules/invoices.html', { 'accept-encoding': 'gzip' });
+    ok(/no-store/.test(mod.h['cache-control'] || '') && mod.h['content-encoding'] === 'gzip', 'screen modules: compressed and never cached');
+    const range = await raw('/shop-workspace.js', { 'accept-encoding': 'br', range: 'bytes=0-99' });
+    eq(range.status, 206, 'a range request still gets its range'); eq(range.h['content-encoding'], undefined, 'range answers are not compressed');
+    for (const p of ['/..%2fserver.js', '/%2e%2e/server.js', '/modules/..%2f..%2fserver.js', '/.env', '/%2e%2e%2fpackage.json']) {
+      const r = await raw(p, { 'accept-encoding': 'br' }); const text = r.h['content-encoding'] === 'br' ? zlib.brotliDecompressSync(r.body).toString() : r.body.toString();
+      ok(!/import express from|"dependencies"|DATABASE_URL=/.test(text), `${p} does not reveal a file outside public/ (status ${r.status})`);
+    }
+  });
+  await scenario('A50 UX audit: mechanic phone (AI in the bottom bar, not over the jobs; readable pills), contrast, one page title, overdue days as A/R counts them, customer named once, tappable Bills filters', async () => {
+    const contrast = (fg, bg) => { const L = c => { const [r, g, b] = c.match(/[\d.]+/g).slice(0, 3).map(Number).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; }; const a = L(fg), b = L(bg); return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05); };
+    const phone = await newPage(390); const p = phone.page; await signIn(p, 'mech1', KPASS);
+    await p.evaluate(() => showView('mechanic')); await sleep(600);
+    eq(await p.locator('#shopAiFab').isVisible(), false, 'no floating AI button over the job cards on a mechanic\'s phone');
+    const ask = p.locator('#mobileBottomNav .mobileAiBtn'); ok(await ask.isVisible(), 'Ask AI is in the bottom bar');
+    await ask.click(); await sleep(300);
+    ok(await p.evaluate(() => !document.getElementById('shopAiPanel').classList.contains('hidden')), 'Ask AI opens the assistant');
+    await p.evaluate(() => toggleShopAI(false)); await sleep(200);
+    const pills = await p.evaluate(() => [...document.querySelectorAll('#mechanic .badge')].filter(b => b.getClientRects().length).map(b => parseFloat(getComputedStyle(b).fontSize)));
+    ok(pills.length > 0 && pills.every(s => s >= 12), `status pills at least 12px on the phone (${[...new Set(pills)].join(',')})`);
+    const clock = await p.evaluate(() => { const b = document.querySelector('.mechClockBtn.in') || Object.assign(document.body.appendChild(document.createElement('button')), { className: 'mechClockBtn in' }); const cs = getComputedStyle(b); return [cs.color, cs.backgroundColor]; });
+    ok(contrast(...clock) >= 4.5, `Clock In text contrast ${contrast(...clock).toFixed(2)}:1`);
+    eq(p.errs.join(' | '), '', 'no page errors on the phone'); await phone.ctx.close();
+
+    const { ctx, page } = await newPage(1280); await signIn(page, OWNER.username, OWNER.password);
+    ok(await page.locator('#shopAiFab').isVisible(), 'the floating AI button stays on the desktop');
+    for (const cls of ['payGo', 'cfmOk neutral']) { const c = await page.evaluate(k => { const b = document.body.appendChild(document.createElement('button')); b.className = k; const cs = getComputedStyle(b); const out = [cs.color, cs.backgroundColor]; b.remove(); return out; }, cls); ok(contrast(...c) >= 4.5, `${cls} button text contrast ${contrast(...c).toFixed(2)}:1`); }
+    await page.evaluate(() => showView('dashboard')); await sleep(600);
+    const heads = await page.evaluate(() => [...document.querySelectorAll('#dashboard h1, #dashboard h2')].map(h => h.tagName));
+    eq(heads.filter(h => h === 'H1').length, 1, 'one page title on the dashboard'); eq(heads[0], 'H1', 'the page title comes before the section headings');
+    const empty = await page.evaluate(() => { const e = document.querySelector('#dashboard .calendarEmpty') || Object.assign(document.getElementById('dashboard').appendChild(document.createElement('div')), { className: 'calendarEmpty', textContent: 'No jobs' }); const cs = getComputedStyle(e); return [cs.color, 'rgb(255, 255, 255)']; });
+    ok(contrast(...empty) >= 4.5, `"No jobs" contrast ${contrast(...empty).toFixed(2)}:1`);
+    eq(await page.evaluate(() => { const t = new Date(), d = new Date(t.getFullYear(), t.getMonth(), t.getDate() - 20), iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return [invOverdueDays({ status: 'sent', due_date: iso }), invOverdueDays({ status: 'sent', due_date: iso + 'T00:00:00.000Z' })].join(','); }), '20,20', 'an invoice due 20 days ago is 20 days overdue (as A/R aging counts)');
+    await page.evaluate(() => showView('customers')); await sleep(500);
+    await page.evaluate(id => openCustomerProfile(id), cust.id); await page.waitForSelector('#customerModal.open .customerProfileHeader');
+    eq(await page.evaluate(n => [...document.querySelectorAll('#customerModal h1, #customerModal h2, #customerModal h3')].filter(h => h.textContent.trim() === n).length, cust.customer_name), 1, 'the customer is named once in the profile');
+    await page.evaluate(() => closeModal('customerModal'));
+    await R('/api/bills', { method: 'POST', token: owner, body: { vendor: 'Audit Power Co', billDate: new Date().toISOString().slice(0, 10), invoiceNumber: 'A50-1', lines: [{ description: 'Electricity', amount: 50, category: 'utilities' }] } });
+    await page.evaluate(() => showView('bills')); await page.waitForSelector('#blCats .blCat', { timeout: 10000 });
+    const chips = await page.evaluate(() => [...document.querySelectorAll('#blCats .blCat')].map(b => Math.round(b.getBoundingClientRect().height)));
+    ok(chips.length > 1 && chips.every(h => h >= 34), `Bills category filters are at least 34px tall (${chips.join(',')})`);
+    eq(page.errs.join(' | '), '', 'no page errors'); await ctx.close();
+  });
+  await scenario('A51 estimate editor on a 390 px phone: every field and button is on the screen, nothing scrolls sideways', async () => {
+    const e = await R('/api/estimates', { method: 'POST', token: owner, body: { customerName: cust.customer_name, customerId: cust.id } });
+    await R(`/api/estimates/${e.id}/lines`, { method: 'POST', token: owner, body: { lineType: 'labor', description: 'Reefer compressor replacement', quantity: 6, unitPrice: 145, jobName: 'Reefer compressor replacement' } });
+    const { ctx, page } = await newPage(390); await signIn(page, OWNER.username, OWNER.password);
+    await page.evaluate(() => showView('estimates')); await page.waitForFunction(() => typeof window.ittrOpenEstimate === 'function', null, { timeout: 15000 });
+    await page.evaluate(id => window.ittrOpenEstimate(id), e.id); await page.waitForSelector('#estEditor:not(.hidden) #estEditorBox input', { timeout: 15000 }); await sleep(500);
+    const r = await page.evaluate(() => {
+      const box = document.getElementById('estEditorBox'), out = [];
+      for (const k of box.querySelectorAll('input:not([type=hidden]),select,button,textarea')) { if (!k.getClientRects().length) continue; const kr = k.getBoundingClientRect(); if (kr.width > 1 && (kr.left < -1 || kr.right > innerWidth + 1)) out.push(`${(k.getAttribute('aria-label') || k.textContent || k.placeholder || k.tagName).trim().slice(0, 24)} ${Math.round(kr.left)}-${Math.round(kr.right)}`); }
+      const ed = document.getElementById('estEditor'); if (ed.scrollWidth > ed.clientWidth + 1) out.push(`editor scrolls sideways (${ed.scrollWidth} > ${ed.clientWidth})`);
+      return out;
+    });
+    eq(r.join(' | '), '', 'everything on the 390 px screen');
     eq(page.errs.join(' | '), '', 'no page errors'); await ctx.close();
   });
   await scenario('A17 work-order Billing tab links to its estimate and invoice', async () => {
@@ -1084,10 +1206,14 @@ try {
     const r = await fetch(srv.base() + '/'), h = Object.fromEntries(r.headers);
     ok(/default-src/.test(h['content-security-policy'] || ''), 'CSP'); eq(h['x-content-type-options'], 'nosniff', 'nosniff');
     ok(/frame-ancestors|DENY|SAMEORIGIN/i.test((h['content-security-policy'] || '') + (h['x-frame-options'] || '')), 'framing restricted');
-    const a = await R('/api/auth/login', { method: 'POST', body: { username: 'no-such-user-x', password: 'Wrong-Pass-123' }, allowError: true });
-    const b = await R('/api/auth/login', { method: 'POST', body: { username: 'mech2', password: 'Wrong-Pass-123' }, allowError: true });
+    // v24.76.4: these sign-ins come from their own address (the server trusts one proxy hop, as behind Railway's proxy), so
+    // the rate-limit buckets start empty. Before, the 100 signed-out /api/auth calls per 15 minutes that every earlier
+    // scenario's sign-ins share could run out between the two requests compared here (one answered 401, the next 429).
+    const login = async body => { const r = await fetch(srv.base() + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '203.0.113.44' }, body: JSON.stringify(body) }); return { status: r.status, ...(await r.json().catch(() => ({}))) }; };
+    const a = await login({ username: 'no-such-user-x', password: 'Wrong-Pass-123' });
+    const b = await login({ username: 'mech2', password: 'Wrong-Pass-123' });
     eq(a.status, b.status, 'same status for unknown user and wrong password'); eq(a.error, b.error, 'same message');
-    let locked = false; for (let k = 0; k < 14 && !locked; k++) { const x = await R('/api/auth/login', { method: 'POST', body: { username: 'mech2', password: `Wrong-${k}-pass` }, allowError: true }); if (x.status === 429 || /locked|too many/i.test(x.error || '')) locked = true; }
+    let locked = false; for (let k = 0; k < 14 && !locked; k++) { const x = await login({ username: 'mech2', password: `Wrong-${k}-pass` }); if (x.status === 429 || /locked|too many/i.test(x.error || '')) locked = true; }
     ok(locked, 'repeated wrong passwords are slowed or locked');
     const { readFileSync, readdirSync } = await import('node:fs');
     const files = readdirSync('public').filter(f => /\.(js|html)$/.test(f)).map(f => 'public/' + f).concat(readdirSync('public/modules').map(f => 'public/modules/' + f));
