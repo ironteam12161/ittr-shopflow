@@ -84,6 +84,26 @@ Then remove the practice data (**Start fresh**, or void the invoice), and go liv
 - **Branch protection:** in GitHub, require the **audit** check on `main`, and deploy only from `main` after it passes.
 - **Backups:** download a backup weekly (**🔒 Password → Download backup**) in addition to Railway's. Once, restore a Railway backup into a separate test database to prove recovery works. Photos in R2 are not in the database backup.
 - **One server:** keep one Railway replica. Live updates between devices assume a single server process.
+- **Check the deployed version:** `<APP_PUBLIC_URL>/api/health` shows `"version"`. If it is older than `main`, Railway did not build the latest commit. Open **web → Deployments** and deploy the latest commit. **Redeploy** on an old entry rebuilds that same old commit.
+
+## 9. If the host's secrets are exposed (key rotation)
+
+Railway keeps every setting the server reads. If Railway (or any host) reports that environment variables were exposed, treat every value as known to someone else. Rotate each one at its provider, put the new value in **Railway → web → Variables**, deploy once, then revoke the old one.
+
+| Setting | Where to make a new one | After the deploy |
+|---|---|---|
+| `DATABASE_URL` | Railway → **Postgres** → regenerate the password. Keep the app's `DATABASE_URL` as `${{Postgres.DATABASE_URL}}`. | The app stops reaching the database until it is redeployed, so do this last, right before the deploy. |
+| `STRIPE_SECRET_KEY` | Stripe → **Developers → API keys** → roll the secret key, with the shortest expiry that covers the deploy. | Check **Payments** and **Payouts** for anything you did not make. |
+| `STRIPE_WEBHOOK_SECRET` | Stripe → **Developers → Webhooks** → your endpoint → roll the signing secret. | — |
+| `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | Cloudflare → **R2 → Manage R2 API tokens** → new token, Object Read & Write on the photo bucket. | Delete the old token. |
+| `GOOGLE_CLIENT_SECRET` | Google Cloud → **APIs & Services → Credentials** → the OAuth client → add a secret. | Delete the old secret. |
+| `GMAIL_TOKEN_KEY` | Any new random value of 32 or more characters. | The saved Gmail connection can no longer be read: **Email settings → Disconnect**, then connect Gmail again (this also replaces its refresh token). |
+| `OPENROUTER_API_KEY`, `OPENAI_API_KEY` | openrouter.ai → **Keys**; platform.openai.com → **API keys**. | Delete the old keys. Until then the AI features answer "AI provider rejected the API key"; the rest of the app works. |
+| `RESEND_API_KEY`, `SAMSARA_API_TOKEN`, `FMCSA_WEBKEY`, `ALERT_WEBHOOK_URL` | Each provider's API keys page (for the alert webhook, make a new webhook). | Delete the old keys. |
+| `BOOTSTRAP_ADMIN_PASSWORD` | Change the owner's password in the app (**🔒 Password**) and turn on 2-step login. | Delete this setting or set it to the new password; it is only used on an empty database. |
+| Twilio auth token (stored in the app's database, not in Railway) | Twilio console → **API keys & tokens** → secondary token, put it in the app's texting settings, then make it primary. | The old token stops working when the new one becomes primary. |
+
+Then check `<APP_PUBLIC_URL>/api/health` (`"ready":true` and the expected version), sign in, open an invoice, and send a test email.
 
 ## What has and has not been checked
 
