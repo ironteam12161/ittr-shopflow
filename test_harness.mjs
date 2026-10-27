@@ -52,7 +52,7 @@ export async function startTestServer({ prefix = 'ittr_test', env = {}, admin = 
   async function cleanup() { await stop().catch(() => {}); await db.end().catch(() => {}); const b = new pg.Pool({ connectionString: url, ssl: false }); try { await b.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`); } catch (_) {} await b.end().catch(() => {}); }
   async function login(username, password) { const r = await request('/api/auth/login', { method: 'POST', body: { username, password } }); return r.token; }
   await start();
-  return { db, schema, request, start, stop, cleanup, login, base, output: () => output, admin };
+  return { db, schema, request, start, stop, cleanup, login, base, output: () => output, admin, child: () => child };
 }
 
 export function ok(v, msg) { if (!v) throw new Error(msg); }

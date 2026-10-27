@@ -16,7 +16,7 @@ Production shop-management PWA for **Iron Team Truck & Trailer Repair**.
 - `database/` — database-related project files.
 - `server.js` — Express/PostgreSQL backend and API routes.
 - `schema.sql` + numbered `*.sql` files — schema/migration history. **Never reset production PostgreSQL when deploying.**
-- `package.json` — Node runtime and scripts.
+- `package.json` — Node runtime (Node 24, also in `.nvmrc`) and scripts. `npm start` runs `exec node server.js` so the server receives Railway's stop signal.
 - `railway.json` / `Procfile` — Railway deployment configuration.
 - `production_audit.mjs` — maintained production regression/security audit used by the release pipeline.
 - `release_audit.mjs` — compatibility entry point that delegates to the canonical full check pipeline.

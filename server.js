@@ -181,6 +181,8 @@ const signedPhotoUrl=key=>getSignedUrl(requireR2(),new GetObjectCommand({Bucket:
 
 
 app.set("trust proxy",1);
+// v24.76.5: while the server is stopping (see ittrShutdown), answers close their connection so the proxy moves to the new server.
+app.use((req,res,next)=>{const writeHead=res.writeHead;res.writeHead=function(...args){if(ittrShuttingDown&&!res.headersSent)res.setHeader("Connection","close");return writeHead.apply(this,args)};next()});
 const cspHost=req=>String(req.headers.host||"").replace(/[^A-Za-z0-9.:-]/g,"").slice(0,255);
 app.use(helmet({
  contentSecurityPolicy:{directives:{
@@ -2182,7 +2184,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.76.4");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.76.5");
 // v24.76.1: the deployed commit (Railway sets RAILWAY_GIT_COMMIT_SHA), so a deploy check can compare exact code, not just
 // a version label that several fixes share. null when the host does not provide it.
 const ITTR_COMMIT=String(process.env.RAILWAY_GIT_COMMIT_SHA||process.env.SOURCE_COMMIT||process.env.GIT_COMMIT||"").replace(/[^0-9a-f]/gi,"").slice(0,40)||null;
@@ -2239,10 +2241,14 @@ app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
   if(req.body?.rememberDevice===true)deviceToken=await createTrustedDevice(db,u,{label:String(req.get("user-agent")||"").slice(0,160),ip:req.ip});
  }
  await db.query("UPDATE auth_users SET failed_logins=0,locked_until=NULL WHERE id=$1",[u.id]);
+ // v24.76.5: the owner account is created from BOOTSTRAP_ADMIN_PASSWORD, a Railway setting. Signing in with that same
+ // password means it was never changed, so anyone who can read Railway's settings can sign in as this account.
+ const setupPw=String(process.env.BOOTSTRAP_ADMIN_PASSWORD||""),sha=v=>crypto.createHash("sha256").update(v).digest();
+ const setupPasswordInUse=setupPw.length>=10&&crypto.timingSafeEqual(sha(password),sha(setupPw));
  const raw=crypto.randomBytes(32).toString("base64url"),days=Math.max(1,Math.min(30,Number(process.env.SESSION_TTL_DAYS||7)));
  await db.query("INSERT INTO auth_sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+($3||' days')::interval)",[hashToken(raw),u.id,String(days)]);
- await audit(username,"login",{mfa:hasSecondFactor(u),rememberedDevice:Boolean(hasSecondFactor(u)&&!second),...(second?.recoveryUsed?{recoveryCodeUsed:true,recoveryLeft:second.recoveryLeft}:{})});
- res.json({token:raw,user:publicUser(u),...(deviceToken?{deviceToken,deviceDays:TRUSTED_DEVICE_DAYS}:{}),...(second?.recoveryUsed?{recoveryLeft:second.recoveryLeft}:{})});
+ await audit(username,"login",{mfa:hasSecondFactor(u),rememberedDevice:Boolean(hasSecondFactor(u)&&!second),...(second?.recoveryUsed?{recoveryCodeUsed:true,recoveryLeft:second.recoveryLeft}:{}),...(setupPasswordInUse?{setupPassword:true}:{}),ip:String(req.ip||"").slice(0,64),device:String(req.get("user-agent")||"").slice(0,160)});
+ res.json({token:raw,user:publicUser(u),...(deviceToken?{deviceToken,deviceDays:TRUSTED_DEVICE_DAYS}:{}),...(second?.recoveryUsed?{recoveryLeft:second.recoveryLeft}:{}),...(setupPasswordInUse?{setupPasswordInUse:true}:{})});
 }catch(e){next(e)}});
 app.post("/api/auth/logout",auth,async(req,res,next)=>{try{await requireDb().query("DELETE FROM auth_sessions WHERE token_hash=$1",[hashToken(req.sessionToken)]);res.json({ok:true})}catch(e){next(e)}});
 app.get("/api/auth/me",auth,(req,res)=>res.json({user:publicUser(req.user)}));
@@ -2264,6 +2270,21 @@ app.post("/api/auth/password",loginLimiter,auth,async(req,res,next)=>{try{
 app.get("/api/auth/sessions",auth,async(req,res,next)=>{try{
  const r=await requireDb().query("SELECT count(*)::int n FROM auth_sessions WHERE user_id=$1 AND expires_at>now()",[req.user.id]);
  res.json({active:r.rows[0].n,others:Math.max(0,r.rows[0].n-1)});
+}catch(e){next(e)}});
+// v24.76.5: the owner can end every sign-in of every account at once (all sessions except this one) and forget every
+// remembered device, so the next sign-in everywhere needs the password and, where it is on, the 2-step code. For when a
+// password or the server's settings may have leaked. Live connections of the ended sessions are dropped straight away.
+app.post("/api/admin/sessions/revoke-all",auth,ownerOnly,async(req,res,next)=>{try{const db=requireDb();
+ const s=await db.query("DELETE FROM auth_sessions WHERE id<>$1",[req.user.session_id]),d=await db.query("DELETE FROM trusted_devices");
+ await audit(req.user.username,"all_sessions_signed_out",{sessions:s.rowCount,rememberedDevices:d.rowCount});
+ revalidateLiveSockets().catch(e=>console.error("[live socket] recheck after sign-out failed:",e?.message));
+ res.json({ok:true,signedOut:s.rowCount,devicesForgotten:d.rowCount});
+}catch(e){next(e)}});
+// v24.76.5: sign-ins and account-security changes for the owner to review (who, when, from where, with 2-step or not).
+const SECURITY_EVENTS=["login","account_locked","all_sessions_signed_out","other_sessions_signed_out","own_password_changed","manager_password_changed","mechanic_password_changed","2fa_enabled","2fa_email_enabled","2fa_disabled","2fa_recovery_codes_replaced","2fa_reset_for_manager","remembered_devices_forgotten"];
+app.get("/api/admin/security-events",auth,ownerOnly,async(req,res,next)=>{try{
+ const r=await requireDb().query("SELECT username,action,details,created_at FROM server_audit WHERE action=ANY($1::text[]) ORDER BY id DESC LIMIT 200",[SECURITY_EVENTS]);
+ res.json({items:r.rows});
 }catch(e){next(e)}});
 app.post("/api/auth/sessions/revoke-others",auth,async(req,res,next)=>{try{
  const out=await requireDb().query("DELETE FROM auth_sessions WHERE user_id=$1 AND id<>$2",[req.user.id,req.user.session_id]);await forgetTrustedDevices(requireDb(),req.user.id);
@@ -5446,6 +5467,24 @@ app.get("*splat",async(req,res,next)=>{
  try{if(await sendCompressedFile(req,res,authoritativeIndex))return}catch(e){return next(e)}
  res.sendFile(authoritativeIndex);
 });
+
+// v24.76.5: a clean stop. Railway sends SIGTERM to the old server on every deploy (the start script uses `exec`, so the
+// signal reaches Node; through plain `npm start` it never did and the server was simply killed). New connections are
+// refused, requests already running may finish (up to ITTR_SHUTDOWN_GRACE_MS, default 10 s, unless Railway stops the
+// server sooner), live phones are told the server is restarting so they reconnect to the new one at once, and the
+// database connections are closed before exit.
+let ittrShuttingDown=false;
+function ittrShutdown(signal){
+ if(ittrShuttingDown)return;ittrShuttingDown=true;
+ const grace=Math.max(500,Number(process.env.ITTR_SHUTDOWN_GRACE_MS)||10000);
+ console.log(`[shutdown] ${signal}: no new connections; finishing open requests (up to ${Math.round(grace/1000)} s)`);
+ const force=setTimeout(()=>{console.warn("[shutdown] grace period over; exiting with requests still open");process.exit(0)},grace);force.unref?.();
+ for(const ws of liveClients){liveClients.delete(ws);clearTimeout(ws.ittrExpiry);try{ws.close(1012,"Server restarting")}catch(_){}setTimeout(()=>{try{ws.terminate()}catch(_){}},1500).unref?.()}
+ httpServer.close(async()=>{clearTimeout(force);try{await Promise.race([pool?.end(),new Promise(ok=>setTimeout(ok,2000).unref?.())])}catch(_){}console.log("[shutdown] done");process.exit(0)});
+ // Keep-alive connections are closed as soon as their last answer is out, not after the 5 s idle timeout.
+ httpServer.closeIdleConnections?.();setInterval(()=>httpServer.closeIdleConnections?.(),200).unref?.();
+}
+process.on("SIGTERM",()=>ittrShutdown("SIGTERM"));process.on("SIGINT",()=>ittrShutdown("SIGINT"));
 
 initDb()
   .then(()=>ensureFinanceSchema(pool))
