@@ -30,6 +30,23 @@
 
 Each new scenario (O1–O4) fails when run against `main` and passes here.
 
+### Follow-up: the recommendations, done
+
+After the first review, the owner asked to finish what was left open. These were done on the same pull request:
+
+| # | Finding | Evidence | Fix | Test |
+|---|---|---|---|---|
+| E7 | **A single wrong password left no trace**; only the lockout after 8 in a row was logged. My own E5 also showed every sign-in address and browser to any manager with Reports, through the activity log. E5 was never released. | Code review; the activity-log route returned the whole `details` of every row. | Each failed sign-in is recorded with its reason (wrong password, wrong 2-step code, account locked, no such account), its address and browser. A name with no account is not recorded, because people sometimes type their password into the name box. **Recent sign-ins** lists failed sign-ins apart from real ones, with a 24-hour count, so a burst of failures cannot push real sign-ins out. They are kept 90 days. The activity log no longer shows addresses, browsers or failed sign-ins to managers. | O5 (new); O4 checks the 90 days |
+| E8 | **A database connection that dropped while a request was using it crashed the server.** Examples: a database restart, a network blip, or a request waiting on something else between two queries. pg raises the drop as an `error` event on the connection itself. Only idle connections had a listener, so it became an uncaught exception, and the server's handler exits. | Reproduction with pg against PostgreSQL 16: a connection in a transaction, ended by the database, gave `uncaughtException`. The server answers that with `process.exit(1)`. | `db_pool.mjs`: every connection gets an error listener when it is made. The drop fails only that request, which answers 503 "the database is busy or not answering, try again". | O6 (new) |
+| E9 | **The app had no time limits on the database.** Waiting for a connection could last forever (pg's default). A query stuck behind a lock also waited forever. | O7 on the previous commit: a request behind a lock never answered. | The connection wait is 15 s. A statement may run 120 s, and a transaction may sit idle 120 s. Each is configurable, and `0` turns it off. Index builds lift the statement limit for themselves. The limits are set with `SET`, so a connection pooler in front of PostgreSQL cannot refuse the connection. | O6, O7 (new) |
+| E10 | **The Samsara unit sync waited on Samsara's API inside an open database transaction.** | O7 on the previous commit: one connection was "idle in transaction" for the whole time Samsara was slow. | Samsara is asked first, then the transaction starts. | O7 |
+| E11 | **2-step authenticator secrets were stored in plain form**, so a copy of the database could produce codes. | Code review (`totp_secret`). | With `MFA_SECRET_KEY` set, secrets are encrypted (AES-256-GCM). Existing ones are encrypted at startup. `MFA_SECRET_KEY_OLD` changes the key, or turns encryption off again before a rollback. If the key is lost, sign-in says so (503 `MFA_KEY`) and does not count it towards the lock. Recovery and email codes still work, and startup raises an alert. Without the setting, nothing changes. | O8 (new) |
+| E12 | **Dependencies and dead files.** | `npm outdated`; repo search. | Eight packages updated within their major version: the AWS SDK, bcryptjs, bwip-js, express, express-rate-limit, helmet and pg. Each version is at least 14 days old. `.github/dependabot.yml` proposes updates weekly, with a 14-day cooldown and each major update in its own pull request. The two unreferenced `frontend_check_24xx.js` snapshots (about 670 KB) are removed. | Full check |
+
+O5–O8 fail when run against the previous commit of this pull request (`cafd149`) and pass here.
+
+GO-LIVE §9 also says that anyone who already had 2-step login on should set it up again (turn it off, then on). Before this version, a copy of the database could produce their codes.
+
 GO-LIVE §9 now starts with the steps that need no deploy:
 1. change the owner's password;
 2. turn on 2-step login;
@@ -50,7 +67,7 @@ GO-LIVE §9 now starts with the steps that need no deploy:
 - **Backup:** the download strips password hashes, 2-step secrets and Gmail tokens.
 - **Bootstrap owner:** it is created only when no active owner exists, so the exposed `BOOTSTRAP_ADMIN_PASSWORD` cannot create a second owner on a running shop.
 - **Stripe:** the webhook checks Stripe's signature and locks the invoice row. It records a payment only once per payment reference, so a replayed event records nothing twice. Manual payments and invoice finalizing run in database transactions with the invoice row locked.
-- **Database failures:** the pool has an error listener (`server.js:139`). A server whose database connections were terminated (`pg_terminate_backend`) stayed up and recovered. The readiness check gives up after 5 s instead of hanging.
+- **Database failures:** idle pooled connections have an error listener. A server whose idle connections were terminated (`pg_terminate_backend`) stayed up and recovered. The readiness check gives up after 5 s instead of hanging. This was only half the picture; see E8 and the corrections below.
 - **Event loop:** request handlers use almost no synchronous file or CPU-heavy work.
 - **Sign-in limits:**
   - 100 signed-out calls per 15 minutes per address;
@@ -62,44 +79,39 @@ GO-LIVE §9 now starts with the steps that need no deploy:
 ## Corrections to my own earlier statements
 
 - **Twilio (E6):** corrected in GO-LIVE §9.
-- **Pool error listener:** in a first pass I reported that the database pool had no error listener, so a dropped connection would crash the server. That was wrong: my search missed `pool?.on("error", …)`. A reproduction showed the server survives terminated connections. It is not a defect and nothing was changed.
+- **Pool error listener:** in a first pass I reported that the database pool had no error listener, so a dropped connection would crash the server. That was wrong for idle connections: my search missed `pool?.on("error", …)`. I then wrote, in this report's first version, that the server survives terminated connections. That was true only for idle ones. A connection dropped while in use did crash the server (E8, now fixed).
 
 ## Recommended, not changed
 
 **Hosting setting (needs the owner's decision):**
 - **Draining time:** Railway gives the old server 0–3 s after SIGTERM by default. E2 makes the server use that time well. Setting **Railway → web → Settings → Deploy → Draining seconds** to 15 (or `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=15`) would let longer requests finish too, such as PDF builds and AI answers. This is a hosting setting and I did not change it.
 
-**Security:**
-- **2-step secret:** the authenticator-app secret (`totp_secret`) is stored in plain text. Someone who reads the database could generate codes, though they would still need the password. Encrypting it like the Gmail tokens needs a migration and a key in Railway.
-- **Failed sign-ins:** a single wrong password is not logged, only the lockout after 8 in a row. Logging each one would help spot password guessing, but it adds a row per wrong password.
+**Settings the owner sets:** `MFA_SECRET_KEY` (E11) has no effect until it is added in Railway.
+
+**Major upgrades, each in its own pull request:** Dependabot will propose them. None is needed for a known vulnerability (`npm audit`: 0).
+
+| Package | Installed | Latest | Before merging |
+|---|---|---|---|
+| `openai` | 5.0 | 7.x | Run the AI tests, then one real chat and one invoice check. |
+| `pdfkit` | 0.17 | 0.20 | Compare a printed invoice and estimate page by page; layout can shift. |
+| `dotenv` | 16 | 18 | Check the startup log. Newer versions print a line on every start unless told to be quiet. |
 
 **Reliability:**
-- **Database timeouts:** the pool sets no `connectionTimeoutMillis` and no `statement_timeout`. A stuck query or an unreachable database holds the request until the proxy gives up. Values of about 10 s to connect and 30 s per statement would match the app's work, but they should be tried against the Fullbay import and backups first.
+- **Outside services:** Twilio, Resend, Gmail, Stripe Checkout and Samsara requests rely on Node's default limits (about 300 s). Shorter limits per provider would fail faster.
+- **Legacy photo move:** the one-time move of old embedded finding photos to R2 runs at startup and keeps the shop record locked while it uploads. It only runs where such photos still exist. Each upload is now bounded by the 120 s idle limit.
 
-**Dependencies:** all are pinned to exact versions, with 0 known vulnerabilities. Three are a major version behind and need a planned upgrade with testing:
-
-| Package | Installed | Latest |
-|---|---|---|
-| `openai` | 5.0 | 7.45 |
-| `pdfkit` | 0.17 | 0.20 (invoice PDFs) |
-| `dotenv` | 16 | 18 |
-
-A scheduled dependency check (for example Dependabot, which GitHub includes) would surface security updates.
-
-**Code health:**
-- `frontend_check_2471.js` and `frontend_check_2481.js` (about 330 KB each) are referenced only by old audit reports.
-- The architecture items from the v24.76.4 report still stand:
-  - the whole-shop document is read and written whole;
-  - `server.js` and `index.html` are very large;
-  - inline handlers keep CSP on `'unsafe-inline'`;
-  - the invoice CSS is layered with `!important`;
-  - the mirrored copies are kept in sync by hand.
+**Code health:** the architecture items from the v24.76.4 report still stand:
+- the whole-shop document is read and written whole;
+- `server.js` and `index.html` are very large;
+- inline handlers keep CSP on `'unsafe-inline'`;
+- the invoice CSS is layered with `!important`;
+- the mirrored copies are kept in sync by hand.
 
 **Windows:** the `exec` in `npm start` needs a POSIX shell, as on Railway, macOS and Linux. On Windows, start the server with `node server.js`.
 
 ## Full check
 
-The full `npm run check` uses PostgreSQL 16 and Chromium, with `ITTR_REQUIRE_DB_SUITES=1 ITTR_REQUIRE_BROWSER_SUITE=1`. It now includes the new **operations safety** suite (O1–O4).
+The full `npm run check` uses PostgreSQL 16 and Chromium, with `ITTR_REQUIRE_DB_SUITES=1 ITTR_REQUIRE_BROWSER_SUITE=1`. It now includes the new **operations safety** suite (O1–O8).
 
 **Result:** exit 0. All 25 required suites passed, none skipped:
 - operations safety O1–O4
@@ -118,12 +130,19 @@ The local tests ran on Node 22.22.2 with npm 10.9.7. CI (`release-check`) runs o
 - real phones reconnecting after a deploy
 - real Twilio, Stripe, Gmail, R2 and Samsara accounts
 - load, and a restore from backup
+- the 120 s statement limit against the shop's real data size. The statements most likely to run long are the Fullbay import, the backup and reports over all history. If one is cut off, raise `ITTR_DB_STATEMENT_TIMEOUT_MS` (or set it to `0`).
+- real authenticator apps with `MFA_SECRET_KEY`. The tests generate codes with the same algorithm (RFC 6238) the apps use.
 
 This audit does not show that the platform is fully secure.
 
 ## Deploy / rollback
 
-There is no migration and no required new setting. `ITTR_SHUTDOWN_GRACE_MS` is optional.
+There is no required new setting. The optional settings are:
+- `ITTR_SHUTDOWN_GRACE_MS`
+- `ITTR_DB_CONNECT_TIMEOUT_MS`, `ITTR_DB_STATEMENT_TIMEOUT_MS` and `ITTR_DB_IDLE_TX_TIMEOUT_MS`
+- `MFA_SECRET_KEY` and `MFA_SECRET_KEY_OLD`
+
+The only data change happens when `MFA_SECRET_KEY` is set: the 2-step secrets are then encrypted at startup.
 
 After the deploy:
 - the build log should say `node@24`;
@@ -131,3 +150,9 @@ After the deploy:
 - devices pick up the `ittr-shopflow-v24.76.5` cache.
 
 To roll back, redeploy v24.76.4. Its `npm start` and Node version are the old ones.
+
+If `MFA_SECRET_KEY` was set, prepare the rollback first, or v24.76.4 cannot read the encrypted 2-step secrets (recovery codes would still work):
+1. Move the key's value to `MFA_SECRET_KEY_OLD`.
+2. Leave `MFA_SECRET_KEY` empty.
+3. Deploy v24.76.5 once. Startup stores the secrets unencrypted again.
+4. Roll back.

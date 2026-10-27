@@ -1,0 +1,28 @@
+# v24.76.5: weekly dependency update pull requests. Each one runs the release check like any other pull request, and
+# nothing merges or deploys by itself. A release is proposed only once it is 14 days old (cooldown), so a bad or
+# hijacked release is usually withdrawn before it reaches this repository.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 14
+    open-pull-requests-limit: 5
+    groups:
+      # Minor and patch updates together in one pull request; each major update (openai, pdfkit, dotenv, ...) gets
+      # its own, because those can change behaviour (invoice PDFs, AI calls) and need their own review.
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # The browser tests use the Chromium build that matches this Playwright version.
+      - dependency-name: playwright
+        update-types: [version-update:semver-major, version-update:semver-minor]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 14
