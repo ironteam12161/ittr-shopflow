@@ -99,7 +99,13 @@ A scheduled dependency check (for example Dependabot, which GitHub includes) wou
 
 ## Full check
 
-The full `npm run check` uses PostgreSQL 16 and Chromium, with `ITTR_REQUIRE_DB_SUITES=1 ITTR_REQUIRE_BROWSER_SUITE=1`. It now includes the new **operations safety** suite (O1–O4). The result is reported in the pull request.
+The full `npm run check` uses PostgreSQL 16 and Chromium, with `ITTR_REQUIRE_DB_SUITES=1 ITTR_REQUIRE_BROWSER_SUITE=1`. It now includes the new **operations safety** suite (O1–O4).
+
+**Result:** exit 0. All 25 required suites passed, none skipped:
+- operations safety O1–O4
+- the audit suite
+- control sweep: 882 pointer clicks on 56 role/page combinations, none covered; 137 controls skipped because they delete data or contact someone outside the shop
+- smoke test, v24.76.5
 
 Also checked: `node production_audit.mjs` (215/215), the inline-handler guard, the language audit, the syntax of every script, and that the root/public mirrors are identical.
 
