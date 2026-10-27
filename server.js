@@ -12,7 +12,7 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import helmet from "helmet";
 import rateLimit,{ipKeyGenerator} from "express-rate-limit";
-import pg from "pg";
+import {createPool,withoutStatementLimit,isDatabaseUnavailable} from "./db_pool.mjs";
 import sharp from "sharp";
 import PDFKitDocument from "pdfkit";
 import {invoiceEnglishText,invoiceDateText} from "./invoice_customer_text.mjs";
@@ -47,13 +47,12 @@ import {ensureSmsSchema,registerSmsRoutes} from "./customer_sms.mjs";
 import {portalView,registerPortalRoutes} from "./customer_portal.mjs";
 import {ensureCustomerLinkSchema,registerCustomerLinkRoutes,createCustomerLink,publicBaseUrl} from "./customer_links.mjs";
 import {ensureCannedJobSchema,registerCannedJobRoutes} from "./canned_jobs.mjs";
-import {ensureMfaSchema,registerMfaRoutes,checkSecondFactor,mfaRequiredForRole,LOGIN_LOCK,hasSecondFactor,sendEmailCode,createTrustedDevice,isTrustedDevice,forgetTrustedDevices,TRUSTED_DEVICE_DAYS} from "./security_mfa.mjs";
+import {ensureMfaSchema,registerMfaRoutes,checkSecondFactor,mfaRequiredForRole,LOGIN_LOCK,hasSecondFactor,sendEmailCode,createTrustedDevice,isTrustedDevice,forgetTrustedDevices,TRUSTED_DEVICE_DAYS,migrateTotpSecrets} from "./security_mfa.mjs";
 import {S3Client,PutObjectCommand,GetObjectCommand,DeleteObjectCommand,HeadBucketCommand} from "@aws-sdk/client-s3";
 import {getSignedUrl} from "@aws-sdk/s3-request-presigner";
 import { fileURLToPath } from "url";
 
 dotenv.config();
-const {Pool}=pg;
 const FMCSA_WEBKEY=String(process.env.FMCSA_WEBKEY||"").trim();
 const FMCSA_API_BASE=String(process.env.FMCSA_API_BASE_URL||"https://mobile.fmcsa.dot.gov/qc/services").replace(/\/+$/,"");
 const fmcsaCache=new Map();
@@ -133,10 +132,9 @@ function ittrDbSsl(url){
  }catch(_){}
  return isProd?(ittrDbSslVerified()||{rejectUnauthorized:false}):false;
 }
-const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATABASE_URL,ssl:ittrDbSsl(process.env.DATABASE_URL)}):null;
-// v24.71.0: a dropped database connection (restart, network blip) is reported, not fatal: without this listener an
-// idle pooled connection's error crashed the whole app. Readiness (/api/health) answers 503 until the database is back.
-pool?.on("error",e=>console.error("[database] idle connection error:",e?.message||e));
+// v24.76.5: the pool, its time limits and its connection error listeners are in db_pool.mjs. A dropped database
+// connection (restart, network blip) is reported, not fatal, whether the connection was idle (v24.71.0) or in use.
+const pool=process.env.DATABASE_URL?createPool({connectionString:process.env.DATABASE_URL,ssl:ittrDbSsl(process.env.DATABASE_URL)}):null;
 // v24.42.0: every AI call is metered (feature, user, tokens, cost) and stops at the owner's monthly budget.
 const aiMeter=createAIMeter({pool});
 const client=aiMeter.meterAIClient(rawOpenAIClient,"openai");
@@ -181,6 +179,8 @@ const signedPhotoUrl=key=>getSignedUrl(requireR2(),new GetObjectCommand({Bucket:
 
 
 app.set("trust proxy",1);
+// v24.76.5: while the server is stopping (see ittrShutdown), answers close their connection so the proxy moves to the new server.
+app.use((req,res,next)=>{const writeHead=res.writeHead;res.writeHead=function(...args){if(ittrShuttingDown&&!res.headersSent)res.setHeader("Connection","close");return writeHead.apply(this,args)};next()});
 const cspHost=req=>String(req.headers.host||"").replace(/[^A-Za-z0-9.:-]/g,"").slice(0,255);
 app.use(helmet({
  contentSecurityPolicy:{directives:{
@@ -1025,8 +1025,11 @@ async function ensurePartsSearchPerformance(){
    try{
     const cur=(await pool.query("SELECT i.indisvalid v FROM pg_class c JOIN pg_index i ON i.indexrelid=c.oid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relname=$1 AND n.nspname=current_schema()",[name])).rows[0];
     if(cur?.v){st.existing.push(name);continue}
-    if(cur&&!cur.v){await pool.query(`DROP INDEX CONCURRENTLY IF EXISTS ${qident(name)}`);st.rebuilt.push(name)}
-    await pool.query(`CREATE INDEX CONCURRENTLY IF NOT EXISTS ${qident(name)} ON fullbay_import_parts USING gin (${qident(col)} ${qident(ext)}.gin_trgm_ops)`);
+    // v24.76.5: an index build on a large parts table may take longer than the statement time limit.
+    await withoutStatementLimit(pool,async c=>{
+     if(cur&&!cur.v){await c.query(`DROP INDEX CONCURRENTLY IF EXISTS ${qident(name)}`);st.rebuilt.push(name)}
+     await c.query(`CREATE INDEX CONCURRENTLY IF NOT EXISTS ${qident(name)} ON fullbay_import_parts USING gin (${qident(col)} ${qident(ext)}.gin_trgm_ops)`);
+    });
     const ok=(await pool.query("SELECT i.indisvalid v FROM pg_class c JOIN pg_index i ON i.indexrelid=c.oid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relname=$1 AND n.nspname=current_schema()",[name])).rows[0]?.v===true;
     if(ok){if(!st.rebuilt.includes(name))st.created.push(name)}else st.failed.push({index:name,error:"index is not valid after build"});
    }catch(e){st.failed.push({index:name,error:e.message})}
@@ -2031,14 +2034,16 @@ function samsaraNormVin(v){return String(v||'').trim().toUpperCase().replace(/[^
 function samsaraNormUnit(v){return String(v||'').trim().toLowerCase().replace(/[^a-z0-9]/g,'')}
 function samsaraSnapshot(v){const g=v?.location||v?.gps||{},d=v?.driver||v?.staticAssignedDriver||{};return{id:String(v?.id||''),name:String(v?.name||''),vin:samsaraNormVin(v?.vin),unit:String(v?.name||''),plate:String(v?.licensePlate||v?.licensePlateNumber||''),make:String(v?.make||''),model:String(v?.model||''),year:String(v?.year||''),driverName:String(d?.name||v?.driverName||''),location:String(g?.formattedLocation||g?.address||''),latitude:Number(g?.latitude??g?.lat??0)||null,longitude:Number(g?.longitude??g?.lng??0)||null,speedMph:Number(g?.speedMilesPerHour??g?.speedMph??0)||null,ignition:String(v?.engineState?.value||v?.engineState||v?.ignitionStatus||''),lastSeen:String(g?.time||g?.timestamp||v?.updatedAtTime||'')||null}}
 async function samsaraAllVehicles(){const token=getSamsaraToken();if(!token)throw Object.assign(new Error('Samsara is not configured. Add SAMSARA_API_TOKEN in Railway.'),{status:503});let after='',items=[],guard=0;do{const u=new URL('https://api.samsara.com/fleet/vehicles');u.searchParams.set('limit','512');if(after)u.searchParams.set('after',after);const r=await fetch(u,{headers:{Authorization:`Bearer ${token}`,Accept:'application/json'}}),text=await r.text();let d={};try{d=JSON.parse(text)}catch{}if(!r.ok)throw Object.assign(new Error(r.status===401?'Samsara rejected the API token (HTTP 401). Regenerate the token and save only the raw token in SAMSARA_API_TOKEN.':r.status===403?'Samsara authenticated the token but denied vehicle access (HTTP 403). Enable Read Vehicles permission for this token.':(d?.message||d?.error||text||`Samsara HTTP ${r.status}`)),{status:r.status});items.push(...(Array.isArray(d?.data)?d.data:[]));after=String(d?.pagination?.endCursor||'');guard++}while(after&&guard<100);return items}
-async function samsaraMatchData(db){const vehicles=await samsaraAllVehicles(),units=(await db.query(`SELECT u.id,u.customer_id,u.unit_number,u.vin,u.samsara_vehicle_id,c.customer_name AS customer_name FROM customer_units u LEFT JOIN fullbay_import_customers c ON c.id=u.customer_id`)).rows,byId=new Map(units.filter(x=>x.samsara_vehicle_id).map(x=>[String(x.samsara_vehicle_id),x])),byVin=new Map(),byUnit=new Map();for(const u of units){const v=samsaraNormVin(u.vin),n=samsaraNormUnit(u.unit_number);if(v.length===17){if(!byVin.has(v))byVin.set(v,[]);byVin.get(v).push(u)}if(n){if(!byUnit.has(n))byUnit.set(n,[]);byUnit.get(n).push(u)}}return{vehicles,units,match(raw){const v=samsaraSnapshot(raw);let a=[],method='';if(v.id&&byId.has(v.id)){a=[byId.get(v.id)];method='linked'}else if(v.vin.length===17&&(byVin.get(v.vin)||[]).length){a=byVin.get(v.vin);method='vin'}else if(v.unit&&(byUnit.get(samsaraNormUnit(v.unit))||[]).length){a=byUnit.get(samsaraNormUnit(v.unit));method='unit'}return{v,a,method}}}}
+async function samsaraMatchData(db,fetched){const vehicles=fetched||await samsaraAllVehicles(),units=(await db.query(`SELECT u.id,u.customer_id,u.unit_number,u.vin,u.samsara_vehicle_id,c.customer_name AS customer_name FROM customer_units u LEFT JOIN fullbay_import_customers c ON c.id=u.customer_id`)).rows,byId=new Map(units.filter(x=>x.samsara_vehicle_id).map(x=>[String(x.samsara_vehicle_id),x])),byVin=new Map(),byUnit=new Map();for(const u of units){const v=samsaraNormVin(u.vin),n=samsaraNormUnit(u.unit_number);if(v.length===17){if(!byVin.has(v))byVin.set(v,[]);byVin.get(v).push(u)}if(n){if(!byUnit.has(n))byUnit.set(n,[]);byUnit.get(n).push(u)}}return{vehicles,units,match(raw){const v=samsaraSnapshot(raw);let a=[],method='';if(v.id&&byId.has(v.id)){a=[byId.get(v.id)];method='linked'}else if(v.vin.length===17&&(byVin.get(v.vin)||[]).length){a=byVin.get(v.vin);method='vin'}else if(v.unit&&(byUnit.get(samsaraNormUnit(v.unit))||[]).length){a=byUnit.get(samsaraNormUnit(v.unit));method='unit'}return{v,a,method}}}}
 
 
 async function ensureSamsaraUnitSyncSchema(db){const defs=[['samsara_vehicle_id','TEXT'],['samsara_synced_at','TIMESTAMPTZ'],['samsara_driver_name','TEXT'],['samsara_location','TEXT'],['samsara_latitude','DOUBLE PRECISION'],['samsara_longitude','DOUBLE PRECISION'],['samsara_speed_mph','DOUBLE PRECISION'],['samsara_ignition_status','TEXT'],['samsara_last_seen_at','TIMESTAMPTZ']];for(const [n,t] of defs)await db.query(`ALTER TABLE customer_units ADD COLUMN IF NOT EXISTS ${n} ${t}`);await db.query(`CREATE INDEX IF NOT EXISTS idx_customer_units_samsara_vehicle_id ON customer_units(samsara_vehicle_id)`)}
 app.get('/api/samsara/diagnostics',auth,managerPermission('customers'),async(req,res)=>{const out={ok:false,build:'24.28.4',env:{databaseUrlPresent:!!String(process.env.DATABASE_URL||'').trim(),samsaraTokenPresent:samsaraTokenPresent()},database:{ok:false,reason:null},schema:{ok:false,missing:[],reason:null},samsara:{ok:false,httpStatus:null,vehicleCount:0,reason:null}};let db=null;try{db=requireDb();await db.query('SELECT 1 AS ok');out.database.ok=true}catch(e){out.database.reason=e?.message||String(e)}if(out.database.ok)try{await ensureSamsaraUnitSyncSchema(db);const q=await db.query(`SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name='customer_units'`);const h=new Set(q.rows.map(x=>x.column_name)),n=['id','customer_id','unit_number','vin','samsara_vehicle_id','samsara_synced_at','samsara_driver_name','samsara_location','samsara_latitude','samsara_longitude','samsara_speed_mph','samsara_ignition_status','samsara_last_seen_at'];out.schema.missing=n.filter(x=>!h.has(x));out.schema.ok=!out.schema.missing.length}catch(e){out.schema.reason=e?.message||String(e)}if(!out.env.samsaraTokenPresent)out.samsara.reason='SAMSARA_API_TOKEN is not visible to this running Railway service.';else try{const v=await samsaraAllVehicles();out.samsara.ok=true;out.samsara.httpStatus=200;out.samsara.vehicleCount=Array.isArray(v)?v.length:0}catch(e){out.samsara.httpStatus=Number(e?.status||e?.statusCode||e?.response?.status)||null;out.samsara.reason=e?.message||String(e)}out.ok=out.env.databaseUrlPresent&&out.env.samsaraTokenPresent&&out.database.ok&&out.schema.ok&&out.samsara.ok;res.set('Cache-Control','no-store');res.json(out)});
 app.get('/api/samsara/integration-status',auth,managerPermission('customers'),async(req,res)=>{res.set('Cache-Control','no-store');res.json({ok:true,build:'24.28.4',databaseUrlPresent:!!String(process.env.DATABASE_URL||'').trim(),samsaraTokenPresent:samsaraTokenPresent(),unitSync:true})});
 app.get('/api/samsara/unit-sync/preview',auth,managerPermission('customers'),async(req,res,next)=>{try{const db=requireDb();await ensureSamsaraUnitSyncSchema(db);const d=await samsaraMatchData(db),items=d.vehicles.map(x=>{const m=d.match(x);return{...m.v,matchMethod:m.method,matchStatus:m.a.length===1?'matched':m.a.length>1?'ambiguous':'unmatched',matches:m.a.map(u=>({id:u.id,customer:u.customer_name,unit:u.unit_number,vin:u.vin}))}});res.json({ok:true,totalSamsara:items.length,totalIttr:d.units.length,matched:items.filter(x=>x.matchStatus==='matched').length,ambiguous:items.filter(x=>x.matchStatus==='ambiguous').length,unmatched:items.filter(x=>x.matchStatus==='unmatched').length,items})}catch(e){console.error('[Samsara preview]',e);res.status(Number(e.status)||500).json({ok:false,error:'Samsara preview failed',detail:e.message||String(e),build:'24.28.4'})}});
-app.post('/api/samsara/unit-sync',auth,managerPermission('customers'),async(req,res,next)=>{const db=await requireDb().connect();try{await db.query('BEGIN');await ensureSamsaraUnitSyncSchema(db);const d=await samsaraMatchData(db);let linked=0,updated=0,ambiguous=0,unmatched=0;for(const raw of d.vehicles){const m=d.match(raw),v=m.v;if(m.a.length!==1){m.a.length>1?ambiguous++:unmatched++;continue}const u=m.a[0];await db.query(`UPDATE customer_units SET samsara_vehicle_id=$2,samsara_synced_at=now(),samsara_driver_name=nullif($3,''),samsara_location=nullif($4,''),samsara_latitude=$5,samsara_longitude=$6,samsara_speed_mph=$7,samsara_ignition_status=nullif($8,''),samsara_last_seen_at=CASE WHEN $9::text IS NULL OR $9::text='' THEN samsara_last_seen_at ELSE $9::timestamptz END WHERE id=$1::bigint`,[u.id,v.id,v.driverName,v.location,v.latitude,v.longitude,v.speedMph,v.ignition,v.lastSeen]);updated++;if(m.method!=='linked')linked++}await db.query('COMMIT');await audit(req.user.username,'samsara_units_synced',{vehicles:d.vehicles.length,linked,updated,ambiguous,unmatched});res.json({ok:true,total:d.vehicles.length,linked,updated,ambiguous,unmatched})}catch(e){try{await db.query('ROLLBACK')}catch{}console.error('[Samsara sync]',e);res.status(Number(e.status)||500).json({ok:false,error:'Samsara sync failed',detail:e.message||String(e),build:'24.28.4'})}finally{db.release()}});
+// v24.76.5: Samsara is asked first, then the transaction starts, so no database connection waits on Samsara with a
+// transaction open (Samsara can take many seconds, and the database ends a transaction left idle too long).
+app.post('/api/samsara/unit-sync',auth,managerPermission('customers'),async(req,res,next)=>{let vehicles;try{vehicles=await samsaraAllVehicles()}catch(e){return next(e)}const db=await requireDb().connect();try{await db.query('BEGIN');await ensureSamsaraUnitSyncSchema(db);const d=await samsaraMatchData(db,vehicles);let linked=0,updated=0,ambiguous=0,unmatched=0;for(const raw of d.vehicles){const m=d.match(raw),v=m.v;if(m.a.length!==1){m.a.length>1?ambiguous++:unmatched++;continue}const u=m.a[0];await db.query(`UPDATE customer_units SET samsara_vehicle_id=$2,samsara_synced_at=now(),samsara_driver_name=nullif($3,''),samsara_location=nullif($4,''),samsara_latitude=$5,samsara_longitude=$6,samsara_speed_mph=$7,samsara_ignition_status=nullif($8,''),samsara_last_seen_at=CASE WHEN $9::text IS NULL OR $9::text='' THEN samsara_last_seen_at ELSE $9::timestamptz END WHERE id=$1::bigint`,[u.id,v.id,v.driverName,v.location,v.latitude,v.longitude,v.speedMph,v.ignition,v.lastSeen]);updated++;if(m.method!=='linked')linked++}await db.query('COMMIT');await audit(req.user.username,'samsara_units_synced',{vehicles:d.vehicles.length,linked,updated,ambiguous,unmatched});res.json({ok:true,total:d.vehicles.length,linked,updated,ambiguous,unmatched})}catch(e){try{await db.query('ROLLBACK')}catch{}console.error('[Samsara sync]',e);res.status(Number(e.status)||500).json({ok:false,error:'Samsara sync failed',detail:e.message||String(e),build:'24.28.4'})}finally{db.release()}});
 app.get('/api/samsara/all-units',auth,managerPermission('customers'),async(req,res,next)=>{try{const db=requireDb();await ensureSamsaraUnitSyncSchema(db);const q=await db.query(`SELECT u.id,u.customer_id,u.unit_number,u.vin,u.year,u.make,u.model,u.plate,u.mileage,u.samsara_vehicle_id,u.samsara_synced_at,u.samsara_driver_name,u.samsara_location,u.samsara_speed_mph,u.samsara_ignition_status,u.samsara_last_seen_at,c.customer_name AS customer_name FROM customer_units u LEFT JOIN fullbay_import_customers c ON c.id=u.customer_id ORDER BY c.customer_name,u.unit_number`);res.json({ok:true,items:q.rows.map(x=>({...x,samsaraStatus:x.samsara_vehicle_id?'connected':'not_connected'}))})}catch(e){next(e)}});
 
 app.get('/api/samsara/vehicle/:id/history',auth,managerPermission('customers'),async(req,res,next)=>{
@@ -2182,7 +2187,7 @@ app.post('/api/fullbay/history/delete-imported',auth,ownerOnly,async(req,res,nex
  }catch(e){next(e)}
 });
 // ITTR v24.28.4 runtime identity hardening
-const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.76.4");
+const ITTR_APP_VERSION=String(process.env.npm_package_version||"24.76.5");
 // v24.76.1: the deployed commit (Railway sets RAILWAY_GIT_COMMIT_SHA), so a deploy check can compare exact code, not just
 // a version label that several fixes share. null when the host does not provide it.
 const ITTR_COMMIT=String(process.env.RAILWAY_GIT_COMMIT_SHA||process.env.SOURCE_COMMIT||process.env.GIT_COMMIT||"").replace(/[^0-9a-f]/gi,"").slice(0,40)||null;
@@ -2219,11 +2224,15 @@ app.get("/api/health/ready",healthHandler);
 const LOGIN_DUMMY_HASH=bcrypt.hashSync("ittr-unknown-user-timing-guard",12);
 app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
  const username=cleanUsername(req.body?.username),password=String(req.body?.password||""),db=requireDb();
+ // v24.76.5: every sign-in, good or failed, records where it came from (as seen through Railway's proxy) for the owner's
+ // Recent sign-ins. A failed one for a name that has no account is recorded without the name: people sometimes type
+ // their password into the name box.
+ const where={ip:String(req.ip||"").slice(0,64),device:String(req.get("user-agent")||"").slice(0,160)};
  const u=(await db.query("SELECT * FROM auth_users WHERE username=$1 AND active=true",[username])).rows[0];
- if(!u){await bcrypt.compare(password,LOGIN_DUMMY_HASH);return res.status(401).json({error:"Invalid username or password."})}
- if(u.locked_until&&new Date(u.locked_until)>new Date()){const min=Math.max(1,Math.ceil((new Date(u.locked_until)-Date.now())/60000));await bcrypt.compare(password,LOGIN_DUMMY_HASH);return res.status(429).json({error:`Too many wrong attempts on this account. Try again in ${min} minute${min===1?"":"s"}.`,code:"ACCOUNT_LOCKED"})}
- const failed=async(msg,code)=>{const r=(await db.query(`UPDATE auth_users SET failed_logins=failed_logins+1,locked_until=CASE WHEN failed_logins+1>=$2 THEN now()+($3||' minutes')::interval ELSE locked_until END WHERE id=$1 RETURNING failed_logins,locked_until`,[u.id,LOGIN_LOCK.maxFailures,String(LOGIN_LOCK.minutes)])).rows[0];if(r&&r.failed_logins>=LOGIN_LOCK.maxFailures){await db.query("UPDATE auth_users SET failed_logins=0 WHERE id=$1",[u.id]);await audit(username,"account_locked",{minutes:LOGIN_LOCK.minutes})}return res.status(401).json({error:msg,...(code?{code}:{})})};
- if(!(await bcrypt.compare(password,u.password_hash)))return failed("Invalid username or password.");
+ if(!u){await bcrypt.compare(password,LOGIN_DUMMY_HASH);await audit(null,"login_failed",{reason:"unknown_account",...where});return res.status(401).json({error:"Invalid username or password."})}
+ if(u.locked_until&&new Date(u.locked_until)>new Date()){const min=Math.max(1,Math.ceil((new Date(u.locked_until)-Date.now())/60000));await bcrypt.compare(password,LOGIN_DUMMY_HASH);await audit(username,"login_failed",{reason:"locked",...where});return res.status(429).json({error:`Too many wrong attempts on this account. Try again in ${min} minute${min===1?"":"s"}.`,code:"ACCOUNT_LOCKED"})}
+ const failed=async(msg,code,reason)=>{const r=(await db.query(`UPDATE auth_users SET failed_logins=failed_logins+1,locked_until=CASE WHEN failed_logins+1>=$2 THEN now()+($3||' minutes')::interval ELSE locked_until END WHERE id=$1 RETURNING failed_logins,locked_until`,[u.id,LOGIN_LOCK.maxFailures,String(LOGIN_LOCK.minutes)])).rows[0];await audit(username,"login_failed",{reason,inARow:r?.failed_logins||1,...where});if(r&&r.failed_logins>=LOGIN_LOCK.maxFailures){await db.query("UPDATE auth_users SET failed_logins=0 WHERE id=$1",[u.id]);await audit(username,"account_locked",{minutes:LOGIN_LOCK.minutes,...where})}return res.status(401).json({error:msg,...(code?{code}:{})})};
+ if(!(await bcrypt.compare(password,u.password_hash)))return failed("Invalid username or password.",undefined,"password");
  let second=null,deviceToken=null;
  // v24.58.1: a device the user chose to remember (30 days) skips the code; otherwise the code comes from the
  // authenticator app or by email (sent here when the password is right and no code was typed yet).
@@ -2235,14 +2244,22 @@ app.post("/api/auth/login",loginLimiter,async(req,res,next)=>{try{
    return res.json({mfaRequired:true,method,email:Boolean(u.email_mfa_enabled)});
   }
   second=await checkSecondFactor(db,u,req.body.code);
-  if(!second.ok)return failed(u.totp_enabled&&!u.email_mfa_enabled?"That code is not correct. Type the newest 6-digit code from your authenticator app, or a recovery code.":"That code is not correct or has expired. Check the newest email, or send a new code.","BAD_CODE");
+  // v24.76.5: the authenticator secret is encrypted and the server's MFA_SECRET_KEY cannot open it. Not the person's
+  // mistake, so it does not count towards the account lock; a recovery code (or an email code) still works.
+  if(!second.ok&&second.reason==="key"){await audit(username,"login_failed",{reason:"mfa_key",...where});console.error("[2-step] an authenticator secret cannot be read: MFA_SECRET_KEY is missing or was changed");
+   return res.status(503).json({error:"Authenticator codes cannot be checked right now: the server's MFA_SECRET_KEY setting is missing or was changed. Sign in with a recovery code, or ask the owner to restore the setting.",code:"MFA_KEY"})}
+  if(!second.ok)return failed(u.totp_enabled&&!u.email_mfa_enabled?"That code is not correct. Type the newest 6-digit code from your authenticator app, or a recovery code.":"That code is not correct or has expired. Check the newest email, or send a new code.","BAD_CODE","code");
   if(req.body?.rememberDevice===true)deviceToken=await createTrustedDevice(db,u,{label:String(req.get("user-agent")||"").slice(0,160),ip:req.ip});
  }
  await db.query("UPDATE auth_users SET failed_logins=0,locked_until=NULL WHERE id=$1",[u.id]);
+ // v24.76.5: the owner account is created from BOOTSTRAP_ADMIN_PASSWORD, a Railway setting. Signing in with that same
+ // password means it was never changed, so anyone who can read Railway's settings can sign in as this account.
+ const setupPw=String(process.env.BOOTSTRAP_ADMIN_PASSWORD||""),sha=v=>crypto.createHash("sha256").update(v).digest();
+ const setupPasswordInUse=setupPw.length>=10&&crypto.timingSafeEqual(sha(password),sha(setupPw));
  const raw=crypto.randomBytes(32).toString("base64url"),days=Math.max(1,Math.min(30,Number(process.env.SESSION_TTL_DAYS||7)));
  await db.query("INSERT INTO auth_sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+($3||' days')::interval)",[hashToken(raw),u.id,String(days)]);
- await audit(username,"login",{mfa:hasSecondFactor(u),rememberedDevice:Boolean(hasSecondFactor(u)&&!second),...(second?.recoveryUsed?{recoveryCodeUsed:true,recoveryLeft:second.recoveryLeft}:{})});
- res.json({token:raw,user:publicUser(u),...(deviceToken?{deviceToken,deviceDays:TRUSTED_DEVICE_DAYS}:{}),...(second?.recoveryUsed?{recoveryLeft:second.recoveryLeft}:{})});
+ await audit(username,"login",{mfa:hasSecondFactor(u),rememberedDevice:Boolean(hasSecondFactor(u)&&!second),...(second?.recoveryUsed?{recoveryCodeUsed:true,recoveryLeft:second.recoveryLeft}:{}),...(setupPasswordInUse?{setupPassword:true}:{}),...where});
+ res.json({token:raw,user:publicUser(u),...(deviceToken?{deviceToken,deviceDays:TRUSTED_DEVICE_DAYS}:{}),...(second?.recoveryUsed?{recoveryLeft:second.recoveryLeft}:{}),...(setupPasswordInUse?{setupPasswordInUse:true}:{})});
 }catch(e){next(e)}});
 app.post("/api/auth/logout",auth,async(req,res,next)=>{try{await requireDb().query("DELETE FROM auth_sessions WHERE token_hash=$1",[hashToken(req.sessionToken)]);res.json({ok:true})}catch(e){next(e)}});
 app.get("/api/auth/me",auth,(req,res)=>res.json({user:publicUser(req.user)}));
@@ -2265,6 +2282,26 @@ app.get("/api/auth/sessions",auth,async(req,res,next)=>{try{
  const r=await requireDb().query("SELECT count(*)::int n FROM auth_sessions WHERE user_id=$1 AND expires_at>now()",[req.user.id]);
  res.json({active:r.rows[0].n,others:Math.max(0,r.rows[0].n-1)});
 }catch(e){next(e)}});
+// v24.76.5: the owner can end every sign-in of every account at once (all sessions except this one) and forget every
+// remembered device, so the next sign-in everywhere needs the password and, where it is on, the 2-step code. For when a
+// password or the server's settings may have leaked. Live connections of the ended sessions are dropped straight away.
+app.post("/api/admin/sessions/revoke-all",auth,ownerOnly,async(req,res,next)=>{try{const db=requireDb();
+ const s=await db.query("DELETE FROM auth_sessions WHERE id<>$1",[req.user.session_id]),d=await db.query("DELETE FROM trusted_devices");
+ await audit(req.user.username,"all_sessions_signed_out",{sessions:s.rowCount,rememberedDevices:d.rowCount});
+ revalidateLiveSockets().catch(e=>console.error("[live socket] recheck after sign-out failed:",e?.message));
+ res.json({ok:true,signedOut:s.rowCount,devicesForgotten:d.rowCount});
+}catch(e){next(e)}});
+// v24.76.5: sign-ins and account-security changes for the owner to review (who, when, from where, with 2-step or not).
+const SECURITY_EVENTS=["login","login_failed","account_locked","all_sessions_signed_out","other_sessions_signed_out","own_password_changed","manager_password_changed","mechanic_password_changed","2fa_enabled","2fa_email_enabled","2fa_disabled","2fa_recovery_codes_replaced","2fa_reset_for_manager","remembered_devices_forgotten"];
+// Failed sign-ins are listed apart (the last 100, and a 24-hour count), so a burst of them never pushes real sign-ins
+// and changes out of the list. They are kept for 90 days (pruneFailedSignIns).
+app.get("/api/admin/security-events",auth,ownerOnly,async(req,res,next)=>{try{const db=requireDb();
+ const r=await db.query("SELECT username,action,details,created_at FROM server_audit WHERE action=ANY($1::text[]) AND action<>'login_failed' ORDER BY id DESC LIMIT 200",[SECURITY_EVENTS]);
+ const f=await db.query("SELECT username,action,details,created_at FROM server_audit WHERE action='login_failed' ORDER BY id DESC LIMIT 100");
+ const n=await db.query("SELECT count(*)::int n FROM server_audit WHERE action='login_failed' AND created_at>now()-interval '24 hours'");
+ res.json({items:r.rows,failures:f.rows,failedLast24h:n.rows[0].n});
+}catch(e){next(e)}});
+async function pruneFailedSignIns(){try{if(pool){const r=await pool.query("DELETE FROM server_audit WHERE action='login_failed' AND created_at<now()-interval '90 days'");if(r.rowCount)console.log(`[sign-ins] removed ${r.rowCount} failed sign-in record(s) older than 90 days`)}}catch(e){console.error("[sign-ins] prune failed:",e?.message)}}
 app.post("/api/auth/sessions/revoke-others",auth,async(req,res,next)=>{try{
  const out=await requireDb().query("DELETE FROM auth_sessions WHERE user_id=$1 AND id<>$2",[req.user.id,req.user.session_id]);await forgetTrustedDevices(requireDb(),req.user.id);
  await audit(req.user.username,"other_sessions_signed_out",{count:out.rowCount});res.json({ok:true,signedOut:out.rowCount});
@@ -5314,7 +5351,10 @@ app.post("/api/ai/productivity-summary",auth,managerPermission("reports"),async(
 app.post("/api/vin",auth,async(req,res)=>{try{const item=await lookupNhtsaVin(req.body?.vin);res.json({result:item,item,source:"NHTSA vPIC",official:true,decodedAt:new Date().toISOString()})}catch(e){res.status(e.status||500).json({error:e.message||"VIN decode failed.",code:e.code||"VIN_LOOKUP",details:e.details||undefined})}});
 app.post("/api/transcribe",auth,upload.single("audio"),async(req,res)=>{try{if(!req.file)return res.status(400).json({error:"audio required"});const file=new File([req.file.buffer],req.file.originalname||"note.webm",{type:req.file.mimetype||"audio/webm"});const t=await requireAIClient().audio.transcriptions.create({file,model:process.env.OPENAI_TRANSCRIBE_MODEL||"gpt-4o-transcribe"});res.json({text:t.text||""})}catch(e){return aiErrorResponse(res,e,"transcription failed")}});
 
-app.get("/api/admin/server-audit",auth,managerPermission("reports"),async(req,res,next)=>{try{const q=await requireDb().query("SELECT username,action,details,created_at FROM server_audit ORDER BY id DESC LIMIT 500");res.json({rows:q.rows})}catch(e){next(e)}});
+// v24.76.5: sign-in addresses and browsers are for the owner (Recent sign-ins); a manager with Reports sees the activity
+// without them, and without failed sign-ins.
+app.get("/api/admin/server-audit",auth,managerPermission("reports"),async(req,res,next)=>{try{const q=await requireDb().query("SELECT username,action,details,created_at FROM server_audit WHERE action<>'login_failed' ORDER BY id DESC LIMIT 500");
+ const owner=req.user.role==="admin";res.json({rows:owner?q.rows:q.rows.map(r=>{if(!r.details||typeof r.details!=="object")return r;const{ip,device,...rest}=r.details;return{...r,details:rest}})})}catch(e){next(e)}});
 // v24.37.0 estimates, tire fees, accountant reports and Gmail finance inbox
 registerFinanceRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit,recalcInvoice,nextInvoiceNumber,PDFDocument,renderCustomerDocumentPdf,shopProfile,logoPath:path.join(__dirname,"public","assets","iron-team-logo.png"),dateText:v=>{if(!v)return '';try{return invoiceDateText(v)}catch(_){return String(v).slice(0,10)}}});
 registerProductivityRoutes(app,{auth,ownerOnly,managerPermission,requireDb,audit});
@@ -5431,6 +5471,8 @@ app.use((err,req,res,next)=>{
  const badInput=!err?.status&&!err?.statusCode&&["22P02","22003","22007","22008"].includes(String(err?.code||""));
  const status=badInput?400:Number(err?.status||err?.statusCode||500);if(status>=500&&!["DB_NOT_CONFIGURED","R2_NOT_CONFIGURED"].includes(err?.code))sendAlert(`Server error ${incident} on ${req.method} ${req.path}: ${String(err?.message||err).slice(0,300)}`,{key:`500:${req.method}:${req.route?.path||req.path}:${String(err?.message||"").slice(0,80)}`});
  if(err?.code==="DB_NOT_CONFIGURED"||err?.code==="R2_NOT_CONFIGURED")return res.status(503).json({error:err.message,code:err.code,incident});
+ // v24.76.5: the database did not answer in time, or dropped the connection: a temporary problem, not a broken request.
+ if(isDatabaseUnavailable(err))return res.status(503).json({error:"The database is busy or not answering. Try again in a moment.",code:"DB_UNAVAILABLE",incident});
  if(err?.code==="LIMIT_FILE_SIZE")return res.status(413).json({error:"Photo is too large. Maximum original file size is 25 MB.",incident});
  if(err?.code==="PHOTO_TYPE"||err?.code==="PHOTO_PROCESSING")return res.status(415).json({error:err.message,code:err.code,incident});
  const safe=String(err?.message||"Server error").replace(/OPENROUTER_API_KEY|OPENAI_API_KEY|R2_SECRET_ACCESS_KEY/gi,'server credential');
@@ -5447,6 +5489,24 @@ app.get("*splat",async(req,res,next)=>{
  res.sendFile(authoritativeIndex);
 });
 
+// v24.76.5: a clean stop. Railway sends SIGTERM to the old server on every deploy (the start script uses `exec`, so the
+// signal reaches Node; through plain `npm start` it never did and the server was simply killed). New connections are
+// refused, requests already running may finish (up to ITTR_SHUTDOWN_GRACE_MS, default 10 s, unless Railway stops the
+// server sooner), live phones are told the server is restarting so they reconnect to the new one at once, and the
+// database connections are closed before exit.
+let ittrShuttingDown=false;
+function ittrShutdown(signal){
+ if(ittrShuttingDown)return;ittrShuttingDown=true;
+ const grace=Math.max(500,Number(process.env.ITTR_SHUTDOWN_GRACE_MS)||10000);
+ console.log(`[shutdown] ${signal}: no new connections; finishing open requests (up to ${Math.round(grace/1000)} s)`);
+ const force=setTimeout(()=>{console.warn("[shutdown] grace period over; exiting with requests still open");process.exit(0)},grace);force.unref?.();
+ for(const ws of liveClients){liveClients.delete(ws);clearTimeout(ws.ittrExpiry);try{ws.close(1012,"Server restarting")}catch(_){}setTimeout(()=>{try{ws.terminate()}catch(_){}},1500).unref?.()}
+ httpServer.close(async()=>{clearTimeout(force);try{await Promise.race([pool?.end(),new Promise(ok=>setTimeout(ok,2000).unref?.())])}catch(_){}console.log("[shutdown] done");process.exit(0)});
+ // Keep-alive connections are closed as soon as their last answer is out, not after the 5 s idle timeout.
+ httpServer.closeIdleConnections?.();setInterval(()=>httpServer.closeIdleConnections?.(),200).unref?.();
+}
+process.on("SIGTERM",()=>ittrShutdown("SIGTERM"));process.on("SIGINT",()=>ittrShutdown("SIGINT"));
+
 initDb()
   .then(()=>ensureFinanceSchema(pool))
   .then(()=>pool&&repairWorkOrderLinks(pool,{audit}).then(r=>{if(r.workOrders.length||r.invoices.length)console.warn(`[link repair] fixed ${r.workOrders.length} work order link(s) and ${r.invoices.length} invoice/service-order customer link(s)`)}).catch(e=>console.warn('[link repair] skipped:',e?.message)))
@@ -5456,6 +5516,8 @@ initDb()
   .then(()=>pool&&ensureVendorBillSchema(pool))
   .then(()=>pool&&ensureBillSchema(pool))
   .then(()=>pool&&ensureMfaSchema(pool))
+  .then(()=>pool&&migrateTotpSecrets(pool).then(r=>{if(r.sealed||r.resealed)console.log(`[2-step] ${r.sealed} authenticator secret(s) encrypted, ${r.resealed} re-encrypted with the new MFA_SECRET_KEY`);if(r.unsealed)console.warn(`[2-step] ${r.unsealed} authenticator secret(s) stored unencrypted again (MFA_SECRET_KEY is empty, MFA_SECRET_KEY_OLD opened them)`);
+   if(r.unreadable){const m=`ITTR SETUP: ${r.unreadable} authenticator secret(s) cannot be read: MFA_SECRET_KEY is ${r.keySet?"different from the one that encrypted them":"not set"}. Put the previous value back (or in MFA_SECRET_KEY_OLD). Until then those people sign in with a recovery code or an email code.`;console.error(m);sendAlert(m,{key:"mfa-key"})}}).catch(e=>console.error("[2-step] secret encryption check failed:",e?.message)))
   .then(()=>pool&&ensureCannedJobSchema(pool))
   .then(()=>pool&&ensureCustomerLinkSchema(pool))
   .then(()=>pool&&ensureSmsSchema(pool))
@@ -5470,6 +5532,7 @@ initDb()
   .then(()=>{if(process.env.NODE_ENV!=='test')startTimeClockScheduler({pool,stopMechanicWork,onChange:()=>broadcastShopStatus("task_changed",{timeclock:true})})})
   .then(()=>{if(process.env.NODE_ENV!=='test')startFleetScheduler({pool,samsaraPaged,samsaraConfigured:samsaraTokenPresent})})
   .then(()=>reconcileReservedInventoryAllocations())
+  .then(()=>{pruneFailedSignIns();setInterval(pruneFailedSignIns,24*60*60*1000).unref?.()})
   // v24.67.0: built in the background (CONCURRENTLY) so a large parts table never delays startup.
   .then(()=>{ensurePartsSearchPerformance().catch(e=>console.error("[parts search]",e?.message))})
   .then(()=>migrateLegacyFindingPhotosAtStartup())

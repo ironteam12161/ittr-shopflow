@@ -33,6 +33,56 @@ export function verifyTotp(secretB32, code, lastStep = 0, ms = Date.now()) {
   return null;
 }
 export const newTotpSecret = () => base32Encode(crypto.randomBytes(20));
+
+// v24.76.5: authenticator secrets are encrypted in the database (AES-256-GCM) when MFA_SECRET_KEY is set (16 or more
+// characters), so a copy of the database alone cannot produce 2-step codes. Without the setting they stay as before.
+// - Existing secrets are encrypted at startup (migrateTotpSecrets).
+// - To change the key: put the old value in MFA_SECRET_KEY_OLD and the new one in MFA_SECRET_KEY, deploy (startup
+//   re-encrypts with the new key), then remove MFA_SECRET_KEY_OLD.
+// - To stop encrypting (for example before going back to a version older than v24.76.5): move the value to
+//   MFA_SECRET_KEY_OLD and leave MFA_SECRET_KEY empty, deploy; startup stores the secrets in plain form again.
+// - If the key is missing or wrong, an encrypted secret cannot be read: sign-in says so (MFA_KEY) instead of "wrong code",
+//   and recovery codes and email codes still work.
+const SEALED = 'enc1.';
+const mfaKey = raw => { const v = String(raw || '').trim(); return v.length >= 16 ? crypto.createHash('sha256').update(v).digest() : null; };
+export const mfaKeys = (env = process.env) => ({ current: mfaKey(env.MFA_SECRET_KEY), old: mfaKey(env.MFA_SECRET_KEY_OLD) });
+export const isSealedSecret = v => typeof v === 'string' && v.startsWith(SEALED);
+export function sealTotpSecret(plain, keys = mfaKeys()) {
+  if (!plain || !keys.current || isSealedSecret(plain)) return plain;
+  const iv = crypto.randomBytes(12), c = crypto.createCipheriv('aes-256-gcm', keys.current, iv);
+  const enc = Buffer.concat([c.update(String(plain), 'utf8'), c.final()]);
+  return SEALED + [iv, c.getAuthTag(), enc].map(b => b.toString('base64url')).join('.');
+}
+const openWith = (stored, key) => {
+  const [iv, tag, enc] = stored.slice(SEALED.length).split('.').map(x => Buffer.from(x || '', 'base64url'));
+  const d = crypto.createDecipheriv('aes-256-gcm', key, iv); d.setAuthTag(tag);
+  return Buffer.concat([d.update(enc), d.final()]).toString('utf8');
+};
+// The secret in plain form, or throws {code:'MFA_KEY'} when it is encrypted and no key that is set opens it.
+export function openTotpSecret(stored, keys = mfaKeys()) {
+  if (!stored || !isSealedSecret(stored)) return stored || null;
+  for (const k of [keys.current, keys.old]) { if (!k) continue; try { return openWith(stored, k); } catch (_) {} }
+  throw Object.assign(new Error('An authenticator secret cannot be read: MFA_SECRET_KEY is missing or was changed.'), { code: 'MFA_KEY', status: 503 });
+}
+// Startup: encrypt plain secrets, re-encrypt ones that only the old key opens. Reports secrets no key opens.
+export async function migrateTotpSecrets(db, keys = mfaKeys()) {
+  const out = { sealed: 0, resealed: 0, unsealed: 0, unreadable: 0, keySet: Boolean(keys.current) };
+  const rows = (await db.query('SELECT id,totp_secret,totp_pending_secret FROM auth_users WHERE totp_secret IS NOT NULL OR totp_pending_secret IS NOT NULL')).rows;
+  for (const r of rows) {
+    const next = {};
+    for (const col of ['totp_secret', 'totp_pending_secret']) {
+      const v = r[col]; if (!v) continue;
+      if (!isSealedSecret(v)) { if (keys.current) { next[col] = sealTotpSecret(v, keys); out.sealed++; } continue; }
+      if (keys.current) { try { openWith(v, keys.current); continue; } catch (_) {} }
+      if (keys.old) { try { const plain = openWith(v, keys.old); next[col] = keys.current ? sealTotpSecret(plain, keys) : plain; out[keys.current ? 'resealed' : 'unsealed']++; continue; } catch (_) {} }
+      out.unreadable++;
+    }
+    const cols = Object.keys(next);
+    // Only if the row still holds what was read, so a setup made meanwhile is never overwritten.
+    if (cols.length) await db.query(`UPDATE auth_users SET ${cols.map((c, i) => `${c}=$${i + 2}`).join(',')} WHERE id=$1 AND ${cols.map((c, i) => `${c} IS NOT DISTINCT FROM $${i + 2 + cols.length}`).join(' AND ')}`, [r.id, ...cols.map(c => next[c]), ...cols.map(c => r[c])]);
+  }
+  return out;
+}
 export const hashRecovery = c => crypto.createHash('sha256').update(String(c || '').toLowerCase().replace(/[^a-z0-9]/g, '')).digest('hex');
 export function newRecoveryCodes(n = 10) {
   return Array.from({ length: n }, () => { const h = crypto.randomBytes(5).toString('hex'); return `${h.slice(0, 5)}-${h.slice(5)}`; });
@@ -114,12 +164,14 @@ export const forgetTrustedDevices = (db, userId) => db.query('DELETE FROM truste
 export async function checkSecondFactor(db, user, code) {
   const raw = String(code || '').trim(); if (!raw) return { ok: false, reason: 'missing' };
   if (/^\d[\d\s]{5,7}$/.test(raw)) {
+    let keyProblem = false;
     if (user.totp_enabled) {
-      const step = verifyTotp(user.totp_secret, raw, user.totp_last_step);
+      let secret = null; try { secret = openTotpSecret(user.totp_secret); } catch (e) { if (e.code !== 'MFA_KEY') throw e; keyProblem = true; }
+      const step = secret ? verifyTotp(secret, raw, user.totp_last_step) : null;
       if (step != null && (await db.query('UPDATE auth_users SET totp_last_step=$2 WHERE id=$1 AND totp_last_step<$2', [user.id, step])).rowCount) return { ok: true };
     }
     if (user.email_mfa_enabled && await verifyEmailCode(db, user, raw, 'login')) return { ok: true, viaEmail: true };
-    return { ok: false, reason: 'bad' };
+    return { ok: false, reason: keyProblem ? 'key' : 'bad' };
   }
   const h = hashRecovery(raw), list = Array.isArray(user.totp_recovery) ? user.totp_recovery : [];
   if (!list.includes(h)) return { ok: false, reason: 'bad' };
@@ -163,7 +215,7 @@ export function registerMfaRoutes(app, { auth, ownerOnly, requireDb, audit, bcry
     if (!(await bcrypt.compare(String(req.body?.password || ''), req.user.password_hash || ''))) return fail(res, 400, 'Your password is not correct.', 'BAD_PASSWORD');
     const secret = newTotpSecret(), label = encodeURIComponent(`ITTR ShopFlow:${req.user.username}`);
     const uri = `otpauth://totp/${label}?secret=${secret}&issuer=${encodeURIComponent('ITTR ShopFlow')}&algorithm=SHA1&digits=6&period=30`;
-    await requireDb().query('UPDATE auth_users SET totp_pending_secret=$2 WHERE id=$1', [req.user.id, secret]);
+    await requireDb().query('UPDATE auth_users SET totp_pending_secret=$2 WHERE id=$1', [req.user.id, sealTotpSecret(secret)]);
     let qrSvg = ''; try { qrSvg = bwipjs.toSVG({ bcid: 'qrcode', text: uri, scale: 3, paddingwidth: 4, paddingheight: 4, backgroundcolor: 'FFFFFF' }); } catch (_) {}
     res.json({ secret: secret.replace(/(.{4})/g, '$1 ').trim(), uri, qrSvg });
   } catch (e) { next(e); } });
@@ -172,7 +224,8 @@ export function registerMfaRoutes(app, { auth, ownerOnly, requireDb, audit, bcry
   app.post('/api/auth/2fa/enable', limiter, auth, async (req, res, next) => { try {
     const db = requireDb(), u = (await db.query('SELECT id,totp_pending_secret FROM auth_users WHERE id=$1', [req.user.id])).rows[0];
     if (!u?.totp_pending_secret) return fail(res, 409, 'Start the setup again.');
-    const step = verifyTotp(u.totp_pending_secret, req.body?.code, 0);
+    let pending; try { pending = openTotpSecret(u.totp_pending_secret); } catch (e) { if (e.code === 'MFA_KEY') return fail(res, 503, 'The server cannot read this setup: its MFA_SECRET_KEY setting changed. Start the setup again.', 'MFA_KEY'); throw e; }
+    const step = verifyTotp(pending, req.body?.code, 0);
     if (step == null) return fail(res, 400, 'That code is not correct. Check the phone clock and type the newest code.', 'BAD_CODE');
     const codes = newRecoveryCodes();
     await db.query(`UPDATE auth_users SET totp_secret=totp_pending_secret,totp_pending_secret=NULL,totp_enabled=true,totp_last_step=$2,totp_recovery=$3::jsonb,updated_at=now() WHERE id=$1`, [req.user.id, step, JSON.stringify(codes.map(hashRecovery))]);

@@ -17,10 +17,11 @@ Work through this list in order. Steps marked **required** are needed before the
    | `APP_PUBLIC_URL` | The public address, e.g. `https://shop.ironttr.com`. Customer links and emails point here. |
    | `SHOP_TIMEZONE` | `America/Chicago` unless the shop is elsewhere |
    | `SHOP_*` | Name, address, phone and email printed on invoices |
+   | `MFA_SECRET_KEY` | Recommended. A random value of 32 or more characters. It encrypts the 2-step login secrets in the database. Keep it; see §9 to change it. |
 
 4. **Domain:** add the custom domain in Railway and wait for its HTTPS certificate.
 5. **Check the deploy:**
-   - `https://<your address>/api/health` shows `"ready":true` and `"version":"24.76.4"`.
+   - `https://<your address>/api/health` shows `"ready":true` and `"version":"24.76.5"`.
    - `/api/build` shows the deployed commit.
    - If `BOOTSTRAP_ADMIN_PASSWORD` was missing or too short, the deploy log says `ITTR SETUP REQUIRED` and nobody can sign in. Set it and redeploy.
 
@@ -84,11 +85,21 @@ Then remove the practice data (**Start fresh**, or void the invoice), and go liv
 - **Branch protection:** in GitHub, require the **audit** check on `main`, and deploy only from `main` after it passes.
 - **Backups:** download a backup weekly (**🔒 Password → Download backup**) in addition to Railway's. Once, restore a Railway backup into a separate test database to prove recovery works. Photos in R2 are not in the database backup.
 - **One server:** keep one Railway replica. Live updates between devices assume a single server process.
+- **Deploys without cut-off requests (optional):** on each deploy Railway sends the old server SIGTERM and stops it soon after (0–3 s by default, per Railway's forum). Since v24.76.5 the server uses that time to finish running requests and tell phones to reconnect. To give it more time, set **Railway → web → Settings → Deploy → Draining seconds** (or the `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` variable) to `15`.
+- **Node.js version:** the app is built and tested on Node 24 (`engines.node` and `.nvmrc`). After a deploy, the build log should say `node@24`. If it still shows 20, set the Railway variable `RAILPACK_NODE_VERSION=24`.
 - **Check the deployed version:** `<APP_PUBLIC_URL>/api/health` shows `"version"`. If it is older than `main`, Railway did not build the latest commit. Open **web → Deployments** and deploy the latest commit. **Redeploy** on an old entry rebuilds that same old commit.
 
 ## 9. If the host's secrets are exposed (key rotation)
 
-Railway keeps every setting the server reads. If Railway (or any host) reports that environment variables were exposed, treat every value as known to someone else. Rotate each one at its provider, put the new value in **Railway → web → Variables**, deploy once, then revoke the old one.
+Railway keeps every setting the server reads. If Railway (or any host) reports that environment variables were exposed, treat every value as known to someone else.
+
+**First, in the app (takes effect at once, no deploy needed):**
+1. **Change the owner's password** (**🔒 Password**). The owner account was created from `BOOTSTRAP_ADMIN_PASSWORD`; if it was never changed, that exposed setting *is* the owner's password. Since v24.76.5 the app warns at sign-in when the setup password is still in use.
+2. **Turn on 2-step login** for the owner and every manager, in the same window. Anyone who already had it on should turn it off and on again (scanning a new code into the app): before v24.76.5 the database kept the authenticator secrets unencrypted, so a copy of the database could produce their codes.
+3. Railway's database can usually be reached from the internet with its own password, so assume the database was readable too. After the database password is rotated (below), press **🔒 Password → Sign out everyone**: every sign-in on every device ends and remembered devices ask for a code again.
+4. Look through **Accounts** for people you did not add, and through **🔒 Password → Recent sign-ins** (who signed in, when, from which address and device, and the failed attempts) for sign-ins you do not recognise.
+
+**Then rotate each setting** at its provider, put the new value in **Railway → web → Variables**, deploy once, then revoke the old one:
 
 | Setting | Where to make a new one | After the deploy |
 |---|---|---|
@@ -101,7 +112,8 @@ Railway keeps every setting the server reads. If Railway (or any host) reports t
 | `OPENROUTER_API_KEY`, `OPENAI_API_KEY` | openrouter.ai → **Keys**; platform.openai.com → **API keys**. | Delete the old keys. Until then the AI features answer "AI provider rejected the API key"; the rest of the app works. |
 | `RESEND_API_KEY`, `SAMSARA_API_TOKEN`, `FMCSA_WEBKEY`, `ALERT_WEBHOOK_URL` | Each provider's API keys page (for the alert webhook, make a new webhook). | Delete the old keys. |
 | `BOOTSTRAP_ADMIN_PASSWORD` | Change the owner's password in the app (**🔒 Password**) and turn on 2-step login. | Delete this setting or set it to the new password; it is only used on an empty database. |
-| Twilio auth token (stored in the app's database, not in Railway) | Twilio console → **API keys & tokens** → secondary token, put it in the app's texting settings, then make it primary. | The old token stops working when the new one becomes primary. |
+| `MFA_SECRET_KEY` | Put the current value in `MFA_SECRET_KEY_OLD`, and a new random value (32+ characters) in `MFA_SECRET_KEY`. | On startup the server re-encrypts the 2-step secrets with the new key. Then delete `MFA_SECRET_KEY_OLD` and deploy again. |
+| `TWILIO_AUTH_TOKEN` (and check `TWILIO_ACCOUNT_SID`, `TWILIO_FROM`) | Twilio console → **Account → API keys & tokens** → create a secondary auth token, put it in Railway as `TWILIO_AUTH_TOKEN`. | After the deploy, promote the secondary token to primary in Twilio so the old one stops working. Incoming texts are checked against this token, so they are refused between promoting it and the deploy. |
 
 Then check `<APP_PUBLIC_URL>/api/health` (`"ready":true` and the expected version), sign in, open an invoice, and send a test email.
 
