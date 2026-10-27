@@ -113,8 +113,8 @@ GO-LIVE §9 now starts with the steps that need no deploy:
 
 The full `npm run check` uses PostgreSQL 16 and Chromium, with `ITTR_REQUIRE_DB_SUITES=1 ITTR_REQUIRE_BROWSER_SUITE=1`. It now includes the new **operations safety** suite (O1–O8).
 
-**Result:** exit 0. All 25 required suites passed, none skipped:
-- operations safety O1–O4
+**Result:** exit 0. All 25 required suites passed, none skipped. That was true on the first commit, and again on the final code with the follow-up (`4ef408e`):
+- operations safety O1–O8
 - the audit suite
 - control sweep: 882 pointer clicks on 56 role/page combinations, none covered; 137 controls skipped because they delete data or contact someone outside the shop
 - smoke test, v24.76.5
